@@ -238,6 +238,11 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, reusing selector-owned prompt parsing and
   setup/subagent filtering while `MessageList` keeps the correction action
   wiring.
+- Visible timeline entry derivation now lives in
+  `sessionDetail/renderSelectors`, combining visible turn groups with `/btw`
+  aside metadata and preserving the existing timestamp/ordinal ordering rules
+  while `MessageList` keeps `/btw` ownership, progressive reveal, rendering,
+  and scroll.
 
 ## Verification Details
 

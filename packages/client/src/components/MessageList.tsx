@@ -48,6 +48,7 @@ import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
+  buildVisibleTimelineEntries,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
@@ -1982,63 +1983,9 @@ export const MessageList = memo(function MessageList({
     userTurnSearchMatchTargetIds,
   ]);
   const visibleTimelineEntries = useMemo(() => {
-    const entries: Array<
-      | {
-          kind: "turn";
-          key: string;
-          timestampMs: number | null;
-          ordinal: number;
-          group: (typeof visibleTurnGroups)[number];
-        }
-      | {
-          kind: "btw";
-          key: string;
-          timestampMs: number | null;
-          ordinal: number;
-          aside: BtwAsideTimelineItem;
-        }
-    > = [];
-
-    visibleTurnGroups.forEach((group, index) => {
-      let timestampMs: number | null = null;
-      for (const item of group.items) {
-        const itemTimestamp = getLatestMessageTimestampMs(item.sourceMessages);
-        if (itemTimestamp !== null) {
-          timestampMs =
-            timestampMs === null
-              ? itemTimestamp
-              : Math.max(timestampMs, itemTimestamp);
-        }
-      }
-      const firstItem = group.items[0];
-      entries.push({
-        kind: "turn",
-        key: firstItem ? `turn-${firstItem.id}` : `turn-${index}`,
-        timestampMs,
-        ordinal: index,
-        group,
-      });
-    });
-
-    btwAsides.forEach((aside, index) => {
-      entries.push({
-        kind: "btw",
-        key: `btw-${aside.id}`,
-        timestampMs: parseTimestampMs(aside.historyAt ?? aside.updatedAt),
-        ordinal: visibleTurnGroups.length + index,
-        aside,
-      });
-    });
-
-    return entries.sort((left, right) => {
-      if (left.timestampMs !== null && right.timestampMs !== null) {
-        return (
-          left.timestampMs - right.timestampMs || left.ordinal - right.ordinal
-        );
-      }
-      if (left.timestampMs !== null) return -1;
-      if (right.timestampMs !== null) return 1;
-      return left.ordinal - right.ordinal;
+    return buildVisibleTimelineEntries({
+      asides: btwAsides,
+      turnGroups: visibleTurnGroups,
     });
   }, [btwAsides, visibleTurnGroups]);
   const progressiveRenderAllowed =

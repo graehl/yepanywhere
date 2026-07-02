@@ -1,7 +1,7 @@
 import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
 import { toolRegistry } from "../../components/renderers/tools";
 import { getToolSummary } from "../../components/tools/summaries";
-import { getLatestMessageTimestampMs } from "../messageAge";
+import { getLatestMessageTimestampMs, parseTimestampMs } from "../messageAge";
 import { parseUserPrompt } from "../parseUserPrompt";
 import { getPathBasename, makeDisplayPath } from "../text";
 import type { ContentBlock, Message } from "../../types";
@@ -89,6 +89,39 @@ export interface SearchVisibleTurnGroupsInput<
   matchTargetIds?: ReadonlySet<string>;
   scope: RenderSearchScope;
   searchReady: boolean;
+  turnGroups: readonly TTurnGroup[];
+}
+
+export interface RenderTimelineAside {
+  id: string;
+  historyAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export type RenderTimelineEntry<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+> =
+  | {
+      kind: "turn";
+      key: string;
+      timestampMs: number | null;
+      ordinal: number;
+      group: TTurnGroup;
+    }
+  | {
+      kind: "btw";
+      key: string;
+      timestampMs: number | null;
+      ordinal: number;
+      aside: TAside;
+    };
+
+export interface VisibleTimelineEntriesInput<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+> {
+  asides?: readonly TAside[];
   turnGroups: readonly TTurnGroup[];
 }
 
@@ -184,6 +217,50 @@ export function getLatestRenderItemsTimestampMs(
     latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
   }
   return latest;
+}
+
+export function buildVisibleTimelineEntries<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+>({
+  asides = [],
+  turnGroups,
+}: VisibleTimelineEntriesInput<TTurnGroup, TAside>): Array<
+  RenderTimelineEntry<TTurnGroup, TAside>
+> {
+  const entries: Array<RenderTimelineEntry<TTurnGroup, TAside>> = [];
+
+  turnGroups.forEach((group, index) => {
+    const firstItem = group.items[0];
+    entries.push({
+      kind: "turn",
+      key: firstItem ? `turn-${firstItem.id}` : `turn-${index}`,
+      timestampMs: getLatestRenderItemsTimestampMs(group.items),
+      ordinal: index,
+      group,
+    });
+  });
+
+  asides.forEach((aside, index) => {
+    entries.push({
+      kind: "btw",
+      key: `btw-${aside.id}`,
+      timestampMs: parseTimestampMs(aside.historyAt ?? aside.updatedAt),
+      ordinal: turnGroups.length + index,
+      aside,
+    });
+  });
+
+  return entries.sort((left, right) => {
+    if (left.timestampMs !== null && right.timestampMs !== null) {
+      return (
+        left.timestampMs - right.timestampMs || left.ordinal - right.ordinal
+      );
+    }
+    if (left.timestampMs !== null) return -1;
+    if (right.timestampMs !== null) return 1;
+    return left.ordinal - right.ordinal;
+  });
 }
 
 export function getExplorationKind(toolName: string): ExplorationKind | null {

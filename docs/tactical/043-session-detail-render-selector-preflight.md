@@ -29,8 +29,10 @@ Covered outputs:
 - user-turn navigation anchors;
 - user-turn, all-turn, and full-session search anchors;
 - search-driven visible turn-group filtering;
-- search match and selected-anchor projection.
-- latest correctable prompt derivation.
+- search match and selected-anchor projection;
+- latest correctable prompt derivation;
+- visible timeline entry derivation and timestamp ordering for turn groups plus
+  `/btw` aside metadata.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -42,7 +44,7 @@ and actual rendering.
 - Thinking visibility and expansion policy.
 - Search session state, keyboard/repeat navigation, and selected-match updates.
 - Correct-prompt action wiring.
-- `/btw` timeline entries and aside rendering.
+- `/btw` aside ownership and rendering.
 - Progressive timeline slicing and reveal timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
 - DOM measurement and row anchoring.
@@ -50,6 +52,6 @@ and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is visible
-timeline entry derivation from visible turn groups plus `/btw` aside metadata,
-while keeping `/btw` ownership, progressive timers, and DOM rendering local.
+projection out of `MessageList`. The next low-risk candidate is progressive
+timeline sizing/count derivation from already-built timeline entries, while
+keeping reveal timers, scroll, and DOM rendering local.

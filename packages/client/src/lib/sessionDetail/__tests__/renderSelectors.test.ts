@@ -5,6 +5,7 @@ import type { RenderItem } from "../../../types/renderItems";
 import {
   buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
+  buildVisibleTimelineEntries,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
   getSearchMatchProjection,
@@ -440,6 +441,90 @@ describe("session detail render selectors", () => {
         }),
       ),
     ).toEqual(["read-1"]);
+  });
+
+  it("builds visible timeline entries from turns and btw asides", () => {
+    const user: RenderItem = {
+      type: "user_prompt",
+      id: "user-1",
+      content: "Prompt",
+      sourceMessages: [sourceMessage("user-msg", "2026-07-02T12:01:00Z")],
+    };
+    const assistantWithoutTimestamp: RenderItem = {
+      type: "text",
+      id: "assistant-1",
+      text: "No timestamp yet",
+      sourceMessages: [],
+    };
+    const groups: RenderTurnGroup[] = [
+      { isUserPrompt: true, items: [user] },
+      { isUserPrompt: false, items: [assistantWithoutTimestamp] },
+    ];
+    const asides = [
+      {
+        id: "aside-early",
+        updatedAt: "2026-07-02T12:00:00Z",
+      },
+      {
+        id: "aside-history",
+        historyAt: "2026-07-02T12:02:00Z",
+        updatedAt: "2026-07-02T13:00:00Z",
+      },
+    ];
+
+    const entries = buildVisibleTimelineEntries({
+      asides,
+      turnGroups: groups,
+    });
+
+    expect(
+      entries.map((entry) =>
+        entry.kind === "turn"
+          ? {
+              kind: entry.kind,
+              key: entry.key,
+              ordinal: entry.ordinal,
+              timestampMs: entry.timestampMs,
+              firstItemId: entry.group.items[0]?.id,
+            }
+          : {
+              kind: entry.kind,
+              key: entry.key,
+              ordinal: entry.ordinal,
+              timestampMs: entry.timestampMs,
+              asideId: entry.aside.id,
+            },
+      ),
+    ).toEqual([
+      {
+        kind: "btw",
+        key: "btw-aside-early",
+        ordinal: 2,
+        timestampMs: Date.parse("2026-07-02T12:00:00Z"),
+        asideId: "aside-early",
+      },
+      {
+        kind: "turn",
+        key: "turn-user-1",
+        ordinal: 0,
+        timestampMs: Date.parse("2026-07-02T12:01:00Z"),
+        firstItemId: "user-1",
+      },
+      {
+        kind: "btw",
+        key: "btw-aside-history",
+        ordinal: 3,
+        timestampMs: Date.parse("2026-07-02T12:02:00Z"),
+        asideId: "aside-history",
+      },
+      {
+        kind: "turn",
+        key: "turn-assistant-1",
+        ordinal: 1,
+        timestampMs: null,
+        firstItemId: "assistant-1",
+      },
+    ]);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

@@ -39,6 +39,12 @@ export function selectSessionDetailMessages(
   return state.messages;
 }
 
+export function selectSessionDetailAgentContent(
+  state: SessionDetailState,
+): AgentContentMap {
+  return state.agentContent;
+}
+
 export function selectSessionDetailScrollSnapshot(
   state: SessionDetailState,
 ): SessionRouteScrollSnapshot | undefined {

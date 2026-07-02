@@ -175,6 +175,9 @@ Status 2026-07-02:
   public `updateSession` wrapper.
 - Added `selectSessionDetailMessages` and used it as the first store-backed
   message mirror for main streaming placeholder upsert/cleanup.
+- Added `selectSessionDetailAgentContent` and used it as the first
+  store-backed `agentContent` mirror for subagent streaming placeholder
+  upsert/cleanup.
 
 Reducer/helper behavior locked down during Slice 4:
 
@@ -186,6 +189,9 @@ Reducer/helper behavior locked down during Slice 4:
 - Main streaming placeholder upsert/cleanup now copies the store-selected
   transcript into the local hook mirror after reducer/store dispatch, with the
   old local helper retained as fallback.
+- Subagent streaming placeholder upsert/cleanup now copies the store-selected
+  agent-content map into the local hook mirror after reducer/store dispatch,
+  with the old local helper retained as fallback.
 
 ## Verification Details
 

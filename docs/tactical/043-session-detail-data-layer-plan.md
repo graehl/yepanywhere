@@ -33,6 +33,9 @@ What is already in place:
 - Narrow selectors are already used for retained scroll, pagination,
   older-page cursor selection, and main streaming placeholder message
   upsert/cleanup.
+- `agentContent` has its first selector-backed mirror too: subagent streaming
+  placeholder upsert/cleanup copies the store-selected map back into the local
+  hook mirror after reducer/store dispatch.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but the broad returned `messages` and `agentContent` values are
@@ -106,20 +109,19 @@ DOM timing problems.
 
 Next likely slice:
 
-- Selectorize one narrow `agentContent` mirror, probably subagent streaming
-  placeholder upsert/cleanup.
-- Keep the same pattern as the main-message placeholder slice: dispatch action,
-  read store selector, copy selected value into the local mirror, keep the old
-  local helper as fallback, and prove it with a store-only test fixture.
+- Preflight a hidden dogfood toggle for store-authoritative returned
+  `messages`. Before flipping even a localStorage-only switch, enumerate each
+  remaining `setMessages` transition and confirm the matching reducer/store
+  action already carries the same cursor, provenance, and pagination effects.
 
 Then:
 
 - Audit persisted catch-up and older-page transitions, but do not selectorize
   them blindly. They carry cursor and persisted timestamp watermark side
   effects, so they are higher risk than placeholder cleanup paths.
-- Consider a hidden opt-in dogfood setting for store-authoritative returned
-  `messages` once every visible message transition has an equivalent reducer
-  action and fallback.
+- Add the hidden opt-in dogfood setting once the preflight has tests for
+  initial load, warm restore, ordinary stream, placeholder updates, catch-up,
+  and older-page prepend.
 
 Potential dogfood toggle:
 

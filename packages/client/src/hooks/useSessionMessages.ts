@@ -40,6 +40,7 @@ import {
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
 import {
+  selectSessionDetailAgentContent,
   selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
@@ -567,6 +568,15 @@ export function useSessionMessages(
       defaultSessionDetailStore.readSelected(
         { sourceKey, projectId, sessionId, tailTurns, tailFrom },
         selectSessionDetailMessages,
+      ),
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+  );
+
+  const readSelectorBackedAgentContent = useCallback(
+    () =>
+      defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailAgentContent,
       ),
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
@@ -1288,12 +1298,11 @@ export function useSessionMessages(
       );
 
       if (agentId) {
+        const selectorBackedAgentContent = readSelectorBackedAgentContent();
         setAgentContent((prev) => {
-          const next = upsertAgentStreamingPlaceholderMap(
-            prev,
-            agentId,
-            streamingMessage,
-          );
+          const next =
+            selectorBackedAgentContent ??
+            upsertAgentStreamingPlaceholderMap(prev, agentId, streamingMessage);
           reportShadowDivergence("streaming-placeholder", {
             agentContent: next,
           });
@@ -1315,6 +1324,7 @@ export function useSessionMessages(
     },
     [
       dispatchSessionDetailAction,
+      readSelectorBackedAgentContent,
       readSelectorBackedMessages,
       reportShadowDivergence,
     ],
@@ -1409,15 +1419,22 @@ export function useSessionMessages(
       dispatchSessionDetailAction(
         createClearAgentStreamingPlaceholdersAction(agentId),
       );
+      const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
-        const next = clearAgentStreamingPlaceholdersMap(prev, agentId);
+        const next =
+          selectorBackedAgentContent ??
+          clearAgentStreamingPlaceholdersMap(prev, agentId);
         reportShadowDivergence("agent-streaming-placeholder-cleanup", {
           agentContent: next,
         });
         return next;
       });
     },
-    [dispatchSessionDetailAction, reportShadowDivergence],
+    [
+      dispatchSessionDetailAction,
+      readSelectorBackedAgentContent,
+      reportShadowDivergence,
+    ],
   );
 
   const clearStreamingPlaceholders = useCallback(() => {

@@ -27,16 +27,17 @@ Covered outputs:
 - turn grouping for user, assistant, and standalone display-object entries;
 - assistant render segments, including explored tool runs;
 - user-turn navigation anchors;
-- user-turn, all-turn, and full-session search anchors.
+- user-turn, all-turn, and full-session search anchors;
+- search-driven visible turn-group filtering.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
-ref, thinking expansion state, search state and match filtering, progressive
-reveal, selection, scroll anchoring, and actual rendering.
+ref, thinking expansion state, search state, search match selection,
+progressive reveal, selection, scroll anchoring, and actual rendering.
 
 ## Still Local To MessageList
 
 - Thinking visibility and expansion policy.
-- Search match filtering and visible-group pruning.
+- Search query matching, selected-match state, and preview snippets.
 - `/btw` timeline entries and aside rendering.
 - Progressive timeline slicing and reveal timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
@@ -45,6 +46,7 @@ reveal, selection, scroll anchoring, and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is search-driven
-visible group filtering, because the inputs are now plain turn groups, search
-scope, and match id sets while DOM navigation remains local to `MessageList`.
+projection out of `MessageList`. The next low-risk candidate is search match
+projection from anchors, query, and case-sensitivity into matches, match id
+sets, selected anchors, and preview snippets while DOM navigation remains local
+to `MessageList`.

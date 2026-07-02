@@ -59,11 +59,13 @@ What is already in place:
 - Assistant render segments and full-session search anchors, including
   explored tool-run aggregate and child anchors, now derive through
   `sessionDetail/renderSelectors`.
+- Search-driven visible turn-group filtering now derives through
+  `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
 still dev-only and default-off. Render-item derivation has a pure selector
-preflight, but `MessageList` still owns display policy, search match filtering,
+preflight, but `MessageList` still owns display policy, search match projection,
 and DOM behavior.
 
 ## Why This Exists
@@ -94,8 +96,8 @@ Ownership is intentionally still split while we migrate:
   same-tab cache entries.
 - `MessageList` still owns display policy, progressive rendering, scroll
   snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
-  assistant-segment, and search-anchor projections now live outside the
-  component.
+  assistant-segment, search-anchor, and visible-group projections now live
+  outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -138,8 +140,8 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving search-driven visible group
-  filtering behind a pure helper without taking over scroll, search state, or
+- Continue the render-selector preflight by moving search match projection from
+  anchors/query into a pure helper without taking over scroll, search state, or
   progressive rendering.
 
 Then:
@@ -167,8 +169,8 @@ Dogfood toggle:
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
 - `MessageList` still performs some semantic display derivation, especially
-  search match filtering, progressive reveal, and `/btw`. Store canonical state
-  does not yet mean render canonical state.
+  search match projection, progressive reveal, and `/btw`. Store canonical
+  state does not yet mean render canonical state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.
 - A store-authoritative messages toggle may expose reducer gaps quickly; that

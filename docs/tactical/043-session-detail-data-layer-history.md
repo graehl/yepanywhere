@@ -225,6 +225,10 @@ Reducer/helper behavior locked down during Slice 4:
   render-item timestamp selection now live in `sessionDetail/renderSelectors`.
   `ExploredToolGroup` still owns the React rendering and interactive summary
   behavior for those segment items.
+- Search-driven visible turn-group filtering now also lives in
+  `sessionDetail/renderSelectors`, preserving the existing behavior where a
+  matching user turn keeps its assistant response visible and full-session
+  explored child matches target the explored group.
 
 ## Verification Details
 

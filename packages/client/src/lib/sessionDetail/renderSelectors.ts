@@ -40,6 +40,18 @@ export interface RenderNavAnchor {
   timestampMs?: number | null;
 }
 
+export type RenderSearchScope = "user" | "all" | "full";
+
+export interface SearchVisibleTurnGroupsInput<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+> {
+  matchIds: ReadonlySet<string>;
+  matchTargetIds?: ReadonlySet<string>;
+  scope: RenderSearchScope;
+  searchReady: boolean;
+  turnGroups: readonly TTurnGroup[];
+}
+
 const SESSION_SETUP_PREFIXES = [
   "# AGENTS.md instructions",
   "<environment_context>",
@@ -760,4 +772,56 @@ export function getFullSessionSearchAnchors(
     }
   }
   return anchors;
+}
+
+function turnGroupHasFullSessionMatch(
+  group: RenderTurnGroup,
+  matchTargetIds: ReadonlySet<string>,
+): boolean {
+  if (group.items.some((item) => matchTargetIds.has(item.id))) {
+    return true;
+  }
+
+  return buildAssistantRenderSegments(group.items).some((segment) =>
+    segment.kind === "explored"
+      ? matchTargetIds.has(segment.id) ||
+        segment.items.some((item) => matchTargetIds.has(item.id))
+      : matchTargetIds.has(segment.item.id),
+  );
+}
+
+export function getSearchVisibleTurnGroups<
+  TTurnGroup extends RenderTurnGroup,
+>({
+  matchIds,
+  matchTargetIds = matchIds,
+  scope,
+  searchReady,
+  turnGroups,
+}: SearchVisibleTurnGroupsInput<TTurnGroup>): readonly TTurnGroup[] {
+  if (!searchReady || matchIds.size === 0) {
+    return turnGroups;
+  }
+
+  let currentUserTurnId: string | null = null;
+  const visibleGroups: TTurnGroup[] = [];
+  for (const group of turnGroups) {
+    const firstItem = group.items[0];
+    if (group.isUserPrompt && firstItem?.type === "user_prompt") {
+      currentUserTurnId = firstItem.id;
+    }
+
+    const isVisible =
+      scope === "full"
+        ? turnGroupHasFullSessionMatch(group, matchTargetIds)
+        : scope === "all"
+          ? group.items.some((item) => matchIds.has(item.id)) ||
+            (!!currentUserTurnId && matchIds.has(currentUserTurnId))
+          : !!currentUserTurnId && matchIds.has(currentUserTurnId);
+
+    if (isVisible) {
+      visibleGroups.push(group);
+    }
+  }
+  return visibleGroups;
 }

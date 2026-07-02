@@ -53,6 +53,7 @@ import {
   getLatestRenderItemsTimestampMs,
   getPromptTextForCorrection,
   getSearchableUserTurnPreview,
+  getSearchVisibleTurnGroups,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
@@ -2044,44 +2045,13 @@ export const MessageList = memo(function MessageList({
     return null;
   }, [renderItems, onCorrectLatestUserMessage]);
   const visibleTurnGroups = useMemo(() => {
-    if (!searchReady || userTurnSearchMatchIds.size === 0) {
-      return turnGroups;
-    }
-
-    let currentUserTurnId: string | null = null;
-    const visibleGroups: typeof turnGroups = [];
-    for (const group of turnGroups) {
-      const firstItem = group.items[0];
-      if (group.isUserPrompt && firstItem?.type === "user_prompt") {
-        currentUserTurnId = firstItem.id;
-      }
-      const isFullSessionVisible =
-        userTurnSearch.scope === "full" &&
-        (group.items.some((item) =>
-          userTurnSearchMatchTargetIds.has(item.id),
-        ) ||
-          buildAssistantRenderSegments(group.items).some((segment) =>
-            segment.kind === "explored"
-              ? userTurnSearchMatchTargetIds.has(segment.id) ||
-                segment.items.some((item) =>
-                  userTurnSearchMatchTargetIds.has(item.id),
-                )
-              : userTurnSearchMatchTargetIds.has(segment.item.id),
-          ));
-      const isVisible =
-        userTurnSearch.scope === "full"
-          ? isFullSessionVisible
-          : userTurnSearch.scope === "all"
-            ? group.items.some((item) => userTurnSearchMatchIds.has(item.id)) ||
-              (!!currentUserTurnId &&
-                userTurnSearchMatchIds.has(currentUserTurnId))
-            : !!currentUserTurnId &&
-              userTurnSearchMatchIds.has(currentUserTurnId);
-      if (isVisible) {
-        visibleGroups.push(group);
-      }
-    }
-    return visibleGroups;
+    return getSearchVisibleTurnGroups({
+      matchIds: userTurnSearchMatchIds,
+      matchTargetIds: userTurnSearchMatchTargetIds,
+      scope: userTurnSearch.scope,
+      searchReady,
+      turnGroups,
+    });
   }, [
     searchReady,
     turnGroups,

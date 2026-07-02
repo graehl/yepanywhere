@@ -7,10 +7,12 @@ import {
   buildSessionDetailRenderItems,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
+  getSearchVisibleTurnGroups,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
   selectSessionDetailRenderItems,
+  type RenderTurnGroup,
 } from "../renderSelectors";
 import { createInitialSessionDetailState } from "../transcriptReducer";
 
@@ -345,5 +347,95 @@ describe("session detail render selectors", () => {
       anchors.find((anchor) => anchor.id === "explored-read-1-grep-1")
         ?.timestampMs,
     ).toBe(Date.parse("2026-07-02T12:02:00.000Z"));
+  });
+
+  it("filters visible turn groups for search matches", () => {
+    const user1: RenderItem = {
+      type: "user_prompt",
+      id: "user-1",
+      content: "First prompt",
+      sourceMessages: [sourceMessage("user-msg-1", "2026-07-02T12:00:00Z")],
+    };
+    const assistant1: RenderItem = {
+      type: "text",
+      id: "assistant-1",
+      text: "First answer",
+      sourceMessages: [
+        sourceMessage("assistant-msg-1", "2026-07-02T12:01:00Z"),
+      ],
+    };
+    const user2: RenderItem = {
+      type: "user_prompt",
+      id: "user-2",
+      content: "Second prompt",
+      sourceMessages: [sourceMessage("user-msg-2", "2026-07-02T12:02:00Z")],
+    };
+    const read: RenderItem = {
+      type: "tool_call",
+      id: "read-1",
+      toolName: "Read",
+      toolInput: { file_path: "README.md" },
+      status: "pending",
+      sourceMessages: [sourceMessage("read-msg", "2026-07-02T12:03:00Z")],
+    };
+    const grep: RenderItem = {
+      type: "tool_call",
+      id: "grep-1",
+      toolName: "Grep",
+      toolInput: { pattern: "needle" },
+      status: "pending",
+      sourceMessages: [sourceMessage("grep-msg", "2026-07-02T12:04:00Z")],
+    };
+    const groups: RenderTurnGroup[] = [
+      { isUserPrompt: true, items: [user1] },
+      { isUserPrompt: false, items: [assistant1] },
+      { isUserPrompt: true, items: [user2] },
+      { isUserPrompt: false, items: [read, grep] },
+    ];
+    const groupIds = (visibleGroups: readonly RenderTurnGroup[]) =>
+      visibleGroups.map((group) => group.items[0]?.id);
+
+    expect(
+      getSearchVisibleTurnGroups({
+        matchIds: new Set(),
+        scope: "user",
+        searchReady: true,
+        turnGroups: groups,
+      }),
+    ).toBe(groups);
+
+    expect(
+      groupIds(
+        getSearchVisibleTurnGroups({
+          matchIds: new Set(["user-1"]),
+          scope: "user",
+          searchReady: true,
+          turnGroups: groups,
+        }),
+      ),
+    ).toEqual(["user-1", "assistant-1"]);
+
+    expect(
+      groupIds(
+        getSearchVisibleTurnGroups({
+          matchIds: new Set(["assistant-1"]),
+          scope: "all",
+          searchReady: true,
+          turnGroups: groups,
+        }),
+      ),
+    ).toEqual(["assistant-1"]);
+
+    expect(
+      groupIds(
+        getSearchVisibleTurnGroups({
+          matchIds: new Set(["explored-read-1-grep-1:read-1"]),
+          matchTargetIds: new Set(["explored-read-1-grep-1"]),
+          scope: "full",
+          searchReady: true,
+          turnGroups: groups,
+        }),
+      ),
+    ).toEqual(["read-1"]);
   });
 });

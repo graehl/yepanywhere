@@ -28,9 +28,12 @@ import {
   createStreamSubagentMessageAction,
 } from "../lib/sessionDetail/actionAdapters";
 import {
+  isSessionDetailShadowDiagnosticsEnabled,
+  reportSessionDetailStoreDivergence,
   reportSessionDetailShadowDivergence,
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
+import { selectSessionDetailRuntimeSnapshot } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
   createInitialSessionDetailState,
@@ -467,33 +470,50 @@ export function useSessionMessages(
       boundary: string,
       livePatch: Partial<SessionDetailRuntimeStateInput> = {},
     ) => {
+      if (!isSessionDetailShadowDiagnosticsEnabled()) {
+        return;
+      }
       const snapshot = latestSnapshotRef.current;
       const liveSession = livePatch.session ?? snapshot?.session ?? null;
+      const live: SessionDetailRuntimeStateInput = {
+        messages: livePatch.messages ?? snapshot?.messages ?? [],
+        session: liveSession,
+        pagination: livePatch.pagination ?? snapshot?.pagination,
+        agentContent: livePatch.agentContent ?? snapshot?.agentContent ?? {},
+        toolUseToAgentEntries:
+          livePatch.toolUseToAgentEntries ??
+          snapshot?.toolUseToAgentEntries ??
+          [],
+        lastMessageId: livePatch.lastMessageId ?? lastMessageIdRef.current,
+        maxPersistedTimestampMs:
+          livePatch.maxPersistedTimestampMs ??
+          maxPersistedTimestampMsRef.current,
+        scrollSnapshot: livePatch.scrollSnapshot ?? snapshot?.scrollSnapshot,
+      };
       reportSessionDetailShadowDivergence({
         boundary,
         projectId,
         sessionId,
         provider: liveSession?.provider ?? providerRef.current,
-        live: {
-          messages: livePatch.messages ?? snapshot?.messages ?? [],
-          session: liveSession,
-          pagination: livePatch.pagination ?? snapshot?.pagination,
-          agentContent: livePatch.agentContent ?? snapshot?.agentContent ?? {},
-          toolUseToAgentEntries:
-            livePatch.toolUseToAgentEntries ??
-            snapshot?.toolUseToAgentEntries ??
-            [],
-          lastMessageId: livePatch.lastMessageId ?? lastMessageIdRef.current,
-          maxPersistedTimestampMs:
-            livePatch.maxPersistedTimestampMs ??
-            maxPersistedTimestampMsRef.current,
-          scrollSnapshot:
-            livePatch.scrollSnapshot ?? snapshot?.scrollSnapshot,
-        },
+        live,
         shadow: sessionDetailShadowRef.current,
       });
+      const store = defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailRuntimeSnapshot,
+      );
+      if (store) {
+        reportSessionDetailStoreDivergence({
+          boundary,
+          projectId,
+          sessionId,
+          provider: liveSession?.provider ?? providerRef.current,
+          live,
+          store,
+        });
+      }
     },
-    [projectId, sessionId],
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
   // Buffering: queue stream messages until initial load completes

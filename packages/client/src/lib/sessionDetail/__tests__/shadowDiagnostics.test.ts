@@ -4,6 +4,7 @@ import { UI_KEYS } from "../../storageKeys";
 import {
   __resetSessionDetailShadowDiagnosticsForTest,
   isSessionDetailShadowDiagnosticsEnabled,
+  reportSessionDetailStoreDivergence,
   reportSessionDetailShadowDivergence,
 } from "../shadowDiagnostics";
 import {
@@ -134,5 +135,47 @@ describe("session detail shadow diagnostics", () => {
     reportSessionDetailShadowDivergence(input);
 
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs store selector divergence with the same redacted shape", () => {
+    window.__YA_SESSION_DETAIL_SHADOW_DIAGNOSTICS__ = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = sessionMetadata();
+    const liveMessage = userMessage("live-user-1", "secret live text");
+    const storeMessage = userMessage("store-user-1", "secret store text");
+
+    reportSessionDetailStoreDivergence({
+      boundary: "store-boundary",
+      projectId: "project-1",
+      sessionId: "session-1",
+      provider: "codex",
+      live: {
+        messages: [liveMessage],
+        session,
+        agentContent: {},
+        toolUseToAgentEntries: [],
+        maxPersistedTimestampMs: Number.NEGATIVE_INFINITY,
+      },
+      store: {
+        messages: [storeMessage],
+        session,
+        agentContent: {},
+        toolUseToAgentEntries: [],
+        maxPersistedTimestampMs: Number.NEGATIVE_INFINITY,
+      },
+    });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const payload = warn.mock.calls[0]?.[1] as unknown;
+    expect(JSON.stringify(payload)).not.toContain("secret");
+    expect(payload).toMatchObject({
+      event: "session-detail-store-divergence",
+      boundary: "store-boundary",
+      firstMessageDiff: {
+        index: 0,
+        live: { id: "live-user-1" },
+        store: { id: "store-user-1" },
+      },
+    });
   });
 });

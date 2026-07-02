@@ -1,12 +1,8 @@
 import { getMessageId } from "../mergeMessages";
 import { UI_KEYS } from "../storageKeys";
 import type { Message, SessionMetadata } from "../../types";
-import type { PaginationInfo } from "../../api/client";
-import type {
-  AgentContentMap,
-  SessionDetailState,
-} from "./types";
-import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
+import type { SessionDetailState } from "./types";
+import type { SessionDetailRuntimeSnapshot } from "./selectors";
 
 type MessageSource = "sdk" | "jsonl" | undefined;
 
@@ -57,14 +53,14 @@ interface CompactSessionDetail {
 }
 
 export interface SessionDetailRuntimeStateInput {
-  messages: readonly Message[];
+  messages: SessionDetailRuntimeSnapshot["messages"];
   session: SessionMetadata | null;
-  pagination?: PaginationInfo;
-  agentContent: AgentContentMap;
-  toolUseToAgentEntries: Array<[string, string]>;
+  pagination?: SessionDetailRuntimeSnapshot["pagination"];
+  agentContent: SessionDetailRuntimeSnapshot["agentContent"];
+  toolUseToAgentEntries: SessionDetailRuntimeSnapshot["toolUseToAgentEntries"];
   lastMessageId?: string;
   maxPersistedTimestampMs: number;
-  scrollSnapshot?: SessionRouteScrollSnapshot;
+  scrollSnapshot?: SessionDetailRuntimeSnapshot["scrollSnapshot"];
 }
 
 export interface SessionDetailShadowDivergenceInput {
@@ -74,6 +70,15 @@ export interface SessionDetailShadowDivergenceInput {
   provider?: string;
   live: SessionDetailRuntimeStateInput;
   shadow: SessionDetailState;
+}
+
+export interface SessionDetailStoreDivergenceInput {
+  boundary: string;
+  projectId: string;
+  sessionId: string;
+  provider?: string;
+  live: SessionDetailRuntimeStateInput;
+  store: SessionDetailRuntimeSnapshot;
 }
 
 declare global {
@@ -140,7 +145,7 @@ function hashString(value: string): string {
 }
 
 function compactPagination(
-  pagination: PaginationInfo | undefined,
+  pagination: SessionDetailRuntimeSnapshot["pagination"],
 ): CompactPagination | undefined {
   if (!pagination) {
     return undefined;
@@ -155,7 +160,7 @@ function compactPagination(
 }
 
 function compactScrollSnapshot(
-  scrollSnapshot: SessionRouteScrollSnapshot | undefined,
+  scrollSnapshot: SessionDetailRuntimeSnapshot["scrollSnapshot"],
 ): CompactScrollSnapshot | undefined {
   if (!scrollSnapshot) {
     return undefined;
@@ -167,7 +172,9 @@ function compactScrollSnapshot(
   };
 }
 
-function compactAgent(agentContent: AgentContentMap[string]): CompactAgent {
+function compactAgent(
+  agentContent: SessionDetailRuntimeSnapshot["agentContent"][string],
+): CompactAgent {
   return {
     status: agentContent.status,
     count: agentContent.messages.length,
@@ -239,6 +246,21 @@ function findFirstMessageDiff(
   return null;
 }
 
+function findFirstStoreMessageDiff(
+  liveMessages: readonly Message[],
+  storeMessages: readonly Message[],
+): { index: number; live?: CompactMessage; store?: CompactMessage } | null {
+  const diff = findFirstMessageDiff(liveMessages, storeMessages);
+  if (!diff) {
+    return null;
+  }
+  return {
+    index: diff.index,
+    live: diff.live,
+    store: diff.shadow,
+  };
+}
+
 function buildShadowRuntimeInput(
   shadow: SessionDetailState,
 ): SessionDetailRuntimeStateInput {
@@ -293,6 +315,49 @@ export function reportSessionDetailShadowDivergence(
     ),
     live,
     shadow,
+  });
+}
+
+export function reportSessionDetailStoreDivergence(
+  input: SessionDetailStoreDivergenceInput,
+): void {
+  if (!isSessionDetailShadowDiagnosticsEnabled()) {
+    return;
+  }
+
+  const live = compactSessionDetail(input.live);
+  const store = compactSessionDetail(input.store);
+  const liveKey = comparableCompact(live);
+  const storeKey = comparableCompact(store);
+  if (liveKey === storeKey) {
+    return;
+  }
+
+  const divergenceKey = [
+    "store",
+    input.boundary,
+    input.projectId,
+    input.sessionId,
+    hashString(liveKey),
+    hashString(storeKey),
+  ].join(":");
+  if (loggedDivergenceKeys.has(divergenceKey)) {
+    return;
+  }
+  loggedDivergenceKeys.add(divergenceKey);
+
+  console.warn("[SessionDetailStore]", {
+    event: "session-detail-store-divergence",
+    boundary: input.boundary,
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    provider: input.provider ?? live.provider ?? store.provider,
+    firstMessageDiff: findFirstStoreMessageDiff(
+      input.live.messages,
+      input.store.messages,
+    ),
+    live,
+    store,
   });
 }
 

@@ -2,8 +2,8 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 4 store shell wired to the hook lifecycle. The pure reducer
-fixture harness now
+Status: Slice 4 selector parity diagnostics added. The pure reducer fixture
+harness now
 covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
@@ -13,7 +13,9 @@ scroll-snapshot boundaries and can opt into compact dev-only divergence
 diagnostics without switching production reads to the reducer. The same-tab
 route snapshot cache now sits behind a named session detail store with
 selector subscriptions, retention controls, expiry/eviction, and stats; the
-hook also mirrors its active lifecycle actions into that store while mounted.
+hook also mirrors its active lifecycle actions into that store while mounted
+and can compare live hook state to a store-selected runtime snapshot under the
+same dev-only diagnostic opt-in.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -292,9 +294,8 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- Add selector-level parity checks between the live hook return shape and the
-  store state, then start moving individual fields behind selectors only after
-  the parity surface is quiet.
+- After selector parity is quiet in normal use, move one narrow field behind a
+  store selector while keeping the public hook return shape unchanged.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -390,9 +391,14 @@ Status 2026-07-02:
   subagent stream, tool-use mapping, catch-up, older-page, and scroll snapshot.
 - Active store entries are deleted on unmount unless transcript snapshot
   retention is enabled, so the default-off warm-cache mitigation remains intact.
-- Remaining Slice 4 work: expose selector-level parity diagnostics/read helpers
-  from the hook adapter before switching any hook return fields to store-backed
-  reads.
+- Added a `selectSessionDetailRuntimeSnapshot` selector, store `readSelected`
+  helper, and a compact store-vs-live divergence reporter that reuses the
+  shadow diagnostics opt-in and redacted payload shape.
+- `useSessionMessages` reports store parity at the same coarse boundaries as
+  shadow diagnostics, but only when diagnostics are enabled; production reads
+  remain on the existing hook state.
+- Remaining Slice 4 work: observe the selector parity surface, then switch one
+  narrow return field to a store selector with rollback still trivial.
 
 ## Slice 5: Hook Adapter Migration
 

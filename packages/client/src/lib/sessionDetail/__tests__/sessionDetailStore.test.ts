@@ -122,6 +122,38 @@ describe("SessionDetailStore", () => {
     expect(notifications).toBe(2);
   });
 
+  it("reads selected state without exposing the whole entry", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    store.writeRouteSnapshot(
+      storeKey,
+      snapshot("session-a", ["msg-1", "msg-2"]),
+    );
+
+    expect(
+      store.readSelected(
+        storeKey,
+        (state) => state.messages.map((message) => message.uuid),
+      ),
+    ).toEqual(["msg-1", "msg-2"]);
+    expect(
+      store.readSelected(key("missing"), (state) => state.messages.length),
+    ).toBeUndefined();
+  });
+
+  it("deletes a single entry without clearing unrelated entries", () => {
+    const store = createSessionDetailStore();
+
+    store.writeRouteSnapshot(key("one"), snapshot("one", ["one"]));
+    store.writeRouteSnapshot(key("two"), snapshot("two", ["two"]));
+
+    expect(store.deleteEntry(key("one"))).toBe(true);
+    expect(store.deleteEntry(key("missing"))).toBe(false);
+    expect(store.readRouteSnapshot(key("one"))).toBeUndefined();
+    expect(store.readRouteSnapshot(key("two"))?.lastMessageId).toBe("two");
+  });
+
   it("patches scroll snapshots without notifying ordinary subscribers", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");
@@ -206,15 +238,4 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(key("three"), { nowMs: 4 })).toBeDefined();
   });
 
-  it("deletes a single entry without clearing unrelated entries", () => {
-    const store = createSessionDetailStore();
-
-    store.writeRouteSnapshot(key("one"), snapshot("one", ["one"]));
-    store.writeRouteSnapshot(key("two"), snapshot("two", ["two"]));
-
-    expect(store.deleteEntry(key("one"))).toBe(true);
-    expect(store.deleteEntry(key("missing"))).toBe(false);
-    expect(store.readRouteSnapshot(key("one"))).toBeUndefined();
-    expect(store.readRouteSnapshot(key("two"))?.lastMessageId).toBe("two");
-  });
 });

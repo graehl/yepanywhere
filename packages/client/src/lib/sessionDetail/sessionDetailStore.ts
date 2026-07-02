@@ -197,6 +197,15 @@ export class SessionDetailStore {
     return state ? stateToRouteSnapshot(state) : undefined;
   }
 
+  readSelected<T>(
+    input: SessionDetailStoreKeyInput,
+    selector: (state: SessionDetailState) => T,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): T | undefined {
+    const state = this.read(input, options);
+    return state ? selector(state) : undefined;
+  }
+
   writeRouteSnapshot(
     input: SessionDetailStoreKeyInput,
     snapshot: SessionRouteSnapshot,

@@ -217,8 +217,14 @@ Reducer/helper behavior locked down during Slice 4:
   owns DOM-local display policy, search state, progressive reveal, and scroll.
 - The next render-selector preflight moved user-turn navigation anchors and
   user/all-turn search anchor derivation into `sessionDetail/renderSelectors`.
-  `MessageList` still owns full-session explored search assembly, DOM
+  At that point, `MessageList` still owned full-session explored search
+  assembly, DOM
   navigation, search state, progressive reveal, and scroll.
+- Full-session search anchor derivation followed: assistant render segments,
+  explored tool-run aggregate anchors, explored child anchors, and latest
+  render-item timestamp selection now live in `sessionDetail/renderSelectors`.
+  `ExploredToolGroup` still owns the React rendering and interactive summary
+  behavior for those segment items.
 
 ## Verification Details
 

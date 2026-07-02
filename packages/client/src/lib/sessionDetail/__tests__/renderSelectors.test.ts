@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "../../../types";
 import type { RenderItem } from "../../../types/renderItems";
 import {
+  buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
   getAllTurnSearchAnchors,
+  getFullSessionSearchAnchors,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
@@ -24,6 +26,15 @@ function displayObject(
     sourceMessageId: "user-1",
     retainedThroughMessageId: "assistant-1",
     status: "generating",
+  };
+}
+
+function sourceMessage(id: string, timestamp: string): Message {
+  return {
+    type: "assistant",
+    uuid: id,
+    timestamp,
+    message: { role: "assistant", content: "" },
   };
 }
 
@@ -239,5 +250,100 @@ describe("session detail render selectors", () => {
         searchText: "Compacted transcript\nretained tail",
       },
     ]);
+  });
+
+  it("derives full-session anchors for explored assistant segments", () => {
+    const read: RenderItem = {
+      type: "tool_call",
+      id: "read-1",
+      toolName: "Read",
+      toolInput: { file_path: "README.md" },
+      status: "pending",
+      sourceMessages: [
+        sourceMessage("read-msg", "2026-07-02T12:01:00.000Z"),
+      ],
+    };
+    const grep: RenderItem = {
+      type: "tool_call",
+      id: "grep-1",
+      toolName: "Grep",
+      toolInput: { pattern: "needle", path: "src" },
+      status: "pending",
+      sourceMessages: [
+        sourceMessage("grep-msg", "2026-07-02T12:02:00.000Z"),
+      ],
+    };
+    const thinking: RenderItem = {
+      type: "thinking",
+      id: "thinking-1",
+      thinking: "Checking the answer",
+      status: "complete",
+      sourceMessages: [
+        sourceMessage("thinking-msg", "2026-07-02T12:03:00.000Z"),
+      ],
+    };
+    const assistantItems = [read, grep, thinking];
+
+    expect(
+      buildAssistantRenderSegments(assistantItems).map((segment) =>
+        segment.kind === "explored"
+          ? { kind: segment.kind, id: segment.id }
+          : { kind: segment.kind, id: segment.item.id },
+      ),
+    ).toEqual([
+      { kind: "explored", id: "explored-read-1-grep-1" },
+      { kind: "item", id: "thinking-1" },
+    ]);
+
+    const anchors = getFullSessionSearchAnchors([
+      {
+        isUserPrompt: true,
+        items: [
+          {
+            type: "user_prompt",
+            id: "user-1",
+            content: "Find usage",
+            sourceMessages: [
+              sourceMessage("user-msg", "2026-07-02T12:00:00.000Z"),
+            ],
+          },
+        ],
+      },
+      { isUserPrompt: false, items: assistantItems },
+    ]);
+
+    expect(
+      anchors.map((anchor) => ({
+        id: anchor.id,
+        preview: anchor.preview,
+        targetId: anchor.targetId,
+      })),
+    ).toEqual([
+      { id: "user-1", preview: "Find usage", targetId: undefined },
+      {
+        id: "explored-read-1-grep-1",
+        preview: "Explored: 2 items",
+        targetId: undefined,
+      },
+      {
+        id: "explored-read-1-grep-1:read-1",
+        preview: "Explored / Read: README.md",
+        targetId: "explored-read-1-grep-1",
+      },
+      {
+        id: "explored-read-1-grep-1:grep-1",
+        preview: "Explored / Grep: needle in src",
+        targetId: "explored-read-1-grep-1",
+      },
+      {
+        id: "thinking-1",
+        preview: "Thinking: Checking the answer",
+        targetId: undefined,
+      },
+    ]);
+    expect(
+      anchors.find((anchor) => anchor.id === "explored-read-1-grep-1")
+        ?.timestampMs,
+    ).toBe(Date.parse("2026-07-02T12:02:00.000Z"));
   });
 });

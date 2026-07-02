@@ -56,11 +56,15 @@ What is already in place:
   live in `sessionDetail/renderSelectors`.
 - User-turn navigation anchors plus user/all-turn search anchors now derive
   from render items through `sessionDetail/renderSelectors`.
+- Assistant render segments and full-session search anchors, including
+  explored tool-run aggregate and child anchors, now derive through
+  `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
 still dev-only and default-off. Render-item derivation has a pure selector
-preflight, but `MessageList` still owns display policy and DOM behavior.
+preflight, but `MessageList` still owns display policy, search match filtering,
+and DOM behavior.
 
 ## Why This Exists
 
@@ -89,8 +93,9 @@ Ownership is intentionally still split while we migrate:
 - `defaultSessionDetailStore` owns the reducer-fed canonical mirror and retained
   same-tab cache entries.
 - `MessageList` still owns display policy, progressive rendering, scroll
-  snapshots, selection, quote/search UI, and DOM timing. The first pure
-  render-item projection helpers now live outside the component.
+  snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
+  assistant-segment, and search-anchor projections now live outside the
+  component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -133,8 +138,8 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving full-session explored search
-  anchor derivation behind pure helpers without taking over scroll or
+- Continue the render-selector preflight by moving search-driven visible group
+  filtering behind a pure helper without taking over scroll, search state, or
   progressive rendering.
 
 Then:
@@ -161,8 +166,8 @@ Dogfood toggle:
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
-- `MessageList` still performs some semantic render-item derivation,
-  especially full-session explored search and `/btw`. Store canonical state
+- `MessageList` still performs some semantic display derivation, especially
+  search match filtering, progressive reveal, and `/btw`. Store canonical state
   does not yet mean render canonical state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.

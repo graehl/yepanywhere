@@ -46,20 +46,17 @@ import {
 } from "../lib/sessionIsearchGuide";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
+  buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
   getAllTurnSearchAnchors,
-  getContentBlocksText,
+  getFullSessionSearchAnchors,
+  getLatestRenderItemsTimestampMs,
   getPromptTextForCorrection,
   getSearchableUserTurnPreview,
-  getSearchPreviewFallback,
-  getSystemSearchText,
-  getToolSearchPreview,
-  getToolSearchText,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
   isSessionSetupText,
-  joinSearchParts,
   normalizeSearchText,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
@@ -71,13 +68,7 @@ import {
   BtwAsideTranscript,
   type BtwAsideTranscriptTurn,
 } from "./BtwAsidePane";
-import {
-  type AssistantRenderSegment,
-  buildAssistantRenderSegments,
-  ExploredToolGroup,
-  getExploredEntrySearchPreview,
-  getExploredEntrySearchText,
-} from "./blocks/ExploredToolGroup";
+import { ExploredToolGroup } from "./blocks/ExploredToolGroup";
 import { MessageAge } from "./MessageAge";
 import { ProcessingIndicator } from "./ProcessingIndicator";
 import { RenderItemComponent } from "./RenderItemComponent";
@@ -163,20 +154,6 @@ function getEarliestMessageTimestampMs(
       earliest === null ? timestampMs : Math.min(earliest, timestampMs);
   }
   return earliest;
-}
-
-function getLatestItemsTimestampMs(
-  items: readonly RenderItem[],
-): number | null {
-  let latest: number | null = null;
-  for (const item of items) {
-    const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
-    if (timestampMs === null) {
-      continue;
-    }
-    latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
-  }
-  return latest;
 }
 
 function getLastTimestampedItem(items: readonly RenderItem[]): RenderItem | null {
@@ -486,147 +463,6 @@ function buildSearchPreview(
       return `${prefix}${compactText.slice(start, end).trim()}${suffix}`;
     })
     .join(" ... ");
-}
-
-function getFullSessionSearchAnchorForItem(
-  item: RenderItem,
-): UserTurnNavAnchor | null {
-  switch (item.type) {
-    case "user_prompt": {
-      const text = getPromptTextForCorrection(item.content);
-      const preview = getSearchPreviewFallback(text);
-      return preview
-        ? {
-            id: item.id,
-            preview,
-            searchText: text,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    }
-    case "session_setup": {
-      const text = joinSearchParts([
-        item.title,
-        ...item.prompts.map(getContentBlocksText),
-      ]);
-      return text
-        ? {
-            id: item.id,
-            preview: item.title || getSearchPreviewFallback(text),
-            searchText: text,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    }
-    case "transcript_display_object": {
-      const searchText = joinSearchParts([
-        item.object.title,
-        item.object.status,
-        item.object.error,
-      ]);
-      return searchText
-        ? {
-            id: item.id,
-            preview:
-              item.object.title ??
-              getSearchPreviewFallback(item.object.error ?? item.object.status),
-            searchText,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    }
-    case "text":
-      return item.text
-        ? {
-            id: item.id,
-            preview: getSearchPreviewFallback(item.text),
-            searchText: item.text,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    case "thinking":
-      return item.thinking
-        ? {
-            id: item.id,
-            preview: `Thinking: ${getSearchPreviewFallback(item.thinking)}`,
-            searchText: joinSearchParts(["Thinking", item.thinking]),
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    case "system": {
-      const systemSearchText = getSystemSearchText(item);
-      return systemSearchText
-        ? {
-            id: item.id,
-            preview: getSearchPreviewFallback(systemSearchText),
-            searchText: systemSearchText,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    }
-    case "task_notification": {
-      const searchText = item.summary ?? item.raw;
-      return searchText
-        ? {
-            id: item.id,
-            preview: getSearchPreviewFallback(searchText),
-            searchText,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    }
-    case "tool_call": {
-      const searchText = getToolSearchText(item);
-      return searchText
-        ? {
-            id: item.id,
-            preview: getToolSearchPreview(item),
-            searchText,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          }
-        : null;
-    }
-  }
-}
-
-function getFullSessionSearchAnchorsForSegment(
-  segment: AssistantRenderSegment,
-): UserTurnNavAnchor[] {
-  if (segment.kind === "item") {
-    const anchor = getFullSessionSearchAnchorForItem(segment.item);
-    return anchor ? [anchor] : [];
-  }
-
-  const anchors: UserTurnNavAnchor[] = [
-    {
-      id: segment.id,
-      preview: `Explored: ${segment.items.length} ${
-        segment.items.length === 1 ? "item" : "items"
-      }`,
-      searchText: joinSearchParts([
-        "Explored",
-        `${segment.items.length} items`,
-      ]),
-      timestampMs: getLatestItemsTimestampMs(segment.items),
-    },
-  ];
-
-  for (const item of segment.items) {
-    const anchor = getFullSessionSearchAnchorForItem(item);
-    if (anchor) {
-      const exploredPreview = getExploredEntrySearchPreview(item);
-      const exploredSearchText = getExploredEntrySearchText(item);
-      anchors.push({
-        ...anchor,
-        id: `${segment.id}:${item.id}`,
-        preview: `Explored / ${exploredPreview || anchor.preview}`,
-        searchText: joinSearchParts([exploredSearchText, anchor.searchText]),
-        targetId: segment.id,
-      });
-    }
-  }
-
-  return anchors;
 }
 
 function getSearchScopeLabel(scope: SessionIsearchScope): string {
@@ -1778,22 +1614,7 @@ export const MessageList = memo(function MessageList({
     if (!includeFullSessionSearchAnchors) {
       return [];
     }
-    const anchors: UserTurnNavAnchor[] = [];
-    for (const group of turnGroups) {
-      if (group.isUserPrompt) {
-        const item = group.items[0];
-        const anchor = item ? getFullSessionSearchAnchorForItem(item) : null;
-        if (anchor) {
-          anchors.push(anchor);
-        }
-        continue;
-      }
-
-      for (const segment of buildAssistantRenderSegments(group.items)) {
-        anchors.push(...getFullSessionSearchAnchorsForSegment(segment));
-      }
-    }
-    return anchors;
+    return getFullSessionSearchAnchors(turnGroups);
   }, [includeFullSessionSearchAnchors, turnGroups]);
   const activeSearchAnchors =
     userTurnSearch.scope === "full"
@@ -3601,7 +3422,7 @@ export const MessageList = memo(function MessageList({
             <div key={entry.key} className="assistant-turn">
               {buildAssistantRenderSegments(group.items).map((segment) => {
                 if (segment.kind === "explored") {
-                  const segmentTimestampMs = getLatestItemsTimestampMs(
+                  const segmentTimestampMs = getLatestRenderItemsTimestampMs(
                     segment.items,
                   );
                   return (

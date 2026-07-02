@@ -349,6 +349,62 @@ describe("Project Queue Routes", () => {
     });
   });
 
+  it("prefers custom titles for existing-session targets", async () => {
+    await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first queued item" },
+      },
+    });
+    const reader = makeReader();
+    const summary = makeSessionSummary("session-1", "Target session title");
+    const sessionIndexService = makeSessionIndexService(summary);
+    const readerFactory = vi.fn(() => reader);
+    const sessionMetadataService = {
+      getMetadata: vi.fn((sessionId: string) =>
+        sessionId === "session-1"
+          ? { customTitle: "Renamed target session" }
+          : undefined,
+      ),
+    } as unknown as SessionMetadataService;
+
+    const projectRoutes = createRoutes({
+      readerFactory,
+      sessionIndexService,
+      sessionMetadataService,
+    });
+    const projectResponse = await projectRoutes.request(`/${projectId}/queue`);
+
+    expect(projectResponse.status).toBe(200);
+    const projectBody = await projectResponse.json();
+    expect(projectBody.items[0]).toMatchObject({
+      targetTitle: "Renamed target session",
+      targetFullTitle: "Renamed target session",
+    });
+
+    const globalRoutes = createGlobalRoutes({
+      scanner: {
+        getOrCreateProject: vi.fn(async (id) =>
+          id === projectId ? project : null,
+        ),
+      } as unknown as ProjectScanner,
+      readerFactory,
+      sessionIndexService,
+      sessionMetadataService,
+    });
+    const globalResponse = await globalRoutes.request("/");
+
+    expect(globalResponse.status).toBe(200);
+    const globalBody = await globalResponse.json();
+    expect(globalBody.items[0]).toMatchObject({
+      projectId,
+      targetTitle: "Renamed target session",
+      targetFullTitle: "Renamed target session",
+    });
+  });
+
   it("includes recovered session queue entries in the global list", async () => {
     const sessionQueuePersistenceService = new SessionQueuePersistenceService({
       dataDir: testDir,

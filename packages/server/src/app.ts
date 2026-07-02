@@ -1097,6 +1097,7 @@ export function createApp(options: AppOptions): AppResult {
         grokReaderFactory,
         piSessionsDir: PI_SESSIONS_DIR,
         piReaderFactory,
+        sessionMetadataService: options.sessionMetadataService,
       }),
     );
   }

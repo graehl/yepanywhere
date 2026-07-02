@@ -12,6 +12,8 @@ import {
 import { getProvider } from "../../providers/registry";
 import type { Message } from "../../types";
 import type {
+  AgentContent,
+  AgentContentMap,
   MarkdownAugmentMap,
   SessionDetailAction,
   SessionDetailState,
@@ -248,6 +250,34 @@ function applyStreamSubagentMessage(
   };
 }
 
+export function mergeLoadedAgentContentMap(
+  agentContent: AgentContentMap,
+  agentId: string,
+  content: AgentContent,
+): AgentContentMap {
+  const existing = agentContent[agentId];
+  if (existing && existing.messages.length > 0) {
+    const existingIds = new Set(
+      existing.messages.map((message) => getMessageId(message)),
+    );
+    const newMessages = content.messages.filter(
+      (message) => !existingIds.has(getMessageId(message)),
+    );
+    return {
+      ...agentContent,
+      [agentId]: {
+        messages: [...existing.messages, ...newMessages],
+        status: content.status,
+      },
+    };
+  }
+
+  return {
+    ...agentContent,
+    [agentId]: content,
+  };
+}
+
 function findEquivalentJsonlMessageId(
   previousMessage: Message,
   nextMessages: readonly Message[],
@@ -390,6 +420,16 @@ export function reduceSessionDetailState(
 
     case "applyStreamSubagentMessage":
       return applyStreamSubagentMessage(state, action);
+
+    case "mergeLoadedAgentContent":
+      return {
+        ...state,
+        agentContent: mergeLoadedAgentContentMap(
+          state.agentContent,
+          action.agentId,
+          action.content,
+        ),
+      };
 
     case "registerToolUseAgent": {
       if (

@@ -487,6 +487,40 @@ describe("transcriptReducer", () => {
     expect(state.agentContent["agent-a"]?.status).toBe("running");
   });
 
+  it("merges loaded agent content without duplicating live messages", () => {
+    const liveMessage = assistantMessage(
+      "agent-assistant-1",
+      "live",
+      "2026-07-01T12:00:02.000Z",
+    );
+    const loadedMessage = assistantMessage(
+      "agent-assistant-2",
+      "loaded",
+      "2026-07-01T12:00:03.000Z",
+    );
+    const state = reduceSessionDetailActions([
+      {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: liveMessage,
+      },
+      {
+        type: "mergeLoadedAgentContent",
+        agentId: "agent-a",
+        content: {
+          messages: [liveMessage, loadedMessage],
+          status: "completed",
+        },
+      },
+    ]);
+
+    expect(state.agentContent["agent-a"]?.messages).toEqual([
+      liveMessage,
+      loadedMessage,
+    ]);
+    expect(state.agentContent["agent-a"]?.status).toBe("completed");
+  });
+
   it("drops transient subagent streaming placeholders when streaming is disabled", () => {
     const streamingMessage: Message = {
       ...assistantMessage(

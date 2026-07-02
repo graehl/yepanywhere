@@ -41,6 +41,11 @@ export type RegisterToolUseAgentAction = Extract<
   { type: "registerToolUseAgent" }
 >;
 
+export type MergeLoadedAgentContentAction = Extract<
+  SessionDetailAction,
+  { type: "mergeLoadedAgentContent" }
+>;
+
 export type PrependOlderMessagesAction = Extract<
   SessionDetailAction,
   { type: "prependOlderMessages" }
@@ -139,6 +144,17 @@ export function createRegisterToolUseAgentAction(
     type: "registerToolUseAgent",
     toolUseId,
     agentId,
+  };
+}
+
+export function createMergeLoadedAgentContentAction(
+  agentId: string,
+  content: AgentContentMap[string],
+): MergeLoadedAgentContentAction {
+  return {
+    type: "mergeLoadedAgentContent",
+    agentId,
+    content,
   };
 }
 

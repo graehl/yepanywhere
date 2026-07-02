@@ -65,6 +65,11 @@ export type SessionDetailAction =
       agentId: string;
     }
   | {
+      type: "mergeLoadedAgentContent";
+      agentId: string;
+      content: AgentContent;
+    }
+  | {
       type: "applyCatchupMessages";
       messages: Message[];
       session?: SessionMetadata;

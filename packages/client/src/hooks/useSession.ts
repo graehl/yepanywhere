@@ -866,6 +866,7 @@ export function useSession(
     handleStreamMessageEvent,
     handleStreamSubagentMessage,
     registerToolUseAgent,
+    mergeLoadedAgentContent,
     setAgentContent,
     setMessages,
     fetchNewMessages,
@@ -1099,32 +1100,7 @@ export function useSession(
               agentId,
             );
 
-            // Merge into agentContent state, deduping by message ID
-            // Use getMessageId to prefer uuid over id
-            setAgentContent((prev) => {
-              const existing = prev[agentId];
-              if (existing && existing.messages.length > 0) {
-                // Already have content (maybe from stream), merge without duplicates
-                const existingIds = new Set(
-                  existing.messages.map((m) => getMessageId(m)),
-                );
-                const newMessages = agentData.messages.filter(
-                  (m) => !existingIds.has(getMessageId(m)),
-                );
-                return {
-                  ...prev,
-                  [agentId]: {
-                    messages: [...existing.messages, ...newMessages],
-                    status: agentData.status,
-                  },
-                };
-              }
-              // No existing content, use loaded data
-              return {
-                ...prev,
-                [agentId]: agentData,
-              };
-            });
+            mergeLoadedAgentContent(agentId, agentData);
           } catch {
             // Skip agents that can't be loaded
           }
@@ -1138,10 +1114,10 @@ export function useSession(
   }, [
     loading,
     messages,
+    mergeLoadedAgentContent,
     projectId,
     registerToolUseAgent,
     sessionId,
-    setAgentContent,
   ]);
 
   // Leading + trailing edge throttle:

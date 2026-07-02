@@ -29,6 +29,7 @@ const sessionMessagesMock = vi.hoisted(() => ({
 const fetchNewMessages = vi.fn(async () => {});
 const fetchSessionMetadata = vi.fn(async () => {});
 const registerToolUseAgent = vi.fn();
+const mergeLoadedAgentContent = vi.fn();
 
 let fileActivityOptions:
   | {
@@ -142,6 +143,7 @@ vi.mock("../useSessionMessages", () => ({
     handleStreamMessageEvent: vi.fn(),
     handleStreamSubagentMessage: vi.fn(),
     registerToolUseAgent,
+    mergeLoadedAgentContent,
     setAgentContent: vi.fn(),
     setMessages: vi.fn(),
     fetchNewMessages,
@@ -338,7 +340,7 @@ describe("useSession completion reconciliation", () => {
     expect(fetchNewMessages).not.toHaveBeenCalled();
   });
 
-  it("registers reloaded pending task mappings through the action wrapper", async () => {
+  it("hydrates reloaded pending task data through action wrappers", async () => {
     sessionMessagesMock.messages = [
       {
         id: "msg-1",
@@ -364,6 +366,11 @@ describe("useSession completion reconciliation", () => {
         },
       ],
     });
+    const agentContent = {
+      messages: [{ id: "agent-msg-1", type: "assistant", content: "done" }],
+      status: "completed",
+    };
+    apiMocks.getAgentSession.mockResolvedValue(agentContent);
 
     renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {
@@ -380,6 +387,10 @@ describe("useSession completion reconciliation", () => {
     expect(registerToolUseAgent).toHaveBeenCalledWith(
       "toolu-pending-1",
       "agent-1",
+    );
+    expect(mergeLoadedAgentContent).toHaveBeenCalledWith(
+      "agent-1",
+      agentContent,
     );
   });
 

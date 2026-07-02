@@ -21,7 +21,10 @@ fallbacks, and `loadOlderMessages` uses the same selector-backed pagination
 source for its older-page cursor decision. Reloaded pending-task tool-use
 mappings now flow through `registerToolUseAgent` instead of an exposed raw
 `setToolUseToAgent` setter, so local hook state, the shadow reducer, and the
-session detail store observe the same mapping action.
+session detail store observe the same mapping action. Reloaded pending-agent
+content now flows through a tested `mergeLoadedAgentContent` action wrapper
+that preserves the existing message-id dedupe behavior while giving the
+shadow reducer and store the same loaded-content action.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -300,11 +303,11 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, replace the next raw
-  setter bypass with a typed action wrapper. `setAgentContent` is the likely
-  target because pending-agent lazy reload still merges child content through a
-  raw setter; preserve the current dedupe behavior while routing the write
-  through the store/reducer action path. `messages` should wait.
+- After selector/action parity is quiet in normal use, wrap the next
+  low-churn `setAgentContent` path. Agent context-usage updates are the likely
+  target because they are a small metadata patch from stream events; renderer
+  lazy-load and token-sized streaming updates should wait for narrower
+  semantics. `messages` should wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -422,10 +425,19 @@ Status 2026-07-02:
   `useSession` now calls `registerToolUseAgent`, so external writes use the
   same hook/reducer/store action path as streaming mappings. Added hook
   coverage for the reloaded pending-task mapping path.
+- Added `mergeLoadedAgentContent` as a typed action wrapper for pending-agent
+  reload hydration. The reducer owns the loaded-content merge/dedupe behavior,
+  `useSessionMessages` mirrors that helper into local hook state while
+  dispatching to the shadow reducer and store, and `useSession` no longer
+  performs the pending-agent content merge through a raw setter. Added reducer
+  coverage for deduping live and loaded agent messages plus hook coverage that
+  pending reloads call the wrapper.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
   remove or wrap another raw exposed setter before attempting `messages`.
   `setAgentContent`, `setMessages`, and `setSession` still expose direct local
-  hook writes.
+  hook writes. Remaining `setAgentContent` users include context-usage
+  metadata, stream-placeholder cleanup, token-sized streaming updates, and
+  renderer lazy-load merges.
 
 ## Slice 5: Hook Adapter Migration
 

@@ -21,6 +21,7 @@ import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   createCatchupMessagesAction,
   createLoadPersistedTranscriptAction,
+  createMergeLoadedAgentContentAction,
   createPrependOlderMessagesAction,
   createRegisterToolUseAgentAction,
   createRestoreRouteSnapshotAction,
@@ -41,6 +42,7 @@ import {
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
   createInitialSessionDetailState,
+  mergeLoadedAgentContentMap,
   reduceSessionDetailState,
 } from "../lib/sessionDetail/transcriptReducer";
 import type {
@@ -140,6 +142,8 @@ export interface UseSessionMessagesResult {
   handleStreamSubagentMessage: (incoming: Message, agentId: string) => void;
   /** Register toolUse → agent mapping */
   registerToolUseAgent: (toolUseId: string, agentId: string) => void;
+  /** Merge loaded subagent content with any live content already seen */
+  mergeLoadedAgentContent: (agentId: string, content: AgentContent) => void;
   /** Update agent content (for lazy loading) */
   setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
   /** Direct messages setter (for clearing streaming placeholders) */
@@ -1324,6 +1328,22 @@ export function useSessionMessages(
     [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
+  const mergeLoadedAgentContent = useCallback(
+    (agentId: string, content: AgentContent) => {
+      dispatchSessionDetailAction(
+        createMergeLoadedAgentContentAction(agentId, content),
+      );
+      setAgentContent((prev) => {
+        const next = mergeLoadedAgentContentMap(prev, agentId, content);
+        reportShadowDivergence("loaded-agent-content", {
+          agentContent: next,
+        });
+        return next;
+      });
+    },
+    [dispatchSessionDetailAction, reportShadowDivergence],
+  );
+
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
 
   // Fetch new messages incrementally (for file change events)
@@ -1537,6 +1557,7 @@ export function useSessionMessages(
     handleStreamMessageEvent,
     handleStreamSubagentMessage,
     registerToolUseAgent,
+    mergeLoadedAgentContent,
     setAgentContent,
     setMessages,
     fetchNewMessages,

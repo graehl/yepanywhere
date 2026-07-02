@@ -1154,6 +1154,64 @@ describe("useSessionMessages cache", () => {
     ).toEqual(["durable-1"]);
   });
 
+  it("updates session metadata through the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        id: "sess-1",
+        projectId: "proj-1",
+        provider: "codex",
+        title: "Before",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.updateSession((previous) =>
+        previous
+          ? {
+              ...previous,
+              title: "After",
+              model: "gpt-5.4",
+            }
+          : previous,
+      );
+    });
+
+    expect(result.current.session).toMatchObject({
+      title: "After",
+      model: "gpt-5.4",
+    });
+    expect(
+      defaultSessionDetailStore.read({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      })?.session,
+    ).toMatchObject({
+      title: "After",
+      model: "gpt-5.4",
+    });
+  });
+
   it("upserts subagent streaming placeholders through the session detail store", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

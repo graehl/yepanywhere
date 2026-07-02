@@ -49,6 +49,10 @@ export type SessionDetailAction =
       scrollSnapshot?: SessionRouteScrollSnapshot;
     }
   | {
+      type: "setSessionMetadata";
+      session: SessionMetadata | null;
+    }
+  | {
       type: "applyStreamMessage";
       message: Message;
       fromBufferedReplay?: boolean;

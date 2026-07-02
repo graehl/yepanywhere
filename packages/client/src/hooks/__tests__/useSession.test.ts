@@ -33,6 +33,7 @@ const mergeLoadedAgentContent = vi.fn();
 const updateAgentContextUsage = vi.fn();
 const clearAgentStreamingPlaceholders = vi.fn();
 const clearStreamingPlaceholders = vi.fn();
+const updateSession = vi.fn();
 
 let fileActivityOptions:
   | {
@@ -150,7 +151,7 @@ vi.mock("../useSessionMessages", () => ({
       model: "gpt-5.4",
       messages: [],
     },
-    setSession: vi.fn(),
+    updateSession,
     handleStreamingUpdate: vi.fn(),
     handleStreamMessageEvent: vi.fn(),
     handleStreamSubagentMessage: vi.fn(),
@@ -472,6 +473,47 @@ describe("useSession completion reconciliation", () => {
 
     expect(clearStreamingPlaceholders).toHaveBeenCalledTimes(1);
     expect(clearAgentStreamingPlaceholders).not.toHaveBeenCalled();
+  });
+
+  it("routes session metadata events through the action wrapper", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      fileActivityOptions?.onSessionUpdated?.({
+        type: "session-updated",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        title: "Renamed session",
+        messageCount: 42,
+        updatedAt: "2026-07-01T12:30:00.000Z",
+        contextUsage: { inputTokens: 1200, percentage: 24 },
+        model: "gpt-5.4",
+        timestamp: "2026-07-01T12:30:00.000Z",
+      });
+    });
+
+    expect(updateSession).toHaveBeenCalledTimes(1);
+    const updater = updateSession.mock.calls[0]?.[0] as (
+      previous: Record<string, unknown> | null,
+    ) => Record<string, unknown> | null;
+    expect(
+      updater({
+        id: "sess-1",
+        provider: "codex",
+        title: "Old title",
+      }),
+    ).toMatchObject({
+      title: "Renamed session",
+      messageCount: 42,
+      updatedAt: "2026-07-01T12:30:00.000Z",
+      contextUsage: { inputTokens: 1200, percentage: 24 },
+      model: "gpt-5.4",
+    });
   });
 
   it("syncs metadata process state when reconnect keeps ownership self", async () => {

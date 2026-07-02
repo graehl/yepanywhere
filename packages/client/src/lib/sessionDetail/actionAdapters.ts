@@ -27,6 +27,11 @@ export type ApplyCatchupMessagesAction = Extract<
   { type: "applyCatchupMessages" }
 >;
 
+export type SetSessionMetadataAction = Extract<
+  SessionDetailAction,
+  { type: "setSessionMetadata" }
+>;
+
 export type ApplyStreamMessageAction = Extract<
   SessionDetailAction,
   { type: "applyStreamMessage" }
@@ -129,6 +134,15 @@ export function createCatchupMessagesAction(
     messages: input.messages,
     session: input.session,
     pagination: input.pagination,
+  };
+}
+
+export function createSetSessionMetadataAction(
+  session: SessionMetadata | null,
+): SetSessionMetadataAction {
+  return {
+    type: "setSessionMetadata",
+    session,
   };
 }
 

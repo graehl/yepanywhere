@@ -139,6 +139,31 @@ describe("transcriptReducer", () => {
     expect(state.pagination?.totalMessageCount).toBe(2);
   });
 
+  it("sets session metadata without changing transcript rows", () => {
+    const messages = [
+      userMessage("user-1", "hello", "2026-07-01T12:00:00.000Z"),
+    ];
+    const loaded = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "loadPersistedTranscript",
+      session: sessionMetadata(),
+      messages,
+      pagination: pagination({ totalMessageCount: 1, returnedMessageCount: 1 }),
+    });
+    const session = {
+      ...sessionMetadata(),
+      title: "Updated title",
+      model: "gpt-5.4",
+    };
+
+    const state = reduceSessionDetailState(loaded, {
+      type: "setSessionMetadata",
+      session,
+    });
+
+    expect(state.session).toBe(session);
+    expect(state.messages).toBe(loaded.messages);
+  });
+
   it("gives equivalent message shape for persisted and streamed basic turns", () => {
     const messages = [
       userMessage("user-1", "hello", "2026-07-01T12:00:00.000Z"),

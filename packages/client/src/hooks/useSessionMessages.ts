@@ -27,6 +27,7 @@ import {
   createPrependOlderMessagesAction,
   createRegisterToolUseAgentAction,
   createRestoreRouteSnapshotAction,
+  createSetSessionMetadataAction,
   createStreamMessageAction,
   createStreamSubagentMessageAction,
   createUpdateAgentContextUsageAction,
@@ -97,6 +98,11 @@ export interface SessionLoadResult {
   deferredMessages?: DeferredQueueMessage[];
 }
 
+export type SessionMetadataUpdate =
+  | SessionMetadata
+  | null
+  | ((previous: SessionMetadata | null) => SessionMetadata | null);
+
 export type SessionLoadProgressStage =
   | "idle"
   | "fetching"
@@ -142,8 +148,8 @@ export interface UseSessionMessagesResult {
   sessionLoadProgress: SessionLoadProgress;
   /** Session data from initial load */
   session: SessionMetadata | null;
-  /** Set session data (for stream connected event) */
-  setSession: React.Dispatch<React.SetStateAction<SessionMetadata | null>>;
+  /** Apply session metadata updates through the session detail action layer */
+  updateSession: (update: SessionMetadataUpdate) => void;
   /** Handle streaming content updates (for useStreamingContent) */
   handleStreamingUpdate: (message: Message, agentId?: string) => void;
   /** Handle stream message event (buffered until initial load completes) */
@@ -539,6 +545,24 @@ export function useSessionMessages(
       }
     },
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+  );
+
+  const updateSession = useCallback(
+    (update: SessionMetadataUpdate) => {
+      setSession((previous) => {
+        const next =
+          typeof update === "function" ? update(previous) : update;
+        if (next === previous) {
+          return previous;
+        }
+        dispatchSessionDetailAction(createSetSessionMetadataAction(next));
+        reportShadowDivergence("session-metadata", {
+          session: next,
+        });
+        return next;
+      });
+    },
+    [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
   // Buffering: queue stream messages until initial load completes
@@ -1443,7 +1467,7 @@ export function useSessionMessages(
         }
         // Update session metadata (including title, model, contextUsage) which may have changed
         // For new sessions, prev may be null if JSONL didn't exist on initial load
-        setSession((prev) =>
+        updateSession((prev) =>
           prev ? { ...prev, ...data.session } : data.session,
         );
       } catch {
@@ -1465,6 +1489,7 @@ export function useSessionMessages(
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
     reportShadowDivergence,
+    updateSession,
   ]);
 
   const readSelectorBackedPagination = useCallback(
@@ -1578,13 +1603,13 @@ export function useSessionMessages(
         ownership: data.ownership,
       };
       // For new sessions, prev may be null if JSONL didn't exist on initial load
-      setSession((prev) =>
+      updateSession((prev) =>
         prev ? { ...prev, ...metadataSession } : metadataSession,
       );
     } catch {
       // Silent fail for metadata updates
     }
-  }, [projectId, sessionId]);
+  }, [projectId, sessionId, updateSession]);
   const selectedInitialScrollSnapshot =
     defaultSessionDetailStore.readSelected(
       snapshotKey,
@@ -1602,7 +1627,7 @@ export function useSessionMessages(
     loading,
     sessionLoadProgress,
     session,
-    setSession,
+    updateSession,
     handleStreamingUpdate,
     handleStreamMessageEvent,
     handleStreamSubagentMessage,

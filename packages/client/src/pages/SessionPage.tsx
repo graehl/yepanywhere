@@ -942,7 +942,7 @@ function SessionPageContent({
 
   const {
     session,
-    setSession,
+    updateSession,
     messages,
     agentContent,
     setAgentContent,
@@ -1136,7 +1136,7 @@ function SessionPageContent({
         objects: TranscriptDisplayObject[],
       ) => TranscriptDisplayObject[],
     ) => {
-      setSession((current) => {
+      updateSession((current) => {
         if (!current || current.id !== targetSessionId) {
           return current;
         }
@@ -1148,7 +1148,7 @@ function SessionPageContent({
         };
       });
     },
-    [setSession],
+    [updateSession],
   );
 
   const rememberSentSubmission = useCallback((text: string, id: string) => {

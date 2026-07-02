@@ -36,7 +36,10 @@ refs inside `useStreamingContent`, while the reducer/store see only the
 materialized placeholder rows. Main final-assistant cleanup now flows through
 `clearStreamingPlaceholders`, preserving the existing main transcript
 placeholder filtering behavior while making that cleanup visible to the shadow
-reducer and store.
+reducer and store. Session metadata-only patches now flow through
+`setSessionMetadata`/`updateSession`, so stream-derived metadata, page-level
+display-object patches, and model updates no longer expose the raw session
+state setter outside `useSessionMessages`.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -315,10 +318,10 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, decide whether to wrap
-  renderer lazy-load merges or `setSession` next. Renderer lazy-load crosses
-  component/context ownership; `setSession` is smaller but touches the
-  top-level session metadata path. A broad `messages` cutover should still
+- After selector/action parity is quiet in normal use, wrap renderer lazy-load
+  merges next. That crosses component/context ownership, so keep the slice
+  narrow: preserve the existing merge helper behavior and make only the loaded
+  agent-content path action-visible. A broad `messages` cutover should still
   wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
@@ -468,11 +471,17 @@ Status 2026-07-02:
   transient `_isStreaming` rows while preserving durable rows, and `useSession`
   now routes main assistant cleanup through the wrapper. Added reducer coverage
   and hook/store coverage for the public cleanup route.
+- Added `setSessionMetadata` plus the public `updateSession` wrapper for
+  session metadata-only patches. `useSession`, `SessionPage`, incremental
+  metadata fetches, and model updates now route through the action layer while
+  initial transcript load/reset paths continue to use their existing
+  transcript actions. Added reducer coverage, hook/store coverage, and hook
+  coverage for stream-derived session metadata events.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
   remove or wrap another raw exposed setter before attempting `messages`.
-  `setAgentContent`, `setMessages`, and `setSession` still expose direct local
-  hook writes. Remaining `setAgentContent` users include internal hook state
-  mirrors and renderer lazy-load merges.
+  `setAgentContent` and `setMessages` still expose direct local hook writes.
+  Remaining `setAgentContent` users include internal hook state mirrors and
+  renderer lazy-load merges.
 
 ## Slice 5: Hook Adapter Migration
 

@@ -861,7 +861,7 @@ export function useSession(
     loading,
     sessionLoadProgress,
     session,
-    setSession,
+    updateSession,
     handleStreamingUpdate,
     handleStreamMessageEvent,
     handleStreamSubagentMessage,
@@ -1180,7 +1180,7 @@ export function useSession(
       if (event.sessionId !== sessionId) return;
 
       // Update session metadata from stream event (no API call needed)
-      setSession((prev) => {
+      updateSession((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -1198,14 +1198,14 @@ export function useSession(
         };
       });
     },
-    [sessionId, setSession],
+    [sessionId, updateSession],
   );
 
   const handleSessionMetadataChange = useCallback(
     (event: SessionMetadataChangedEvent) => {
       if (event.sessionId !== sessionId) return;
 
-      setSession((prev) => {
+      updateSession((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -1261,7 +1261,7 @@ export function useSession(
         );
       }
     },
-    [sessionId, setSession, setStatus],
+    [sessionId, setStatus, updateSession],
   );
 
   // Listen for session status changes via stream
@@ -1560,7 +1560,7 @@ export function useSession(
             session?.provider,
           );
           if (usage) {
-            setSession((prev) =>
+            updateSession((prev) =>
               prev ? { ...prev, contextUsage: usage } : prev,
             );
           }
@@ -1806,7 +1806,7 @@ export function useSession(
         const sseProvider = connectedData.provider;
         const sseModel = connectedData.model;
         if (sseProvider) {
-          setSession((prev) => {
+          updateSession((prev) => {
             if (!prev) return prev;
             // Always update model if the connected event has a resolved model
             // (provider won't change, but model resolves from undefined/"Default" to actual name)
@@ -1930,7 +1930,7 @@ export function useSession(
       registerToolUseAgent,
       clearAgentStreamingPlaceholders,
       clearStreamingPlaceholders,
-      setSession,
+      updateSession,
       fetchNewMessages,
       throttledFetch,
       session?.provider,
@@ -1989,14 +1989,14 @@ export function useSession(
   // Allow external model update (e.g., after /model command switches mid-session)
   const setSessionModel = useCallback(
     (model: string) => {
-      setSession((prev) => (prev ? { ...prev, model } : prev));
+      updateSession((prev) => (prev ? { ...prev, model } : prev));
     },
-    [setSession],
+    [updateSession],
   );
 
   return {
     session,
-    setSession,
+    updateSession,
     setSessionModel,
     messages,
     agentContent, // Subagent messages keyed by agentId (for Task tool)

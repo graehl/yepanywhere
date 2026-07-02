@@ -499,6 +499,11 @@ export function reduceSessionDetailState(
       };
     }
 
+    case "setSessionMetadata":
+      return action.session === state.session
+        ? state
+        : { ...state, session: action.session };
+
     case "applyStreamMessage":
       return applyStreamMessage(state, action);
 

@@ -14,6 +14,15 @@ export function isCodexRolloutFileName(name: string): boolean {
   return name.endsWith(".jsonl") || name.endsWith(".jsonl.zst");
 }
 
+export function getCodexRolloutSessionId(nameOrPath: string): string | null {
+  const fileName = path.posix.basename(nameOrPath.replace(/\\/g, "/"));
+  if (!fileName.startsWith("rollout-")) return null;
+  const match = fileName.match(
+    /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl(?:\.zst)?$/i,
+  );
+  return match?.[1] ?? null;
+}
+
 export function isCompressedCodexRolloutPath(filePath: string): boolean {
   return filePath.endsWith(".jsonl.zst");
 }

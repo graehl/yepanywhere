@@ -205,4 +205,16 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(key("two"), { nowMs: 4 })).toBeUndefined();
     expect(store.readRouteSnapshot(key("three"), { nowMs: 4 })).toBeDefined();
   });
+
+  it("deletes a single entry without clearing unrelated entries", () => {
+    const store = createSessionDetailStore();
+
+    store.writeRouteSnapshot(key("one"), snapshot("one", ["one"]));
+    store.writeRouteSnapshot(key("two"), snapshot("two", ["two"]));
+
+    expect(store.deleteEntry(key("one"))).toBe(true);
+    expect(store.deleteEntry(key("missing"))).toBe(false);
+    expect(store.readRouteSnapshot(key("one"))).toBeUndefined();
+    expect(store.readRouteSnapshot(key("two"))?.lastMessageId).toBe("two");
+  });
 });

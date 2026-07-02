@@ -31,6 +31,7 @@ import {
   reportSessionDetailShadowDivergence,
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
+import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
   createInitialSessionDetailState,
   reduceSessionDetailState,
@@ -401,17 +402,55 @@ export function useSessionMessages(
     },
     [],
   );
-  const resetSessionDetailShadowState = useCallback(
+  const dispatchSessionDetailAction = useCallback(
+    (action: SessionDetailAction) => {
+      dispatchSessionDetailShadowAction(action);
+      if (action.type === "patchScrollSnapshot") {
+        defaultSessionDetailStore.patchScrollSnapshot(
+          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          action.scrollSnapshot,
+        );
+        return;
+      }
+      defaultSessionDetailStore.dispatch(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        action,
+      );
+    },
+    [
+      sourceKey,
+      projectId,
+      sessionId,
+      tailTurns,
+      tailFrom,
+      dispatchSessionDetailShadowAction,
+    ],
+  );
+  const resetSessionDetailState = useCallback(
     (snapshot?: SessionRouteSnapshot) => {
       const initial = createInitialSessionDetailState();
-      sessionDetailShadowRef.current = snapshot
-        ? reduceSessionDetailState(
-            initial,
-            createRestoreRouteSnapshotAction(snapshot),
-          )
-        : initial;
+      if (snapshot) {
+        const action = createRestoreRouteSnapshotAction(snapshot);
+        sessionDetailShadowRef.current = reduceSessionDetailState(
+          initial,
+          action,
+        );
+        defaultSessionDetailStore.writeRouteSnapshot(
+          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          snapshot,
+        );
+        return;
+      }
+      sessionDetailShadowRef.current = initial;
+      defaultSessionDetailStore.deleteEntry({
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+      });
     },
-    [],
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
   // Track provider for DAG ordering decisions
@@ -513,18 +552,27 @@ export function useSessionMessages(
   useEffect(() => {
     return () => {
       const snapshot = latestSnapshotRef.current;
-      if (!snapshot) return;
-      writeSessionLoadCache(
+      if (snapshot && getSessionTranscriptCacheEnabled()) {
+        writeSessionLoadCache(
+          sourceKey,
+          projectId,
+          sessionId,
+          {
+            ...snapshot,
+            scrollSnapshot: scrollSnapshotRef.current,
+          },
+          tailTurns,
+          tailFrom,
+        );
+        return;
+      }
+      defaultSessionDetailStore.deleteEntry({
         sourceKey,
         projectId,
         sessionId,
-        {
-          ...snapshot,
-          scrollSnapshot: scrollSnapshotRef.current,
-        },
         tailTurns,
         tailFrom,
-      );
+      });
     };
   }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
@@ -546,7 +594,7 @@ export function useSessionMessages(
       const suppressStreaming =
         incoming._isStreaming === true && !streamingEnabled;
 
-      dispatchSessionDetailShadowAction(
+      dispatchSessionDetailAction(
         createStreamMessageAction(incoming, {
           fromBufferedReplay,
           streamingEnabled,
@@ -594,14 +642,14 @@ export function useSessionMessages(
         return nextMessages;
       });
     },
-    [dispatchSessionDetailShadowAction, reportShadowDivergence],
+    [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
   // Process a buffered stream subagent message
   const processStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
       const streamingEnabled = getStreamingEnabled();
-      dispatchSessionDetailShadowAction(
+      dispatchSessionDetailAction(
         createStreamSubagentMessageAction(agentId, incoming, {
           streamingEnabled,
         }),
@@ -660,7 +708,7 @@ export function useSessionMessages(
         return next;
       });
     },
-    [dispatchSessionDetailShadowAction, reportShadowDivergence],
+    [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
   // Flush buffered stream messages after initial load
@@ -798,7 +846,7 @@ export function useSessionMessages(
             )
           : taggedMessages;
       const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailShadowAction(
+      dispatchSessionDetailAction(
         createCatchupMessagesAction({
           session: data.session,
           messages: data.messages,
@@ -857,7 +905,7 @@ export function useSessionMessages(
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
       const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailShadowAction(
+      dispatchSessionDetailAction(
         createCatchupMessagesAction({
           session: data.session,
           messages: data.messages,
@@ -916,7 +964,7 @@ export function useSessionMessages(
     streamBufferRef.current = [];
     scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
     if (warmLoad) {
-      resetSessionDetailShadowState(warmLoad);
+      resetSessionDetailState(warmLoad);
       setSessionLoadProgress(
         createSessionLoadProgress("fetching", {
           messageCount: warmLoad.messages.length,
@@ -962,7 +1010,7 @@ export function useSessionMessages(
       })();
     } else {
       setSessionLoadProgress(createSessionLoadProgress("fetching"));
-      resetSessionDetailShadowState();
+      resetSessionDetailState();
       maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
       providerRef.current = undefined;
       lastMessageIdRef.current = undefined;
@@ -1040,7 +1088,7 @@ export function useSessionMessages(
         }
 
         const nextPagination = data.pagination;
-        dispatchSessionDetailShadowAction(
+        dispatchSessionDetailAction(
           createLoadPersistedTranscriptAction({
             session: data.session,
             messages: data.messages,
@@ -1149,8 +1197,8 @@ export function useSessionMessages(
     onLoadError,
     flushBuffer,
     updatePersistedTimestampWatermark,
-    resetSessionDetailShadowState,
-    dispatchSessionDetailShadowAction,
+    resetSessionDetailState,
+    dispatchSessionDetailAction,
     reportShadowDivergence,
   ]);
 
@@ -1233,7 +1281,7 @@ export function useSessionMessages(
   // Register toolUse → agent mapping
   const registerToolUseAgent = useCallback(
     (toolUseId: string, agentId: string) => {
-      dispatchSessionDetailShadowAction(
+      dispatchSessionDetailAction(
         createRegisterToolUseAgentAction(toolUseId, agentId),
       );
       setToolUseToAgent((prev) => {
@@ -1251,7 +1299,7 @@ export function useSessionMessages(
         return next;
       });
     },
-    [dispatchSessionDetailShadowAction, reportShadowDivergence],
+    [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
@@ -1270,7 +1318,7 @@ export function useSessionMessages(
           lastMessageIdRef.current,
         );
         if (data.messages.length > 0) {
-          dispatchSessionDetailShadowAction(
+          dispatchSessionDetailAction(
             createCatchupMessagesAction({
               session: data.session,
               messages: data.messages,
@@ -1323,7 +1371,7 @@ export function useSessionMessages(
     projectId,
     sessionId,
     updatePersistedTimestampWatermark,
-    dispatchSessionDetailShadowAction,
+    dispatchSessionDetailAction,
     reportShadowDivergence,
   ]);
 
@@ -1338,7 +1386,7 @@ export function useSessionMessages(
         tailCompactions: 2,
         beforeMessageId: pagination.truncatedBeforeMessageId,
       });
-      dispatchSessionDetailShadowAction(
+      dispatchSessionDetailAction(
         createPrependOlderMessagesAction({
           messages: data.messages,
           pagination: data.pagination,
@@ -1381,14 +1429,14 @@ export function useSessionMessages(
     sessionId,
     pagination,
     updatePersistedTimestampWatermark,
-    dispatchSessionDetailShadowAction,
+    dispatchSessionDetailAction,
     reportShadowDivergence,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
       scrollSnapshotRef.current = snapshot;
-      dispatchSessionDetailShadowAction({
+      dispatchSessionDetailAction({
         type: "patchScrollSnapshot",
         scrollSnapshot: snapshot,
       });
@@ -1411,7 +1459,7 @@ export function useSessionMessages(
       sessionId,
       tailTurns,
       tailFrom,
-      dispatchSessionDetailShadowAction,
+      dispatchSessionDetailAction,
       reportShadowDivergence,
     ],
   );

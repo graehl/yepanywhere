@@ -371,6 +371,15 @@ export class SessionDetailStore {
     }
   }
 
+  deleteEntry(input: SessionDetailStoreKeyInput): boolean {
+    const key = getSessionDetailStoreKey(input);
+    const deleted = this.entries.delete(key);
+    if (deleted) {
+      this.notifyKey(key);
+    }
+    return deleted;
+  }
+
   getStats(): SessionDetailStoreStats {
     const entries = Array.from(this.entries.values()).map((entry) => ({
       key: entry.key,

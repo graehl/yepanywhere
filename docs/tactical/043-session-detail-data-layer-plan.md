@@ -2,7 +2,8 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 4 store shell started. The pure reducer fixture harness now
+Status: Slice 4 store shell wired to the hook lifecycle. The pure reducer
+fixture harness now
 covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
@@ -11,7 +12,8 @@ reducer at existing load, stream, catch-up, pagination, mapping, and
 scroll-snapshot boundaries and can opt into compact dev-only divergence
 diagnostics without switching production reads to the reducer. The same-tab
 route snapshot cache now sits behind a named session detail store with
-selector subscriptions, retention controls, expiry/eviction, and stats.
+selector subscriptions, retention controls, expiry/eviction, and stats; the
+hook also mirrors its active lifecycle actions into that store while mounted.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -290,9 +292,9 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- Feed the store from the same hook boundaries as the shadow reducer, still
-  keeping `useSessionMessages` as the adapter and keeping production reads on
-  the current hook state until selector parity is proven.
+- Add selector-level parity checks between the live hook return shape and the
+  store state, then start moving individual fields behind selectors only after
+  the parity surface is quiet.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -383,9 +385,14 @@ Status 2026-07-02:
   non-notifying scroll patches, retained TTL behavior, and retained-entry LRU
   behavior. Existing route snapshot and warm-cache hook tests pass through the
   store-backed compatibility API.
-- Remaining Slice 4 work: expose the store as a runtime diagnostic/read surface
-  from the hook adapter and decide whether active in-view entries should be
-  retained separately from same-tab warm-cache entries before switching reads.
+- Fed the store from the same `useSessionMessages` lifecycle boundaries as the
+  shadow reducer: warm snapshot restore, persisted load, stream message,
+  subagent stream, tool-use mapping, catch-up, older-page, and scroll snapshot.
+- Active store entries are deleted on unmount unless transcript snapshot
+  retention is enabled, so the default-off warm-cache mitigation remains intact.
+- Remaining Slice 4 work: expose selector-level parity diagnostics/read helpers
+  from the hook adapter before switching any hook return fields to store-backed
+  reads.
 
 ## Slice 5: Hook Adapter Migration
 

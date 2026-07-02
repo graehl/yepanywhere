@@ -14,9 +14,11 @@ import {
 } from "../useSessionMessages";
 import {
   createClientSummaryHostSourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
+import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
 
 const apiMocks = vi.hoisted(() => ({
@@ -142,6 +144,56 @@ describe("useSessionMessages cache", () => {
     expect(
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "msg-2"]);
+  });
+
+  it("mirrors active loads into the session detail store without retaining when cache is disabled", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    const storeKey = {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId: "proj-1",
+      sessionId: "sess-1",
+    };
+    expect(
+      defaultSessionDetailStore
+        .read(storeKey)
+        ?.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1"]);
+
+    rendered.unmount();
+
+    expect(defaultSessionDetailStore.read(storeKey)).toBeUndefined();
   });
 
   it("reuses the warm session cache before a slow delta fetch resolves", async () => {

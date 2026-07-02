@@ -6,16 +6,22 @@ import {
   codexReplayCatchupDuplicatePromptFixture,
 } from "../__fixtures__/codexFixtures";
 import {
-  createCatchupMessagesAction,
-  createLoadPersistedTranscriptAction,
-  createStreamMessageActions,
-  hydrateInitialSessionDetailState,
-} from "../actionAdapters";
-import {
   createInitialSessionDetailState,
   reduceSessionDetailActions,
   reduceSessionDetailState,
 } from "../transcriptReducer";
+import type { SessionDetailAction } from "../types";
+
+function streamMessageActions(
+  messages: readonly Message[],
+  options: { fromBufferedReplay?: boolean } = {},
+): SessionDetailAction[] {
+  return messages.map((message) => ({
+    type: "applyStreamMessage",
+    message,
+    ...options,
+  }));
+}
 
 function compactContent(message: Message): unknown {
   const content = message.message?.content ?? message.content;
@@ -69,17 +75,14 @@ describe("transcriptReducer provider fixtures", () => {
     const fixture = codexReplayCatchupDuplicatePromptFixture;
     const persistedState = reduceSessionDetailState(
       createInitialSessionDetailState(),
-      createLoadPersistedTranscriptAction(fixture.persisted),
+      { type: "loadPersistedTranscript", ...fixture.persisted },
     );
     const streamThenCatchupState = reduceSessionDetailActions(
       [
-        ...createStreamMessageActions(fixture.streamMessages),
-        createCatchupMessagesAction(fixture.persisted),
+        ...streamMessageActions(fixture.streamMessages),
+        { type: "applyCatchupMessages", ...fixture.persisted },
       ],
-      hydrateInitialSessionDetailState(
-        createInitialSessionDetailState(),
-        fixture.session,
-      ),
+      { ...createInitialSessionDetailState(), session: fixture.session },
     );
 
     expect(compactTranscript(streamThenCatchupState.messages)).toEqual(
@@ -95,18 +98,18 @@ describe("transcriptReducer provider fixtures", () => {
   it("suppresses Codex buffered replay after the persisted fixture is loaded", () => {
     const fixture = codexReplayCatchupDuplicatePromptFixture;
     const state = reduceSessionDetailActions([
-      createLoadPersistedTranscriptAction(fixture.persisted),
-      ...createStreamMessageActions(fixture.replayMessages ?? [], {
+      { type: "loadPersistedTranscript", ...fixture.persisted },
+      ...streamMessageActions(fixture.replayMessages ?? [], {
         fromBufferedReplay: true,
       }),
     ]);
 
     expect(compactTranscript(state.messages)).toEqual(
       compactTranscript(
-        reduceSessionDetailState(
-          createInitialSessionDetailState(),
-          createLoadPersistedTranscriptAction(fixture.persisted),
-        ).messages,
+        reduceSessionDetailState(createInitialSessionDetailState(), {
+          type: "loadPersistedTranscript",
+          ...fixture.persisted,
+        }).messages,
       ),
     );
   });
@@ -115,13 +118,10 @@ describe("transcriptReducer provider fixtures", () => {
     const fixture = codexAttachmentOpeningTurnFixture;
     const state = reduceSessionDetailActions(
       [
-        ...createStreamMessageActions(fixture.streamMessages),
-        createCatchupMessagesAction(fixture.persisted),
+        ...streamMessageActions(fixture.streamMessages),
+        { type: "applyCatchupMessages", ...fixture.persisted },
       ],
-      hydrateInitialSessionDetailState(
-        createInitialSessionDetailState(),
-        fixture.session,
-      ),
+      { ...createInitialSessionDetailState(), session: fixture.session },
     );
 
     expect(state.messages).toHaveLength(1);
@@ -131,10 +131,10 @@ describe("transcriptReducer provider fixtures", () => {
 
   it("keeps repeated Codex tool calls distinct when their call ids differ", () => {
     const fixture = codexRepeatedToolCallsFixture;
-    const state = reduceSessionDetailState(
-      createInitialSessionDetailState(),
-      createLoadPersistedTranscriptAction(fixture.persisted),
-    );
+    const state = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "loadPersistedTranscript",
+      ...fixture.persisted,
+    });
 
     expect(state.messages).toHaveLength(2);
     expect(compactTranscript(state.messages)).toEqual([

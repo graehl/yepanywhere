@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { preprocessMessages } from "../../preprocessMessages";
 import type { Message, SessionMetadata } from "../../../types";
-import {
-  createCatchupMessagesAction,
-  createFinalMarkdownAugmentAction,
-  createLoadPersistedTranscriptAction,
-  createStreamMessageActions,
-  hydrateInitialSessionDetailState,
-} from "../actionAdapters";
+import { createFinalMarkdownAugmentAction } from "../actionAdapters";
 import { selectSessionDetailPreprocessAugments } from "../selectors";
 import {
   createInitialSessionDetailState,
@@ -70,10 +64,11 @@ describe("transcriptReducer markdown augments", () => {
         messageId: "assistant-1",
         html,
       }),
-      createLoadPersistedTranscriptAction({
+      {
+        type: "loadPersistedTranscript",
         session: sessionMetadata(),
         messages: [assistantMessage("assistant-1", "Rendered answer.")],
-      }),
+      },
     ]);
 
     expect(state.markdownAugments).toEqual({
@@ -85,10 +80,11 @@ describe("transcriptReducer markdown augments", () => {
   it("attaches a final markdown augment that arrives after its message", () => {
     const html = "<p>Rendered after load.</p>";
     const state = reduceSessionDetailActions([
-      createLoadPersistedTranscriptAction({
+      {
+        type: "loadPersistedTranscript",
         session: sessionMetadata(),
         messages: [assistantMessage("assistant-1", "Rendered after load.")],
-      }),
+      },
       createFinalMarkdownAugmentAction({
         messageId: "assistant-1",
         html,
@@ -100,18 +96,16 @@ describe("transcriptReducer markdown augments", () => {
 
   it("uses markdown augments supplied by a persisted transcript load", () => {
     const html = "<p>Loaded with the transcript.</p>";
-    const state = reduceSessionDetailState(
-      createInitialSessionDetailState(),
-      createLoadPersistedTranscriptAction({
-        session: sessionMetadata(),
-        messages: [
-          assistantMessage("assistant-1", "Loaded with the transcript."),
-        ],
-        markdownAugments: {
-          "assistant-1": { html },
-        },
-      }),
-    );
+    const state = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "loadPersistedTranscript",
+      session: sessionMetadata(),
+      messages: [
+        assistantMessage("assistant-1", "Loaded with the transcript."),
+      ],
+      markdownAugments: {
+        "assistant-1": { html },
+      },
+    });
 
     expect(getStateTextAugmentHtml(state)).toBe(html);
   });
@@ -120,14 +114,19 @@ describe("transcriptReducer markdown augments", () => {
     const html = "<p>Rendered durable answer.</p>";
     const state = reduceSessionDetailActions(
       [
-        ...createStreamMessageActions([
-          assistantMessage("live-assistant-1", "Rendered durable answer."),
-        ]),
+        {
+          type: "applyStreamMessage",
+          message: assistantMessage(
+            "live-assistant-1",
+            "Rendered durable answer.",
+          ),
+        },
         createFinalMarkdownAugmentAction({
           messageId: "live-assistant-1",
           html,
         }),
-        createCatchupMessagesAction({
+        {
+          type: "applyCatchupMessages",
           session: sessionMetadata("codex"),
           messages: [
             assistantMessage(
@@ -135,12 +134,12 @@ describe("transcriptReducer markdown augments", () => {
               "Rendered durable answer.",
             ),
           ],
-        }),
+        },
       ],
-      hydrateInitialSessionDetailState(
-        createInitialSessionDetailState(),
-        sessionMetadata("codex"),
-      ),
+      {
+        ...createInitialSessionDetailState(),
+        session: sessionMetadata("codex"),
+      },
     );
 
     expect(state.messages).toHaveLength(1);

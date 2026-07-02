@@ -1,10 +1,15 @@
 import type { PaginationInfo } from "../../../api/client";
 import type { Message, SessionMetadata } from "../../../types";
-import type { SessionDetailPersistedTranscriptInput } from "../actionAdapters";
+import type { SessionDetailAction } from "../types";
+
+type PersistedTranscriptFields = Omit<
+  Extract<SessionDetailAction, { type: "loadPersistedTranscript" }>,
+  "type"
+>;
 
 interface CodexFixture {
   session: SessionMetadata;
-  persisted: SessionDetailPersistedTranscriptInput;
+  persisted: PersistedTranscriptFields;
   streamMessages: Message[];
   replayMessages?: Message[];
 }

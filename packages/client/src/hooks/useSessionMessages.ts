@@ -31,20 +31,6 @@ import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
-  createCatchupMessagesAction,
-  createClearAgentStreamingPlaceholdersAction,
-  createClearStreamingPlaceholdersAction,
-  createLoadPersistedTranscriptAction,
-  createMergeLoadedAgentContentAction,
-  createPrependOlderMessagesAction,
-  createRegisterToolUseAgentAction,
-  createSetSessionMetadataAction,
-  createStreamMessageAction,
-  createStreamSubagentMessageAction,
-  createUpdateAgentContextUsageAction,
-  createUpsertStreamingPlaceholderAction,
-} from "../lib/sessionDetail/actionAdapters";
-import {
   isSessionDetailShadowDiagnosticsEnabled,
   reportSessionDetailStoreDivergence,
   type SessionDetailRuntimeStateInput,
@@ -536,7 +522,7 @@ export function useSessionMessages(
         if (next === previous) {
           return previous;
         }
-        dispatchSessionDetailAction(createSetSessionMetadataAction(next));
+        dispatchSessionDetailAction({ type: "setSessionMetadata", session: next });
         reportStoreDivergence("session-metadata", {
           session: next,
         });
@@ -714,12 +700,12 @@ export function useSessionMessages(
       const suppressStreaming =
         incoming._isStreaming === true && !streamingEnabled;
 
-      dispatchSessionDetailAction(
-        createStreamMessageAction(incoming, {
-          fromBufferedReplay,
-          streamingEnabled,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "applyStreamMessage",
+        message: incoming,
+        fromBufferedReplay,
+        streamingEnabled,
+      });
 
       setMessages((prev) => {
         let nextMessages = prev;
@@ -769,11 +755,12 @@ export function useSessionMessages(
   const processStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
       const streamingEnabled = getStreamingEnabled();
-      dispatchSessionDetailAction(
-        createStreamSubagentMessageAction(agentId, incoming, {
-          streamingEnabled,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "applyStreamSubagentMessage",
+        agentId,
+        message: incoming,
+        streamingEnabled,
+      });
       const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
         if (selectorBackedAgentContent) {
@@ -977,13 +964,12 @@ export function useSessionMessages(
             )
           : taggedMessages;
       const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailAction(
-        createCatchupMessagesAction({
-          session: data.session,
-          messages: data.messages,
-          pagination: nextPagination,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
+        messages: data.messages,
+        session: data.session,
+        pagination: nextPagination,
+      });
       setSessionLoadProgress(
         createSessionLoadProgress("rendering", {
           messageCount: loadedMessages.length,
@@ -1036,13 +1022,12 @@ export function useSessionMessages(
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
       const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailAction(
-        createCatchupMessagesAction({
-          session: data.session,
-          messages: data.messages,
-          pagination: nextPagination,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
+        messages: data.messages,
+        session: data.session,
+        pagination: nextPagination,
+      });
       setMessages((prev) => {
         const baseMessages = prev.length > 0 ? prev : warmLoad.messages;
         const loadedMessages = mergePersistedMessagesForProvider(
@@ -1219,13 +1204,12 @@ export function useSessionMessages(
         }
 
         const nextPagination = data.pagination;
-        dispatchSessionDetailAction(
-          createLoadPersistedTranscriptAction({
-            session: data.session,
-            messages: data.messages,
-            pagination: nextPagination,
-          }),
-        );
+        dispatchSessionDetailAction({
+          type: "loadPersistedTranscript",
+          messages: data.messages,
+          session: data.session,
+          pagination: nextPagination,
+        });
         const revealInitialTranscript = () => {
           setMessages(loadedMessages);
           setPagination(nextPagination);
@@ -1339,9 +1323,11 @@ export function useSessionMessages(
       const messageId = getMessageId(streamingMessage);
       if (!messageId) return;
 
-      dispatchSessionDetailAction(
-        createUpsertStreamingPlaceholderAction(streamingMessage, agentId),
-      );
+      dispatchSessionDetailAction({
+        type: "upsertStreamingPlaceholder",
+        message: streamingMessage,
+        agentId,
+      });
 
       if (agentId) {
         const selectorBackedAgentContent = readSelectorBackedAgentContent();
@@ -1407,9 +1393,11 @@ export function useSessionMessages(
   // Register toolUse → agent mapping
   const registerToolUseAgent = useCallback(
     (toolUseId: string, agentId: string) => {
-      dispatchSessionDetailAction(
-        createRegisterToolUseAgentAction(toolUseId, agentId),
-      );
+      dispatchSessionDetailAction({
+        type: "registerToolUseAgent",
+        toolUseId,
+        agentId,
+      });
       setToolUseToAgent((prev) => {
         if (prev.has(toolUseId)) {
           reportStoreDivergence("tool-use-agent-map", {
@@ -1430,9 +1418,11 @@ export function useSessionMessages(
 
   const mergeLoadedAgentContent = useCallback(
     (agentId: string, content: AgentContent) => {
-      dispatchSessionDetailAction(
-        createMergeLoadedAgentContentAction(agentId, content),
-      );
+      dispatchSessionDetailAction({
+        type: "mergeLoadedAgentContent",
+        agentId,
+        content,
+      });
       const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
         const next =
@@ -1453,9 +1443,11 @@ export function useSessionMessages(
 
   const updateAgentContextUsage = useCallback(
     (agentId: string, contextUsage: AgentContextUsage) => {
-      dispatchSessionDetailAction(
-        createUpdateAgentContextUsageAction(agentId, contextUsage),
-      );
+      dispatchSessionDetailAction({
+        type: "updateAgentContextUsage",
+        agentId,
+        contextUsage,
+      });
       const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
         const next =
@@ -1476,9 +1468,10 @@ export function useSessionMessages(
 
   const clearAgentStreamingPlaceholders = useCallback(
     (agentId: string) => {
-      dispatchSessionDetailAction(
-        createClearAgentStreamingPlaceholdersAction(agentId),
-      );
+      dispatchSessionDetailAction({
+        type: "clearAgentStreamingPlaceholders",
+        agentId,
+      });
       const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
         const next =
@@ -1498,7 +1491,7 @@ export function useSessionMessages(
   );
 
   const clearStreamingPlaceholders = useCallback(() => {
-    dispatchSessionDetailAction(createClearStreamingPlaceholdersAction());
+    dispatchSessionDetailAction({ type: "clearStreamingPlaceholders" });
     const selectorBackedMessages = readSelectorBackedMessages();
     setMessages((prev) => {
       const next =
@@ -1530,12 +1523,11 @@ export function useSessionMessages(
           lastMessageIdRef.current,
         );
         if (data.messages.length > 0) {
-          dispatchSessionDetailAction(
-            createCatchupMessagesAction({
-              session: data.session,
-              messages: data.messages,
-            }),
-          );
+          dispatchSessionDetailAction({
+            type: "applyCatchupMessages",
+            messages: data.messages,
+            session: data.session,
+          });
           updatePersistedTimestampWatermark(data.messages);
           setMessages((prev) => {
             const result = mergeJSONLMessages(prev, data.messages, {
@@ -1612,12 +1604,11 @@ export function useSessionMessages(
         tailCompactions: 2,
         beforeMessageId: currentPagination.truncatedBeforeMessageId,
       });
-      dispatchSessionDetailAction(
-        createPrependOlderMessagesAction({
-          messages: data.messages,
-          pagination: data.pagination,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "prependOlderMessages",
+        messages: data.messages,
+        pagination: data.pagination,
+      });
       setMessages((prev) => {
         const taggedOlder = data.messages.map((m) => ({
           ...m,

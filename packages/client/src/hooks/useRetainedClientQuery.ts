@@ -64,15 +64,19 @@ export function useRetainedClientQuery<T>({
   applySnapshot,
 }: UseRetainedClientQueryOptions<T>): UseRetainedClientQueryResult {
   const queryKey = useMemo(() => createClientQueryKey(key), [key]);
-  const coverageKey = useMemo(() => createClientQueryKey(coverage ?? {}), [
-    coverage,
-  ]);
+  const coverageKey = useMemo(
+    () => createClientQueryKey(coverage ?? {}),
+    [coverage],
+  );
   const revalidateEventsKey = useMemo(
     () => revalidateOn.join("\0"),
     [revalidateOn],
   );
   const revalidateEvents = useMemo(
-    () => [...revalidateOn],
+    () =>
+      revalidateEventsKey
+        ? (revalidateEventsKey.split("\0") as ActivityEventType[])
+        : [],
     [revalidateEventsKey],
   );
 
@@ -102,6 +106,9 @@ export function useRetainedClientQuery<T>({
   }, []);
 
   useEffect(() => {
+    void sourceKey;
+    void queryKey;
+    void coverageKey;
     hasSuccessfulFetchRef.current = hasData;
     setError(null);
     setLoading(enabled && !hasData);
@@ -127,6 +134,7 @@ export function useRetainedClientQuery<T>({
       if (!enabled || !ready) {
         return;
       }
+      void coverageKey;
 
       const requestId = ++runSequenceRef.current;
       const hasDataAtStart = hasSuccessfulFetchRef.current;
@@ -166,14 +174,7 @@ export function useRetainedClientQuery<T>({
         }
       }
     },
-    [
-      enabled,
-      ready,
-      sourceKey,
-      queryKey,
-      coverageKey,
-      staleTimeMs,
-    ],
+    [enabled, ready, sourceKey, queryKey, coverageKey, staleTimeMs],
   );
 
   const scheduleRevalidation = useCallback(() => {
@@ -195,9 +196,7 @@ export function useRetainedClientQuery<T>({
     }
     const unsubscribers = revalidateEvents.map((eventType) =>
       activityBus.on(eventType, (data) => {
-        if (
-          shouldRevalidateEventRef.current?.({ eventType, data }) === false
-        ) {
+        if (shouldRevalidateEventRef.current?.({ eventType, data }) === false) {
           return;
         }
         scheduleRevalidation();

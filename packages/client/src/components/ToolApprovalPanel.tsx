@@ -49,7 +49,8 @@ export function ToolApprovalPanel({
   const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
   // Prevent accidental clicks by disabling buttons briefly when panel appears
-  const [armed, setArmed] = useState(false);
+  const [armedRequestId, setArmedRequestId] = useState<string | null>(null);
+  const armed = armedRequestId === request.id;
   // Show feedback panel if there's already draft text from localStorage
   const [feedback, setFeedback, clearFeedback] =
     useToolApprovalFeedbackDraft(sessionId);
@@ -58,8 +59,11 @@ export function ToolApprovalPanel({
 
   // Reset armed state when request changes (new approval appears)
   useEffect(() => {
-    setArmed(false);
-    const timer = setTimeout(() => setArmed(true), CLICK_PROTECTION_MS);
+    setArmedRequestId(null);
+    const timer = setTimeout(
+      () => setArmedRequestId(request.id),
+      CLICK_PROTECTION_MS,
+    );
     return () => clearTimeout(timer);
   }, [request.id]);
 

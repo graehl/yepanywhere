@@ -249,6 +249,8 @@ export function useGlobalSessionsFeed(
   const requestSequenceRef = useRef(0);
 
   useEffect(() => {
+    void sourceKey;
+    void queryKey;
     requestSequenceRef.current += 1;
     if (refetchTimerRef.current) {
       clearTimeout(refetchTimerRef.current);

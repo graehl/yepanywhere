@@ -2583,6 +2583,19 @@ export function MessageInputToolbar({
     toolbarVisibility.sessionStatus && hasLastActivityAge;
   const showToolbarStatus =
     showLivenessChip || showLastActivityChip || showPositionTimestamp;
+  const compactStatusLayoutKey = [
+    livenessDisplay?.prefix ?? "",
+    livenessDisplay?.timestampMs ?? "",
+    livenessDisplay?.tone ?? "",
+    nowMs,
+    showLastActivityAge,
+    showLastActivityChip,
+    showLivenessChip,
+    showToolbarStatus,
+    showPositionTimestamp,
+    showStopButton,
+    showSendButton,
+  ].join("\0");
 
   useEffect(() => {
     if (effectiveThinkingMode !== "off") {
@@ -2613,6 +2626,7 @@ export function MessageInputToolbar({
   );
 
   useLayoutEffect(() => {
+    void compactStatusLayoutKey;
     const compactStatusQuery = getCompactStatusMatchMedia();
     const toolbar = toolbarRef.current;
     const left = toolbarLeftRef.current;
@@ -2680,19 +2694,7 @@ export function MessageInputToolbar({
         scheduleCompactStatusUpdate,
       );
     };
-  }, [
-    livenessDisplay?.prefix,
-    livenessDisplay?.timestampMs,
-    livenessDisplay?.tone,
-    nowMs,
-    showLastActivityAge,
-    showLastActivityChip,
-    showLivenessChip,
-    showToolbarStatus,
-    showPositionTimestamp,
-    showStopButton,
-    showSendButton,
-  ]);
+  }, [compactStatusLayoutKey]);
 
   useEffect(() => {
     const handleIsearchGuide = (event: Event) => {

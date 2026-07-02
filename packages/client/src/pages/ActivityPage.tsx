@@ -129,6 +129,7 @@ export function ActivityPage() {
 
   // Auto-scroll to bottom when new events arrive (if already at bottom)
   useLayoutEffect(() => {
+    void displayedEvents.length;
     const container = scrollContainerRef.current;
     if (container && isAtBottomRef.current) {
       container.scrollTop = container.scrollHeight;

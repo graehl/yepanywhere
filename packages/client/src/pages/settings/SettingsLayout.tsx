@@ -234,6 +234,7 @@ export function SettingsLayout() {
   }, []);
 
   useLayoutEffect(() => {
+    void location.key;
     scrollSettingsToTop();
   }, [location.key, scrollSettingsToTop]);
 

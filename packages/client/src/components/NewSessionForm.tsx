@@ -725,6 +725,7 @@ export function NewSessionForm({
   ]);
 
   useEffect(() => {
+    void newSessionDraftKey;
     void hydrateDraftAttachments();
   }, [hydrateDraftAttachments, newSessionDraftKey]);
 
@@ -1200,7 +1201,6 @@ export function NewSessionForm({
     activeProjectSearchQuery,
     projectSuggestions,
     projectsLoading,
-    setIsProjectChooserExpanded,
     t,
   ]);
 
@@ -1449,7 +1449,14 @@ export function NewSessionForm({
   useLayoutEffect(() => {
     const pending = pendingTextareaSelectionRef.current;
     const textarea = textareaRef.current;
-    if (!pending || !textarea || textarea.value !== pending.value) return;
+    if (
+      !pending ||
+      !textarea ||
+      message !== pending.value ||
+      textarea.value !== pending.value
+    ) {
+      return;
+    }
     pendingTextareaSelectionRef.current = null;
     pending.restore(textarea);
   }, [message]);
@@ -1482,12 +1489,7 @@ export function NewSessionForm({
         setIsProjectChooserExpanded(false);
       }
     },
-    [
-      exactProjectMatch,
-      handleProjectOptionSelect,
-      normalizedProjectInput,
-      setIsProjectChooserExpanded,
-    ],
+    [exactProjectMatch, handleProjectOptionSelect, normalizedProjectInput],
   );
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -1576,25 +1578,26 @@ export function NewSessionForm({
     updateServerSetting,
   ]);
 
-  const resolveProjectIdForSubmission = async (
-    trimmedProjectInput: string,
-  ): Promise<string | null> => {
-    let resolvedProjectId =
-      trimmedProjectInput &&
-      currentProjectSelection?.path === trimmedProjectInput
-        ? currentProjectSelection.id
-        : (findProjectByInput(projects, trimmedProjectInput)?.id ?? null);
+  const resolveProjectIdForSubmission = useCallback(
+    async (trimmedProjectInput: string): Promise<string | null> => {
+      let resolvedProjectId =
+        trimmedProjectInput &&
+        currentProjectSelection?.path === trimmedProjectInput
+          ? currentProjectSelection.id
+          : (findProjectByInput(projects, trimmedProjectInput)?.id ?? null);
 
-    if (trimmedProjectInput && !resolvedProjectId) {
-      const addProjectResult = await api.addProject(trimmedProjectInput);
-      resolvedProjectId = addProjectResult.project.id ?? null;
-      if (!resolvedProjectId) return null;
-      lastSyncedProjectIdRef.current = resolvedProjectId;
-      onProjectChange?.(resolvedProjectId);
-    }
+      if (trimmedProjectInput && !resolvedProjectId) {
+        const addProjectResult = await api.addProject(trimmedProjectInput);
+        resolvedProjectId = addProjectResult.project.id ?? null;
+        if (!resolvedProjectId) return null;
+        lastSyncedProjectIdRef.current = resolvedProjectId;
+        onProjectChange?.(resolvedProjectId);
+      }
 
-    return resolvedProjectId;
-  };
+      return resolvedProjectId;
+    },
+    [currentProjectSelection, onProjectChange, projects],
+  );
 
   const resolvePendingAttachmentsForSession = useCallback(
     async (activeProjectId: string, sessionId: string) => {
@@ -1679,290 +1682,317 @@ export function NewSessionForm({
     [attachmentQuality, connection, showToast, t],
   );
 
-  const handleStartSession = async (messageOverride?: unknown) => {
-    const override =
-      typeof messageOverride === "string" ? messageOverride : undefined;
-    // Stop voice recording and get any pending interim text unless the caller
-    // already supplied the finalized text from the STT backend.
-    const pendingVoice =
-      override === undefined
-        ? (voiceButtonRef.current?.stopAndFinalize() ?? "")
-        : "";
+  const handleStartSession = useCallback(
+    async (messageOverride?: unknown) => {
+      const override =
+        typeof messageOverride === "string" ? messageOverride : undefined;
+      // Stop voice recording and get any pending interim text unless the caller
+      // already supplied the finalized text from the STT backend.
+      const pendingVoice =
+        override === undefined
+          ? (voiceButtonRef.current?.stopAndFinalize() ?? "")
+          : "";
 
-    // Combine committed text with any pending voice text
-    let finalMessage = (override ?? message).trimEnd();
-    if (pendingVoice) {
-      finalMessage = finalMessage
-        ? `${finalMessage} ${pendingVoice}`
-        : pendingVoice;
-    }
+      // Combine committed text with any pending voice text
+      let finalMessage = (override ?? message).trimEnd();
+      if (pendingVoice) {
+        finalMessage = finalMessage
+          ? `${finalMessage} ${pendingVoice}`
+          : pendingVoice;
+      }
 
-    const hasContent = finalMessage.trim() || pendingFiles.length > 0;
-    if (!hasContent || isStarting) return;
+      const hasContent = finalMessage.trim() || pendingFiles.length > 0;
+      if (!hasContent || isStarting) return;
 
-    const trimmedMessage = finalMessage.trim();
-    const trimmedProjectInput = normalizeProjectInput(projectInput);
-    const actionAtMs = Date.now();
-    const clientTimestamp = getServerClockTimestamp(actionAtMs);
+      const trimmedMessage = finalMessage.trim();
+      const trimmedProjectInput = normalizeProjectInput(projectInput);
+      const actionAtMs = Date.now();
+      const clientTimestamp = getServerClockTimestamp(actionAtMs);
 
-    setInterimTranscript("");
-    setIsStarting(true);
+      setInterimTranscript("");
+      setIsStarting(true);
 
-    try {
-      let resolvedProjectId =
-        await resolveProjectIdForSubmission(trimmedProjectInput);
+      try {
+        let resolvedProjectId =
+          await resolveProjectIdForSubmission(trimmedProjectInput);
 
-      let sessionId: string;
-      let processId: string;
-      const sessionMode = effectivePermissionMode;
-      let initialPermissionMode: PermissionMode = sessionMode;
-      let initialModeVersion = 0;
-      const uploadedFiles: UploadedFile[] = [];
+        let sessionId: string;
+        let processId: string;
+        const sessionMode = effectivePermissionMode;
+        let initialPermissionMode: PermissionMode = sessionMode;
+        let initialModeVersion = 0;
+        const uploadedFiles: UploadedFile[] = [];
 
-      // Get model and thinking settings
-      const thinking = toThinkingOption(
-        effectiveThinkingMode,
-        effectiveEffortLevel,
-      );
-      const effectiveRecapMode = resolveRecapMode(
-        selectedProviderInfo,
-        selectedRecapMode,
-      );
-      const effectivePromptSuggestionMode = resolvePromptSuggestionMode(
-        selectedProviderInfo,
-        selectedPromptSuggestionMode,
-      );
-      // Display preference for thinking rows; sent for compatibility while the
-      // server requests provider summaries independently.
-      const showThinking = getShowThinkingSetting();
-      const sessionOptions = {
-        mode: sessionMode,
-        model: selectedModel ?? undefined,
-        thinking,
-        showThinking,
-        provider: selectedProvider ?? undefined,
-        executor: selectedExecutor ?? undefined,
-        recapMode: effectiveRecapMode,
-        recapAfterSeconds,
-        promptSuggestionMode: effectivePromptSuggestionMode,
-        helperSideModel,
-      };
-      logSessionUiTrace("new-session-submit", {
-        projectId: resolvedProjectId ?? null,
-        detached: !resolvedProjectId,
-        mode: sessionMode,
-        model: selectedModel ?? null,
-        thinking,
-        provider: selectedProvider ?? null,
-        executor: selectedExecutor ?? null,
-        recapMode: effectiveRecapMode,
-        recapAfterSeconds,
-        promptSuggestionMode: effectivePromptSuggestionMode,
-        helperSideModel,
-        textLength: trimmedMessage.length,
-        pendingFileCount: pendingFiles.length,
-        clientTimestamp,
-        serverOffsetMs: getEstimatedServerOffsetMs(),
-      });
-
-      if (pendingFiles.length > 0) {
-        // Two-phase flow: create session first, then upload to real session folder
-        // Step 1: Create the session without sending a message
-        const createRequestSentAtMs = Date.now();
-        const createResult = resolvedProjectId
-          ? await api.createSession(resolvedProjectId, sessionOptions)
-          : await api.createDetachedSession(sessionOptions);
-        const createResponseReceivedAtMs = Date.now();
-        const createTiming = recordServerClockSample({
-          clientRequestStartMs: createRequestSentAtMs,
-          clientResponseEndMs: createResponseReceivedAtMs,
-          serverTimestamp: createResult.serverTimestamp,
-        });
-        const activeProjectId = createResult.projectId;
-        sessionId = createResult.sessionId;
-        processId = createResult.processId;
-        initialPermissionMode = createResult.permissionMode;
-        initialModeVersion = createResult.modeVersion;
-        resolvedProjectId = activeProjectId;
-        logSessionUiTrace("new-session-created", {
-          sessionId,
-          processId,
-          projectId: resolvedProjectId,
-          thinking,
-          mode: sessionMode,
-          serverTimestamp: createResult.serverTimestamp,
-          requestRttMs: createTiming?.roundTripMs ?? null,
-          estimatedServerOffsetMs: createTiming?.serverOffsetMs ?? null,
-        });
-
-        // Step 2: Materialize staged draft refs, or use the legacy final
-        // session upload fallback for files selected before capability support
-        // was known.
-        uploadedFiles.push(
-          ...(await resolvePendingAttachmentsForSession(
-            activeProjectId,
-            sessionId,
-          )),
+        // Get model and thinking settings
+        const thinking = toThinkingOption(
+          effectiveThinkingMode,
+          effectiveEffortLevel,
         );
-
-        // Step 3: Send the first message with attachments
-        const queueRequestSentAtMs = Date.now();
-        const queueResult = await api.queueMessage(
-          sessionId,
-          trimmedMessage,
-          sessionMode,
-          uploadedFiles.length > 0 ? uploadedFiles : undefined,
-          undefined, // tempId
-          thinking, // Pass the captured thinking setting to avoid process restart
-          undefined, // deferred
-          clientTimestamp,
-          undefined, // messageMetadata
-          undefined, // serviceTier
+        const effectiveRecapMode = resolveRecapMode(
+          selectedProviderInfo,
+          selectedRecapMode,
+        );
+        const effectivePromptSuggestionMode = resolvePromptSuggestionMode(
+          selectedProviderInfo,
+          selectedPromptSuggestionMode,
+        );
+        // Display preference for thinking rows; sent for compatibility while the
+        // server requests provider summaries independently.
+        const showThinking = getShowThinkingSetting();
+        const sessionOptions = {
+          mode: sessionMode,
+          model: selectedModel ?? undefined,
+          thinking,
           showThinking,
-        );
-        const queueResponseReceivedAtMs = Date.now();
-        const queueTiming = recordServerClockSample({
-          clientRequestStartMs: queueRequestSentAtMs,
-          clientResponseEndMs: queueResponseReceivedAtMs,
-          serverTimestamp: queueResult.serverTimestamp,
-        });
-        logSessionUiTrace("new-session-queued", {
-          sessionId,
-          processId,
-          projectId: resolvedProjectId,
-          clientTimestamp,
-          serverTimestamp: queueResult.serverTimestamp,
-          uploadWaitMs: queueRequestSentAtMs - actionAtMs,
-          requestRttMs: queueTiming?.roundTripMs ?? null,
-          estimatedServerOffsetMs: queueTiming?.serverOffsetMs ?? null,
-          clientToServerLatencyMs: measureServerLatencyMs(
-            clientTimestamp,
-            queueResult.serverTimestamp,
-          ),
-        });
-      } else {
-        // No files - use single-step flow for efficiency
-        const startRequestSentAtMs = Date.now();
-        const result = resolvedProjectId
-          ? await api.startSession(
-              resolvedProjectId,
-              trimmedMessage,
-              sessionOptions,
-              undefined,
-              clientTimestamp,
-            )
-          : await api.startDetachedSession(
-              trimmedMessage,
-              sessionOptions,
-              undefined,
-              clientTimestamp,
-            );
-        const startResponseReceivedAtMs = Date.now();
-        const startTiming = recordServerClockSample({
-          clientRequestStartMs: startRequestSentAtMs,
-          clientResponseEndMs: startResponseReceivedAtMs,
-          serverTimestamp: result.serverTimestamp,
-        });
-        sessionId = result.sessionId;
-        processId = result.processId;
-        initialPermissionMode = result.permissionMode;
-        initialModeVersion = result.modeVersion;
-        resolvedProjectId = result.projectId;
-        logSessionUiTrace("new-session-started", {
-          sessionId,
-          processId,
-          projectId: resolvedProjectId,
-          thinking,
+          provider: selectedProvider ?? undefined,
+          executor: selectedExecutor ?? undefined,
+          recapMode: effectiveRecapMode,
+          recapAfterSeconds,
+          promptSuggestionMode: effectivePromptSuggestionMode,
+          helperSideModel,
+        };
+        logSessionUiTrace("new-session-submit", {
+          projectId: resolvedProjectId ?? null,
+          detached: !resolvedProjectId,
           mode: sessionMode,
-          provider: selectedProvider ?? null,
           model: selectedModel ?? null,
+          thinking,
+          provider: selectedProvider ?? null,
+          executor: selectedExecutor ?? null,
+          recapMode: effectiveRecapMode,
+          recapAfterSeconds,
+          promptSuggestionMode: effectivePromptSuggestionMode,
+          helperSideModel,
+          textLength: trimmedMessage.length,
+          pendingFileCount: pendingFiles.length,
           clientTimestamp,
-          serverTimestamp: result.serverTimestamp,
-          requestRttMs: startTiming?.roundTripMs ?? null,
-          estimatedServerOffsetMs: startTiming?.serverOffsetMs ?? null,
-          clientToServerLatencyMs: measureServerLatencyMs(
-            clientTimestamp,
-            result.serverTimestamp,
-          ),
+          serverOffsetMs: getEstimatedServerOffsetMs(),
         });
-      }
 
-      if (!resolvedProjectId) {
-        throw new Error("Missing project ID for new session");
-      }
-
-      // Clean up preview URLs
-      setPendingFiles([], {
-        persistDraft: false,
-        revokeRemovedPreviewUrls: true,
-      });
-
-      draftControls.clearDraft();
-      // Pass initial status so SessionPage can connect SSE immediately
-      // without waiting for getSession to complete
-      // Also pass initial message as optimistic title (session name = first message)
-      // Pass model/provider so ProviderBadge can render immediately
-      navigate(
-        `${basePath}/projects/${resolvedProjectId}/sessions/${sessionId}`,
-        {
-          state: createSessionNavigationState({
-            initialStatus: {
-              owner: "self",
-              processId,
-              permissionMode: initialPermissionMode,
-              modeVersion: initialModeVersion,
-              recapAfterSeconds,
-            },
-            initialTitle: trimmedMessage,
-            initialModel: selectedModel ?? undefined,
-            initialProvider: selectedProvider ?? undefined,
-          }),
-        },
-      );
-    } catch (err) {
-      console.error("Failed to start session:", err);
-      draftControls.restoreFromStorage();
-      setIsStarting(false);
-
-      // Show user-visible error message
-      let errorMessage = t("newSessionStartError");
-      if (err instanceof Error) {
-        const providerDisplayName =
-          selectedProviderInfo?.displayName ?? selectedProvider ?? "Provider";
-        const lowerMessage = err.message.toLowerCase();
-        const status = (err as Error & { status?: number }).status;
-
-        // Check for specific error types
-        if (err.message.includes("Queue is full")) {
-          errorMessage = t("newSessionServerBusy");
-        } else if (
-          lowerMessage.includes("invalid authentication credentials") ||
-          lowerMessage.includes("authentication_error") ||
-          lowerMessage.includes("please run /login") ||
-          (status === 401 &&
-            (selectedProvider === "claude" ||
-              selectedProvider === "gemini" ||
-              selectedProvider === "codex"))
-        ) {
-          errorMessage = t("newSessionProviderAuthError", {
-            provider: providerDisplayName,
+        if (pendingFiles.length > 0) {
+          // Two-phase flow: create session first, then upload to real session folder
+          // Step 1: Create the session without sending a message
+          const createRequestSentAtMs = Date.now();
+          const createResult = resolvedProjectId
+            ? await api.createSession(resolvedProjectId, sessionOptions)
+            : await api.createDetachedSession(sessionOptions);
+          const createResponseReceivedAtMs = Date.now();
+          const createTiming = recordServerClockSample({
+            clientRequestStartMs: createRequestSentAtMs,
+            clientResponseEndMs: createResponseReceivedAtMs,
+            serverTimestamp: createResult.serverTimestamp,
           });
-        } else if (err.message.includes("503")) {
-          errorMessage = t("newSessionServerCapacity");
-        } else if (err.message.includes("404")) {
-          errorMessage = t("newSessionProjectNotFound");
-        } else if (
-          err.message.includes("fetch") ||
-          err.message.includes("network")
-        ) {
-          errorMessage = t("newSessionNetworkError");
+          const activeProjectId = createResult.projectId;
+          sessionId = createResult.sessionId;
+          processId = createResult.processId;
+          initialPermissionMode = createResult.permissionMode;
+          initialModeVersion = createResult.modeVersion;
+          resolvedProjectId = activeProjectId;
+          logSessionUiTrace("new-session-created", {
+            sessionId,
+            processId,
+            projectId: resolvedProjectId,
+            thinking,
+            mode: sessionMode,
+            serverTimestamp: createResult.serverTimestamp,
+            requestRttMs: createTiming?.roundTripMs ?? null,
+            estimatedServerOffsetMs: createTiming?.serverOffsetMs ?? null,
+          });
+
+          // Step 2: Materialize staged draft refs, or use the legacy final
+          // session upload fallback for files selected before capability support
+          // was known.
+          uploadedFiles.push(
+            ...(await resolvePendingAttachmentsForSession(
+              activeProjectId,
+              sessionId,
+            )),
+          );
+
+          // Step 3: Send the first message with attachments
+          const queueRequestSentAtMs = Date.now();
+          const queueResult = await api.queueMessage(
+            sessionId,
+            trimmedMessage,
+            sessionMode,
+            uploadedFiles.length > 0 ? uploadedFiles : undefined,
+            undefined, // tempId
+            thinking, // Pass the captured thinking setting to avoid process restart
+            undefined, // deferred
+            clientTimestamp,
+            undefined, // messageMetadata
+            undefined, // serviceTier
+            showThinking,
+          );
+          const queueResponseReceivedAtMs = Date.now();
+          const queueTiming = recordServerClockSample({
+            clientRequestStartMs: queueRequestSentAtMs,
+            clientResponseEndMs: queueResponseReceivedAtMs,
+            serverTimestamp: queueResult.serverTimestamp,
+          });
+          logSessionUiTrace("new-session-queued", {
+            sessionId,
+            processId,
+            projectId: resolvedProjectId,
+            clientTimestamp,
+            serverTimestamp: queueResult.serverTimestamp,
+            uploadWaitMs: queueRequestSentAtMs - actionAtMs,
+            requestRttMs: queueTiming?.roundTripMs ?? null,
+            estimatedServerOffsetMs: queueTiming?.serverOffsetMs ?? null,
+            clientToServerLatencyMs: measureServerLatencyMs(
+              clientTimestamp,
+              queueResult.serverTimestamp,
+            ),
+          });
         } else {
-          errorMessage = err.message;
+          // No files - use single-step flow for efficiency
+          const startRequestSentAtMs = Date.now();
+          const result = resolvedProjectId
+            ? await api.startSession(
+                resolvedProjectId,
+                trimmedMessage,
+                sessionOptions,
+                undefined,
+                clientTimestamp,
+              )
+            : await api.startDetachedSession(
+                trimmedMessage,
+                sessionOptions,
+                undefined,
+                clientTimestamp,
+              );
+          const startResponseReceivedAtMs = Date.now();
+          const startTiming = recordServerClockSample({
+            clientRequestStartMs: startRequestSentAtMs,
+            clientResponseEndMs: startResponseReceivedAtMs,
+            serverTimestamp: result.serverTimestamp,
+          });
+          sessionId = result.sessionId;
+          processId = result.processId;
+          initialPermissionMode = result.permissionMode;
+          initialModeVersion = result.modeVersion;
+          resolvedProjectId = result.projectId;
+          logSessionUiTrace("new-session-started", {
+            sessionId,
+            processId,
+            projectId: resolvedProjectId,
+            thinking,
+            mode: sessionMode,
+            provider: selectedProvider ?? null,
+            model: selectedModel ?? null,
+            clientTimestamp,
+            serverTimestamp: result.serverTimestamp,
+            requestRttMs: startTiming?.roundTripMs ?? null,
+            estimatedServerOffsetMs: startTiming?.serverOffsetMs ?? null,
+            clientToServerLatencyMs: measureServerLatencyMs(
+              clientTimestamp,
+              result.serverTimestamp,
+            ),
+          });
         }
+
+        if (!resolvedProjectId) {
+          throw new Error("Missing project ID for new session");
+        }
+
+        // Clean up preview URLs
+        setPendingFiles([], {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        });
+
+        draftControls.clearDraft();
+        // Pass initial status so SessionPage can connect SSE immediately
+        // without waiting for getSession to complete
+        // Also pass initial message as optimistic title (session name = first message)
+        // Pass model/provider so ProviderBadge can render immediately
+        navigate(
+          `${basePath}/projects/${resolvedProjectId}/sessions/${sessionId}`,
+          {
+            state: createSessionNavigationState({
+              initialStatus: {
+                owner: "self",
+                processId,
+                permissionMode: initialPermissionMode,
+                modeVersion: initialModeVersion,
+                recapAfterSeconds,
+              },
+              initialTitle: trimmedMessage,
+              initialModel: selectedModel ?? undefined,
+              initialProvider: selectedProvider ?? undefined,
+            }),
+          },
+        );
+      } catch (err) {
+        console.error("Failed to start session:", err);
+        draftControls.restoreFromStorage();
+        setIsStarting(false);
+
+        // Show user-visible error message
+        let errorMessage = t("newSessionStartError");
+        if (err instanceof Error) {
+          const providerDisplayName =
+            selectedProviderInfo?.displayName ?? selectedProvider ?? "Provider";
+          const lowerMessage = err.message.toLowerCase();
+          const status = (err as Error & { status?: number }).status;
+
+          // Check for specific error types
+          if (err.message.includes("Queue is full")) {
+            errorMessage = t("newSessionServerBusy");
+          } else if (
+            lowerMessage.includes("invalid authentication credentials") ||
+            lowerMessage.includes("authentication_error") ||
+            lowerMessage.includes("please run /login") ||
+            (status === 401 &&
+              (selectedProvider === "claude" ||
+                selectedProvider === "gemini" ||
+                selectedProvider === "codex"))
+          ) {
+            errorMessage = t("newSessionProviderAuthError", {
+              provider: providerDisplayName,
+            });
+          } else if (err.message.includes("503")) {
+            errorMessage = t("newSessionServerCapacity");
+          } else if (err.message.includes("404")) {
+            errorMessage = t("newSessionProjectNotFound");
+          } else if (
+            err.message.includes("fetch") ||
+            err.message.includes("network")
+          ) {
+            errorMessage = t("newSessionNetworkError");
+          } else {
+            errorMessage = err.message;
+          }
+        }
+        showToast(errorMessage, "error");
       }
-      showToast(errorMessage, "error");
-    }
-  };
+    },
+    [
+      basePath,
+      draftControls,
+      effectiveEffortLevel,
+      effectivePermissionMode,
+      effectiveThinkingMode,
+      helperSideModel,
+      isStarting,
+      message,
+      navigate,
+      pendingFiles,
+      projectInput,
+      recapAfterSeconds,
+      resolvePendingAttachmentsForSession,
+      resolveProjectIdForSubmission,
+      selectedExecutor,
+      selectedModel,
+      selectedPromptSuggestionMode,
+      selectedProvider,
+      selectedProviderInfo,
+      selectedRecapMode,
+      setPendingFiles,
+      showToast,
+      t,
+    ],
+  );
 
   const handleQueueProjectSession = async (messageOverride?: unknown) => {
     const override =

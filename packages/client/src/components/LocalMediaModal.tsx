@@ -755,6 +755,7 @@ export function useLocalMediaInlinePreviews(
   const { inlineMediaExpandedByDefault } = useInlineMedia();
 
   useEffect(() => {
+    void refreshKey;
     const root = rootRef.current;
     if (!root) return;
     const objectUrls = new Set<string>();

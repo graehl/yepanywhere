@@ -106,6 +106,7 @@ export function useGitStatus(projectId: string | undefined) {
   }, []);
 
   useEffect(() => {
+    void sourceKey;
     setError(null);
     setLoading(Boolean(projectId) && gitStatus === null);
   }, [gitStatus, projectId, sourceKey]);

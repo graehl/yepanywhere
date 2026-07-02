@@ -509,6 +509,7 @@ export function RestartSessionModal({
     selectedProviderInfo,
     settings,
     settingsLoading,
+    selectedProvider,
   ]);
 
   useEffect(() => {

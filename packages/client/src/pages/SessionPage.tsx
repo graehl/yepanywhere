@@ -874,6 +874,9 @@ function SessionPageContent({
     setSessionLoadingProgressDetailsVisible,
   ] = useState(false);
   useEffect(() => {
+    void clientTailParams;
+    void projectId;
+    void sessionId;
     setSessionLoadingProgressDetailsVisible(false);
     if (!sessionLoadingProgressEnabled) {
       return;
@@ -1998,6 +2001,7 @@ function SessionPageContent({
 
   // Reset local metadata state when sessionId changes
   useEffect(() => {
+    void sessionId;
     setLocalCustomTitle(undefined);
     setLocalIsArchived(undefined);
     setLocalIsStarred(undefined);
@@ -2172,6 +2176,7 @@ function SessionPageContent({
   ]);
 
   useEffect(() => {
+    void sessionId;
     setCorrectionDraft(null);
     setComposerAttachments([], {
       persistDraft: false,
@@ -2640,6 +2645,8 @@ function SessionPageContent({
       }
     }
   };
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
 
   const handleQueue = async (
     text: string,
@@ -3102,6 +3109,7 @@ function SessionPageContent({
       currentOwnedProcessId,
       status.owner,
       t,
+      setStatus,
     ],
   );
 
@@ -3139,7 +3147,14 @@ function SessionPageContent({
         );
       }
     },
-    [currentOwnedProcessId, reconnectStream, showToast, status.owner, t],
+    [
+      currentOwnedProcessId,
+      reconnectStream,
+      showToast,
+      status.owner,
+      t,
+      setStatus,
+    ],
   );
 
   const handleSetLiveThinkingMode = useCallback(
@@ -3529,7 +3544,7 @@ function SessionPageContent({
   const handleFocusedBtwSend = useCallback(
     (text: string) => {
       if (!focusedBtwAside) {
-        void handleSend(text);
+        void handleSendRef.current(text);
         return;
       }
       void runBtwAsideTurn(
@@ -3538,7 +3553,7 @@ function SessionPageContent({
         focusedBtwAside.status === "draft" && !focusedBtwAside.sessionId,
       );
     },
-    [focusedBtwAside, handleSend, runBtwAsideTurn],
+    [focusedBtwAside, runBtwAsideTurn],
   );
 
   const hideBtwAside = useCallback(
@@ -3565,6 +3580,7 @@ function SessionPageContent({
   // Also drop the in-pane composer draft so a stale half-typed turn does not
   // resurface under a different aside.
   useEffect(() => {
+    void focusedBtwAsideId;
     setBtwSidePaneCollapsed(false);
     setAsideDraft("");
   }, [focusedBtwAsideId]);
@@ -3821,6 +3837,7 @@ function SessionPageContent({
   }, [flushPendingMotherComposerTransfer]);
 
   useEffect(() => {
+    void sessionDraftKey;
     void hydrateDraftAttachments();
   }, [hydrateDraftAttachments, sessionDraftKey]);
 
@@ -4549,6 +4566,8 @@ function SessionPageContent({
     setTitleEditMode("manual");
     setRenameValue("");
   };
+  const handleCancelEditingTitleRef = useRef(handleCancelEditingTitle);
+  handleCancelEditingTitleRef.current = handleCancelEditingTitle;
 
   // On blur, save if value changed (handles mobile keyboard dismiss on Enter)
   const handleTitleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -4616,11 +4635,11 @@ function SessionPageContent({
     const handleWindowKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      handleCancelEditingTitle();
+      handleCancelEditingTitleRef.current();
     };
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [isDomLingerParked, isEditingTitle, handleCancelEditingTitle]);
+  }, [isDomLingerParked, isEditingTitle]);
 
   const handleToggleArchive = async () => {
     const newArchived = !isArchived;

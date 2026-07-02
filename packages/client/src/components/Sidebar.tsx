@@ -425,11 +425,7 @@ export function Sidebar({
     void maybeLoadMoreGlobalSessions();
     void maybeLoadMoreStarredSessions();
   }, [maybeLoadMoreGlobalSessions, maybeLoadMoreStarredSessions]);
-
-  useEffect(() => {
-    maybeLoadMoreSidebarSessions();
-  }, [
-    maybeLoadMoreSidebarSessions,
+  const sidebarLoadMoreKey = [
     starredSessionRecords.length,
     recentSessionRecords.length,
     olderSessionRecords.length,
@@ -437,7 +433,12 @@ export function Sidebar({
     starredExpanded,
     recentDayExpanded,
     olderExpanded,
-  ]);
+  ].join("\0");
+
+  useEffect(() => {
+    void sidebarLoadMoreKey;
+    maybeLoadMoreSidebarSessions();
+  }, [maybeLoadMoreSidebarSessions, sidebarLoadMoreKey]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? null;

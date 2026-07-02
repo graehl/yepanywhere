@@ -169,6 +169,7 @@ export function GitStatusPage() {
   useDocumentTitle(project?.name, t("gitStatusTitle"));
 
   useLayoutEffect(() => {
+    void gitStatus?.files.length;
     const scrollTop = retainedRouteState?.pageScrollTop;
     if (typeof scrollTop !== "number" || !pageScrollRef.current) {
       return;
@@ -402,6 +403,7 @@ function GitStatusContent({
   }, [routeRetentionKey, statusRevision]);
 
   useEffect(() => {
+    void projectId;
     setRemoteCheckResult(null);
     setRemoteCheckError(null);
     setIsCheckingRemote(false);

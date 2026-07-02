@@ -207,11 +207,17 @@ export const TextBlock = memo(function TextBlock({
   // Always render streaming container when isStreaming so refs are attached
   // before first augment arrives. Hidden until useStreamingContent becomes true.
   const renderStreamingContainer = isStreaming;
+  const paragraphLayoutKey = [
+    showRendered,
+    text,
+    augmentHtml ?? "",
+  ].join("\0");
 
   // Measure each rendered top-level block so a per-paragraph quote circle can
   // sit at its end. Skipped while streaming (paragraph boundaries are still
   // moving); re-measured on reflow via ResizeObserver.
   useEffect(() => {
+    void paragraphLayoutKey;
     const content = copySourceRef.current;
     const block = textBlockRef.current;
     if (!onQuoteBlock || !content || !block || showStreamingContent) {
@@ -241,7 +247,7 @@ export const TextBlock = memo(function TextBlock({
     const observer = new ResizeObserver(measure);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [onQuoteBlock, showStreamingContent, showRendered, text, augmentHtml]);
+  }, [onQuoteBlock, paragraphLayoutKey, showStreamingContent]);
 
   return (
     <div

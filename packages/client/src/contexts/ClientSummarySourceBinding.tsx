@@ -92,18 +92,21 @@ export function resolveClientSummarySourceKey(options: {
 export function ClientSummarySourceBinding(): null {
   const remote = useOptionalRemoteConnection();
   const location = useLocation();
+  const hasRemote = remote !== null;
+  const currentDirectUrl = remote?.currentDirectUrl ?? null;
+  const currentHostId = remote?.currentHostId ?? null;
   const sourceKey = useMemo(
     () =>
       resolveClientSummarySourceKey({
         pathname: location.pathname,
-        remote: remote
+        remote: hasRemote
           ? {
-              currentDirectUrl: remote.currentDirectUrl,
-              currentHostId: remote.currentHostId,
+              currentDirectUrl,
+              currentHostId,
             }
           : null,
       }),
-    [location.pathname, remote?.currentDirectUrl, remote?.currentHostId],
+    [currentDirectUrl, currentHostId, hasRemote, location.pathname],
   );
 
   if (getCurrentClientSummarySourceKey() !== sourceKey) {

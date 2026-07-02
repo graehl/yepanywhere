@@ -66,7 +66,10 @@ function saveToStorage(
   }
 
   try {
-    const nextValue = draftStorageValueForText(value, localStorage.getItem(key));
+    const nextValue = draftStorageValueForText(
+      value,
+      localStorage.getItem(key),
+    );
     if (nextValue) {
       localStorage.setItem(key, nextValue);
     } else {
@@ -172,10 +175,23 @@ export function useDraftPersistence(
   options?: UseDraftPersistenceOptions,
 ): [string, (value: string) => void, DraftControls] {
   const [value, setValueInternal] = useState(() => readStorageText(key));
+  const preserveValueOnKeyChange = options?.preserveValueOnKeyChange ?? false;
+  const sessionDraftSourceKey = options?.sessionDraft?.sourceKey;
+  const sessionDraftSessionId = options?.sessionDraft?.sessionId;
+  const sessionDraft = useMemo(
+    () =>
+      sessionDraftSourceKey !== undefined && sessionDraftSessionId !== undefined
+        ? {
+            sourceKey: sessionDraftSourceKey,
+            sessionId: sessionDraftSessionId,
+          }
+        : undefined,
+    [sessionDraftSessionId, sessionDraftSourceKey],
+  );
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyRef = useRef(key);
-  const sessionDraftRef = useRef(options?.sessionDraft);
+  const sessionDraftRef = useRef(sessionDraft);
   // Track pending value so we can flush on unmount/beforeunload
   const pendingValueRef = useRef<string | null>(null);
   const valueRef = useRef(value);
@@ -191,8 +207,8 @@ export function useDraftPersistence(
     const previousValue = pendingValueRef.current ?? valueRef.current;
     const keyChanged = previousKey !== key;
     const sessionDraftChanged =
-      previousSessionDraft?.sourceKey !== options?.sessionDraft?.sourceKey ||
-      previousSessionDraft?.sessionId !== options?.sessionDraft?.sessionId;
+      previousSessionDraft?.sourceKey !== sessionDraft?.sourceKey ||
+      previousSessionDraft?.sessionId !== sessionDraft?.sessionId;
 
     if (
       (keyChanged || sessionDraftChanged) &&
@@ -206,17 +222,17 @@ export function useDraftPersistence(
     }
 
     keyRef.current = key;
-    sessionDraftRef.current = options?.sessionDraft;
+    sessionDraftRef.current = sessionDraft;
 
     try {
       const hasStoredDraft = hasStorageDraftContent(key);
       if (
         (keyChanged || sessionDraftChanged) &&
-        options?.preserveValueOnKeyChange &&
+        preserveValueOnKeyChange &&
         previousValue &&
         !hasStoredDraft
       ) {
-        saveToStorage(key, previousValue, options.sessionDraft);
+        saveToStorage(key, previousValue, sessionDraft);
         valueRef.current = previousValue;
         setValueInternal(previousValue);
         return;
@@ -228,12 +244,7 @@ export function useDraftPersistence(
       valueRef.current = "";
       setValueInternal("");
     }
-  }, [
-    key,
-    options?.preserveValueOnKeyChange,
-    options?.sessionDraft?.sourceKey,
-    options?.sessionDraft?.sessionId,
-  ]);
+  }, [key, preserveValueOnKeyChange, sessionDraft]);
 
   // Flush pending value to localStorage
   const flushPending = useCallback(() => {

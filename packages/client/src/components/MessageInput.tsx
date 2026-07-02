@@ -616,10 +616,12 @@ export function MessageInput({
         ]
       : speechRangeTags;
   const speechMirrorSegments = getSpeechMirrorSegments(text, speechPendingTags);
+  const slashSelectionResetKey = `${slashQuery}\0${matchingSlashCommands.length}`;
 
   useEffect(() => {
+    void slashSelectionResetKey;
     setSelectedSlashIndex(0);
-  }, [slashQuery, matchingSlashCommands.length]);
+  }, [slashSelectionResetKey]);
 
   const basePrimaryActionKind =
     primaryActionKind ??
@@ -914,7 +916,14 @@ export function MessageInput({
   useLayoutEffect(() => {
     const pending = pendingTextareaSelectionRef.current;
     const textarea = textareaRef.current;
-    if (!pending || !textarea || textarea.value !== pending.value) return;
+    if (
+      !pending ||
+      !textarea ||
+      text !== pending.value ||
+      textarea.value !== pending.value
+    ) {
+      return;
+    }
     pendingTextareaSelectionRef.current = null;
     pending.restore(textarea);
   }, [text]);
@@ -936,6 +945,7 @@ export function MessageInput({
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
+    void text;
 
     resizeComposerTextarea(textarea, collapsed);
 

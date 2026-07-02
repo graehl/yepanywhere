@@ -389,6 +389,9 @@ export const FileViewer = memo(function FileViewer({
     showPreview ? renderedMarkdownHtml : null,
     mediaSource,
   );
+  const highlightRenderKey = showPreview
+    ? renderedMarkdownHtml
+    : highlightedHtml;
 
   useEffect(() => {
     let cancelled = false;
@@ -469,7 +472,7 @@ export const FileViewer = memo(function FileViewer({
 
   // Scroll to highlighted line when it's rendered
   useEffect(() => {
-    if (lineNumber === undefined) {
+    if (lineNumber === undefined || !highlightRenderKey) {
       return;
     }
     const highlightedLine =
@@ -486,7 +489,7 @@ export const FileViewer = memo(function FileViewer({
         );
       });
     }
-  }, [fileData, highlightedLineRef, lineEnd, lineNumber, showPreview]);
+  }, [highlightRenderKey, highlightedLineRef, lineNumber]);
 
   const handleCopy = useCallback(async () => {
     if (fileData?.content === undefined) return;

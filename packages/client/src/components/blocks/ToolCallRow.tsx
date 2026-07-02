@@ -516,7 +516,6 @@ export const ToolCallRow = memo(function ToolCallRow({
       interactiveSummaryContext,
     );
   }, [
-    status,
     toolName,
     toolInput,
     structuredResult,
@@ -655,6 +654,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
 
   useEffect(() => {
+    void headerCommand;
     setBashCommandExpanded(false);
   }, [headerCommand]);
 

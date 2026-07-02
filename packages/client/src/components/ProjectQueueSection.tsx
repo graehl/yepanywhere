@@ -330,6 +330,9 @@ export function ProjectQueueSection({
   const recoveredCount = recoveredSessionQueues.length;
   const hasProjectQueueItems = items.length > 0;
   const hasContent = hasProjectQueueItems || recoveredCount > 0;
+  const highlightedItemIndex = highlightedItemId
+    ? items.findIndex((item) => item.id === highlightedItemId)
+    : -1;
   const pausedState =
     dispatchState.status === "paused" ? dispatchState : undefined;
   const description = pausedState
@@ -346,12 +349,12 @@ export function ProjectQueueSection({
   }, [editingItemId, items]);
 
   useEffect(() => {
-    if (!highlightedItemId) return;
+    if (!highlightedItemId || highlightedItemIndex < 0) return;
     highlightedItemRef.current?.scrollIntoView?.({
       block: "center",
       behavior: "smooth",
     });
-  }, [highlightedItemId, items]);
+  }, [highlightedItemId, highlightedItemIndex]);
 
   useEffect(() => {
     if (!hasProjectQueueItems) return;

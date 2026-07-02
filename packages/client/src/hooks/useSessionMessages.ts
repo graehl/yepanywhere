@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { type DeferredQueueMessage, type PaginationInfo, api } from "../api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type DeferredQueueMessage,
+  type PaginationInfo,
+  api,
+} from "../api/client";
 import {
   getMessageTimestampMs,
   hasEquivalentJsonlMessage,
@@ -328,13 +332,16 @@ export function useSessionMessages(
     onLoadError,
   } = options;
   const sourceKey = useClientSummarySourceKey();
-  const snapshotKey: SessionRouteSnapshotKeyInput = {
-    sourceKey,
-    projectId,
-    sessionId,
-    tailTurns,
-    tailFrom,
-  };
+  const snapshotKey: SessionRouteSnapshotKeyInput = useMemo(
+    () => ({
+      sourceKey,
+      projectId,
+      sessionId,
+      tailTurns,
+      tailFrom,
+    }),
+    [projectId, sessionId, sourceKey, tailFrom, tailTurns],
+  );
   const snapshotKeyString = getSessionRouteSnapshotKey(snapshotKey);
   const cachedLoadRef = useRef<{
     key: string;
@@ -1161,7 +1168,7 @@ export function useSessionMessages(
         };
       }
     },
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey],
   );
 
   // Fetch session metadata only

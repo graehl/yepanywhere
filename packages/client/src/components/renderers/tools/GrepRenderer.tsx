@@ -601,12 +601,14 @@ function GrepSummaryPattern({
 }) {
   const summary = getGrepUseSummary(input, projectPath);
   const scope = getGrepScope(input, projectPath);
+  const scopeValue = scope?.value ?? "";
   const rowRef = useRef<HTMLSpanElement | null>(null);
   const scopeRef = useRef<HTMLSpanElement | null>(null);
   const measureRef = useRef<HTMLSpanElement | null>(null);
   const [displayPattern, setDisplayPattern] = useState(input.pattern);
 
   useLayoutEffect(() => {
+    void scopeValue;
     const updateDisplayPattern = () => {
       if (expanded) {
         setDisplayPattern(input.pattern);
@@ -660,7 +662,7 @@ function GrepSummaryPattern({
       resizeObserver.observe(scopeRef.current);
     }
     return () => resizeObserver.disconnect();
-  }, [expanded, input.pattern, projectPath, scope?.value]);
+  }, [expanded, input.pattern, scopeValue]);
 
   const clipClassName = `grep-summary-pattern-clip${onToggle ? " grep-summary-pattern-action" : ""}`;
   const clipContent = onToggle ? (

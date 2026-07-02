@@ -98,7 +98,11 @@ export function BtwAsideTranscript({
     : "";
 
   useEffect(() => {
-    if (!autoScrollLatest || !latestAssistantTurnRef.current) {
+    if (
+      !autoScrollLatest ||
+      !latestAssistantSignature ||
+      !latestAssistantTurnRef.current
+    ) {
       return;
     }
     latestAssistantTurnRef.current.scrollIntoView?.({

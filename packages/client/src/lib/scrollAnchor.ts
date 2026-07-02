@@ -40,6 +40,7 @@ export function useScrollPreservingToggle(
   // Runs synchronously after React commits the DOM — before the browser paints.
   // Corrects scrollTop so the button stays at the same viewport position.
   useLayoutEffect(() => {
+    void isToggled;
     const state = pendingRef.current;
     if (!state) return;
     pendingRef.current = null;

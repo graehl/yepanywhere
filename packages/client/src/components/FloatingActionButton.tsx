@@ -182,7 +182,14 @@ export function FloatingActionButton() {
   useLayoutEffect(() => {
     const pending = pendingTextareaSelectionRef.current;
     const textarea = textareaRef.current;
-    if (!pending || !textarea || textarea.value !== pending.value) return;
+    if (
+      !pending ||
+      !textarea ||
+      message !== pending.value ||
+      textarea.value !== pending.value
+    ) {
+      return;
+    }
     pendingTextareaSelectionRef.current = null;
     pending.restore(textarea);
   }, [message]);
@@ -226,7 +233,14 @@ export function FloatingActionButton() {
 
       navigate(`${basePath}/new-session`);
     },
-    [message, projectIdFromUrl, navigate, draftControls, basePath],
+    [
+      message,
+      projectIdFromUrl,
+      navigate,
+      draftControls,
+      basePath,
+      clientSummarySourceKey,
+    ],
   );
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {

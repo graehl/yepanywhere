@@ -41,9 +41,10 @@ export function useSessionStatuses(
   // re-running and potentially missing events during the brief unsubscribe/
   // resubscribe window (especially with WebSocket transport where events
   // arrive quickly on a single connection).
+  const sessionIdsKey = sessionIds.slice().sort().join("\0");
   const sessionIdSet = useMemo(
-    () => new Set(sessionIds),
-    [sessionIds.slice().sort().join(",")],
+    () => new Set(sessionIdsKey ? sessionIdsKey.split("\0") : []),
+    [sessionIdsKey],
   );
 
   // Keep a ref to the current sessionIdSet for use in event handlers

@@ -27,6 +27,7 @@ interface UseRenderModeToggleOptions {
 }
 
 const RenderModeContext = createContext<RenderModeContextValue | null>(null);
+const EMPTY_RESET_DEPENDENCIES: readonly unknown[] = [];
 
 export function RenderModeProvider({ children }: { children: ReactNode }) {
   const [globalMode, setGlobalMode] = useState<RenderMode>("rendered");
@@ -117,11 +118,14 @@ export function useRenderModeToggle(
   const resetVersion =
     participateInGlobalMode && context ? context.resetVersion : 0;
   const renderWhenDisabled = options.renderWhenDisabled ?? true;
-  const resetDependencies = options.resetDependencies ?? [];
+  const resetDependencies =
+    options.resetDependencies ?? EMPTY_RESET_DEPENDENCIES;
   const registrationId = useId();
   const [overrideMode, setOverrideMode] = useState<RenderMode | null>(null);
 
   useEffect(() => {
+    void canToggle;
+    void resetVersion;
     setOverrideMode(null);
   }, [canToggle, resetVersion, ...resetDependencies]);
 

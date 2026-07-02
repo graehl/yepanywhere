@@ -69,7 +69,7 @@
       },
       "correctness": {
         "noInvalidUseBeforeDeclaration": "warn",
-        "useExhaustiveDependencies": "off"
+        "useExhaustiveDependencies": "warn"
       },
       "complexity": {
         "noImportantStyles": "off"

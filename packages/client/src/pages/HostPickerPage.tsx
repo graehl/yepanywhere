@@ -52,30 +52,6 @@ export function HostPickerPage() {
     setHosts(data.hosts);
   }, []);
 
-  // Check status for relay hosts
-  useEffect(() => {
-    const relayHosts = hosts.filter((h) => h.mode === "relay");
-    if (relayHosts.length === 0) return;
-
-    // Mark all as checking
-    setHostStatuses((prev) => {
-      const next = { ...prev };
-      for (const host of relayHosts) {
-        if (!next[host.id]) {
-          next[host.id] = "checking";
-        }
-      }
-      return next;
-    });
-
-    // Check each relay host status
-    for (const host of relayHosts) {
-      checkRelayHostStatus(host).then((status) => {
-        setHostStatuses((prev) => ({ ...prev, [host.id]: status }));
-      });
-    }
-  }, [hosts]);
-
   // Check if a relay host's server is online via the relay's HTTP API
   const checkRelayHostStatus = useCallback(
     async (host: SavedHost): Promise<HostStatus> => {
@@ -99,6 +75,30 @@ export function HostPickerPage() {
     },
     [],
   );
+
+  // Check status for relay hosts
+  useEffect(() => {
+    const relayHosts = hosts.filter((h) => h.mode === "relay");
+    if (relayHosts.length === 0) return;
+
+    // Mark all as checking
+    setHostStatuses((prev) => {
+      const next = { ...prev };
+      for (const host of relayHosts) {
+        if (!next[host.id]) {
+          next[host.id] = "checking";
+        }
+      }
+      return next;
+    });
+
+    // Check each relay host status
+    for (const host of relayHosts) {
+      checkRelayHostStatus(host).then((status) => {
+        setHostStatuses((prev) => ({ ...prev, [host.id]: status }));
+      });
+    }
+  }, [checkRelayHostStatus, hosts]);
 
   // Connect to a saved host
   const handleConnectHost = useCallback(

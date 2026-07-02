@@ -644,6 +644,7 @@ export function useSession(
 
   // Reset when switching sessions; the server's connected event repopulates it.
   useEffect(() => {
+    void sessionId;
     setDeferredMessages([]);
   }, [sessionId]);
 
@@ -711,6 +712,7 @@ export function useSession(
 
   // Reset connected-event tracking when switching sessions.
   useEffect(() => {
+    void sessionId;
     hasHandledConnectedEventRef.current = false;
     setSessionLiveness(null);
   }, [sessionId]);
@@ -952,12 +954,14 @@ export function useSession(
   }, [isCompacting, messages, setIsCompacting, status.owner]);
 
   useEffect(() => {
+    void sessionId;
     setIsCompacting(false);
   }, [sessionId, setIsCompacting]);
 
   const nextClientOrderRef = useRef(0);
 
   useEffect(() => {
+    void sessionId;
     nextClientOrderRef.current = 0;
   }, [sessionId]);
 
@@ -1290,7 +1294,7 @@ export function useSession(
         );
       }
     },
-    [sessionId, setSession, setStatus],
+    [sessionId, setSession],
   );
 
   // Listen for session status changes via stream
@@ -1970,14 +1974,15 @@ export function useSession(
       sessionId,
       handleStreamEvent,
       noteStreamActivity,
+      noteStreamProgressLiveness,
       clearStreaming,
       removePendingMessage,
-      setDeferredMessages,
       streamingMarkdownCallbacks,
       handleStreamMessageEvent,
       handleStreamSubagentMessage,
       registerToolUseAgent,
       setAgentContent,
+      setIsCompacting,
       setMessages,
       setSession,
       fetchNewMessages,

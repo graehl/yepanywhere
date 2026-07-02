@@ -236,6 +236,7 @@ export function InboxProvider({
   const latestAcceptedRequestStartedAtRef = useRef(0);
 
   useEffect(() => {
+    void sourceKey;
     tierOrderRef.current = createEmptyTierOrder();
     hasInitialLoadRef.current = false;
     setHasInitialLoad(false);

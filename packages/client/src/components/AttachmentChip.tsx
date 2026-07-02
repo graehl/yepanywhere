@@ -1,5 +1,5 @@
 import { planThumbnail, toUrlProjectId } from "@yep-anywhere/shared";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRemoteImage } from "../hooks/useRemoteImage";
 import { loadCachedAttachmentPreview } from "../lib/attachmentPreviewCache";
@@ -276,15 +276,15 @@ function ImageAttachmentChip({
     previewUrl,
   );
 
-  const clearHoverTimer = () => {
+  const clearHoverTimer = useCallback(() => {
     if (hoverTimerRef.current !== null) {
       window.clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
-  };
+  }, []);
 
   // Cancel a pending linger timer if the chip unmounts mid-hover.
-  useEffect(() => clearHoverTimer, []);
+  useEffect(() => clearHoverTimer, [clearHoverTimer]);
 
   const handleHoverStart = () => {
     clearHoverTimer();

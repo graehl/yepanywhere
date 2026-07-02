@@ -88,7 +88,7 @@ export function SessionShareModal({
         clearTimeout(timer);
       }
     };
-  }, [onStatusChange, projectId, sessionId]);
+  }, [projectId, sessionId]);
 
   const createAndCopyShare = async (mode: PublicSessionShareMode) => {
     setIsWorking(mode);

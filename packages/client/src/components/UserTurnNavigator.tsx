@@ -765,7 +765,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
       anchorsRef.current = [];
       setLayout(null);
     }
-  }, [resolveAnchors, scheduleLayoutUpdate, shouldMeasure]);
+  }, [scheduleLayoutUpdate, shouldMeasure]);
 
   useEffect(() => {
     const messageList = messageListRef.current;
@@ -1000,11 +1000,11 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     onPreviewTimestampChange?.(null);
   }, [onPreviewTimestampChange]);
 
+  const searchActiveId = searchState?.activeId ?? null;
   useEffect(() => {
-    setPreviewId(null);
-    setPreviewWindowAnchorId(null);
-    onPreviewTimestampChange?.(null);
-  }, [onPreviewTimestampChange, searchState?.activeId]);
+    void searchActiveId;
+    clearPreview();
+  }, [clearPreview, searchActiveId]);
 
   useEffect(() => {
     if (!layout) {

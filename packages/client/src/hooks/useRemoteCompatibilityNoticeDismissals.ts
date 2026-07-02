@@ -111,6 +111,7 @@ export function useRemoteCompatibilityNoticeDismissals(
   }, [keys]);
 
   useEffect(() => {
+    void snoozed;
     const nextExpiry = getNextSnoozeExpiry(keys);
     if (nextExpiry === null) return;
     const delay = Math.max(0, nextExpiry - Date.now());

@@ -214,7 +214,6 @@ export function QuestionAnswerPanel({
   }, [
     submitting,
     currentQuestionAnswered,
-    currentQuestion,
     isLastQuestion,
     allAnswered,
     isOtherSelected,

@@ -81,10 +81,19 @@ export function SessionHoverCard({
 }: SessionHoverCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
+  const contentMeasurementKey = [
+    prompt,
+    lastAgentText ?? "",
+    model ?? "",
+    projectName ?? "",
+    ageLabel,
+    status,
+  ].join("\0");
 
   // Measure the unclamped content (rendered hidden), then choose a placement
   // before paint. useLayoutEffect runs synchronously pre-paint, so no flicker.
   useLayoutEffect(() => {
+    void contentMeasurementKey;
     const el = ref.current;
     if (!el) return;
     const { rowTop, rowBottom, cursorX } = anchor;
@@ -121,16 +130,7 @@ export function SessionHoverCard({
       window.innerWidth - width - MARGIN_PX,
     );
     setPlacement({ top: Math.max(MARGIN_PX, top), left, maxHeight, loosened });
-  }, [
-    anchor,
-    prompt,
-    lastAgentText,
-    model,
-    projectName,
-    ageLabel,
-    status,
-    maxHeightPx,
-  ]);
+  }, [anchor, contentMeasurementKey, maxHeightPx]);
 
   const maxLines = placement
     ? estimateHoverCardPromptLines(placement.maxHeight, !!lastAgentText)

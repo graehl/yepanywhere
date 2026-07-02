@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { useSessionToolbarPriority } from "../hooks/useSessionToolbarPriority";
 import {
@@ -247,14 +248,26 @@ export function SessionToolbarPreview() {
  * the rest of the toolbar stays empty.
  */
 export function ToolbarControlPreview({
+  activationLabel,
   controlKey,
+  onActivate,
 }: {
+  activationLabel?: string;
   controlKey: SessionToolbarVisibilityKey;
+  onActivate?: () => void;
 }) {
   const { t } = useI18n();
   const previewNowMs = useMemo(() => Date.now(), []);
   const controls = usePreviewToolbarControls(previewNowMs);
   const inertRef = useInertPreviewRef();
+  const actionContextSend: NonNullable<
+    MessageInputToolbarViewProps["actionsControl"]["send"]
+  > = {
+    ...controls.send,
+    alternate: undefined,
+    onSend: undefined,
+    queue: undefined,
+  };
 
   const actionsControl: MessageInputToolbarViewProps["actionsControl"] =
     controlKey === "contextUsage"
@@ -262,15 +275,28 @@ export function ToolbarControlPreview({
       : controlKey === "btw"
         ? { btw: controls.btw }
         : controlKey === "projectQueue"
-          ? { projectQueue: controls.projectQueue }
+          ? { projectQueue: controls.projectQueue, send: actionContextSend }
           : controlKey === "steerNow"
-            ? { send: controls.send }
+            ? { send: actionContextSend }
             : {};
+  const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!onActivate) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onActivate();
+  };
 
   return (
     <div
-      className="toolbar-control-preview session-toolbar-preview"
-      aria-hidden="true"
+      className={`toolbar-control-preview session-toolbar-preview${
+        onActivate ? " is-interactive" : ""
+      }`}
+      aria-hidden={onActivate ? undefined : true}
+      aria-label={activationLabel}
+      onClick={onActivate}
+      onKeyDown={handlePreviewKeyDown}
+      role={onActivate ? "button" : undefined}
+      tabIndex={onActivate ? 0 : undefined}
     >
       <div ref={inertRef} className="session-toolbar-preview-content">
         <MessageInputToolbarView

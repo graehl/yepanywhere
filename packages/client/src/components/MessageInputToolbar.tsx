@@ -934,6 +934,8 @@ export function MessageInputToolbarView({
     actionsControl.send?.showSteerNowMode &&
     actionsControl.send.onToggleSteerNow
   );
+  const showActionsControl =
+    showProjectQueueButton || showSendButton || canToggleSteerNow;
   const renderStatusAges = (
     className: string,
     ref?: RefObject<HTMLDivElement | null>,
@@ -2017,7 +2019,7 @@ export function MessageInputToolbarView({
             <span className="stop-icon" />
           </button>
         )}
-        {(showProjectQueueButton || showSendButton) && actionsControl.send ? (
+        {showActionsControl && actionsControl.send ? (
           <>
             {renderSteerNowToggle(
               inlineTierClass("steerNow", "steer-now-toggle"),

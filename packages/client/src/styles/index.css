@@ -10009,6 +10009,7 @@ a.sidebar-nav-item {
 
 .session-toolbar-control-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   box-sizing: border-box;
@@ -10100,6 +10101,30 @@ a.sidebar-nav-item {
   outline: none;
 }
 
+.session-toolbar-hide-button.is-show-action {
+  width: auto;
+  min-width: 42px;
+  padding: 0 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.session-toolbar-hide-button.is-show-action:hover,
+.session-toolbar-hide-button.is-show-action:focus-visible {
+  border-color: var(--focus-border);
+  color: var(--focus-border);
+}
+
+.session-toolbar-control-menu {
+  display: inline-flex;
+  flex: 1 0 100%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
 /* Single-control specimen used inside each settings row. */
 .toolbar-control-preview {
   display: inline-flex;
@@ -10109,6 +10134,20 @@ a.sidebar-nav-item {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
+}
+
+.toolbar-control-preview.is-interactive {
+  cursor: pointer;
+}
+
+.toolbar-control-preview.is-interactive:hover,
+.toolbar-control-preview.is-interactive:focus-visible {
+  border-color: var(--focus-border);
+  outline: none;
+}
+
+.toolbar-control-preview.is-interactive .session-toolbar-preview-content {
+  pointer-events: none;
 }
 
 .toolbar-control-preview .session-toolbar-preview-content {

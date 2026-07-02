@@ -35,10 +35,11 @@ The pane is three stacked pieces, top to bottom:
    control lives on; either group may be empty and shows "None hidden"). The two
    groups render as **two columns when there is room** and stack to one when
    narrow (`grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))`). Each
-   row is a specimen preview + copy + an on-slider. Hidden-first is deliberate:
-   off controls are the ones a user is hunting for to re-enable, and putting
-   them up top makes them scannable even though the live preview already locates
-   the *visible* ones.
+   row uses the same control-row style as Shown: specimen preview, copy,
+   priority choices for overflow-supported controls, and a compact command to
+   show the control. Hidden-first is deliberate: off controls are the ones a
+   user is hunting for to re-enable, and putting them up top makes them
+   scannable even though the live preview already locates the *visible* ones.
 3. A thin **separator**, then the **Shown zone** — visible controls in
    left-to-right toolbar order, one column that matches a single Hidden-zone
    column once that width can fit the shown-row controls, otherwise using the
@@ -47,9 +48,25 @@ The pane is three stacked pieces, top to bottom:
    engine can actually move also show a **narrowing-priority radio**.
 
 Both zones show a **per-row specimen** (`ToolbarControlPreview`) so a row is
-identified by the actual element, not just text. That specimen is somewhat
-redundant with the top preview by design — recognizing a control should not
-require cross-referencing.
+identified by the actual element, not just text. The specimen is also an
+activation surface for the row's editing menu/popover: pointer and keyboard
+activation on the specimen must reach the same Off/priority controls as the
+row's explicit controls. The specimen is somewhat redundant with the top preview
+by design — recognizing a control should not require cross-referencing.
+
+Row placement is stable during one visit to the pane. Hidden vs Shown section
+membership is anchored to the visibility snapshot from pane entry, not recomputed
+from each click. A Show/Hide click updates the real toolbar preview, persists
+the setting, and changes the row's in-place command/state, but the row does not
+jump to the other section until the user reloads, re-enters the settings pane, or
+otherwise accepts a fresh saved baseline. Undo returns both the real toolbar
+state and the row's in-place controls to the pane-entry snapshot.
+
+Action-dependent specimens may provide invisible support context that the real
+toolbar requires to construct the control, but the visible specimen remains
+single-control: the `Project Queue` row shows only the project-queue button,
+the `Now` row shows only the steering toggle, and neither row should leak the
+primary send button or disappear because an adjacent send context was omitted.
 
 ## Narrowing-priority model
 
@@ -78,10 +95,14 @@ elastic capture feedback rather than a fixed-width collapsible control.
 
 ## Edit surfaces & persistence
 
-- **Shown-zone priority radio** — sets `useSessionToolbarPriority.setControlPriority`
-  for controls that currently collapse into the runtime overflow menu.
-- **× Hide / on-slider** — `useSessionToolbarVisibility.setControlVisible`,
-  moving the row between the Shown and Hidden zones.
+- **Priority choices** — shown for every overflow-supported control in both
+  Hidden and Shown rows; sets
+  `useSessionToolbarPriority.setControlPriority`.
+- **Show / Hide command** — sets `useSessionToolbarVisibility.setControlVisible`,
+  updating the live toolbar and the row's in-place state without immediately
+  moving the row between Hidden and Shown.
+- **Specimen activation** — opens or focuses the row's Off/priority editing
+  surface for that control; it must not be a dead visual-only affordance.
 - **Header undo / Reset** — snapshot restore covers both maps; Reset clears both.
 
 Both settings persist to **localStorage** and sync to server
@@ -89,10 +110,10 @@ Both settings persist to **localStorage** and sync to server
 (server parse/merge in `packages/server/src/routes/settings.ts`), mirroring each
 other exactly.
 
-Implementation note: hidden rows are a `<div>`, not a `<label>` — the row embeds
-the inert `ToolbarControlPreview` (which renders real `<button>`/`<input>`
-elements), so a wrapping label would associate with a control inside the preview
-instead of the visibility checkbox. The toggle carries its own `<label>`.
+Implementation note: hidden rows must not use the old toggle-switch visual
+language. Hidden and Shown rows are variants of one control-row component; the
+visibility command changes label/action, while the priority surface stays
+available whenever the runtime overflow engine supports that control.
 
 ## Status / follow-ups
 
@@ -102,7 +123,7 @@ instead of the visibility checkbox. The toggle carries its own `<label>`.
   engine has a real menu copy. A future speech-specific design can revisit
   microphone/waveform without implying that today's row should show deceptive
   priority choices for them.
-- **Clickable top preview (edit-in-preview) is a follow-up.** The top preview is
-  currently read-only (spatial memory only); the Shown-zone priority radio + ×
-  Hide are the editing surface. A future pass can let clicking a control in the
-  top preview open the same priority/Off choice.
+- **Regression cases to preserve.** Tests should keep covering row-specimen
+  activation, Hidden rows retaining priority choices, action specimens showing
+  only their own visible control, and Show/Hide changes not relocating rows
+  during the same pane visit.

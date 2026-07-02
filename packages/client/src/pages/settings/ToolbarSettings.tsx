@@ -3,7 +3,7 @@ import type {
   CollapsedComposerButtonPreference,
   ToolbarNarrowingPriority,
 } from "@yep-anywhere/shared";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   SessionToolbarPreview,
   ToolbarControlPreview,
@@ -69,6 +69,9 @@ export function ToolbarSettings() {
     setControlPriority,
     resetPriority,
   } = useSessionToolbarPriority();
+  const [placementVisibility] = useState(() => ({ ...toolbarVisibility }));
+  const [activeControlKey, setActiveControlKey] =
+    useState<SessionToolbarVisibilityKey | null>(null);
   const { settings, error, updateSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
@@ -223,13 +226,13 @@ export function ToolbarSettings() {
   }
 
   const hiddenLeft = toolbarControls.filter(
-    (control) => !toolbarVisibility[control.key] && control.side === "left",
+    (control) => !placementVisibility[control.key] && control.side === "left",
   );
   const hiddenRight = toolbarControls.filter(
-    (control) => !toolbarVisibility[control.key] && control.side === "right",
+    (control) => !placementVisibility[control.key] && control.side === "right",
   );
   const shownControls = toolbarControls.filter(
-    (control) => toolbarVisibility[control.key],
+    (control) => placementVisibility[control.key],
   );
 
   const priorityOptions: Array<{
@@ -259,6 +262,111 @@ export function ToolbarSettings() {
     },
   ];
 
+  const renderPriorityControls = (control: ToolbarControlMeta) => {
+    if (!control.canSetPriority) return null;
+    return (
+      <span
+        className="session-toolbar-priority"
+        role="radiogroup"
+        aria-label={t("appearanceToolbarPriorityAria", {
+          control: control.title,
+        })}
+      >
+        {priorityOptions.map((option) => {
+          const selected = toolbarPriority[control.key] === option.value;
+          return (
+            <button
+              type="button"
+              key={option.value}
+              className={`session-toolbar-priority-option${
+                selected ? " is-selected" : ""
+              }`}
+              role="radio"
+              aria-checked={selected}
+              title={option.title}
+              onClick={() => setControlPriority(control.key, option.value)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </span>
+    );
+  };
+
+  const renderVisibilityButton = (control: ToolbarControlMeta) => {
+    const isVisible = toolbarVisibility[control.key];
+    const label = isVisible
+      ? t("appearanceToolbarHide")
+      : t("appearanceToolbarShowControl", { control: control.title });
+    return (
+      <button
+        type="button"
+        className={`session-toolbar-hide-button${
+          isVisible ? "" : " is-show-action"
+        }`}
+        onClick={() => setControlVisible(control.key, !isVisible)}
+        title={label}
+        aria-label={label}
+      >
+        {isVisible ? "×" : t("appearanceToolbarShow")}
+      </button>
+    );
+  };
+
+  const renderControlMenu = (control: ToolbarControlMeta) => {
+    if (activeControlKey !== control.key) return null;
+    return (
+      <div
+        className="session-toolbar-control-menu"
+        role="dialog"
+        aria-label={t("appearanceToolbarControlMenu", {
+          control: control.title,
+        })}
+      >
+        {renderPriorityControls(control)}
+        {renderVisibilityButton(control)}
+      </div>
+    );
+  };
+
+  const renderControlRow = (
+    control: ToolbarControlMeta,
+    placement: "hidden" | "shown",
+  ) => (
+    <div
+      className={`session-toolbar-control-row is-${placement} ${
+        toolbarVisibility[control.key]
+          ? "is-currently-shown"
+          : "is-currently-hidden"
+      }`}
+      key={control.key}
+    >
+      <span className="session-toolbar-control-preview-cell">
+        <ToolbarControlPreview
+          activationLabel={t("appearanceToolbarActivateControl", {
+            control: control.title,
+          })}
+          controlKey={control.key}
+          onActivate={() =>
+            setActiveControlKey((current) =>
+              current === control.key ? null : control.key,
+            )
+          }
+        />
+      </span>
+      <span className="session-toolbar-control-copy">
+        <strong>{control.title}</strong>
+        <span>{control.description}</span>
+      </span>
+      <span className="session-toolbar-control-actions">
+        {renderPriorityControls(control)}
+        {renderVisibilityButton(control)}
+      </span>
+      {renderControlMenu(control)}
+    </div>
+  );
+
   const renderHiddenGroup = (label: string, controls: ToolbarControlMeta[]) => (
     <div className="session-toolbar-hidden-group">
       <div className="session-toolbar-hidden-group-title">{label}</div>
@@ -267,35 +375,7 @@ export function ToolbarSettings() {
           {t("appearanceToolbarSideNoneHidden")}
         </p>
       ) : (
-        controls.map((control) => (
-          // A div, not a label: the row contains the inert element preview
-          // (which renders real toolbar controls), so a wrapping <label> would
-          // associate with a control inside the preview instead of the toggle.
-          // The toggle carries its own <label> so its slider stays clickable.
-          <div
-            className="session-toolbar-control-row is-hidden"
-            key={control.key}
-          >
-            <span className="session-toolbar-control-preview-cell">
-              <ToolbarControlPreview controlKey={control.key} />
-            </span>
-            <span className="session-toolbar-control-copy">
-              <strong>{control.title}</strong>
-              <span>{control.description}</span>
-            </span>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={false}
-                onChange={() => setControlVisible(control.key, true)}
-                aria-label={t("appearanceToolbarShowControl", {
-                  control: control.title,
-                })}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-        ))
+        controls.map((control) => renderControlRow(control, "hidden"))
       )}
     </div>
   );
@@ -389,62 +469,7 @@ export function ToolbarSettings() {
               <span>{t("appearanceToolbarShownDescription")}</span>
             </div>
             <div className="session-toolbar-control-list">
-              {shownControls.map((control) => (
-                <div
-                  className="session-toolbar-control-row is-shown"
-                  key={control.key}
-                >
-                  <span className="session-toolbar-control-preview-cell">
-                    <ToolbarControlPreview controlKey={control.key} />
-                  </span>
-                  <span className="session-toolbar-control-copy">
-                    <strong>{control.title}</strong>
-                    <span>{control.description}</span>
-                  </span>
-                  <span className="session-toolbar-control-actions">
-                    {control.canSetPriority && (
-                      <span
-                        className="session-toolbar-priority"
-                        role="radiogroup"
-                        aria-label={t("appearanceToolbarPriorityAria", {
-                          control: control.title,
-                        })}
-                      >
-                        {priorityOptions.map((option) => {
-                          const selected =
-                            toolbarPriority[control.key] === option.value;
-                          return (
-                            <button
-                              type="button"
-                              key={option.value}
-                              className={`session-toolbar-priority-option${
-                                selected ? " is-selected" : ""
-                              }`}
-                              role="radio"
-                              aria-checked={selected}
-                              title={option.title}
-                              onClick={() =>
-                                setControlPriority(control.key, option.value)
-                              }
-                            >
-                              {option.label}
-                            </button>
-                          );
-                        })}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className="session-toolbar-hide-button"
-                      onClick={() => setControlVisible(control.key, false)}
-                      title={t("appearanceToolbarHide")}
-                      aria-label={t("appearanceToolbarHide")}
-                    >
-                      ×
-                    </button>
-                  </span>
-                </div>
-              ))}
+              {shownControls.map((control) => renderControlRow(control, "shown"))}
             </div>
           </div>
 

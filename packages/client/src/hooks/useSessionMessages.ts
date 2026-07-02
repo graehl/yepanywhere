@@ -40,6 +40,7 @@ import {
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
 import {
+  selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
   selectSessionDetailScrollSnapshot,
@@ -559,6 +560,15 @@ export function useSessionMessages(
       });
     },
     [dispatchSessionDetailAction, reportShadowDivergence],
+  );
+
+  const readSelectorBackedMessages = useCallback(
+    () =>
+      defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailMessages,
+      ),
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
   // Buffering: queue stream messages until initial load completes
@@ -1292,15 +1302,22 @@ export function useSessionMessages(
         return;
       }
 
+      const selectorBackedMessages = readSelectorBackedMessages();
       setMessages((prev) => {
-        const next = upsertStreamingPlaceholderMessages(prev, streamingMessage);
+        const next =
+          selectorBackedMessages ??
+          upsertStreamingPlaceholderMessages(prev, streamingMessage);
         reportShadowDivergence("streaming-placeholder", {
           messages: next,
         });
         return next;
       });
     },
-    [dispatchSessionDetailAction, reportShadowDivergence],
+    [
+      dispatchSessionDetailAction,
+      readSelectorBackedMessages,
+      reportShadowDivergence,
+    ],
   );
 
   // Handle stream message event (with buffering)
@@ -1405,14 +1422,20 @@ export function useSessionMessages(
 
   const clearStreamingPlaceholders = useCallback(() => {
     dispatchSessionDetailAction(createClearStreamingPlaceholdersAction());
+    const selectorBackedMessages = readSelectorBackedMessages();
     setMessages((prev) => {
-      const next = clearStreamingPlaceholderMessages(prev);
+      const next =
+        selectorBackedMessages ?? clearStreamingPlaceholderMessages(prev);
       reportShadowDivergence("streaming-placeholder-cleanup", {
         messages: next,
       });
       return next;
     });
-  }, [dispatchSessionDetailAction, reportShadowDivergence]);
+  }, [
+    dispatchSessionDetailAction,
+    readSelectorBackedMessages,
+    reportShadowDivergence,
+  ]);
 
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
 

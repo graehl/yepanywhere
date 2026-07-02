@@ -33,6 +33,12 @@ export function selectSessionDetailRuntimeSnapshot(
   };
 }
 
+export function selectSessionDetailMessages(
+  state: SessionDetailState,
+): Message[] {
+  return state.messages;
+}
+
 export function selectSessionDetailScrollSnapshot(
   state: SessionDetailState,
 ): SessionRouteScrollSnapshot | undefined {

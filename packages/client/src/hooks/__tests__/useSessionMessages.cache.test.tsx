@@ -1079,20 +1079,41 @@ describe("useSessionMessages cache", () => {
       ...first,
       message: { role: "assistant", content: "partial done" },
     };
+    const storeOnlyMessage: Message = {
+      uuid: "store-only-1",
+      type: "user",
+      message: { role: "user", content: "store-only" },
+    };
 
     act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: storeOnlyMessage,
+        },
+      );
       result.current.handleStreamingUpdate(first);
       result.current.handleStreamingUpdate(updated);
     });
 
-    expect(result.current.messages).toEqual([updated]);
+    expect(result.current.messages.map((message) => message.uuid)).toEqual([
+      "store-only-1",
+      "streaming-1",
+    ]);
+    expect(result.current.messages[0]?._source).toBe("sdk");
+    expect(result.current.messages[1]).toEqual(updated);
     expect(
       defaultSessionDetailStore.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
-      })?.messages,
-    ).toEqual([updated]);
+      })?.messages.map((message) => message.uuid),
+    ).toEqual(["store-only-1", "streaming-1"]);
   });
 
   it("clears main streaming placeholders through the session detail store", async () => {
@@ -1134,14 +1155,31 @@ describe("useSessionMessages cache", () => {
       _isStreaming: true,
       message: { role: "assistant", content: "partial" },
     };
+    const storeOnlyMessage: Message = {
+      uuid: "store-only-1",
+      type: "assistant",
+      message: { role: "assistant", content: "store-only" },
+    };
 
     act(() => {
       result.current.handleStreamingUpdate(streaming);
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: storeOnlyMessage,
+        },
+      );
       result.current.clearStreamingPlaceholders();
     });
 
     expect(result.current.messages.map((message) => message.uuid)).toEqual([
       "durable-1",
+      "store-only-1",
     ]);
     expect(
       defaultSessionDetailStore
@@ -1151,7 +1189,7 @@ describe("useSessionMessages cache", () => {
           sessionId: "sess-1",
         })
         ?.messages.map((message) => message.uuid),
-    ).toEqual(["durable-1"]);
+    ).toEqual(["durable-1", "store-only-1"]);
   });
 
   it("updates session metadata through the session detail store", async () => {

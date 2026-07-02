@@ -42,7 +42,10 @@ display-object patches, and model updates no longer expose the raw session
 state setter outside `useSessionMessages`. Renderer lazy-load agent content now
 uses the same `mergeLoadedAgentContent` wrapper as pending-agent reloads, so
 the renderer context no longer receives a raw `setAgentContent` setter; the
-unused public `setMessages` escape hatch is also removed.
+unused public `setMessages` escape hatch is also removed. Main streaming
+placeholder upsert/cleanup now mirrors hook `messages` from
+`selectSessionDetailMessages` after the reducer/store action, with local helper
+logic retained only as the fallback.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -321,11 +324,10 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, audit the remaining
-  internal `messages` and `agentContent` local-state mirrors inside
-  `useSessionMessages`. The next substantial step is likely choosing one
-  message transition that can be store-backed without switching the whole
-  returned `messages` array at once.
+- After selector/action parity is quiet in normal use, pick the next narrow
+  mirror to selectorize. The most contained candidates are subagent placeholder
+  upsert/cleanup in `agentContent`; persisted catch-up and older-page message
+  paths still carry cursor/watermark side effects and should wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -487,9 +489,15 @@ Status 2026-07-02:
   live `running` status; reducer and renderer-context coverage lock that
   behavior down. Removed the unused public `setMessages` return from
   `useSessionMessages`.
+- Added `selectSessionDetailMessages` and used it as the first store-backed
+  message mirror for main streaming placeholder upsert/cleanup. The hook still
+  returns local `messages`, but after these two actions it copies the
+  reducer/store-selected transcript into local state instead of duplicating the
+  transition. Hook/store coverage injects store-only messages to prove the
+  selector-backed path is the source.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
-  choose a narrow internal `messages` or `agentContent` state mirror to
-  selectorize before attempting the broad returned `messages` cutover.
+  selectorize another narrow internal `agentContent` or `messages` mirror
+  before attempting the broad returned `messages` cutover.
 
 ## Slice 5: Hook Adapter Migration
 

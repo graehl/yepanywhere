@@ -1399,16 +1399,29 @@ export function useSessionMessages(
     reportShadowDivergence,
   ]);
 
+  const readSelectorBackedPagination = useCallback(
+    () =>
+      defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailPagination,
+      ) ?? pagination,
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom, pagination],
+  );
+
   // Load older messages (previous chunk before the current truncation point)
   const loadOlderMessages = useCallback(async () => {
-    if (!pagination?.hasOlderMessages || !pagination.truncatedBeforeMessageId) {
+    const currentPagination = readSelectorBackedPagination();
+    if (
+      !currentPagination?.hasOlderMessages ||
+      !currentPagination.truncatedBeforeMessageId
+    ) {
       return;
     }
     setLoadingOlder(true);
     try {
       const data = await api.getSession(projectId, sessionId, undefined, {
         tailCompactions: 2,
-        beforeMessageId: pagination.truncatedBeforeMessageId,
+        beforeMessageId: currentPagination.truncatedBeforeMessageId,
       });
       dispatchSessionDetailAction(
         createPrependOlderMessagesAction({
@@ -1451,7 +1464,7 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    pagination,
+    readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
     reportShadowDivergence,
@@ -1512,10 +1525,7 @@ export function useSessionMessages(
     cachedLoad?.scrollSnapshot ??
     null;
   const selectedPagination =
-    defaultSessionDetailStore.readSelected(
-      snapshotKey,
-      selectSessionDetailPagination,
-    ) ?? pagination;
+    readSelectorBackedPagination();
 
   return {
     messages,

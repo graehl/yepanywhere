@@ -684,7 +684,7 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("returns older-page pagination through the store selector", async () => {
+  it("uses selector-backed pagination when loading older messages", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -742,6 +742,24 @@ describe("useSessionMessages cache", () => {
 
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
     expect(rendered.result.current.pagination?.hasOlderMessages).toBe(true);
+    defaultSessionDetailStore.dispatch(
+      {
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      },
+      {
+        type: "applyCatchupMessages",
+        messages: [],
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "store-cursor",
+          totalMessageCount: 2,
+          returnedMessageCount: 1,
+          totalCompactions: 0,
+        },
+      },
+    );
 
     await act(async () => {
       await rendered.result.current.loadOlderMessages();
@@ -754,7 +772,7 @@ describe("useSessionMessages cache", () => {
       undefined,
       {
         tailCompactions: 2,
-        beforeMessageId: "msg-1",
+        beforeMessageId: "store-cursor",
       },
     );
     expect(rendered.result.current.messages.map((message) => message.uuid)).toEqual(

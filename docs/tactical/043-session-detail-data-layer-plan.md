@@ -2,8 +2,8 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 4 first selector-backed hook fields added. The pure reducer
-fixture harness now
+Status: Slice 4 pagination older-load decision selector-backed. The pure
+reducer fixture harness now
 covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
@@ -17,7 +17,8 @@ hook also mirrors its active lifecycle actions into that store while mounted
 and can compare live hook state to a store-selected runtime snapshot under the
 same dev-only diagnostic opt-in. `useSessionMessages.initialScrollSnapshot`
 and returned `pagination` now read through store selectors with prior local
-fallbacks.
+fallbacks, and `loadOlderMessages` uses the same selector-backed pagination
+source for its older-page cursor decision.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -296,9 +297,9 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector parity is quiet in normal use, move the pagination-dependent
-  `loadOlderMessages` decision to the same selector-backed source, still
-  keeping the public hook return shape unchanged. `messages` should wait.
+- After selector parity is quiet in normal use, move another low-churn field
+  behind a store selector or replace one raw setter with an action wrapper.
+  `messages` should wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -407,11 +408,13 @@ Status 2026-07-02:
 - Moved the returned `pagination` field to a store selector read with local
   state as fallback. Added hook coverage for active load pagination, warm
   restore pagination, and older-page pagination.
-- `loadOlderMessages` still uses local pagination state internally in this
-  slice; only the public returned field moved.
-- Remaining Slice 4 work: observe the selector parity surface, then move the
-  pagination-dependent `loadOlderMessages` decision to the same selector-backed
-  source with rollback still trivial.
+- Moved the pagination-dependent `loadOlderMessages` cursor decision to the
+  same selector-backed pagination source, with local state fallback. Added
+  coverage that mutates store-only pagination before invoking older-page load
+  so the request cursor proves the selector source is used.
+- Remaining Slice 4 work: observe the selector parity surface, then either move
+  another low-churn field behind a store selector or replace one raw exposed
+  setter with an action wrapper before attempting `messages`.
 
 ## Slice 5: Hook Adapter Migration
 

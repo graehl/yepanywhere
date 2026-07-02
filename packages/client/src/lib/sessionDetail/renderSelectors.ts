@@ -123,6 +123,9 @@ export type ComposerTailDisplayRow<
       message: TPending;
     })
   | (ComposerTailDisplayRowBase & {
+      allowsDeferredCancel: boolean;
+      allowsRecoveredDelete: boolean;
+      allowsRecoveredResume: boolean;
       deferredIndex: number;
       isPatient: boolean;
       isRecovered: boolean;
@@ -133,6 +136,7 @@ export type ComposerTailDisplayRow<
       showAttachmentCountBadge: boolean;
     })
   | (ComposerTailDisplayRowBase & {
+      allowsCancel: boolean;
       kind: "project-queue";
       message: TProjectQueue;
       projectQueueStatusKind: ProjectQueueTailStatusKind;
@@ -745,6 +749,7 @@ export function buildComposerTailDisplayRows<
     if (item.kind === "project-queue") {
       return {
         ...base,
+        allowsCancel: item.message.status !== "dispatching",
         kind: "project-queue",
         message: item.message,
         projectQueueStatusKind: getProjectQueueTailStatusKind(item.message),
@@ -753,15 +758,20 @@ export function buildComposerTailDisplayRows<
     }
 
     const isRecovered = isRecoveredDeferredMessage(item.message);
+    const recoveredQueueId =
+      isRecovered && item.message.id ? item.message.id : null;
     return {
       ...base,
+      allowsDeferredCancel: Boolean(item.message.tempId),
+      allowsRecoveredDelete: recoveredQueueId !== null,
+      allowsRecoveredResume: recoveredQueueId !== null,
       deferredIndex: item.deferredIndex,
       isPatient: isPatientDeferredMessage(item.message),
       isRecovered,
       kind: "deferred",
       lanePosition: lanePositions.get(item.key),
       message: item.message,
-      recoveredQueueId: isRecovered && item.message.id ? item.message.id : null,
+      recoveredQueueId,
       showAttachmentCountBadge: Boolean(item.message.attachmentCount),
     };
   });

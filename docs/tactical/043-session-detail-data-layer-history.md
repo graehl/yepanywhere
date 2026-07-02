@@ -309,6 +309,10 @@ Reducer/helper behavior locked down during Slice 4:
   selection, panel labels/counts, searchable-user-turn detection, and navigator
   search-state shape while `MessageList` keeps search session state, keyboard
   handling, selected-match updates, and DOM navigation.
+- Composer tail action eligibility now lives in
+  `sessionDetail/renderSelectors`, deriving project-queue cancel and deferred
+  recovered resume/delete plus queued-message cancel eligibility while
+  `MessageList` keeps labels, buttons, callbacks, and attachment rendering.
 - Direction note: existing `scroll-snapshot` shadow divergence logs are treated
   as known noisy signal from the older snapshot path. Do not chase them as a
   near-term migration blocker until the non-scroll store/render surfaces are

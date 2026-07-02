@@ -495,7 +495,25 @@ describe("session detail render selectors", () => {
       recoveredRow?.kind === "deferred" &&
         recoveredRow.showAttachmentCountBadge,
     ).toBe(true);
+    expect(
+      recoveredRow?.kind === "deferred" && recoveredRow.allowsRecoveredResume,
+    ).toBe(true);
+    expect(
+      recoveredRow?.kind === "deferred" && recoveredRow.allowsRecoveredDelete,
+    ).toBe(true);
+    expect(
+      recoveredRow?.kind === "deferred" && recoveredRow.allowsDeferredCancel,
+    ).toBe(true);
     expect(patientRow?.kind === "deferred" && patientRow.isPatient).toBe(true);
+    expect(
+      patientRow?.kind === "deferred" && patientRow.allowsRecoveredResume,
+    ).toBe(false);
+    expect(
+      patientRow?.kind === "deferred" && patientRow.allowsRecoveredDelete,
+    ).toBe(false);
+    expect(
+      patientRow?.kind === "deferred" && patientRow.allowsDeferredCancel,
+    ).toBe(true);
     expect(patientRow?.kind === "deferred" && patientRow.lanePosition).toEqual({
       patientIndex: 0,
     });
@@ -508,6 +526,10 @@ describe("session detail render selectors", () => {
         dispatchingProjectRow.showAttachmentCountBadge,
     ).toBe(true);
     expect(
+      dispatchingProjectRow?.kind === "project-queue" &&
+        dispatchingProjectRow.allowsCancel,
+    ).toBe(false);
+    expect(
       queuedProjectRow?.kind === "project-queue" &&
         queuedProjectRow.projectQueueStatusKind,
     ).toBe("queued");
@@ -515,6 +537,10 @@ describe("session detail render selectors", () => {
       queuedProjectRow?.kind === "project-queue" &&
         queuedProjectRow.showAttachmentCountBadge,
     ).toBe(false);
+    expect(
+      queuedProjectRow?.kind === "project-queue" &&
+        queuedProjectRow.allowsCancel,
+    ).toBe(true);
   });
 
   it("derives user navigation anchors from searchable user turns", () => {

@@ -63,7 +63,9 @@ Covered outputs:
 - assistant timeline item action eligibility, including thinking toggle,
   quote, and user-prompt trim/fork eligibility;
 - search readiness, active search anchor selection, search panel labels/counts,
-  searchable-user-turn detection, and navigator search-state projection.
+  searchable-user-turn detection, and navigator search-state projection;
+- composer tail action eligibility, including project-queue cancel and deferred
+  recovered resume/delete plus queued-message cancel eligibility.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -77,7 +79,7 @@ composer tail row labels/rendering/actions, and actual rendering.
   DOM navigation.
 - Correct-prompt action wiring and rendering actions for user rows.
 - `/btw` aside ownership and rendering.
-- Composer tail row labels, rendering, actions, and attachment display.
+- Composer tail row labels, rendering, callbacks, and attachment display.
 - Assistant timeline row rendering, actions, quote controls, and component
   choice.
 - Progressive reveal state, status UI, and timers.
@@ -89,5 +91,5 @@ composer tail row labels/rendering/actions, and actual rendering.
 Keep the Developer setting dogfood path default-off while moving one more pure
 projection out of `MessageList`. The next low-risk candidates are
 search/navigation metadata helpers or remaining row metadata helpers, while
-keeping DOM measurement, scroll effects, snapshot ownership, labels, and row
-actions local.
+keeping DOM measurement, scroll effects, snapshot ownership, labels, callbacks,
+and row actions local.

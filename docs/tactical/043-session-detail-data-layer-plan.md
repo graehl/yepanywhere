@@ -109,6 +109,9 @@ What is already in place:
 - Search readiness, active search anchor selection, search panel labels/counts,
   searchable-user-turn detection, and navigator search-state projection now
   derive through `sessionDetail/renderSelectors`.
+- Composer tail action eligibility now derives through
+  `sessionDetail/renderSelectors`, including project-queue cancel and deferred
+  recovered resume/delete plus queued-message cancel eligibility.
 
 Current diagnostic stance:
 
@@ -205,7 +208,7 @@ Next likely slice:
 - Continue the render-selector preflight with small pure projection moves that
   do not own DOM measurement or effects. Good candidates are search/navigation
   metadata helpers or remaining row metadata helpers. Keep scroll snapshots,
-  follow-tail behavior, and `/btw` ownership local for now.
+  follow-tail behavior, labels, callbacks, and `/btw` ownership local for now.
 
 Then:
 

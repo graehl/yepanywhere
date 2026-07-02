@@ -3121,22 +3121,21 @@ export const MessageList = memo(function MessageList({
                         showTextLabel
                         onClick={(event) => event.stopPropagation()}
                       />
-                      {projectQueue.status !== "dispatching" &&
-                        onCancelProjectQueueMessage && (
-                          <button
-                            type="button"
-                            className="deferred-message-action deferred-message-action-cancel project-queue-inline-message-cancel"
-                            disabled={projectQueue.isMutating}
-                            onClick={() =>
-                              onCancelProjectQueueMessage(projectQueue.id)
-                            }
-                            aria-label={t("projectQueueInlineCancel")}
-                            title={t("projectQueueInlineCancel")}
-                          >
-                            <XIcon />
-                            <span>{t("projectQueueDelete")}</span>
-                          </button>
-                        )}
+                      {tailRow.allowsCancel && onCancelProjectQueueMessage && (
+                        <button
+                          type="button"
+                          className="deferred-message-action deferred-message-action-cancel project-queue-inline-message-cancel"
+                          disabled={projectQueue.isMutating}
+                          onClick={() =>
+                            onCancelProjectQueueMessage(projectQueue.id)
+                          }
+                          aria-label={t("projectQueueInlineCancel")}
+                          title={t("projectQueueInlineCancel")}
+                        >
+                          <XIcon />
+                          <span>{t("projectQueueDelete")}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3230,7 +3229,9 @@ export const MessageList = memo(function MessageList({
                       showTextLabel
                       onClick={(event) => event.stopPropagation()}
                     />
-                    {recoveredQueueId && onResumeRecoveredDeferred ? (
+                    {tailRow.allowsRecoveredResume &&
+                    recoveredQueueId &&
+                    onResumeRecoveredDeferred ? (
                       <button
                         type="button"
                         className="deferred-message-action deferred-message-action-resume"
@@ -3244,7 +3245,9 @@ export const MessageList = memo(function MessageList({
                         <span>{t("sessionRecoveredQueuedResumeShort")}</span>
                       </button>
                     ) : null}
-                    {recoveredQueueId && onDeleteRecoveredDeferred ? (
+                    {tailRow.allowsRecoveredDelete &&
+                    recoveredQueueId &&
+                    onDeleteRecoveredDeferred ? (
                       <button
                         type="button"
                         className="deferred-message-action deferred-message-action-cancel"
@@ -3257,7 +3260,7 @@ export const MessageList = memo(function MessageList({
                         <XIcon />
                         <span>{t("sessionRecoveredQueuedDeleteShort")}</span>
                       </button>
-                    ) : deferred.tempId && onCancelDeferred ? (
+                    ) : tailRow.allowsDeferredCancel && onCancelDeferred ? (
                       <button
                         type="button"
                         className="deferred-message-action deferred-message-action-cancel"

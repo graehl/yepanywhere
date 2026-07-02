@@ -6,6 +6,7 @@ import {
   buildComposerTailItems,
   buildComposerTailDisplayRows,
   buildAssistantRenderSegments,
+  buildAssistantTimelineRows,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
   countThinkingItems,
@@ -714,6 +715,85 @@ describe("session detail render selectors", () => {
       anchors.find((anchor) => anchor.id === "explored-read-1-grep-1")
         ?.timestampMs,
     ).toBe(Date.parse("2026-07-02T12:02:00.000Z"));
+  });
+
+  it("derives assistant timeline row metadata", () => {
+    const read: RenderItem = {
+      type: "tool_call",
+      id: "read-1",
+      toolName: "Read",
+      toolInput: { file_path: "README.md" },
+      status: "pending",
+      sourceMessages: [sourceMessage("read-msg", "2026-07-02T12:01:00.000Z")],
+    };
+    const grep: RenderItem = {
+      type: "tool_call",
+      id: "grep-1",
+      toolName: "Grep",
+      toolInput: { pattern: "needle", path: "src" },
+      status: "pending",
+      sourceMessages: [sourceMessage("grep-msg", "2026-07-02T12:02:00.000Z")],
+    };
+    const thinking: RenderItem = {
+      type: "thinking",
+      id: "thinking-1",
+      thinking: "Checking the answer",
+      status: "complete",
+      sourceMessages: [
+        sourceMessage("thinking-msg", "2026-07-02T12:03:00.000Z"),
+      ],
+    };
+    const answer: RenderItem = {
+      type: "text",
+      id: "answer-1",
+      text: "Done",
+      sourceMessages: [sourceMessage("answer-msg", "2026-07-02T12:04:00.000Z")],
+    };
+
+    const rows = buildAssistantTimelineRows({
+      items: [read, grep, thinking, answer],
+      latestVisibleTimestampMs: Date.parse("2026-07-02T12:02:00.000Z"),
+      nowMs: Date.parse("2026-07-02T12:10:00.000Z"),
+    });
+
+    expect(
+      rows.map((row) =>
+        row.kind === "explored"
+          ? {
+              kind: row.kind,
+              id: row.id,
+              itemIds: row.items.map((item) => item.id),
+              segmentTimestampMs: row.segmentTimestampMs,
+              staleNowMs: row.staleNowMs,
+            }
+          : {
+              kind: row.kind,
+              id: row.item.id,
+              itemIndex: row.itemIndex,
+              thinkingDurationMs: row.thinkingDurationMs,
+            },
+      ),
+    ).toEqual([
+      {
+        kind: "explored",
+        id: "explored-read-1-grep-1",
+        itemIds: ["read-1", "grep-1"],
+        segmentTimestampMs: Date.parse("2026-07-02T12:02:00.000Z"),
+        staleNowMs: Date.parse("2026-07-02T12:10:00.000Z"),
+      },
+      {
+        kind: "item",
+        id: "thinking-1",
+        itemIndex: 2,
+        thinkingDurationMs: 60_000,
+      },
+      {
+        kind: "item",
+        id: "answer-1",
+        itemIndex: 3,
+        thinkingDurationMs: undefined,
+      },
+    ]);
   });
 
   it("filters visible turn groups for search matches", () => {

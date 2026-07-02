@@ -298,6 +298,27 @@ export type AssistantRenderSegment =
   | { kind: "item"; item: RenderItem }
   | { kind: "explored"; id: string; items: ToolCallItem[] };
 
+export interface AssistantTimelineRowsInput {
+  items: readonly RenderItem[];
+  latestVisibleTimestampMs: number | null;
+  nowMs: number;
+}
+
+export type AssistantTimelineRow =
+  | {
+      kind: "explored";
+      id: string;
+      items: ToolCallItem[];
+      segmentTimestampMs: number | null;
+      staleNowMs?: number;
+    }
+  | {
+      kind: "item";
+      item: RenderItem;
+      itemIndex: number;
+      thinkingDurationMs?: number;
+    };
+
 export function buildSessionDetailRenderItems({
   messages,
   markdownAugments,
@@ -1059,6 +1080,37 @@ export function buildAssistantRenderSegments(
 
   flushRun();
   return segments;
+}
+
+export function buildAssistantTimelineRows({
+  items,
+  latestVisibleTimestampMs,
+  nowMs,
+}: AssistantTimelineRowsInput): AssistantTimelineRow[] {
+  return buildAssistantRenderSegments(items).map((segment) => {
+    if (segment.kind === "explored") {
+      const segmentTimestampMs = getLatestRenderItemsTimestampMs(segment.items);
+      return {
+        kind: "explored",
+        id: segment.id,
+        items: segment.items,
+        segmentTimestampMs,
+        staleNowMs:
+          segmentTimestampMs === latestVisibleTimestampMs ? nowMs : undefined,
+      };
+    }
+
+    const itemIndex = items.indexOf(segment.item);
+    return {
+      kind: "item",
+      item: segment.item,
+      itemIndex,
+      thinkingDurationMs:
+        itemIndex >= 0
+          ? getThinkingDurationMs(segment.item, items, itemIndex, nowMs)
+          : undefined,
+    };
+  });
 }
 
 export function getExploredEntryDisplayLabel(toolName: string): string {

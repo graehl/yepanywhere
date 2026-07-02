@@ -53,7 +53,9 @@ Covered outputs:
 - composer tail ordering and deferred queue lane position derivation;
 - composer tail row metadata, including parsed timestamps, stale-age
   visibility, recovered/patient deferred flags, recovered queue ids, project
-  queue status kind, and attachment-count badge visibility.
+  queue status kind, and attachment-count badge visibility;
+- assistant timeline row metadata, including explored-tool segment timestamps,
+  stale-now hints, render-item indexes, and thinking durations.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -67,6 +69,8 @@ composer tail row labels/rendering/actions, and actual rendering.
 - Correct-prompt action wiring.
 - `/btw` aside ownership and rendering.
 - Composer tail row labels, rendering, actions, and attachment display.
+- Assistant timeline row rendering, actions, quote controls, and component
+  choice.
 - Progressive reveal state, status UI, and timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
 - DOM measurement and row anchoring.
@@ -75,6 +79,6 @@ composer tail row labels/rendering/actions, and actual rendering.
 
 Keep the Developer setting dogfood path default-off while moving one more pure
 projection out of `MessageList`. The next low-risk candidates are
-search/navigation display projections or compact row class/state helpers, while
-keeping DOM measurement, scroll effects, snapshot ownership, labels, and row
-actions local.
+search/navigation display projections or compact user/standalone row
+class/state helpers, while keeping DOM measurement, scroll effects, snapshot
+ownership, labels, and row actions local.

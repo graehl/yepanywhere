@@ -289,6 +289,10 @@ Reducer/helper behavior locked down during Slice 4:
   flags, recovered queue ids, project queue status kind, and attachment-count
   badge visibility while `MessageList` keeps labels, JSX, buttons, attachment
   chips, and action wiring.
+- Assistant timeline row metadata now lives in `sessionDetail/renderSelectors`,
+  deriving explored-tool segment timestamps, stale-now hints, render-item
+  indexes, and thinking durations while `MessageList` keeps row rendering,
+  quote controls, component choice, and action wiring.
 - Direction note: existing `scroll-snapshot` shadow divergence logs are treated
   as known noisy signal from the older snapshot path. Do not chase them as a
   near-term migration blocker until the non-scroll store/render surfaces are

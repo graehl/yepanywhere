@@ -44,7 +44,7 @@ import {
 } from "../lib/sessionIsearchGuide";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
-  buildAssistantRenderSegments,
+  buildAssistantTimelineRows,
   buildComposerTailDisplayRows,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
@@ -53,7 +53,6 @@ import {
   getDisplayRenderItems,
   getFullSessionSearchAnchors,
   getLastTimestampedRenderItem,
-  getLatestRenderItemsTimestampMs,
   getLatestVisibleTimestampMs,
   getLatestThinkingItemId,
   getNextProgressiveEntryCount,
@@ -63,7 +62,6 @@ import {
   getSearchableUserTurnPreview,
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
-  getThinkingDurationMs,
   getThinkingItemIds,
   getThinkingTextLengths,
   getUserTurnNavAnchors,
@@ -2941,29 +2939,25 @@ export const MessageList = memo(function MessageList({
           if (!firstItem) return null;
           return (
             <div key={entry.key} className="assistant-turn">
-              {buildAssistantRenderSegments(group.items).map((segment) => {
-                if (segment.kind === "explored") {
-                  const segmentTimestampMs = getLatestRenderItemsTimestampMs(
-                    segment.items,
-                  );
+              {buildAssistantTimelineRows({
+                items: group.items,
+                latestVisibleTimestampMs,
+                nowMs,
+              }).map((row) => {
+                if (row.kind === "explored") {
                   return (
                     <ExploredToolGroup
-                      key={segment.id}
-                      id={segment.id}
-                      items={segment.items}
+                      key={row.id}
+                      id={row.id}
+                      items={row.items}
                       sessionProvider={provider}
-                      staleNowMs={
-                        segmentTimestampMs === latestVisibleTimestampMs
-                          ? nowMs
-                          : undefined
-                      }
+                      staleNowMs={row.staleNowMs}
                       latestVisibleTimestampMs={latestVisibleTimestampMs}
                     />
                   );
                 }
 
-                const { item } = segment;
-                const itemIndex = group.items.indexOf(item);
+                const { item } = row;
                 return (
                   <RenderItemComponent
                     key={item.id}
@@ -2996,12 +2990,7 @@ export const MessageList = memo(function MessageList({
                     alwaysShowQuoteCircle={alwaysShowQuoteCircles}
                     staleNowMs={getItemStaleNowMs(item)}
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
-                    thinkingDurationMs={getThinkingDurationMs(
-                      item,
-                      group.items,
-                      itemIndex,
-                      nowMs,
-                    )}
+                    thinkingDurationMs={row.thinkingDurationMs}
                   />
                 );
               })}

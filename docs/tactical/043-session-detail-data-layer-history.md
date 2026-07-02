@@ -269,6 +269,9 @@ Reducer/helper behavior locked down during Slice 4:
 - Visible thinking text-delta detection now lives in
   `sessionDetail/renderSelectors`, preserving the local expansion predicate and
   leaving follow/scroll effects in `MessageList`.
+- Auto-expanded thinking-id reconciliation now lives in
+  `sessionDetail/renderSelectors`, preserving `MessageList` ownership of the
+  state update and provider historical-seed trigger.
 
 ## Verification Details
 

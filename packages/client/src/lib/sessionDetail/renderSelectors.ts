@@ -378,6 +378,49 @@ export function hasVisibleThinkingTextDelta({
   return false;
 }
 
+export interface ReconcileAutoExpandedThinkingItemIdsInput {
+  currentThinkingIds: ReadonlySet<string>;
+  previouslyObservedThinkingIds: ReadonlySet<string> | null;
+  previousExpandedIds: ReadonlySet<string>;
+  seedHistoricalThinking: boolean;
+}
+
+export function reconcileAutoExpandedThinkingItemIds({
+  currentThinkingIds,
+  previouslyObservedThinkingIds,
+  previousExpandedIds,
+  seedHistoricalThinking,
+}: ReconcileAutoExpandedThinkingItemIdsInput): ReadonlySet<string> {
+  const next = new Set<string>();
+  let changed = false;
+
+  for (const itemId of previousExpandedIds) {
+    if (currentThinkingIds.has(itemId)) {
+      next.add(itemId);
+    } else {
+      changed = true;
+    }
+  }
+
+  if (seedHistoricalThinking) {
+    for (const itemId of currentThinkingIds) {
+      if (!next.has(itemId)) {
+        next.add(itemId);
+        changed = true;
+      }
+    }
+  } else if (previouslyObservedThinkingIds !== null) {
+    for (const itemId of currentThinkingIds) {
+      if (!previouslyObservedThinkingIds.has(itemId) && !next.has(itemId)) {
+        next.add(itemId);
+        changed = true;
+      }
+    }
+  }
+
+  return changed ? next : previousExpandedIds;
+}
+
 export function getDisplayRenderItems(
   items: readonly RenderItem[],
   options: { thinkingItemsVisible: boolean },

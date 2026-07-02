@@ -25,6 +25,7 @@ import {
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
   hasVisibleThinkingTextDelta,
+  reconcileAutoExpandedThinkingItemIds,
   selectSessionDetailRenderItems,
   selectLatestCorrectablePrompt,
   type ProgressiveTimelineEntry,
@@ -916,6 +917,57 @@ describe("session detail render selectors", () => {
         thinkingItemsVisible: true,
       }),
     ).toBe(true);
+  });
+
+  it("reconciles auto-expanded thinking ids", () => {
+    const previousExpanded = new Set(["thinking-1", "stale"]);
+    const current = new Set(["thinking-1", "thinking-2", "thinking-3"]);
+    const observed = new Set(["thinking-1", "thinking-2"]);
+
+    expect(
+      Array.from(
+        reconcileAutoExpandedThinkingItemIds({
+          currentThinkingIds: current,
+          previouslyObservedThinkingIds: observed,
+          previousExpandedIds: previousExpanded,
+          seedHistoricalThinking: false,
+        }),
+      ),
+    ).toEqual(["thinking-1", "thinking-3"]);
+
+    expect(
+      Array.from(
+        reconcileAutoExpandedThinkingItemIds({
+          currentThinkingIds: current,
+          previouslyObservedThinkingIds: null,
+          previousExpandedIds: new Set(),
+          seedHistoricalThinking: true,
+        }),
+      ),
+    ).toEqual(["thinking-1", "thinking-2", "thinking-3"]);
+
+    expect(
+      Array.from(
+        reconcileAutoExpandedThinkingItemIds({
+          currentThinkingIds: current,
+          previouslyObservedThinkingIds: null,
+          previousExpandedIds: new Set(),
+          seedHistoricalThinking: false,
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("preserves auto-expanded thinking id set identity when unchanged", () => {
+    const previousExpanded = new Set(["thinking-1"]);
+    const reconciled = reconcileAutoExpandedThinkingItemIds({
+      currentThinkingIds: new Set(["thinking-1"]),
+      previouslyObservedThinkingIds: new Set(["thinking-1"]),
+      previousExpandedIds: previousExpanded,
+      seedHistoricalThinking: false,
+    });
+
+    expect(reconciled).toBe(previousExpanded);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

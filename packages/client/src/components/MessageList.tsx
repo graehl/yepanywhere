@@ -70,6 +70,7 @@ import {
   groupRenderItemsIntoTurns,
   hasVisibleThinkingTextDelta,
   normalizeSearchText,
+  reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
@@ -1361,33 +1362,12 @@ export const MessageList = memo(function MessageList({
     }
 
     setAutoExpandedThinkingItemIds((previous) => {
-      const next = new Set<string>();
-      let changed = false;
-      for (const itemId of previous) {
-        if (existingThinkingIds.has(itemId)) {
-          next.add(itemId);
-        } else {
-          changed = true;
-        }
-      }
-
-      if (seedHistoricalThinking) {
-        for (const itemId of existingThinkingIds) {
-          if (!next.has(itemId)) {
-            next.add(itemId);
-            changed = true;
-          }
-        }
-      } else if (previouslyObservedThinkingIds !== null) {
-        for (const itemId of existingThinkingIds) {
-          if (!previouslyObservedThinkingIds.has(itemId) && !next.has(itemId)) {
-            next.add(itemId);
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : previous;
+      return reconcileAutoExpandedThinkingItemIds({
+        currentThinkingIds: existingThinkingIds,
+        previouslyObservedThinkingIds,
+        previousExpandedIds: previous,
+        seedHistoricalThinking,
+      });
     });
   }, [provider, renderItems]);
   const turnGroups = useMemo(() => {

@@ -53,6 +53,7 @@ import {
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
   getNextProgressiveEntryCount,
+  getProgressiveTimelineVisibility,
   getTailEntryCountForRenderItemTarget,
   getSearchMatchProjection,
   getSearchableUserTurnPreview,
@@ -1979,34 +1980,23 @@ export const MessageList = memo(function MessageList({
     progressiveRenderAllowed &&
     !progressiveRenderAlreadyCompleted &&
     !progressiveRenderRevealedForCycle;
-  const effectiveProgressiveEntryCount = progressiveRevealActive
-    ? Math.min(
-        visibleTimelineEntries.length,
-        progressiveEntryCountForCycle ?? progressiveInitialEntryCount,
-      )
-    : visibleTimelineEntries.length;
-  const progressiveTimelineEntries = useMemo(() => {
-    if (!progressiveRevealActive) {
-      return visibleTimelineEntries;
-    }
-    return visibleTimelineEntries.slice(-effectiveProgressiveEntryCount);
+  const {
+    effectiveEntryCount: effectiveProgressiveEntryCount,
+    entries: progressiveTimelineEntries,
+    percent: progressiveRenderPercent,
+  } = useMemo(() => {
+    return getProgressiveTimelineVisibility({
+      entries: visibleTimelineEntries,
+      entryCount: progressiveEntryCountForCycle,
+      initialEntryCount: progressiveInitialEntryCount,
+      revealActive: progressiveRevealActive,
+    });
   }, [
-    effectiveProgressiveEntryCount,
+    progressiveEntryCountForCycle,
+    progressiveInitialEntryCount,
     progressiveRevealActive,
     visibleTimelineEntries,
   ]);
-  const progressiveRenderPercent = progressiveRevealActive
-    ? Math.max(
-        1,
-        Math.min(
-          100,
-          Math.round(
-            (effectiveProgressiveEntryCount / visibleTimelineEntries.length) *
-              100,
-          ),
-        ),
-      )
-    : 100;
   useEffect(() => {
     if (!progressiveRenderAllowed) {
       progressiveActiveRenderKeyRef.current = null;

@@ -129,6 +129,23 @@ export type ProgressiveTimelineEntry =
   | { kind: "turn"; group: { items: readonly unknown[] } }
   | { kind: "btw" };
 
+export interface ProgressiveTimelineVisibilityInput<
+  TEntry extends ProgressiveTimelineEntry = ProgressiveTimelineEntry,
+> {
+  entries: readonly TEntry[];
+  revealActive: boolean;
+  entryCount?: number | null;
+  initialEntryCount: number;
+}
+
+export interface ProgressiveTimelineVisibility<
+  TEntry extends ProgressiveTimelineEntry = ProgressiveTimelineEntry,
+> {
+  entries: readonly TEntry[];
+  effectiveEntryCount: number;
+  percent: number;
+}
+
 const SESSION_SETUP_PREFIXES = [
   "# AGENTS.md instructions",
   "<environment_context>",
@@ -314,6 +331,39 @@ export function getNextProgressiveEntryCount(
     itemCount += getProgressiveTimelineEntryWeight(entry);
   }
   return Math.min(entries.length, Math.max(1, count));
+}
+
+export function getProgressiveTimelineVisibility<
+  TEntry extends ProgressiveTimelineEntry = ProgressiveTimelineEntry,
+>({
+  entries,
+  entryCount,
+  initialEntryCount,
+  revealActive,
+}: ProgressiveTimelineVisibilityInput<TEntry>): ProgressiveTimelineVisibility<TEntry> {
+  if (!revealActive || entries.length === 0) {
+    return {
+      entries,
+      effectiveEntryCount: entries.length,
+      percent: 100,
+    };
+  }
+
+  const effectiveEntryCount = Math.min(
+    entries.length,
+    entryCount ?? initialEntryCount,
+  );
+  return {
+    entries: entries.slice(-effectiveEntryCount),
+    effectiveEntryCount,
+    percent: Math.max(
+      1,
+      Math.min(
+        100,
+        Math.round((effectiveEntryCount / entries.length) * 100),
+      ),
+    ),
+  };
 }
 
 export function getExplorationKind(toolName: string): ExplorationKind | null {

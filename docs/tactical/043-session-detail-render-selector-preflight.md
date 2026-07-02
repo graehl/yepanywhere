@@ -33,7 +33,9 @@ Covered outputs:
 - latest correctable prompt derivation;
 - visible timeline entry derivation and timestamp ordering for turn groups plus
   `/btw` aside metadata;
-- progressive timeline entry weighting and render-item target count derivation.
+- progressive timeline entry weighting and render-item target count derivation;
+- progressive timeline visibility projection, including effective entry count,
+  sliced entries, and progress percent.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -46,13 +48,13 @@ and actual rendering.
 - Search session state, keyboard/repeat navigation, and selected-match updates.
 - Correct-prompt action wiring.
 - `/btw` aside ownership and rendering.
-- Progressive reveal state, timeline slicing, status UI, and timers.
+- Progressive reveal state, status UI, and timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
 - DOM measurement and row anchoring.
 
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is progressive
-visibility projection from already-built timeline entries plus local reveal
-state, while keeping reveal timers, scroll, and DOM rendering local.
+projection out of `MessageList`. The next low-risk candidate is thinking
+duration derivation from render items plus `nowMs`, while keeping thinking
+visibility/expansion state and rendering local.

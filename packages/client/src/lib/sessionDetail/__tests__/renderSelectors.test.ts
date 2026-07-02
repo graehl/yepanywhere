@@ -9,6 +9,7 @@ import {
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
   getNextProgressiveEntryCount,
+  getProgressiveTimelineVisibility,
   getProgressiveTimelineEntryWeight,
   getSearchMatchProjection,
   getSearchSelectionProjection,
@@ -584,6 +585,84 @@ describe("session detail render selectors", () => {
       entries.length,
     );
     expect(getNextProgressiveEntryCount(entries, -1, 0)).toBe(1);
+  });
+
+  it("projects progressive timeline visibility", () => {
+    const entries: ProgressiveTimelineEntry[] = [
+      {
+        kind: "turn" as const,
+        group: { items: ["one"] },
+      },
+      { kind: "btw" as const },
+      {
+        kind: "turn" as const,
+        group: { items: ["two", "three"] },
+      },
+      { kind: "btw" as const },
+    ];
+
+    const inactive = getProgressiveTimelineVisibility({
+      entries,
+      entryCount: 1,
+      initialEntryCount: 2,
+      revealActive: false,
+    });
+    expect(inactive).toEqual({
+      entries,
+      effectiveEntryCount: entries.length,
+      percent: 100,
+    });
+    expect(inactive.entries).toBe(entries);
+
+    const activeInitial = getProgressiveTimelineVisibility({
+      entries,
+      entryCount: null,
+      initialEntryCount: 2,
+      revealActive: true,
+    });
+    expect(activeInitial.entries).toEqual(entries.slice(-2));
+    expect(activeInitial.effectiveEntryCount).toBe(2);
+    expect(activeInitial.percent).toBe(50);
+
+    const activeCurrent = getProgressiveTimelineVisibility({
+      entries,
+      entryCount: 3,
+      initialEntryCount: 2,
+      revealActive: true,
+    });
+    expect(activeCurrent.entries).toEqual(entries.slice(-3));
+    expect(activeCurrent.effectiveEntryCount).toBe(3);
+    expect(activeCurrent.percent).toBe(75);
+  });
+
+  it("projects progressive timeline visibility for empty or tiny percentages", () => {
+    expect(
+      getProgressiveTimelineVisibility({
+        entries: [],
+        entryCount: 1,
+        initialEntryCount: 1,
+        revealActive: true,
+      }),
+    ).toEqual({
+      entries: [],
+      effectiveEntryCount: 0,
+      percent: 100,
+    });
+
+    const entries = Array.from(
+      { length: 1000 },
+      (): ProgressiveTimelineEntry => ({ kind: "btw" }),
+    );
+    const projected = getProgressiveTimelineVisibility({
+      entries,
+      entryCount: 1,
+      initialEntryCount: 1,
+      revealActive: true,
+    });
+
+    expect(projected.effectiveEntryCount).toBe(1);
+    expect(projected.entries).toEqual(entries.slice(-1));
+    expect(projected.percent).toBe(1);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

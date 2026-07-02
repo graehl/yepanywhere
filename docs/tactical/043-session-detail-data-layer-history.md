@@ -247,6 +247,10 @@ Reducer/helper behavior locked down during Slice 4:
   derivation now live in `sessionDetail/renderSelectors`, preserving the
   existing render-item target behavior while `MessageList` keeps reveal state,
   timers, status UI, slicing, rendering, and scroll.
+- Progressive timeline visibility projection now lives in
+  `sessionDetail/renderSelectors`, deriving effective entry count, tail-sliced
+  entries, and progress percent while `MessageList` keeps reveal state, timers,
+  status UI, rendering, and scroll.
 
 ## Verification Details
 

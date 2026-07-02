@@ -2060,6 +2060,28 @@ describe("useSessionMessages cache", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+    expect(result.current.messages.map((message) => message.uuid)).toEqual([
+      "msg-1",
+    ]);
+
     apiMocks.getSession.mockClear();
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -2090,9 +2112,10 @@ describe("useSessionMessages cache", () => {
     );
     expect(result.current.messages.map((message) => message.uuid)).toEqual([
       "msg-1",
+      "store-only-msg",
       "msg-2",
     ]);
-    expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
+    expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
   });
 
   it("coalesces concurrent incremental refreshes", async () => {

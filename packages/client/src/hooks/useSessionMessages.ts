@@ -1620,27 +1620,46 @@ export function useSessionMessages(
             session: data.session,
           });
           updatePersistedTimestampWatermark(data.messages);
-          const result = mergeJSONLMessages(messagesRef.current, data.messages, {
-            skipDagOrdering: !getProvider(data.session.provider).capabilities
-              .supportsDag,
-          });
-          const nextMessages = usesApproxMessageDedup(data.session.provider)
-            ? reconcileLinearMessages(
-                result.messages,
-                approxDedupOptions(data.session.provider),
-              )
-            : result.messages;
-          const lastJsonlId = findLastJsonlMessageId(nextMessages);
-          if (lastJsonlId) {
-            lastMessageIdRef.current = lastJsonlId;
+          const selectorBackedMessages = readSelectorBackedMessages();
+          if (selectorBackedMessages) {
+            const lastJsonlId = findLastJsonlMessageId(selectorBackedMessages);
+            if (lastJsonlId) {
+              lastMessageIdRef.current = lastJsonlId;
+            }
+            applyMessages(selectorBackedMessages);
+            reportStoreDivergence("catchup", {
+              messages: selectorBackedMessages,
+              session: data.session,
+              lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+              maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            });
+          } else {
+            const result = mergeJSONLMessages(
+              messagesRef.current,
+              data.messages,
+              {
+                skipDagOrdering: !getProvider(data.session.provider)
+                  .capabilities.supportsDag,
+              },
+            );
+            const nextMessages = usesApproxMessageDedup(data.session.provider)
+              ? reconcileLinearMessages(
+                  result.messages,
+                  approxDedupOptions(data.session.provider),
+                )
+              : result.messages;
+            const lastJsonlId = findLastJsonlMessageId(nextMessages);
+            if (lastJsonlId) {
+              lastMessageIdRef.current = lastJsonlId;
+            }
+            applyMessages(nextMessages);
+            reportStoreDivergence("catchup", {
+              messages: nextMessages,
+              session: data.session,
+              lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+              maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            });
           }
-          applyMessages(nextMessages);
-          reportStoreDivergence("catchup", {
-            messages: nextMessages,
-            session: data.session,
-            lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-          });
         }
         // Update session metadata (including title, model, contextUsage) which may have changed
         // For new sessions, prev may be null if JSONL didn't exist on initial load
@@ -1666,6 +1685,7 @@ export function useSessionMessages(
     applyMessages,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
+    readSelectorBackedMessages,
     reportStoreDivergence,
     updateSession,
   ]);

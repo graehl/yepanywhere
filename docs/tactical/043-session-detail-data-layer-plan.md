@@ -41,8 +41,9 @@ What is already in place:
 - Public raw setter escape hatches have been removed for tool-use mappings,
   session metadata, agent content, and messages.
 - Narrow selectors are already used for retained scroll, pagination,
-  older-page cursor selection, main stream-message fallback mirroring, and main
-  streaming placeholder message upsert/cleanup.
+  older-page cursor selection, main stream-message fallback mirroring,
+  persisted catch-up fallback mirroring, and main streaming placeholder
+  message upsert/cleanup.
 - `toolUseToAgent` registration now has a selector-backed mirror: after the
   reducer/store dispatch, the local fallback `Map` copies the store-selected
   mapping entries instead of independently rebuilding from its previous value.
@@ -221,18 +222,18 @@ Then:
 Dogfood toggle:
 
 - Name: Store-Backed Session Messages in the Development settings page.
-- Current scope: returned `messages` and `agentContent`.
-- Behavior today: read store-selected `messages` and `agentContent` from one
-  coherent store-state snapshot after hydration, with the local mirrors as
-  fallback.
+- Current scope: returned `messages`, `agentContent`, and tool-use mappings.
+- Behavior today: read store-selected `messages`, `agentContent`, and tool-use
+  mappings from one coherent store-state snapshot after hydration, with the
+  local mirrors as fallback.
 - Keep local mirrors running for comparison, diagnostics, fallback, and
   rollback.
 - Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks
 
-- Persisted catch-up and older-page transitions still mix transcript writes
-  with cursor/watermark side effects.
+- Older-page transitions still mix transcript writes with cursor/watermark
+  side effects.
 - Compaction-tail and full-history states are easy to confuse because the
   default route has no explicit `tailTurns`/`tailFrom` URL parameter even
   though the client requests `tailCompactions: 2`. Treat message-count

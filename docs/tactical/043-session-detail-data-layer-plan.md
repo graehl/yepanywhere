@@ -2,610 +2,209 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 4 is selector-backed for retained scroll and pagination, and has
-started removing raw hook setter bypasses. The pure reducer fixture harness now
-covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
-duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
-Codex-shaped provider parity, final-message markdown augment paths, and Codex
-augment live-id to durable-id transfer. `useSessionMessages` feeds a shadow
-reducer at existing load, stream, catch-up, pagination, mapping, and
-scroll-snapshot boundaries and can opt into compact dev-only divergence
-diagnostics without switching production reads to the reducer. The same-tab
-route snapshot cache now sits behind a named session detail store with
-selector subscriptions, retention controls, expiry/eviction, and stats; the
-hook also mirrors its active lifecycle actions into that store while mounted
-and can compare live hook state to a store-selected runtime snapshot under the
-same dev-only diagnostic opt-in. `useSessionMessages.initialScrollSnapshot`
-and returned `pagination` now read through store selectors with prior local
-fallbacks, and `loadOlderMessages` uses the same selector-backed pagination
-source for its older-page cursor decision. Reloaded pending-task tool-use
-mappings now flow through `registerToolUseAgent` instead of an exposed raw
-`setToolUseToAgent` setter, so local hook state, the shadow reducer, and the
-session detail store observe the same mapping action. Reloaded pending-agent
-content now flows through a tested `mergeLoadedAgentContent` action wrapper
-that preserves the existing message-id dedupe behavior while giving the
-shadow reducer and store the same loaded-content action. Agent context-usage
-metadata now flows through `updateAgentContextUsage`, preserving the existing
-"running empty agent entry" fallback while removing that direct
-`setAgentContent` patch from `useSession`. Subagent final-assistant cleanup
-now flows through `clearAgentStreamingPlaceholders`, preserving the existing
-placeholder filtering behavior while keeping the cleanup visible to the
-shadow reducer and store. Throttled streaming placeholder updates now flow
-through `upsertStreamingPlaceholder`; raw provider deltas still accumulate in
-refs inside `useStreamingContent`, while the reducer/store see only the
-materialized placeholder rows. Main final-assistant cleanup now flows through
-`clearStreamingPlaceholders`, preserving the existing main transcript
-placeholder filtering behavior while making that cleanup visible to the shadow
-reducer and store. Session metadata-only patches now flow through
-`setSessionMetadata`/`updateSession`, so stream-derived metadata, page-level
-display-object patches, and model updates no longer expose the raw session
-state setter outside `useSessionMessages`. Renderer lazy-load agent content now
-uses the same `mergeLoadedAgentContent` wrapper as pending-agent reloads, so
-the renderer context no longer receives a raw `setAgentContent` setter; the
-unused public `setMessages` escape hatch is also removed. Main streaming
-placeholder upsert/cleanup now mirrors hook `messages` from
-`selectSessionDetailMessages` after the reducer/store action, with local helper
-logic retained only as the fallback.
-Subagent work is intentionally scoped to broad shape/provenance coverage for
-now; exact live-vs-durable subagent parity is deferred until the provider
-persistence model is better understood.
-
-This is the tactical plan for the vision in
+This is the current tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
-It is intentionally staged. The first useful outcome is not a new store by
-itself; it is a tested canonical transcript reducer that makes duplicate,
-stream/reload, augment, and subagent behavior inspectable without mounting the
-session page.
+Completed-slice detail lives in
+[`043-session-detail-data-layer-history.md`](043-session-detail-data-layer-history.md).
 
-## Current State
+## Current Status
 
-Session detail currently crosses these ownership boundaries:
+The migration is in the adapter/store phase. We have a tested
+`SessionDetailState` reducer and a small keyed external store, but
+`useSessionMessages` still returns local React state for the main transcript and
+subagent maps.
 
-- `useSession` owns session status, liveness, stream subscription, watch
-  subscription, and higher-level page actions.
-- `useSessionMessages` owns initial REST load, messages, agent content,
-  pagination, pending/deferred state, stream buffering, replay/catch-up
-  reconciliation, and the current same-tab snapshot cache.
-- `MessageList` owns render item derivation, progressive rendering, scroll
-  snapshots, auto-follow, selection, quote UI, search, and renderer DOM timing.
-- Renderer contexts own agent content and markdown augment behavior.
-- `/btw` owns child session polling and preview state near the page/component
-  layer.
+What is already in place:
 
-This works by accretion, but it is hard to test the data lifecycle. Many
-regressions only appear as mounted UI symptoms: duplicate prompts, duplicate
-assistant rows, live/reload mismatches, missing augments, subagent shape drift,
-or inline renderer state resets.
+- Reducer fixtures cover persisted load, stream, catch-up, replay, duplicate
+  prompts, duplicate assistant rows, pagination, retained scroll snapshots,
+  recaps/cursors, Codex-shaped parity, final markdown augments, and several
+  subagent/message-cache paths.
+- `useSessionMessages` feeds a shadow reducer and the session detail store at
+  existing load, stream, catch-up, pagination, mapping, subagent, metadata, and
+  scroll-snapshot boundaries.
+- Dev-only diagnostics can compare live hook state against the shadow reducer
+  and store without logging transcript text.
+- Same-tab route snapshot retention now sits behind
+  `defaultSessionDetailStore`, with TTL, max-entry, byte-cap, retain/release,
+  selector subscriptions, and stats.
+- Public raw setter escape hatches have been removed for tool-use mappings,
+  session metadata, agent content, and messages.
+- Narrow selectors are already used for retained scroll, pagination,
+  older-page cursor selection, and main streaming placeholder message
+  upsert/cleanup.
 
-## Design Constraints
+The key remaining truth is simple: the reducer/store is now a real parallel
+data layer, but the broad returned `messages` and `agentContent` values are
+not yet globally store-authoritative.
 
-- Keep same-tab retention memory-only unless a later product requirement asks
-  for durable browser persistence.
+## Why This Exists
+
+Session detail state grew inside hooks and render components. That made several
+classes of bugs hard to reason about or test:
+
+- duplicate prompts or assistant rows;
+- live stream vs reload shape drift;
+- order-dependent markdown/file/diff augments;
+- subagent rows that differ between streaming SDK state and persisted logs;
+- inline renderer resets after cache restore or DOM linger;
+- scroll bugs whose visible symptom is far away from the data transition that
+  caused them.
+
+The goal is a data lifecycle that can be tested from payload snapshots and
+reducer actions before we look at the DOM.
+
+## Current Ownership
+
+Ownership is intentionally still split while we migrate:
+
+- `useSession` owns session status, liveness, stream/watch subscriptions, and
+  page-level actions.
+- `useSessionMessages` owns initial REST load, stream buffering, local message
+  mirrors, local agent-content mirrors, pagination, and snapshot lifecycle.
+- `defaultSessionDetailStore` owns the reducer-fed canonical mirror and retained
+  same-tab cache entries.
+- `MessageList` still owns render-item derivation, progressive rendering,
+  scroll snapshots, selection, quote/search UI, and DOM timing.
+- Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
+  content now enters through the action layer.
+
+This split is acceptable while the hook return shape remains compatible. The
+migration should keep replacing local derivations with selector-backed reads in
+narrow slices.
+
+## Constraints
+
 - Keep token-sized streaming and scroll ticks out of ordinary React
   subscriptions.
-- Preserve current user-visible behavior during extraction unless a test
-  exposes a clear bug.
-- Build with selectors and explicit actions, not one broad global rerender
-  source.
-- Prefer a small hand-built external store, consistent with YA's existing
-  minimalist runtime posture.
-- Keep the coarse client summary store separate. Session detail state is not a
-  summary-row concern.
+- Keep same-tab retention memory-only unless a product requirement asks for
+  durable browser persistence.
+- Preserve user-visible behavior unless a fixture exposes a clear bug.
+- Prefer explicit actions and selectors over a broad global rerender source.
+- Keep the coarse client summary store separate from session detail state.
+- Default user-facing behavior must stay provider-like. Experimental runtime
+  changes should be default-off and preferably hidden/localStorage-only at
+  first.
 
 ## Migration Shape
 
-Avoid a full split-world runtime toggle at first. Running old and new session
-detail implementations as separately renderable production paths would double
-the hardest ownership questions: stream subscriptions, cache retention,
-catch-up ordering, and transcript DOM timing.
-
-Prefer a shadow-first, adapter-first migration:
-
-1. **Pure reducer in parallel.** Extract the transcript reducer and fixture
-   tests without changing runtime ownership.
-2. **Shadow reducer in tests first.** Feed existing REST/session stream shapes
-   into the reducer and assert canonical state without mounting React.
-3. **Adapter inside `useSessionMessages`.** Once the reducer is useful, call it
-   from existing hooks while preserving the current hook return shape:
-   `messages`, `session`, `pagination`, `agentContent`, pending/deferred rows,
-   and scroll snapshot callbacks.
-4. **Store shell behind existing APIs.** Move retention/cache ownership behind
-   the new session detail store while keeping existing cache semantics.
-5. **Selectorize after parity.** Let components subscribe to store selectors
-   only after reducer/store behavior matches current runtime expectations.
-
-This keeps each slice reviewable. The early commits should be pure functions,
-tests, and internal adapters rather than a second user-visible session page.
-
-## Parity And Correctness Tests
-
-The core correctness test is transcript parity:
-
-```text
-persisted REST/session response -> reducer -> canonical state
-equivalent SDK stream sequence  -> reducer -> canonical state
-
-canonical states match after ignoring explicitly transient runtime fields
-```
-
-Initial fixtures should cover:
-
-- persisted transcript load;
-- streamed user prompt plus assistant response;
-- streamed response committed to durable/persisted rows;
-- stream replay followed by REST catch-up;
-- duplicate user prompt replay vs genuinely distinct same-text turns;
-- duplicate assistant message suppression;
-- server-rendered augment before target message;
-- server-rendered augment after target message;
-- subagent agent references, child-content availability, and provenance shape;
-- provider parent/tree path projection during stream vs reload;
-- compaction boundary plus loaded tail;
-- pagination prepend;
-- cache restore followed by catch-up fetch;
-- render id stability across reload and DOM linger reveal.
-
-These tests should run without browser DOM, WebSocket, or full REST mocks where
-possible. Fixtures should be ordinary payload objects plus reducer actions.
-
-## Feature Toggle Policy
-
-Do not start with a user-facing feature toggle. Early slices should preserve
-runtime behavior and be validated by pure reducer/store tests.
-
-Use toggles only when runtime ownership changes materially enough that a
-rollback path is useful, for example:
-
-- switching `useSessionMessages` from local state ownership to store-backed
-  ownership;
-- switching `MessageList` from local render-item derivation to a store selector;
-- replacing augment attachment semantics with canonical data-layer attachment.
-
-Before any production toggle, prefer dev-only diagnostics:
-
-- run the old merge path and new reducer path in parallel in development;
-- compare compact canonical summaries;
-- log divergences with enough ids/cursors to reproduce as fixtures;
-- keep rendering from the old path until parity is good.
-
-## Slice 1: Reducer Fixtures
-
-Goal: create a pure transcript reducer test harness without changing runtime
-behavior.
-
-Work:
-
-- Define `SessionDetailState` and reducer action types in a new client module.
-- Start with fields that already exist in `useSessionMessages`: messages,
-  session metadata, pagination, agent content, tool-use-to-agent entries,
-  persisted timestamp watermark, last durable cursor, pending/deferred rows,
-  and scroll snapshot metadata.
-- Add conversion helpers from current API/session stream shapes into reducer
-  actions.
-- Keep the existing hooks as callers/owners; the reducer can initially mirror
-  current state transitions.
-
-Tests:
-
-- persisted transcript load produces the expected canonical state;
-- streamed user prompt plus assistant response produces the expected state;
-- replayed/catch-up durable messages do not duplicate already-streamed rows;
-- duplicate user prompts are represented once when they are the same logical
-  turn, and separately when they are genuinely distinct turns;
-- compaction boundary rows keep stable order;
-- pagination prepend preserves order and cursor metadata.
-
-Exit criteria:
-
-- At least one provider fixture covers equivalent stream and persisted input
-  producing the same canonical state.
-- Reducer tests run without React, DOM, WebSocket, or REST mocks beyond simple
-  payload fixtures.
-
-Status 2026-07-01:
-
-- Added `packages/client/src/lib/sessionDetail/transcriptReducer.ts` and
-  `types.ts` with a pure reducer/state shape for persisted transcript loads,
-  stream messages, persisted catch-up, pagination prepend, replay suppression,
-  and scroll snapshot patches.
-- Added reducer fixtures for persisted load, stream-vs-persisted basic-turn
-  parity, catch-up replacement of streamed rows, duplicate user prompt
-  suppression, distinct same-text user turns, replay suppression, and
-  pagination prepend.
-- Runtime ownership remains unchanged: `useSessionMessages`, stream
-  subscriptions, route snapshots, and `MessageList` still own their current
-  behavior while the reducer grows test coverage.
-- Added `actionAdapters.ts` so tests can feed REST-load, catch-up,
-  older-message, and stream-message inputs into the reducer through named
-  boundaries that match the eventual hook adapter.
-- Added Codex-shaped normalized fixtures for stream plus persisted catch-up
-  parity, buffered replay suppression, attachment opening-turn reconciliation,
-  and repeated tool calls with distinct call ids. Fixture text is neutral;
-  provider-like ids, timestamps, attachment shape, replay flags, and tool blocks
-  are preserved because those fields drive the reducer behavior.
-
-## Slice 2: Augment Attachment Model
-
-Goal: make augment attachment data-level and testable.
-
-Work:
-
-- Add canonical block/message identity helpers used by both live stream and
-  durable reload paths.
-- Represent attached augments in reducer state or a sibling data structure keyed
-  by canonical identity.
-- Keep existing renderers consuming the old prop shape through a compatibility
-  selector while the internals move.
-
-Tests:
-
-- server-rendered markdown/file/diff augments attach to the same block live and
-  after reload;
-- augment arrival before its target message is retained and attached when the
-  target arrives;
-- augment arrival after target message updates the selected render model without
-  changing unrelated rows;
-- duplicate or stale augment payloads do not create duplicate render content.
-
-Exit criteria:
-
-- Missing-augment regressions can be reproduced as reducer/selector tests
-  rather than browser-only symptoms.
-
-Status 2026-07-01:
-
-- Added `markdownAugments` to `SessionDetailState` and an
-  `applyFinalMarkdownAugment` reducer action for completed server-rendered
-  markdown keyed by message id.
-- Added `selectSessionDetailPreprocessAugments` so the data-layer state can
-  feed the existing `preprocessMessages` augment shape without moving
-  `MessageList` ownership yet.
-- Added tests for final markdown augment arrival before the target message,
-  after the target message, from persisted-load input, and duplicate same-HTML
-  no-op updates.
-- Added Codex final-markdown augment transfer when a live SDK message id is
-  replaced by an equivalent durable JSONL id during persisted catch-up.
-- Added broader core transcript assertions for duplicate assistant catch-up,
-  disabled-streaming placeholder removal, durable recap cursor exclusion,
-  retained scroll snapshot patching, and subagent shape/provenance pass-through.
-- Remaining augment work is still substantial: block-level streaming augments,
-  file/diff/tool augment identity, and broader canonical block identity are not
-  solved by the message-id transfer.
-
-## Slice 2.5: Hook Shadow Adapter
-
-Goal: feed the reducer from the current runtime ownership boundaries without
-changing what the UI reads.
-
-Work:
-
-- Keep `useSessionMessages` owning `messages`, `session`, `pagination`,
-  `agentContent`, route snapshots, and stream buffering.
-- Add a reducer state ref inside `useSessionMessages`, so reducer actions do
-  not trigger React renders.
-- Dispatch reducer actions beside existing mutations for initial REST load,
-  warm route snapshot restore, warm-delta/catch-up fetches, stream messages,
-  subagent stream messages, tool-use-to-agent mapping, older-page prepend, and
-  scroll snapshot patches.
-- Add dev-only compact divergence diagnostics that compare reducer state
-  against the live hook state at those coarse boundaries without logging
-  transcript text.
-- Continue leaving token-sized streaming markdown updates and DOM patching out
-  of the reducer.
-
-Tests:
-
-- reducer tests cover the new route snapshot restore and thin subagent/mapping
-  actions;
-- existing `useSessionMessages` cache tests continue to verify warm restore,
-  incremental refresh coalescing, streaming-placeholder suppression, and
-  subagent streaming suppression behavior.
-
-Status 2026-07-02:
-
-- Added `restoreRouteSnapshot`, `applyStreamSubagentMessage`, and
-  `registerToolUseAgent` reducer actions with fixture coverage.
-- Wired a non-reactive shadow reducer ref into `useSessionMessages`.
-- Added opt-in dev diagnostics through
-  `yep-anywhere-session-detail-shadow-diagnostics-enabled=true` in
-  `localStorage`, or `window.__YA_SESSION_DETAIL_SHADOW_DIAGNOSTICS__ = true`.
-  Diagnostics compare compact summaries at initial load, warm snapshot restore,
-  warm catch-up, stream message, subagent stream, tool-use mapping, catch-up,
-  older-page, and scroll-snapshot boundaries.
-- Diagnostic payloads include ids, message type/role/source, parent ids,
-  counts, pagination, agent keys/counts, tool-use mappings, durable cursors,
-  and scroll snapshot shape. They intentionally omit transcript text and are
-  deduped by boundary plus compact live/shadow hash.
-- The shadow reducer still is not the source of truth for returned hook values.
-
-Next likely implementation chunk:
-
-- Use any observed diagnostic divergence as a fixture source: copy only compact
-  ids/types/sources/order/cursors/provenance into a reducer test, then decide
-  whether the reducer or the current hook behavior is the intended canonical
-  shape.
-- After selector/action parity is quiet in normal use, pick the next narrow
-  mirror to selectorize. The most contained candidates are subagent placeholder
-  upsert/cleanup in `agentContent`; persisted catch-up and older-page message
-  paths still carry cursor/watermark side effects and should wait.
-
-## Slice 3: Subagent Shape And Tree Projection
-
-Goal: make provider parent/tree links and subagent availability inspectable
-without promising exact live/reload equivalence for every provider yet.
-
-Current stance:
-
-- Treat subagents as broad shape/provenance coverage until fixtures prove a
-  provider can reliably supply equivalent live and durable child transcripts.
-- Preserve agent references, tool-use-to-agent mappings, availability state,
-  and child-content provenance (`liveOnly`, `durableOnly`, `merged`,
-  `activityOnly`, or `missingDurable` style states) before attempting a unified
-  child transcript normal form.
-- Do not assert exact render parity for Codex or newer Claude sidechain
-  subagents as an early reducer invariant. Codex live activity and durable
-  child sessions are discovered through different provider surfaces, and newer
-  Claude sidechain messages no longer carry the legacy `parent_tool_use_id`
-  link in the child transcript itself.
-
-Work:
-
-- Model provider parent/tree links in canonical state.
-- Represent subagent agent references and content availability through a
-  reducer-owned provenance model.
-- Keep live stream content, durable child transcript content, and
-  provider-specific activity-only signals distinguishable.
-- Keep `AgentContentProvider` or a compatibility adapter until renderers can
-  read from selectors directly.
-
-Tests:
-
-- subagent task rows preserve the available agent reference and mapping shape;
-- live-only, durable-only, merged, missing-durable, and activity-only subagent
-  cases remain distinguishable in canonical state;
-- provider parent/tree path selection produces stable render order during live
-  stream and after reload;
-- child transcript updates do not reorder unrelated parent rows;
-- subagent task rows keep stable render ids across stream, cache restore, and
-  reload.
-
-Exit criteria:
-
-- A side-by-side comparison can explain whether a subagent fixture is live-only,
-  durable-only, merged, activity-only, or missing durable content without
-  conflating those states or producing duplicate parent rows.
-
-## Slice 4: Session Detail Store Shell
-
-Goal: introduce the explicit store without moving all callers at once.
-
-Work:
-
-- Build a small external store keyed by source/project/session/window params.
-- Support synchronous `read`, selector `subscribe`, reducer `dispatch`,
-  `retain`, `release`, `evictExpired`, `clear`, and `getStats`.
-- Implement same-tab memory retention with TTL, max entries, and byte cap.
-- Move the current `SessionRouteSnapshot` map behind this store API, preserving
-  behavior and settings.
-- Keep scroll snapshot patches non-notifying by default.
-
-Tests:
-
-- TTL and LRU eviction match current snapshot-cache behavior;
-- disabling transcript cache clears retained session detail entries;
-- scroll snapshot patches update retained state without notifying ordinary
-  subscribers;
-- source/session/window keys do not collide;
-- store stats identify retained entries and approximate memory.
-
-Exit criteria:
-
-- No direct `globalThis.__YA_SESSION_ROUTE_SNAPSHOTS__` ownership remains.
-- Current session cache tests pass through the store API.
-
-Status 2026-07-02:
-
-- Added `sessionDetailStore.ts`, a small hand-built external store keyed by
-  source/project/session/window parameters.
-- The store supports synchronous `read`, selector `subscribe`, reducer
-  `dispatch`, `retain`, `release`, `evictExpired`, `clear`, and `getStats`.
-- Moved `SessionRouteSnapshot` ownership behind the store while preserving the
-  existing `sessionRouteSnapshots` compatibility API used by
-  `useSessionMessages` and the Performance settings reset path.
-- Scroll snapshot patches update retained state without notifying ordinary
-  selector subscribers by default.
-- Added direct store coverage for source scoping, selector notifications,
-  non-notifying scroll patches, retained TTL behavior, and retained-entry LRU
-  behavior. Existing route snapshot and warm-cache hook tests pass through the
-  store-backed compatibility API.
-- Fed the store from the same `useSessionMessages` lifecycle boundaries as the
-  shadow reducer: warm snapshot restore, persisted load, stream message,
-  subagent stream, tool-use mapping, catch-up, older-page, and scroll snapshot.
-- Active store entries are deleted on unmount unless transcript snapshot
-  retention is enabled, so the default-off warm-cache mitigation remains intact.
-- Added a `selectSessionDetailRuntimeSnapshot` selector, store `readSelected`
-  helper, and a compact store-vs-live divergence reporter that reuses the
-  shadow diagnostics opt-in and redacted payload shape.
-- `useSessionMessages` reports store parity at the same coarse boundaries as
-  shadow diagnostics, but only when diagnostics are enabled; production reads
-  remain on the existing hook state.
-- Moved the first narrow public hook field,
-  `initialScrollSnapshot`, to a store selector read with the previous
-  cached-load value as fallback. Added hook coverage for retained scroll
-  snapshots after warm restore.
-- Moved the returned `pagination` field to a store selector read with local
-  state as fallback. Added hook coverage for active load pagination, warm
-  restore pagination, and older-page pagination.
-- Moved the pagination-dependent `loadOlderMessages` cursor decision to the
-  same selector-backed pagination source, with local state fallback. Added
-  coverage that mutates store-only pagination before invoking older-page load
-  so the request cursor proves the selector source is used.
-- Removed the raw `setToolUseToAgent` setter from
-  `UseSessionMessagesResult`. Reloaded pending-task mapping hydration in
-  `useSession` now calls `registerToolUseAgent`, so external writes use the
-  same hook/reducer/store action path as streaming mappings. Added hook
-  coverage for the reloaded pending-task mapping path.
-- Added `mergeLoadedAgentContent` as a typed action wrapper for pending-agent
-  reload hydration. The reducer owns the loaded-content merge/dedupe behavior,
-  `useSessionMessages` mirrors that helper into local hook state while
-  dispatching to the shadow reducer and store, and `useSession` no longer
-  performs the pending-agent content merge through a raw setter. Added reducer
-  coverage for deduping live and loaded agent messages plus hook coverage that
-  pending reloads call the wrapper.
-- Added `updateAgentContextUsage` as a typed action wrapper for subagent
-  context-usage metadata emitted from stream events. The reducer owns the
-  existing behavior of preserving any current agent messages or creating a
-  running empty entry when usage arrives first, and `useSession` now routes the
-  streaming callback through the wrapper. Added reducer coverage for both
-  ordering cases plus hook coverage for the streaming callback.
-- Added `clearAgentStreamingPlaceholders` as a typed action wrapper for
-  subagent final-assistant cleanup. The reducer owns the existing behavior of
-  filtering transient `_isStreaming` rows while keeping the agent entry, and
-  `useSession` now routes subagent assistant cleanup through the wrapper.
-  Added reducer coverage for durable-row preservation and empty-entry cleanup
-  with metadata, plus hook coverage for the final-assistant subagent path.
-- Added `upsertStreamingPlaceholder` for throttled streaming UI updates from
-  `useStreamingContent`. The reducer owns the replace-same-id/append-new-id
-  behavior for both main transcript placeholders and subagent placeholders,
-  while `useSessionMessages` mirrors the same helper into local hook state and
-  dispatches the action to the shadow reducer and store. Added reducer coverage
-  for main and subagent placeholder replacement plus hook/store coverage for
-  both public `handleStreamingUpdate` routes.
-- Added `clearStreamingPlaceholders` as a typed action wrapper for main
-  final-assistant cleanup. The reducer owns the existing behavior of filtering
-  transient `_isStreaming` rows while preserving durable rows, and `useSession`
-  now routes main assistant cleanup through the wrapper. Added reducer coverage
-  and hook/store coverage for the public cleanup route.
-- Added `setSessionMetadata` plus the public `updateSession` wrapper for
-  session metadata-only patches. `useSession`, `SessionPage`, incremental
-  metadata fetches, and model updates now route through the action layer while
-  initial transcript load/reset paths continue to use their existing
-  transcript actions. Added reducer coverage, hook/store coverage, and hook
-  coverage for stream-derived session metadata events.
-- Routed renderer lazy-load agent content through `mergeLoadedAgentContent`
-  instead of passing a raw `setAgentContent` setter into
-  `AgentContentProvider`. The shared reducer helper now makes loaded JSONL rows
-  canonical for duplicate ids, appends live-only SSE rows, and preserves a
-  live `running` status; reducer and renderer-context coverage lock that
-  behavior down. Removed the unused public `setMessages` return from
-  `useSessionMessages`.
-- Added `selectSessionDetailMessages` and used it as the first store-backed
-  message mirror for main streaming placeholder upsert/cleanup. The hook still
-  returns local `messages`, but after these two actions it copies the
-  reducer/store-selected transcript into local state instead of duplicating the
-  transition. Hook/store coverage injects store-only messages to prove the
-  selector-backed path is the source.
-- Remaining Slice 4 work: observe the selector/action parity surface, then
-  selectorize another narrow internal `agentContent` or `messages` mirror
-  before attempting the broad returned `messages` cutover.
-
-## Slice 5: Hook Adapter Migration
-
-Goal: make hooks subscribe to session detail state rather than owning all core
-data locally.
-
-Work:
-
-- Convert `useSessionMessages` to a store adapter in small steps.
-- Keep `useSession` responsible for stream/watch subscription and high-level
-  actions, but route incoming message lifecycle actions into the store.
-- Use selectors so `SessionPage` can read metadata/loading state separately
-  from the transcript rows.
-- Preserve `MessageList` props initially to avoid coupling the store migration
-  to renderer changes.
-
-Tests:
-
-- existing `useSessionMessages` tests still pass through the adapter;
+The strategy remains shadow-first and adapter-first:
+
+1. Keep the reducer/store fed from existing hook boundaries.
+2. Add compact fixtures when diagnostics expose a divergence.
+3. Replace one local derivation at a time with a store selector plus fallback.
+4. Only after enough parity, offer an experimental store-authoritative mode for
+   a larger surface such as returned `messages`.
+5. Keep `MessageList` and DOM-local scroll/progressive rendering out of the
+   data-layer cutover until the data model is boring.
+
+Avoid a full split-world UI where old and new session pages both render
+production traffic. That would duplicate stream ownership, cache retention, and
+DOM timing problems.
+
+## Near-Term Plan
+
+Next likely slice:
+
+- Selectorize one narrow `agentContent` mirror, probably subagent streaming
+  placeholder upsert/cleanup.
+- Keep the same pattern as the main-message placeholder slice: dispatch action,
+  read store selector, copy selected value into the local mirror, keep the old
+  local helper as fallback, and prove it with a store-only test fixture.
+
+Then:
+
+- Audit persisted catch-up and older-page transitions, but do not selectorize
+  them blindly. They carry cursor and persisted timestamp watermark side
+  effects, so they are higher risk than placeholder cleanup paths.
+- Consider a hidden opt-in dogfood setting for store-authoritative returned
+  `messages` once every visible message transition has an equivalent reducer
+  action and fallback.
+
+Potential dogfood toggle:
+
+- Name: localStorage or dev flag, not a polished settings UI initially.
+- Scope: returned `messages` only at first.
+- Behavior: `effectiveMessages = selectSessionDetailMessages(store) ??
+  localMessages`.
+- Keep local mirrors running for comparison, diagnostics, fallback, and
+  rollback.
+- Do not include `agentContent`, render selectors, or `/btw` in the first
+  toggle.
+
+## Current Risks
+
+- Persisted catch-up and older-page transitions still mix transcript writes
+  with cursor/watermark side effects.
+- Subagent live-vs-durable parity is intentionally broad-shape only. Some
+  providers may not persist enough SDK-side subagent data to guarantee exact
+  equivalence.
+- `MessageList` still performs semantic render-item derivation. Store
+  canonical state does not yet mean render canonical state.
+- Scroll symptoms can still be caused by DOM timing, retained snapshots, or
+  render-item identity, not just data shape.
+- A store-authoritative messages toggle may expose reducer gaps quickly; that
+  is useful for dogfooding, but it should remain easy to disable.
+
+## Later Work
+
+### Hook Adapter Migration
+
+Make `useSessionMessages` mostly a compatibility adapter over the store while
+preserving its public return shape.
+
+Important tests:
+
+- initial load and warm restore produce equivalent store/local state;
 - stream buffering before initial load applies once and in order;
-- catch-up fetch after cached restore does not reset the transcript;
-- loading older messages prepends without losing scroll snapshot metadata;
+- catch-up after cached restore does not reset the transcript;
+- older-page prepend preserves scroll metadata and cursors;
 - multiple consumers of the same session detail key see coherent data.
 
-Exit criteria:
+### Render Selector
 
-- Core session detail data lives in the store while the public hook return shape
-  remains compatible.
+Make the renderable transcript view a deterministic selector before changing
+`MessageList` ownership.
 
-## Slice 6: Render Selector
+Important tests:
 
-Goal: make the renderable transcript view a deterministic selector.
-
-Work:
-
-- Extract `RenderItem` derivation from `MessageList` where practical.
-- Keep DOM-local progressive rendering and scroll state inside `MessageList`.
-- Ensure render ids are stable across stream, reload, cache restore, and
-  subagent expansion.
-- Use selector tests for render shape before adding browser-level coverage.
-
-Tests:
-
-- same canonical state always yields the same render item ids/order;
-- equivalent stream and persisted states yield equivalent render items;
+- same canonical state yields stable render item ids/order;
+- equivalent stream and persisted state produce equivalent render items;
 - inline renderer keys survive cache restore and DOM linger reveal;
-- hidden/expanded thinking and tool preview settings do not mutate canonical
-  state.
+- display settings do not mutate canonical state.
 
-Exit criteria:
+### `/btw` And Multi-Consumer Cleanup
 
-- `MessageList` no longer performs semantic transcript normalization. It
-  receives a deterministic render model plus DOM-local settings/state.
+Represent related session consumers as explicit session detail entries instead
+of page-local side channels.
 
-## Slice 7: `/btw` And Multi-Consumer Cleanup
+Important tests:
 
-Goal: make related session consumers first-class, not page-local side channels.
-
-Work:
-
-- Represent `/btw` child/aside sessions as related session detail entries.
-- Replace page-local polling preview state with store actions/selectors where
-  possible.
-- Prove two mounted session detail consumers can render independently from the
-  same store without sharing DOM-local scroll state.
-
-Tests:
-
-- `/btw` aside preview updates through session detail data, not duplicated page
-  state;
-- side-by-side session consumers do not share scroll/selection state;
-- unmounting one consumer does not evict data still retained by another
-  consumer;
-- closed consumers release store retention and stream/watch ownership remains
-  explicit.
-
-Exit criteria:
-
-- `/btw` becomes a session-detail consumer with explicit data ownership.
+- `/btw` aside preview updates through session detail data;
+- side-by-side consumers do not share scroll or selection state;
+- unmounting one consumer does not evict data retained by another;
+- stream/watch ownership remains explicit.
 
 ## Verification Matrix
 
-Provider fixtures should eventually cover at least:
+Keep coverage growing in three layers:
 
-- Claude: parent/tree, compaction, task/subagent rows, SDK stream vs JSONL.
-- Codex: replay/catch-up dedupe, subagent rollout, thinking/summary blocks,
-  provider id drift.
-- OpenCode/Grok/Pi: provider-normalized tool/result rows where durable and live
-  shape can differ.
+- Reducer fixtures for data shape, dedupe, provenance, cursor, and augment
+  behavior.
+- Hook/store tests for adapter boundaries, selector fallback, warm retention,
+  and lifecycle cleanup.
+- Browser tests only when the risk is DOM-local: scroll, progressive rendering,
+  inline renderer identity, or visible layout.
 
-Behavioral fixtures should cover:
-
-- duplicate user prompt suppression;
-- duplicate assistant message suppression;
-- streamed assistant response committed to durable row;
-- augment target before/after arrival;
-- lazy subagent load after parent render;
-- cache restore followed by catch-up fetch;
-- pagination prepend;
-- compaction boundary plus loaded tail;
-- render id stability across reload and linger reveal.
+When behavior differs from current runtime, capture the existing behavior or bug
+as a failing reducer/selector test before changing UI code.
 
 ## Rollout Notes
 
-- Land reducer and store tests before switching runtime ownership.
-- Prefer adapters over large rewrites. It is acceptable for old hooks to call
-  the new reducer/store while still returning the old shape.
-- Keep instrumentation visible: store stats should help answer which sessions
-  are retained, why, approximate bytes, and expiry time.
-- When behavior differs from current runtime, capture the existing bug as a
-  failing reducer/selector test before changing UI code.
+- Prefer adapters over large rewrites.
+- Keep dev diagnostics available during dogfooding.
+- Store stats should answer which sessions are retained, why, approximate bytes,
+  and expiry time.
+- Experimental toggles should be default-off and easy to disable.
+- A successful dogfood period should leave behind fixtures for any divergence
+  that was found and fixed.

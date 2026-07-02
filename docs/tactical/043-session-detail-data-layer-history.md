@@ -178,6 +178,9 @@ Status 2026-07-02:
 - Added `selectSessionDetailAgentContent` and used it as the first
   store-backed `agentContent` mirror for subagent streaming placeholder
   upsert/cleanup.
+- Ordinary subagent stream events now also copy the store-selected
+  `agentContent` map back into the local hook mirror after reducer/store
+  dispatch, with coverage for preserving selector-only task entries.
 - Added the store-backed messages toggle preflight note and hook/store parity
   assertions for warm catch-up, incremental catch-up, and older-page prepend.
 - Added the store-authoritative returned `messages` dogfood toggle to the

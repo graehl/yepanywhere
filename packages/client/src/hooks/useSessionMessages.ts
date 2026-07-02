@@ -799,7 +799,14 @@ export function useSessionMessages(
           streamingEnabled,
         }),
       );
+      const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
+        if (selectorBackedAgentContent) {
+          reportShadowDivergence("stream-subagent-message", {
+            agentContent: selectorBackedAgentContent,
+          });
+          return selectorBackedAgentContent;
+        }
         const existing = prev[agentId] ?? {
           messages: [],
           status: "running" as const,
@@ -853,7 +860,11 @@ export function useSessionMessages(
         return next;
       });
     },
-    [dispatchSessionDetailAction, reportShadowDivergence],
+    [
+      dispatchSessionDetailAction,
+      readSelectorBackedAgentContent,
+      reportShadowDivergence,
+    ],
   );
 
   // Flush buffered stream messages after initial load

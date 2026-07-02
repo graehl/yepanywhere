@@ -35,9 +35,10 @@ What is already in place:
 - Narrow selectors are already used for retained scroll, pagination,
   older-page cursor selection, and main streaming placeholder message
   upsert/cleanup.
-- `agentContent` has its first selector-backed mirror too: subagent streaming
-  placeholder upsert/cleanup copies the store-selected map back into the local
-  hook mirror after reducer/store dispatch.
+- `agentContent` has selector-backed mirrors for ordinary subagent stream
+  events and subagent streaming placeholder upsert/cleanup; those paths copy
+  the store-selected map back into the local hook mirror after reducer/store
+  dispatch.
 - A Developer settings debug toggle can now return store-selected `messages`
   after initial hydration has reached the same reveal point as the local
   mirror. Local mirrors still run for fallback and diagnostics.
@@ -119,8 +120,9 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages` toggle and turn any observed divergence into a compact reducer or
   hook fixture.
-- Prepare the next preflight slice for `agentContent` by auditing its remaining
-  local-only writes before widening the debug toggle.
+- Continue the `agentContent` preflight by moving loaded subagent content and
+  context-usage updates to selector-backed mirrors before widening the debug
+  toggle.
 
 Then:
 

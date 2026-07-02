@@ -350,6 +350,38 @@ function mergePersistedMessagesForProvider(
     : result.messages;
 }
 
+function reconcileWarmRefreshPagination(
+  warmPagination: PaginationInfo | undefined,
+  refreshPagination: PaginationInfo | undefined,
+  mergedMessages: readonly Message[],
+): PaginationInfo | undefined {
+  if (!refreshPagination) {
+    return warmPagination;
+  }
+  if (
+    warmPagination?.hasOlderMessages === false &&
+    refreshPagination.hasOlderMessages &&
+    mergedMessages.length > refreshPagination.returnedMessageCount
+  ) {
+    return {
+      ...refreshPagination,
+      hasOlderMessages: false,
+      returnedMessageCount: Math.max(
+        mergedMessages.length,
+        refreshPagination.returnedMessageCount,
+      ),
+      totalMessageCount: Math.max(
+        warmPagination.totalMessageCount,
+        refreshPagination.totalMessageCount,
+        mergedMessages.length,
+      ),
+      truncatedBeforeMessageId: undefined,
+      truncatedBy: undefined,
+    };
+  }
+  return refreshPagination;
+}
+
 /**
  * Hook for managing session messages with stream buffering.
  *
@@ -964,13 +996,18 @@ export function useSessionMessages(
               approxDedupOptions(data.session.provider),
             )
           : taggedMessages;
-      const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        messages: data.messages,
-        session: data.session,
-        pagination: nextPagination,
-      });
+      const nextPagination = reconcileWarmRefreshPagination(
+        warmLoad.pagination,
+        data.pagination,
+        loadedMessages,
+      );
+      dispatchSessionDetailAction(
+        createCatchupMessagesAction({
+          session: data.session,
+          messages: data.messages,
+          pagination: nextPagination,
+        }),
+      );
       setSessionLoadProgress(
         createSessionLoadProgress("rendering", {
           messageCount: loadedMessages.length,
@@ -1022,20 +1059,27 @@ export function useSessionMessages(
       applySession(data.session);
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
-      const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        messages: data.messages,
-        session: data.session,
-        pagination: nextPagination,
-      });
-      const prevMessages = messagesRef.current;
+      const latestSnapshot = latestSnapshotRef.current;
       const baseMessages =
-        prevMessages.length > 0 ? prevMessages : warmLoad.messages;
+        latestSnapshot && latestSnapshot.messages.length > 0
+          ? latestSnapshot.messages
+          : warmLoad.messages;
       const loadedMessages = mergePersistedMessagesForProvider(
         baseMessages,
         taggedMessages,
         data.session.provider,
+      );
+      const nextPagination = reconcileWarmRefreshPagination(
+        warmLoad.pagination,
+        data.pagination,
+        loadedMessages,
+      );
+      dispatchSessionDetailAction(
+        createCatchupMessagesAction({
+          session: data.session,
+          messages: data.messages,
+          pagination: nextPagination,
+        }),
       );
       const lastJsonlId = findLastJsonlMessageId(loadedMessages);
       if (lastJsonlId) {

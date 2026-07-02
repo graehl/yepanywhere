@@ -55,7 +55,10 @@ data source change without also changing the deferred warm-reveal behavior.
   `pagination.totalMessageCount` is larger than the returned row count; older
   page loads and catch-up can then expand that window. A retained full-history
   entry must not silently replace the returned tail window in the UI just
-  because the store has more rows.
+  because the store has more rows. A warm-cache fixture now covers the inverse
+  case too: if the retained window was already broader/full and the refresh
+  falls back to a compacted tail response, the merged message set keeps
+  coherent pagination for the broader window.
 - Stream/replay parity depends on provider-specific approximate dedupe. Reducer
   fixtures cover the important Codex shapes, but the hook still computes local
   state independently after dispatch.

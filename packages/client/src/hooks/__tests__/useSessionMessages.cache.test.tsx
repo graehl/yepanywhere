@@ -1541,6 +1541,128 @@ describe("useSessionMessages cache", () => {
     expect(readStoreMessageIds()).toEqual(["msg-1"]);
   });
 
+  it("keeps store-backed warm full-window data coherent when refresh returns a compacted tail", async () => {
+    enableSessionTranscriptCache();
+    enableStoreBackedMessages();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:02:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "older-msg",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "older" },
+        },
+        {
+          uuid: "tail-msg-1",
+          type: "assistant",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "assistant", content: "tail one" },
+        },
+        {
+          uuid: "tail-msg-2",
+          type: "assistant",
+          timestamp: "2026-05-04T00:02:00.000Z",
+          message: { role: "assistant", content: "tail two" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 3,
+        returnedMessageCount: 3,
+        totalCompactions: 2,
+      },
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:03:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "tail-msg-1",
+          type: "assistant",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "assistant", content: "tail one" },
+        },
+        {
+          uuid: "tail-msg-2",
+          type: "assistant",
+          timestamp: "2026-05-04T00:02:00.000Z",
+          message: { role: "assistant", content: "tail two" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "tail-msg-1",
+        totalMessageCount: 3,
+        returnedMessageCount: 2,
+        totalCompactions: 2,
+      },
+    });
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    expect(
+      first.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["older-msg", "tail-msg-1", "tail-msg-2"]);
+    first.unmount();
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.messages).toEqual([]);
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      "tail-msg-2",
+      { tailCompactions: 2 },
+    );
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+
+    expect(
+      second.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["older-msg", "tail-msg-1", "tail-msg-2"]);
+    expect(readStoreMessageIds()).toEqual([
+      "older-msg",
+      "tail-msg-1",
+      "tail-msg-2",
+    ]);
+    expect(second.result.current.pagination).toMatchObject({
+      hasOlderMessages: false,
+      totalMessageCount: 3,
+      returnedMessageCount: 3,
+    });
+    expect(
+      second.result.current.pagination?.truncatedBeforeMessageId,
+    ).toBeUndefined();
+    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
+  });
+
   it("uses selector-backed pagination when loading older messages", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

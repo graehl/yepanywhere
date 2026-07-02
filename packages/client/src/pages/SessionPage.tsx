@@ -945,7 +945,7 @@ function SessionPageContent({
     updateSession,
     messages,
     agentContent,
-    setAgentContent,
+    mergeLoadedAgentContent,
     toolUseToAgent,
     markdownAugments,
     status,
@@ -5527,7 +5527,7 @@ function SessionPageContent({
             >
               <AgentContentProvider
                 agentContent={agentContent}
-                setAgentContent={setAgentContent}
+                mergeLoadedAgentContent={mergeLoadedAgentContent}
                 toolUseToAgent={toolUseToAgent}
                 projectId={projectId}
                 sessionId={sessionId}

@@ -39,7 +39,10 @@ placeholder filtering behavior while making that cleanup visible to the shadow
 reducer and store. Session metadata-only patches now flow through
 `setSessionMetadata`/`updateSession`, so stream-derived metadata, page-level
 display-object patches, and model updates no longer expose the raw session
-state setter outside `useSessionMessages`.
+state setter outside `useSessionMessages`. Renderer lazy-load agent content now
+uses the same `mergeLoadedAgentContent` wrapper as pending-agent reloads, so
+the renderer context no longer receives a raw `setAgentContent` setter; the
+unused public `setMessages` escape hatch is also removed.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -318,11 +321,11 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, wrap renderer lazy-load
-  merges next. That crosses component/context ownership, so keep the slice
-  narrow: preserve the existing merge helper behavior and make only the loaded
-  agent-content path action-visible. A broad `messages` cutover should still
-  wait.
+- After selector/action parity is quiet in normal use, audit the remaining
+  internal `messages` and `agentContent` local-state mirrors inside
+  `useSessionMessages`. The next substantial step is likely choosing one
+  message transition that can be store-backed without switching the whole
+  returned `messages` array at once.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -477,11 +480,16 @@ Status 2026-07-02:
   initial transcript load/reset paths continue to use their existing
   transcript actions. Added reducer coverage, hook/store coverage, and hook
   coverage for stream-derived session metadata events.
+- Routed renderer lazy-load agent content through `mergeLoadedAgentContent`
+  instead of passing a raw `setAgentContent` setter into
+  `AgentContentProvider`. The shared reducer helper now makes loaded JSONL rows
+  canonical for duplicate ids, appends live-only SSE rows, and preserves a
+  live `running` status; reducer and renderer-context coverage lock that
+  behavior down. Removed the unused public `setMessages` return from
+  `useSessionMessages`.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
-  remove or wrap another raw exposed setter before attempting `messages`.
-  `setAgentContent` and `setMessages` still expose direct local hook writes.
-  Remaining `setAgentContent` users include internal hook state mirrors and
-  renderer lazy-load merges.
+  choose a narrow internal `messages` or `agentContent` state mirror to
+  selectorize before attempting the broad returned `messages` cutover.
 
 ## Slice 5: Hook Adapter Migration
 

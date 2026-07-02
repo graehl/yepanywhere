@@ -160,8 +160,6 @@ vi.mock("../useSessionMessages", () => ({
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
     clearStreamingPlaceholders,
-    setAgentContent: vi.fn(),
-    setMessages: vi.fn(),
     fetchNewMessages,
     fetchSessionMetadata,
     pagination: undefined,

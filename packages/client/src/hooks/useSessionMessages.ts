@@ -169,10 +169,6 @@ export interface UseSessionMessagesResult {
   clearAgentStreamingPlaceholders: (agentId: string) => void;
   /** Remove transient streaming placeholder rows from the main transcript */
   clearStreamingPlaceholders: () => void;
-  /** Update agent content (for lazy loading) */
-  setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
-  /** Legacy direct messages setter for paths not yet represented as actions */
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Fetch new messages incrementally (for file change events) */
   fetchNewMessages: () => Promise<void>;
   /** Fetch session metadata only */
@@ -1636,8 +1632,6 @@ export function useSessionMessages(
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
     clearStreamingPlaceholders,
-    setAgentContent,
-    setMessages,
     fetchNewMessages,
     fetchSessionMetadata,
     pagination: selectedPagination,

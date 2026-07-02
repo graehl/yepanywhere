@@ -173,7 +173,7 @@ function SessionTranscriptHarness({ messages }: { messages: Message[] }) {
         >
           <AgentContentProvider
             agentContent={{}}
-            setAgentContent={() => {}}
+            mergeLoadedAgentContent={() => {}}
             toolUseToAgent={new Map()}
             projectId="project-1"
             sessionId="session-1"

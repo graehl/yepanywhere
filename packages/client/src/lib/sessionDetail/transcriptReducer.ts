@@ -299,18 +299,18 @@ export function mergeLoadedAgentContentMap(
   content: AgentContent,
 ): AgentContentMap {
   const existing = agentContent[agentId];
-  if (existing && existing.messages.length > 0) {
-    const existingIds = new Set(
-      existing.messages.map((message) => getMessageId(message)),
+  if (existing) {
+    const loadedIds = new Set(
+      content.messages.map((message) => getMessageId(message)),
     );
-    const newMessages = content.messages.filter(
-      (message) => !existingIds.has(getMessageId(message)),
+    const liveOnlyMessages = existing.messages.filter(
+      (message) => !loadedIds.has(getMessageId(message)),
     );
     return {
       ...agentContent,
       [agentId]: {
-        messages: [...existing.messages, ...newMessages],
-        status: content.status,
+        messages: [...content.messages, ...liveOnlyMessages],
+        status: existing.status === "running" ? "running" : content.status,
       },
     };
   }

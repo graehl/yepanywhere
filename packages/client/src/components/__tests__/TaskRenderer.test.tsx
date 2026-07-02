@@ -1,14 +1,31 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentContentProvider } from "../../contexts/AgentContentContext";
+import {
+  AgentContentProvider,
+  useAgentContent,
+} from "../../contexts/AgentContentContext";
 import { SchemaValidationProvider } from "../../contexts/SchemaValidationContext";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { ToastProvider } from "../../contexts/ToastContext";
-import type { AgentContentMap } from "../../hooks/useSession";
+import type { AgentContent, AgentContentMap } from "../../hooks/useSession";
 import { I18nProvider } from "../../i18n";
 import { preprocessMessages } from "../../lib/preprocessMessages";
 import type { Message } from "../../types";
 import { RenderItemComponent } from "../RenderItemComponent";
+
+const apiMocks = vi.hoisted(() => ({
+  getAgentSession: vi.fn(),
+}));
+
+vi.mock("../../api/client", () => ({
+  api: apiMocks,
+}));
 
 // Sample agent messages for testing
 const sampleAgentMessages: Message[] = [
@@ -50,10 +67,12 @@ function TestWrapper({
   children,
   agentContent = {},
   toolUseToAgent = new Map(),
+  mergeLoadedAgentContent = () => {},
 }: {
   children: React.ReactNode;
   agentContent?: AgentContentMap;
   toolUseToAgent?: Map<string, string>;
+  mergeLoadedAgentContent?: (agentId: string, content: AgentContent) => void;
 }) {
   return (
     <I18nProvider>
@@ -66,7 +85,7 @@ function TestWrapper({
           <SchemaValidationProvider>
             <AgentContentProvider
               agentContent={agentContent}
-              setAgentContent={() => {}}
+              mergeLoadedAgentContent={mergeLoadedAgentContent}
               toolUseToAgent={toolUseToAgent}
               projectId="proj-1"
               sessionId="session-1"
@@ -80,7 +99,22 @@ function TestWrapper({
   );
 }
 
+function LoadAgentContentButton({ agentId }: { agentId: string }) {
+  const context = useAgentContent();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void context.loadAgentContent("proj-1", "session-1", agentId);
+      }}
+    >
+      Load agent
+    </button>
+  );
+}
+
 beforeEach(() => {
+  apiMocks.getAgentSession.mockReset();
   const store = new Map<string, string>();
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -143,6 +177,35 @@ describe("AgentContentProvider", () => {
 
     // Provider renders without error even with empty content
     expect(screen.getByText("Test")).toBeDefined();
+  });
+
+  it("routes lazy-loaded agent content through the merge wrapper", async () => {
+    const loadedContent: AgentContent = {
+      messages: sampleAgentMessages,
+      status: "completed",
+    };
+    apiMocks.getAgentSession.mockResolvedValueOnce(loadedContent);
+    const mergeLoadedAgentContent = vi.fn();
+
+    render(
+      <TestWrapper mergeLoadedAgentContent={mergeLoadedAgentContent}>
+        <LoadAgentContentButton agentId="agent-abc123" />
+      </TestWrapper>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Load agent" }));
+
+    await waitFor(() =>
+      expect(mergeLoadedAgentContent).toHaveBeenCalledWith(
+        "agent-abc123",
+        loadedContent,
+      ),
+    );
+    expect(apiMocks.getAgentSession).toHaveBeenCalledWith(
+      "proj-1",
+      "session-1",
+      "agent-abc123",
+    );
   });
 });
 

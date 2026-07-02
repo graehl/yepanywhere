@@ -870,7 +870,6 @@ export function useSession(
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
     clearStreamingPlaceholders,
-    setAgentContent,
     fetchNewMessages,
     pagination,
     loadingOlder,
@@ -2000,7 +1999,7 @@ export function useSession(
     setSessionModel,
     messages,
     agentContent, // Subagent messages keyed by agentId (for Task tool)
-    setAgentContent, // Setter for merging lazy-loaded agent content
+    mergeLoadedAgentContent,
     toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
     markdownAugments, // Pre-rendered markdown HTML from REST response (keyed by blockId)
     status,

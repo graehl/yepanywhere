@@ -610,16 +610,26 @@ describe("transcriptReducer", () => {
     });
   });
 
-  it("merges loaded agent content without duplicating live messages", () => {
+  it("merges loaded agent content with loaded rows as canonical", () => {
     const liveMessage = assistantMessage(
       "agent-assistant-1",
       "live",
+      "2026-07-01T12:00:02.000Z",
+    );
+    const loadedCanonicalMessage = assistantMessage(
+      "agent-assistant-1",
+      "loaded canonical",
       "2026-07-01T12:00:02.000Z",
     );
     const loadedMessage = assistantMessage(
       "agent-assistant-2",
       "loaded",
       "2026-07-01T12:00:03.000Z",
+    );
+    const liveOnlyMessage = assistantMessage(
+      "agent-assistant-3",
+      "live only",
+      "2026-07-01T12:00:04.000Z",
     );
     const state = reduceSessionDetailActions([
       {
@@ -628,20 +638,26 @@ describe("transcriptReducer", () => {
         message: liveMessage,
       },
       {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: liveOnlyMessage,
+      },
+      {
         type: "mergeLoadedAgentContent",
         agentId: "agent-a",
         content: {
-          messages: [liveMessage, loadedMessage],
+          messages: [loadedCanonicalMessage, loadedMessage],
           status: "completed",
         },
       },
     ]);
 
     expect(state.agentContent["agent-a"]?.messages).toEqual([
-      liveMessage,
+      loadedCanonicalMessage,
       loadedMessage,
+      liveOnlyMessage,
     ]);
-    expect(state.agentContent["agent-a"]?.status).toBe("completed");
+    expect(state.agentContent["agent-a"]?.status).toBe("running");
   });
 
   it("updates agent context usage without replacing existing messages", () => {

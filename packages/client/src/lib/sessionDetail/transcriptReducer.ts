@@ -4,6 +4,7 @@ import {
   reconcileLinearMessages,
 } from "../linearMessageDedup";
 import {
+  findMessageIndexById,
   getMessageId,
   mergeJSONLMessages,
   mergeStreamMessage,
@@ -189,6 +190,64 @@ function applyStreamMessage(
   return messages === state.messages ? state : { ...state, messages };
 }
 
+function applyStreamSubagentMessage(
+  state: SessionDetailState,
+  action: Extract<
+    SessionDetailAction,
+    { type: "applyStreamSubagentMessage" }
+  >,
+): SessionDetailState {
+  const existing = state.agentContent[action.agentId] ?? {
+    messages: [],
+    status: "running" as const,
+  };
+
+  if (
+    action.message._isStreaming === true &&
+    action.streamingEnabled === false
+  ) {
+    const messages = clearStreamingMessages(existing.messages);
+    if (messages === existing.messages) {
+      return state;
+    }
+    if (messages.length === 0 && existing.contextUsage === undefined) {
+      const agentContent = { ...state.agentContent };
+      delete agentContent[action.agentId];
+      return {
+        ...state,
+        agentContent,
+      };
+    }
+    return {
+      ...state,
+      agentContent: {
+        ...state.agentContent,
+        [action.agentId]: {
+          ...existing,
+          messages,
+        },
+      },
+    };
+  }
+
+  const incomingId = getMessageId(action.message);
+  if (findMessageIndexById(existing.messages, incomingId) !== -1) {
+    return state;
+  }
+
+  return {
+    ...state,
+    agentContent: {
+      ...state.agentContent,
+      [action.agentId]: {
+        ...existing,
+        messages: [...existing.messages, action.message],
+        status: "running",
+      },
+    },
+  };
+}
+
 function findEquivalentJsonlMessageId(
   previousMessage: Message,
   nextMessages: readonly Message[],
@@ -277,6 +336,23 @@ export function reduceSessionDetailState(
   action: SessionDetailAction,
 ): SessionDetailState {
   switch (action.type) {
+    case "restoreRouteSnapshot":
+      return {
+        ...state,
+        messages: action.snapshot.messages,
+        session: action.snapshot.session,
+        pagination: action.snapshot.pagination,
+        agentContent: action.snapshot.agentContent,
+        markdownAugments: {},
+        toolUseToAgentEntries: action.snapshot.toolUseToAgentEntries,
+        deferredMessages: [],
+        lastMessageId:
+          action.snapshot.lastMessageId ??
+          findLastJsonlMessageId(action.snapshot.messages),
+        maxPersistedTimestampMs: action.snapshot.maxPersistedTimestampMs,
+        scrollSnapshot: action.snapshot.scrollSnapshot,
+      };
+
     case "loadPersistedTranscript": {
       const taggedMessages = tagJsonlMessages(action.messages);
       const messages = maybeReconcileApprox(
@@ -311,6 +387,26 @@ export function reduceSessionDetailState(
 
     case "applyStreamMessage":
       return applyStreamMessage(state, action);
+
+    case "applyStreamSubagentMessage":
+      return applyStreamSubagentMessage(state, action);
+
+    case "registerToolUseAgent": {
+      if (
+        state.toolUseToAgentEntries.some(
+          ([toolUseId]) => toolUseId === action.toolUseId,
+        )
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        toolUseToAgentEntries: [
+          ...state.toolUseToAgentEntries,
+          [action.toolUseId, action.agentId],
+        ],
+      };
+    }
 
     case "applyCatchupMessages": {
       const taggedMessages = tagJsonlMessages(action.messages);

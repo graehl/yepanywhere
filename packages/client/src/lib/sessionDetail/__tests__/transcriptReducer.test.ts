@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PaginationInfo } from "../../../api/client";
 import type { Message, SessionMetadata } from "../../../types";
+import type { SessionRouteSnapshot } from "../../sessionRouteSnapshots";
 import {
   createInitialSessionDetailState,
   reduceSessionDetailActions,
@@ -78,6 +79,43 @@ function comparableMessages(messages: readonly Message[]) {
 }
 
 describe("transcriptReducer", () => {
+  it("restores retained route snapshots without retagging message provenance", () => {
+    const snapshot: SessionRouteSnapshot = {
+      messages: [
+        {
+          ...userMessage("sdk-user-1", "cached", "2026-07-01T12:00:00.000Z"),
+          _source: "sdk",
+        },
+        {
+          ...assistantMessage(
+            "jsonl-assistant-1",
+            "persisted",
+            "2026-07-01T12:00:01.000Z",
+          ),
+          _source: "jsonl",
+        },
+      ],
+      session: sessionMetadata(),
+      agentContent: {},
+      toolUseToAgentEntries: [],
+      lastMessageId: "jsonl-assistant-1",
+      maxPersistedTimestampMs: Date.parse("2026-07-01T12:00:01.000Z"),
+    };
+    const state = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "restoreRouteSnapshot",
+      snapshot,
+    });
+
+    expect(state.messages.map((message) => message._source)).toEqual([
+      "sdk",
+      "jsonl",
+    ]);
+    expect(state.lastMessageId).toBe("jsonl-assistant-1");
+    expect(state.maxPersistedTimestampMs).toBe(
+      Date.parse("2026-07-01T12:00:01.000Z"),
+    );
+  });
+
   it("loads persisted transcript messages as canonical JSONL rows", () => {
     const messages = [
       userMessage("user-1", "hello", "2026-07-01T12:00:00.000Z"),
@@ -408,6 +446,71 @@ describe("transcriptReducer", () => {
       },
     });
     expect(state.toolUseToAgentEntries).toEqual([["toolu_1", "agent-a"]]);
+  });
+
+  it("applies subagent stream messages and tool mappings as thin state", () => {
+    const first = assistantMessage(
+      "agent-assistant-1",
+      "running",
+      "2026-07-01T12:00:02.000Z",
+    );
+    const duplicate = assistantMessage(
+      "agent-assistant-1",
+      "running duplicate",
+      "2026-07-01T12:00:03.000Z",
+    );
+    const state = reduceSessionDetailActions([
+      {
+        type: "registerToolUseAgent",
+        toolUseId: "toolu_1",
+        agentId: "agent-a",
+      },
+      {
+        type: "registerToolUseAgent",
+        toolUseId: "toolu_1",
+        agentId: "agent-b",
+      },
+      {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: first,
+      },
+      {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: duplicate,
+      },
+    ]);
+
+    expect(state.toolUseToAgentEntries).toEqual([["toolu_1", "agent-a"]]);
+    expect(state.agentContent["agent-a"]?.messages).toEqual([first]);
+    expect(state.agentContent["agent-a"]?.status).toBe("running");
+  });
+
+  it("drops transient subagent streaming placeholders when streaming is disabled", () => {
+    const streamingMessage: Message = {
+      ...assistantMessage(
+        "agent-streaming",
+        "partial",
+        "2026-07-01T12:00:02.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions([
+      {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: streamingMessage,
+      },
+      {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: streamingMessage,
+        streamingEnabled: false,
+      },
+    ]);
+
+    expect(state.agentContent).toEqual({});
   });
 
   it("keeps retained scroll snapshots patchable outside message changes", () => {

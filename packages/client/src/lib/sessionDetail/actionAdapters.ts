@@ -1,6 +1,9 @@
 import type { DeferredQueueMessage, PaginationInfo } from "../../api/client";
 import type { Message, SessionMetadata } from "../../types";
-import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
+import type {
+  SessionRouteScrollSnapshot,
+  SessionRouteSnapshot,
+} from "../sessionRouteSnapshots";
 import type {
   AgentContentMap,
   MarkdownAugmentMap,
@@ -13,6 +16,11 @@ export type LoadPersistedTranscriptAction = Extract<
   { type: "loadPersistedTranscript" }
 >;
 
+export type RestoreRouteSnapshotAction = Extract<
+  SessionDetailAction,
+  { type: "restoreRouteSnapshot" }
+>;
+
 export type ApplyCatchupMessagesAction = Extract<
   SessionDetailAction,
   { type: "applyCatchupMessages" }
@@ -21,6 +29,16 @@ export type ApplyCatchupMessagesAction = Extract<
 export type ApplyStreamMessageAction = Extract<
   SessionDetailAction,
   { type: "applyStreamMessage" }
+>;
+
+export type ApplyStreamSubagentMessageAction = Extract<
+  SessionDetailAction,
+  { type: "applyStreamSubagentMessage" }
+>;
+
+export type RegisterToolUseAgentAction = Extract<
+  SessionDetailAction,
+  { type: "registerToolUseAgent" }
 >;
 
 export type PrependOlderMessagesAction = Extract<
@@ -47,6 +65,15 @@ export interface SessionDetailPersistedTranscriptInput {
 export interface StreamMessageActionOptions {
   fromBufferedReplay?: boolean;
   streamingEnabled?: boolean;
+}
+
+export function createRestoreRouteSnapshotAction(
+  snapshot: SessionRouteSnapshot,
+): RestoreRouteSnapshotAction {
+  return {
+    type: "restoreRouteSnapshot",
+    snapshot,
+  };
 }
 
 export function createLoadPersistedTranscriptAction(
@@ -88,6 +115,30 @@ export function createStreamMessageAction(
     message,
     fromBufferedReplay: options.fromBufferedReplay,
     streamingEnabled: options.streamingEnabled,
+  };
+}
+
+export function createStreamSubagentMessageAction(
+  agentId: string,
+  message: Message,
+  options: Pick<StreamMessageActionOptions, "streamingEnabled"> = {},
+): ApplyStreamSubagentMessageAction {
+  return {
+    type: "applyStreamSubagentMessage",
+    agentId,
+    message,
+    streamingEnabled: options.streamingEnabled,
+  };
+}
+
+export function createRegisterToolUseAgentAction(
+  toolUseId: string,
+  agentId: string,
+): RegisterToolUseAgentAction {
+  return {
+    type: "registerToolUseAgent",
+    toolUseId,
+    agentId,
   };
 }
 

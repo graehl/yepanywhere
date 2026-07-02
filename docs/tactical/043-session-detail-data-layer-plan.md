@@ -2,11 +2,13 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 2 continued. The pure reducer fixture harness now covers the
+Status: Slice 2.5 started. The pure reducer fixture harness now covers the
 basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
-augment live-id to durable-id transfer without changing runtime hook ownership.
+augment live-id to durable-id transfer. `useSessionMessages` now feeds a
+shadow reducer at existing load, stream, catch-up, pagination, mapping, and
+scroll-snapshot boundaries without switching production reads to the reducer.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -232,6 +234,41 @@ Status 2026-07-01:
 - Remaining augment work is still substantial: block-level streaming augments,
   file/diff/tool augment identity, and broader canonical block identity are not
   solved by the message-id transfer.
+
+## Slice 2.5: Hook Shadow Adapter
+
+Goal: feed the reducer from the current runtime ownership boundaries without
+changing what the UI reads.
+
+Work:
+
+- Keep `useSessionMessages` owning `messages`, `session`, `pagination`,
+  `agentContent`, route snapshots, and stream buffering.
+- Add a reducer state ref inside `useSessionMessages`, so reducer actions do
+  not trigger React renders.
+- Dispatch reducer actions beside existing mutations for initial REST load,
+  warm route snapshot restore, warm-delta/catch-up fetches, stream messages,
+  subagent stream messages, tool-use-to-agent mapping, older-page prepend, and
+  scroll snapshot patches.
+- Continue leaving token-sized streaming markdown updates and DOM patching out
+  of the reducer.
+
+Tests:
+
+- reducer tests cover the new route snapshot restore and thin subagent/mapping
+  actions;
+- existing `useSessionMessages` cache tests continue to verify warm restore,
+  incremental refresh coalescing, streaming-placeholder suppression, and
+  subagent streaming suppression behavior.
+
+Status 2026-07-02:
+
+- Added `restoreRouteSnapshot`, `applyStreamSubagentMessage`, and
+  `registerToolUseAgent` reducer actions with fixture coverage.
+- Wired a non-reactive shadow reducer ref into `useSessionMessages`.
+- The shadow reducer is not yet exposed to diagnostics, does not compare
+  compact summaries against live hook state, and is not the source of truth for
+  returned hook values.
 
 ## Slice 3: Subagent Shape And Tree Projection
 

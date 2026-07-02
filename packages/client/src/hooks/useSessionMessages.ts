@@ -19,6 +19,23 @@ import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
+  createCatchupMessagesAction,
+  createLoadPersistedTranscriptAction,
+  createPrependOlderMessagesAction,
+  createRegisterToolUseAgentAction,
+  createRestoreRouteSnapshotAction,
+  createStreamMessageAction,
+  createStreamSubagentMessageAction,
+} from "../lib/sessionDetail/actionAdapters";
+import {
+  createInitialSessionDetailState,
+  reduceSessionDetailState,
+} from "../lib/sessionDetail/transcriptReducer";
+import type {
+  SessionDetailAction,
+  SessionDetailState,
+} from "../lib/sessionDetail/types";
+import {
   getSessionRouteSnapshotKey,
   patchSessionRouteScrollSnapshot,
   readSessionRouteSnapshot,
@@ -217,10 +234,6 @@ function findLastJsonlMessageId(messages: Message[]): string | undefined {
   return undefined;
 }
 
-function shouldSuppressLiveStreamingMessage(message: Message): boolean {
-  return message._isStreaming === true && !getStreamingEnabled();
-}
-
 function clearStreamingMessages(messages: Message[]): Message[] {
   const filtered = messages.filter((message) => !message._isStreaming);
   return filtered.length === messages.length ? messages : filtered;
@@ -372,6 +385,30 @@ export function useSessionMessages(
     cachedLoad?.scrollSnapshot,
   );
   const latestSnapshotRef = useRef<SessionRouteSnapshot | null>(null);
+  const sessionDetailShadowRef = useRef<SessionDetailState>(
+    createInitialSessionDetailState(),
+  );
+  const dispatchSessionDetailShadowAction = useCallback(
+    (action: SessionDetailAction) => {
+      sessionDetailShadowRef.current = reduceSessionDetailState(
+        sessionDetailShadowRef.current,
+        action,
+      );
+    },
+    [],
+  );
+  const resetSessionDetailShadowState = useCallback(
+    (snapshot?: SessionRouteSnapshot) => {
+      const initial = createInitialSessionDetailState();
+      sessionDetailShadowRef.current = snapshot
+        ? reduceSessionDetailState(
+            initial,
+            createRestoreRouteSnapshotAction(snapshot),
+          )
+        : initial;
+    },
+    [],
+  );
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -459,6 +496,7 @@ export function useSessionMessages(
   const processStreamMessage = useCallback(
     (incoming: Message, fromBufferedReplay = false) => {
       const provider = providerRef.current;
+      const streamingEnabled = getStreamingEnabled();
       const isReplay = incoming.isReplay === true;
       const shouldApplyReplayDedupe =
         (fromBufferedReplay || isReplay) && usesApproxMessageDedup(provider);
@@ -467,7 +505,15 @@ export function useSessionMessages(
         isReplay &&
         incomingTimestampMs !== null &&
         incomingTimestampMs <= maxPersistedTimestampMsRef.current;
-      const suppressStreaming = shouldSuppressLiveStreamingMessage(incoming);
+      const suppressStreaming =
+        incoming._isStreaming === true && !streamingEnabled;
+
+      dispatchSessionDetailShadowAction(
+        createStreamMessageAction(incoming, {
+          fromBufferedReplay,
+          streamingEnabled,
+        }),
+      );
 
       setMessages((prev) => {
         if (suppressStreaming) {
@@ -504,18 +550,24 @@ export function useSessionMessages(
           : result.messages;
       });
     },
-    [],
+    [dispatchSessionDetailShadowAction],
   );
 
   // Process a buffered stream subagent message
   const processStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
+      const streamingEnabled = getStreamingEnabled();
+      dispatchSessionDetailShadowAction(
+        createStreamSubagentMessageAction(agentId, incoming, {
+          streamingEnabled,
+        }),
+      );
       setAgentContent((prev) => {
         const existing = prev[agentId] ?? {
           messages: [],
           status: "running" as const,
         };
-        if (shouldSuppressLiveStreamingMessage(incoming)) {
+        if (incoming._isStreaming === true && !streamingEnabled) {
           const messages = clearStreamingMessages(existing.messages);
           if (messages === existing.messages) {
             return prev;
@@ -547,7 +599,7 @@ export function useSessionMessages(
         };
       });
     },
-    [],
+    [dispatchSessionDetailShadowAction],
   );
 
   // Flush buffered stream messages after initial load
@@ -674,6 +726,13 @@ export function useSessionMessages(
             )
           : taggedMessages;
       const nextPagination = data.pagination ?? warmLoad.pagination;
+      dispatchSessionDetailShadowAction(
+        createCatchupMessagesAction({
+          session: data.session,
+          messages: data.messages,
+          pagination: nextPagination,
+        }),
+      );
       setSessionLoadProgress(
         createSessionLoadProgress("rendering", {
           messageCount: loadedMessages.length,
@@ -724,6 +783,14 @@ export function useSessionMessages(
       setSession(data.session);
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
+      const nextPagination = data.pagination ?? warmLoad.pagination;
+      dispatchSessionDetailShadowAction(
+        createCatchupMessagesAction({
+          session: data.session,
+          messages: data.messages,
+          pagination: nextPagination,
+        }),
+      );
       setMessages((prev) => {
         const baseMessages = prev.length > 0 ? prev : warmLoad.messages;
         const loadedMessages = mergePersistedMessagesForProvider(
@@ -737,7 +804,6 @@ export function useSessionMessages(
         }
         return loadedMessages;
       });
-      const nextPagination = data.pagination ?? warmLoad.pagination;
       setPagination(nextPagination);
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
@@ -761,6 +827,7 @@ export function useSessionMessages(
     streamBufferRef.current = [];
     scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
     if (warmLoad) {
+      resetSessionDetailShadowState(warmLoad);
       setSessionLoadProgress(
         createSessionLoadProgress("fetching", {
           messageCount: warmLoad.messages.length,
@@ -805,6 +872,7 @@ export function useSessionMessages(
       })();
     } else {
       setSessionLoadProgress(createSessionLoadProgress("fetching"));
+      resetSessionDetailShadowState();
       maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
       providerRef.current = undefined;
       lastMessageIdRef.current = undefined;
@@ -882,6 +950,13 @@ export function useSessionMessages(
         }
 
         const nextPagination = data.pagination;
+        dispatchSessionDetailShadowAction(
+          createLoadPersistedTranscriptAction({
+            session: data.session,
+            messages: data.messages,
+            pagination: nextPagination,
+          }),
+        );
         const revealInitialTranscript = () => {
           setMessages(loadedMessages);
           setPagination(nextPagination);
@@ -974,6 +1049,8 @@ export function useSessionMessages(
     onLoadError,
     flushBuffer,
     updatePersistedTimestampWatermark,
+    resetSessionDetailShadowState,
+    dispatchSessionDetailShadowAction,
   ]);
 
   // Handle streaming content updates (from useStreamingContent)
@@ -1055,6 +1132,9 @@ export function useSessionMessages(
   // Register toolUse → agent mapping
   const registerToolUseAgent = useCallback(
     (toolUseId: string, agentId: string) => {
+      dispatchSessionDetailShadowAction(
+        createRegisterToolUseAgentAction(toolUseId, agentId),
+      );
       setToolUseToAgent((prev) => {
         if (prev.has(toolUseId)) return prev;
         const next = new Map(prev);
@@ -1062,7 +1142,7 @@ export function useSessionMessages(
         return next;
       });
     },
-    [],
+    [dispatchSessionDetailShadowAction],
   );
 
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
@@ -1081,6 +1161,12 @@ export function useSessionMessages(
           lastMessageIdRef.current,
         );
         if (data.messages.length > 0) {
+          dispatchSessionDetailShadowAction(
+            createCatchupMessagesAction({
+              session: data.session,
+              messages: data.messages,
+            }),
+          );
           updatePersistedTimestampWatermark(data.messages);
           setMessages((prev) => {
             const result = mergeJSONLMessages(prev, data.messages, {
@@ -1113,7 +1199,12 @@ export function useSessionMessages(
     });
 
     return request;
-  }, [projectId, sessionId, updatePersistedTimestampWatermark]);
+  }, [
+    projectId,
+    sessionId,
+    updatePersistedTimestampWatermark,
+    dispatchSessionDetailShadowAction,
+  ]);
 
   // Load older messages (previous chunk before the current truncation point)
   const loadOlderMessages = useCallback(async () => {
@@ -1126,6 +1217,12 @@ export function useSessionMessages(
         tailCompactions: 2,
         beforeMessageId: pagination.truncatedBeforeMessageId,
       });
+      dispatchSessionDetailShadowAction(
+        createPrependOlderMessagesAction({
+          messages: data.messages,
+          pagination: data.pagination,
+        }),
+      );
       setMessages((prev) => {
         const taggedOlder = data.messages.map((m) => ({
           ...m,
@@ -1146,11 +1243,21 @@ export function useSessionMessages(
     } finally {
       setLoadingOlder(false);
     }
-  }, [projectId, sessionId, pagination, updatePersistedTimestampWatermark]);
+  }, [
+    projectId,
+    sessionId,
+    pagination,
+    updatePersistedTimestampWatermark,
+    dispatchSessionDetailShadowAction,
+  ]);
 
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
       scrollSnapshotRef.current = snapshot;
+      dispatchSessionDetailShadowAction({
+        type: "patchScrollSnapshot",
+        scrollSnapshot: snapshot,
+      });
       if (getSessionTranscriptCacheEnabled()) {
         patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
       }
@@ -1161,7 +1268,14 @@ export function useSessionMessages(
         };
       }
     },
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [
+      sourceKey,
+      projectId,
+      sessionId,
+      tailTurns,
+      tailFrom,
+      dispatchSessionDetailShadowAction,
+    ],
   );
 
   // Fetch session metadata only

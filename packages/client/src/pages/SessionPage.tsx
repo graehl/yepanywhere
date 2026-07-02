@@ -5592,7 +5592,7 @@ function SessionPageContent({
                   onTranscriptPositionTimestampChange={
                     setTranscriptPositionTimestampMs
                   }
-                  interactionDisabled={isDomLingerParked}
+                  inert={isDomLingerParked}
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>

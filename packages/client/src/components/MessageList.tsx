@@ -1246,7 +1246,7 @@ interface Props {
   progressiveRenderKey?: string;
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
-  interactionDisabled?: boolean;
+  inert?: boolean;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
@@ -1437,7 +1437,7 @@ export const MessageList = memo(function MessageList({
   progressiveRenderKey,
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
-  interactionDisabled = false,
+  inert = false,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
   onCancelForkSummary,
@@ -1446,7 +1446,7 @@ export const MessageList = memo(function MessageList({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
-  const previousInteractionDisabledRef = useRef(interactionDisabled);
+  const previousInertRef = useRef(inert);
   const isInitialLoadRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
   const lastHeightRef = useRef(0);
@@ -2253,7 +2253,7 @@ export const MessageList = memo(function MessageList({
     [onTranscriptPositionTimestampChange],
   );
   useEffect(() => {
-    if (interactionDisabled) {
+    if (inert) {
       return;
     }
     const handleCopy = (event: ClipboardEvent) => {
@@ -2267,10 +2267,10 @@ export const MessageList = memo(function MessageList({
 
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
-  }, [interactionDisabled]);
+  }, [inert]);
 
   useEffect(() => {
-    if (interactionDisabled || !onQuoteSelection) {
+    if (inert || !onQuoteSelection) {
       setFloatingQuoteButton(null);
       return;
     }
@@ -2361,10 +2361,10 @@ export const MessageList = memo(function MessageList({
       window.removeEventListener("resize", updateFromSelectionRange);
       window.removeEventListener("scroll", updateFromSelectionRange, true);
     };
-  }, [interactionDisabled, onQuoteSelection]);
+  }, [inert, onQuoteSelection]);
 
   useEffect(() => {
-    if (interactionDisabled || !onQuoteSelection) {
+    if (inert || !onQuoteSelection) {
       return;
     }
     const handleSelectionTyping = (event: KeyboardEvent) => {
@@ -2389,7 +2389,7 @@ export const MessageList = memo(function MessageList({
     window.addEventListener("keydown", handleSelectionTyping, true);
     return () =>
       window.removeEventListener("keydown", handleSelectionTyping, true);
-  }, [applyQuoteFromSelection, interactionDisabled, onQuoteSelection]);
+  }, [applyQuoteFromSelection, inert, onQuoteSelection]);
   const latestVisibleTimestampMs = useMemo(() => {
     let latest: number | null = null;
     const includeTimestamp = (timestampMs: number | null) => {
@@ -3105,7 +3105,7 @@ export const MessageList = memo(function MessageList({
   ]);
 
   useEffect(() => {
-    if (interactionDisabled) {
+    if (inert) {
       stopUserTurnSearchArrowRepeat();
       return;
     }
@@ -3203,7 +3203,7 @@ export const MessageList = memo(function MessageList({
     startUserTurnSearchArrowRepeat,
     stopUserTurnSearchArrowRepeat,
     toggleThinkingItemsVisible,
-    interactionDisabled,
+    inert,
     userTurnSearch.active,
     userTurnSearch.scope,
   ]);
@@ -3262,7 +3262,7 @@ export const MessageList = memo(function MessageList({
 
   // Attach scroll listener to parent container
   useEffect(() => {
-    if (interactionDisabled) {
+    if (inert) {
       return;
     }
     const container = containerRef.current?.parentElement;
@@ -3274,13 +3274,13 @@ export const MessageList = memo(function MessageList({
       publishScrollSnapshot();
       container.removeEventListener("scroll", handleScroll);
     };
-  }, [handleScroll, interactionDisabled, publishScrollSnapshot]);
+  }, [handleScroll, inert, publishScrollSnapshot]);
 
   // Cancel follow before browser scroll events when the user clearly tries to
   // move away from the live tail. Programmatic scroll bursts can otherwise keep
   // the scroll handler muted long enough to rubber-band the viewport back down.
   useEffect(() => {
-    if (interactionDisabled) {
+    if (inert) {
       return;
     }
     const container = containerRef.current?.parentElement;
@@ -3378,7 +3378,7 @@ export const MessageList = memo(function MessageList({
       container.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [interactionDisabled, stopFollowingForUserScroll]);
+  }, [inert, stopFollowingForUserScroll]);
 
   // Use ResizeObserver to detect content height changes (handles async markdown rendering)
   useEffect(() => {
@@ -3496,16 +3496,16 @@ export const MessageList = memo(function MessageList({
   }, [forceScrollToCurrent, scrollTrigger]);
 
   useLayoutEffect(() => {
-    const wasInteractionDisabled = previousInteractionDisabledRef.current;
-    previousInteractionDisabledRef.current = interactionDisabled;
+    const wasInert = previousInertRef.current;
+    previousInertRef.current = inert;
     if (
-      wasInteractionDisabled &&
-      !interactionDisabled &&
+      wasInert &&
+      !inert &&
       shouldAutoScrollRef.current
     ) {
       forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS);
     }
-  }, [forceScrollToCurrent, interactionDisabled]);
+  }, [forceScrollToCurrent, inert]);
 
   // Restore same-tab route scroll before the default first-load follow behavior
   // moves the viewport to the tail.

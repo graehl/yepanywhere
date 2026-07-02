@@ -1808,7 +1808,7 @@ describe("MessageList", () => {
           userMessage("user-1", "earlier request"),
           assistantMessage("assistant-1", "current response"),
         ]}
-        interactionDisabled
+        inert
       />,
       { container: scrollContainer },
     );
@@ -1857,7 +1857,7 @@ describe("MessageList", () => {
     });
     expect(scrollContainer.scrollTop).toBe(500);
 
-    rerender(<MessageList messages={messages} interactionDisabled />);
+    rerender(<MessageList messages={messages} inert />);
     const rectFor = (top: number, height: number): DOMRect =>
       ({
         top,
@@ -1912,7 +1912,7 @@ describe("MessageList", () => {
     scrollContainer.scrollTop = 200;
     fireEvent.wheel(scrollContainer, { deltaY: -120 });
 
-    rerender(<MessageList messages={messages} interactionDisabled />);
+    rerender(<MessageList messages={messages} inert />);
     expect(scrollContainer.scrollTop).toBe(200);
 
     rerender(<MessageList messages={messages} />);

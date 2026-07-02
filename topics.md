@@ -98,3 +98,5 @@
   grouping, and stale non-push profile retention.
 - session-detail-data-layer - Canonical client session detail store/reducer
   between provider transcript inputs and transcript DOM rendering.
+- remote-client-ci-publish - Opt-in CI publish proposal for the hosted remote
+  client (repo-variable-gated GitHub Actions to a personal Pages repo).

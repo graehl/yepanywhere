@@ -54,67 +54,13 @@ What is already in place:
   `agentContent` is gated during warm hydration, ignores selector-only entries
   when the toggle is off, and returns selector-only entries when the toggle is
   on.
-- Render-item projection has its first selector boundary: preprocessing,
-  transcript display-object insertion, stable item reuse, and turn grouping now
-  live in `sessionDetail/renderSelectors`.
-- User-turn navigation anchors plus user/all-turn search anchors now derive
-  from render items through `sessionDetail/renderSelectors`.
-- Assistant render segments and full-session search anchors, including
-  explored tool-run aggregate and child anchors, now derive through
-  `sessionDetail/renderSelectors`.
-- Search-driven visible turn-group filtering now derives through
-  `sessionDetail/renderSelectors`.
-- Search match and selected-anchor projection now derive through
-  `sessionDetail/renderSelectors`.
-- Latest correctable prompt selection now derives through
-  `sessionDetail/renderSelectors`.
-- Visible timeline entry derivation now derives through
-  `sessionDetail/renderSelectors`, including timestamp ordering for visible
-  turn groups plus `/btw` aside metadata.
-- Progressive timeline entry weighting and render-item target count derivation
-  now derive through `sessionDetail/renderSelectors`.
-- Progressive timeline visibility projection now derives through
-  `sessionDetail/renderSelectors`, including effective entry count, sliced
-  entries, and progress percent.
-- Thinking duration derivation now derives through
-  `sessionDetail/renderSelectors`.
-- Thinking count and latest-thinking-id derivation now derive through
-  `sessionDetail/renderSelectors`.
-- Display render item filtering now derives through
-  `sessionDetail/renderSelectors`, using render items plus the local thinking
-  visibility flag.
-- Thinking id and text-length summaries now derive through
-  `sessionDetail/renderSelectors` for the local expansion/follow effects.
-- Visible thinking text-delta detection now derives through
-  `sessionDetail/renderSelectors`, using the summary maps plus the local
-  expansion predicate.
-- Auto-expanded thinking-id reconciliation now derives through
-  `sessionDetail/renderSelectors`, using previous, observed, and current id
-  sets plus the historical-seed flag.
-- Latest visible timestamp derivation, last timestamped render-item selection,
-  visible-turn ending rules, composer tail ordering, and deferred queue lane
-  positions now derive through `sessionDetail/renderSelectors`.
-- Composer tail row metadata now derives through
-  `sessionDetail/renderSelectors`, including parsed row timestamps, stale-age
-  visibility, recovered/patient deferred flags, recovered queue ids, project
-  queue status kind, and attachment-count badge visibility.
-- Assistant timeline row metadata now derives through
-  `sessionDetail/renderSelectors`, including explored-tool segment timestamps,
-  stale-now hints, render-item indexes, and thinking durations.
-- Timeline entry display row metadata now derives through
-  `sessionDetail/renderSelectors`, including `/btw`, empty, standalone, user,
-  and assistant row classification plus user-prompt action eligibility,
-  latest-correctable flags, row keys, stale-now hints, and assistant timeline
-  row metadata for assistant entries.
-- Assistant timeline item action eligibility now derives through
-  `sessionDetail/renderSelectors`, including thinking toggle, quote, and
-  user-prompt trim/fork eligibility while callbacks remain local.
-- Search readiness, active search anchor selection, search panel labels/counts,
-  searchable-user-turn detection, and navigator search-state projection now
-  derive through `sessionDetail/renderSelectors`.
-- Composer tail action eligibility now derives through
-  `sessionDetail/renderSelectors`, including project-queue cancel and deferred
-  recovered resume/delete plus queued-message cancel eligibility.
+- The render-selector preflight is complete: transcript/view shape
+  derivation — render items and turn grouping, search anchors/projections,
+  timeline and progressive-reveal entries, thinking summaries, composer tail
+  rows, and action eligibility — lives in the `sessionDetail/` render-selector
+  modules behind the `renderSelectors` barrel. The full covered-output list is
+  in
+  [`043-session-detail-render-selector-preflight.md`](043-session-detail-render-selector-preflight.md).
 
 Current diagnostic stance:
 

@@ -8,8 +8,10 @@ It records the render-selector boundary split from `MessageList`.
 
 ## Extracted Boundary
 
-The pure render boundary is now in
-`packages/client/src/lib/sessionDetail/renderSelectors.ts`.
+The pure render boundary is now in the
+`packages/client/src/lib/sessionDetail/` concern modules (renderItems,
+composerTail, thinking, exploration, timeline, search), re-exported through
+`renderSelectors.ts`.
 
 Covered inputs:
 

@@ -2,13 +2,14 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 2.5 started. The pure reducer fixture harness now covers the
-basic persisted, streamed, catch-up, replay, duplicate-prompt,
+Status: Slice 2.5 diagnostics added. The pure reducer fixture harness now
+covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
 augment live-id to durable-id transfer. `useSessionMessages` now feeds a
 shadow reducer at existing load, stream, catch-up, pagination, mapping, and
-scroll-snapshot boundaries without switching production reads to the reducer.
+scroll-snapshot boundaries and can opt into compact dev-only divergence
+diagnostics without switching production reads to the reducer.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -250,6 +251,9 @@ Work:
   warm route snapshot restore, warm-delta/catch-up fetches, stream messages,
   subagent stream messages, tool-use-to-agent mapping, older-page prepend, and
   scroll snapshot patches.
+- Add dev-only compact divergence diagnostics that compare reducer state
+  against the live hook state at those coarse boundaries without logging
+  transcript text.
 - Continue leaving token-sized streaming markdown updates and DOM patching out
   of the reducer.
 
@@ -266,9 +270,27 @@ Status 2026-07-02:
 - Added `restoreRouteSnapshot`, `applyStreamSubagentMessage`, and
   `registerToolUseAgent` reducer actions with fixture coverage.
 - Wired a non-reactive shadow reducer ref into `useSessionMessages`.
-- The shadow reducer is not yet exposed to diagnostics, does not compare
-  compact summaries against live hook state, and is not the source of truth for
-  returned hook values.
+- Added opt-in dev diagnostics through
+  `yep-anywhere-session-detail-shadow-diagnostics-enabled=true` in
+  `localStorage`, or `window.__YA_SESSION_DETAIL_SHADOW_DIAGNOSTICS__ = true`.
+  Diagnostics compare compact summaries at initial load, warm snapshot restore,
+  warm catch-up, stream message, subagent stream, tool-use mapping, catch-up,
+  older-page, and scroll-snapshot boundaries.
+- Diagnostic payloads include ids, message type/role/source, parent ids,
+  counts, pagination, agent keys/counts, tool-use mappings, durable cursors,
+  and scroll snapshot shape. They intentionally omit transcript text and are
+  deduped by boundary plus compact live/shadow hash.
+- The shadow reducer still is not the source of truth for returned hook values.
+
+Next likely implementation chunk:
+
+- Use any observed diagnostic divergence as a fixture source: copy only compact
+  ids/types/sources/order/cursors/provenance into a reducer test, then decide
+  whether the reducer or the current hook behavior is the intended canonical
+  shape.
+- If diagnostics stay quiet across normal use, start the store shell behind the
+  existing hook API: retention ownership, keyed entries, explicit TTL/caps, and
+  selector-ready reads while keeping `useSessionMessages` as the adapter.
 
 ## Slice 3: Subagent Shape And Tree Projection
 

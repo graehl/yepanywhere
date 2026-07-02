@@ -57,6 +57,8 @@ export const UI_KEYS = {
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",
   sessionDomLinger: "yep-anywhere-session-dom-linger-enabled",
   sessionTranscriptCache: "yep-anywhere-session-transcript-cache-enabled",
+  sessionDetailShadowDiagnostics:
+    "yep-anywhere-session-detail-shadow-diagnostics-enabled",
   stableToolPreviewRendering:
     "yep-anywhere-stable-tool-preview-rendering-enabled",
   // Preserve the first-shipped key; true now means previews start expanded.

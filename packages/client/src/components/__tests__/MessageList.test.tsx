@@ -1826,6 +1826,63 @@ describe("MessageList", () => {
     expect(scrollContainer.scrollTop).toBe(500);
   });
 
+  it("ignores parked scroll events before tail-follow reveal", () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 0;
+    });
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const messages = [
+      userMessage("user-1", "earlier request"),
+      assistantMessage("assistant-1", "current response"),
+    ];
+    const { rerender } = render(<MessageList messages={messages} />, {
+      container: scrollContainer,
+    });
+    expect(scrollContainer.scrollTop).toBe(500);
+
+    rerender(<MessageList messages={messages} interactionDisabled />);
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 360,
+        width: 360,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    scrollContainer.getBoundingClientRect = () => rectFor(0, 500);
+    const content = scrollContainer.querySelector(".message-list");
+    const lastLine = content?.lastElementChild;
+    expect(lastLine).toBeInstanceOf(HTMLElement);
+    (lastLine as HTMLElement).getBoundingClientRect = () => rectFor(900, 100);
+    scrollContainer.scrollTop = 0;
+    fireEvent.scroll(scrollContainer);
+
+    rerender(<MessageList messages={messages} />);
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
   it("preserves a parked transcript read position on reveal", () => {
     const scrollContainer = document.createElement("div");
     document.body.append(scrollContainer);

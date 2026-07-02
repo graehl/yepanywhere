@@ -3274,7 +3274,7 @@ export const MessageList = memo(function MessageList({
       publishScrollSnapshot();
       container.removeEventListener("scroll", handleScroll);
     };
-  }, [handleScroll, publishScrollSnapshot]);
+  }, [handleScroll, interactionDisabled, publishScrollSnapshot]);
 
   // Cancel follow before browser scroll events when the user clearly tries to
   // move away from the live tail. Programmatic scroll bursts can otherwise keep

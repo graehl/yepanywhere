@@ -242,6 +242,124 @@ That is intentionally not the baseline route-retention mechanism: it trades a
 small bounded amount of continued mounted-route work for even faster return
 when the user immediately bounces away and back.
 
+## Known Divergence Risks: Warm Restore vs Cold Reload (2026-07-02)
+
+Investigated after upstream defaulted the retention features off during the
+intermittent scroll-reset investigation (upstream commit `45279b9b`). The
+question: can a cached return with delta catch-up land the viewport somewhere
+a cold reload never would, especially when the server moved while the user was
+away? Four gaps, ordered by user impact. Correctness criterion (maintainer
+lean, 2026-07-02): the objectively right restore target is probably *what the
+user last viewed*, even if follow mode was engaged when they left; landing on
+never-seen content is the failure to avoid.
+
+1. **Follow-mode returns cannot restore last-viewed content.**
+   `captureScrollSnapshot` suppresses anchor capture when `atBottom`, and the
+   restore effect maps `atBottom` to scroll-to-bottom with follow re-engaged.
+   When the server moved while away, a warm return lands at the *new* bottom —
+   content the user never saw — and the data needed to do better was never
+   captured.
+2. **Anchor miss falls back to stale pixel geometry.** When `findRenderRow`
+   misses the anchor id, restore clamps the captured `scrollTop` into the
+   current `scrollHeight`. After a delta merge, partial progressive hydration,
+   or any layout change, equal pixels are different content — a position a
+   cold reload never produces. Reachable when the anchor row's chunk has not
+   hydrated yet, when the anchor message was deleted server-side (edit-turn
+   truncation, rewritten history), or when the row id belonged to
+   restructured agent content.
+3. **The restore is one-shot and races progressive hydration.** The restore
+   effect fires at the first non-empty `displayRenderItems` and clears
+   `isInitialLoadRef`; if the anchor is not mounted yet, the pixel fallback
+   runs and nothing re-anchors when later chunks mount. On the capture side,
+   snapshots can be published mid-hydration with transient geometry. The
+   2026-07-02 fixes (`Ignore top anchored session scroll snapshots`, `Keep
+   cached session restores at the tail`) discard the worst captures at
+   restore time, but the mid-hydration capture window and the
+   restore-before-anchor-mounts window both remain. This combination is the
+   likeliest mechanism for the intermittent scroll resets.
+4. **The delta merge is union-only, so rewritten histories diverge in
+   content, not just position.** On cursor miss the server returns the full
+   list (`sliceAfterMessageIdWithMatch` with `found: false`) without
+   surfacing that to the client; for Claude SDK providers the cursor is
+   ignored entirely (`primaryReaderAfterMessageId` forced undefined), so
+   every warm return unions cached-with-full. `mergeJSONLMessages` never
+   drops cached rows absent from the fresh response (only
+   `pruneSupersededSdkSiblings`). After an edit-turn truncation or external
+   rewrite, the warm transcript can show rows a cold reload would not, and
+   the scroll anchor can be one of those phantom rows.
+
+## Gap-Closing Plan: Position-Faithful Warm Restore
+
+Target invariant: a warm restore resolves to the same content position a cold
+reload would produce given the same reading history — the last-viewed row when
+one is recorded, else the tail — and snapshots are captured only from settled
+content.
+
+**Slice 1 — capture side (no visible behavior change).**
+
+- Capture the anchor unconditionally: `atBottom` becomes a restore-policy bit
+  rather than capture suppression. Record order context beside the anchor id
+  for neighbor recovery: the anchored message's persisted timestamp and the
+  ids of the previous and next rendered rows.
+- Gate `publishScrollSnapshot` on settled content: no snapshot writes between
+  warm-hydration start and progressive-render completion. The write gate
+  belongs at the session detail store boundary (`patchScrollSnapshot` is
+  already a store action — see
+  [session-detail-data-layer.md](session-detail-data-layer.md)), so there is
+  a single writer to gate. Keep the existing restore-side discard heuristics
+  (`shouldRestoreInitialScrollSnapshot`) as regression guards.
+- Diagnostics: emit a divergence event (the `reportShadowDivergence` pattern)
+  whenever a restore resolves by anything other than the exact anchor, with a
+  miss reason. This converts the scroll-reset investigation from anecdotes to
+  data.
+
+**Slice 2 — restore side.**
+
+- Make the restore pending rather than one-shot: hold the snapshot until (a)
+  the anchor row mounts, then anchor with `topOffset`; or (b) progressive
+  hydration completes without it, then resolve by nearest surviving neighbor —
+  bisect current rows by the recorded timestamp / neighbor ids and anchor to
+  the closest survivor. Raw pixel `scrollTop` remains only as the final
+  fallback for a transcript with no surviving reference points, and always
+  fires the slice-1 diagnostic.
+- While a pending anchored restore exists, suppress the initial tail-follow
+  effect so the two never compete for the viewport.
+
+**Slice 3 — truth reconciliation.**
+
+- Server: plumb the existing match flag from `sliceAfterMessageIdWithMatch`
+  through `loadProviderSession` into the session response as `cursorFound`.
+  A Claude-SDK full response counts as cursor-not-found-with-full-truth.
+- Client: when the incremental response is actually a full window (cursor
+  missed, or provider always returns full), reconcile deletions instead of
+  unioning: within the fresh window's range — at or after its oldest message —
+  drop cached rows whose ids are absent from the response, preserving only
+  local rows newer than the fresh watermark (in-flight stream messages that
+  raced the fetch). Absence *below* the window floor is windowing, not
+  deletion, and must not evict older loaded pages.
+- Fixture test: cached transcript plus rewritten server transcript (edit-turn
+  truncation) — warm-load content must equal cold-load content, and an anchor
+  on a deleted row must resolve by neighbor.
+
+**Slice 4 — the follow-mode semantic (needs upstream alignment).**
+
+- With anchors always captured, add the restore policy for `atBottom` returns
+  when the server moved: restore the last-viewed anchor, leave follow
+  disengaged, rely on the existing jump-to-latest affordance, and optionally
+  render a new-messages divider at the old watermark.
+- Default: ship opt-in. The current follow-to-new-bottom return is a
+  deliberate convention, not a bug, and upstream has just tightened
+  tail-follow expectations, so the default flips only by explicit agreement.
+
+Ordering rationale: slice 1 is pure capture/diagnostics and unblocks the rest;
+slice 2 removes the reset mechanism; slice 3 makes warm content equal cold
+content; slice 4 is the semantic improvement and the only part with a default
+question. Regression tests ride each slice (the anchored-top MessageList test
+from the 2026-07-02 fixes shows the pattern; slice 3 belongs in the
+sessionDetail reducer fixture suite). The open timing-instrumentation item in
+`docs/tactical/041-cached-session-restore-performance.md` rides slice 1's
+diagnostics.
+
 ## Open Questions
 
 - What exact freshness window should non-session routes use by default? Source

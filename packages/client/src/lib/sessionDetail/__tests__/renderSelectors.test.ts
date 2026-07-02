@@ -1,8 +1,12 @@
 import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import type { Message } from "../../../types";
+import type { RenderItem } from "../../../types/renderItems";
 import {
   buildSessionDetailRenderItems,
+  getAllTurnSearchAnchors,
+  getUserTurnNavAnchors,
+  getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
   selectSessionDetailRenderItems,
 } from "../renderSelectors";
@@ -118,6 +122,122 @@ describe("session detail render selectors", () => {
       { isUserPrompt: true, isStandalone: false, ids: ["user-1"] },
       { isUserPrompt: false, isStandalone: true, ids: ["display-1"] },
       { isUserPrompt: false, isStandalone: false, ids: ["assistant-1"] },
+    ]);
+  });
+
+  it("derives user navigation anchors from searchable user turns", () => {
+    const sourceMessages: Message[] = [
+      {
+        id: "user-1",
+        type: "user",
+        timestamp: "2026-07-02T12:00:00.000Z",
+        message: { role: "user", content: "Build the parser" },
+      },
+    ];
+    const items: RenderItem[] = [
+      {
+        type: "user_prompt",
+        id: "setup",
+        content: "# AGENTS.md instructions\nRead CLAUDE.md",
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "user-1",
+        content: "Build the parser",
+        sourceMessages,
+      },
+      {
+        type: "user_prompt",
+        id: "subagent-user-1",
+        content: "Subagent note",
+        isSubagent: true,
+        sourceMessages: [],
+      },
+    ];
+
+    expect(getUserTurnNavAnchors(items)).toEqual([
+      {
+        id: "user-1",
+        preview: "Build the parser",
+        timestampMs: Date.parse("2026-07-02T12:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("derives user and all-turn search anchors from render items", () => {
+    const userMessage: Message = {
+      id: "user-1",
+      type: "user",
+      timestamp: "2026-07-02T12:00:00.000Z",
+      message: { role: "user", content: "Find the duplicate prompt" },
+    };
+    const assistantMessage: Message = {
+      id: "assistant-1",
+      type: "assistant",
+      timestamp: "2026-07-02T12:01:00.000Z",
+      message: { role: "assistant", content: "The answer is stable" },
+    };
+    const items: RenderItem[] = [
+      {
+        type: "user_prompt",
+        id: "user-1",
+        content: "Find the duplicate prompt",
+        sourceMessages: [userMessage],
+      },
+      {
+        type: "user_prompt",
+        id: "setup",
+        content: "<environment_context>\ncwd",
+        sourceMessages: [],
+      },
+      {
+        type: "text",
+        id: "assistant-1",
+        text: "The answer is stable",
+        sourceMessages: [assistantMessage],
+      },
+      {
+        type: "system",
+        id: "system-1",
+        subtype: "compact_boundary",
+        content: "Compacted transcript",
+        details: ["retained tail"],
+        sourceMessages: [],
+      },
+    ];
+
+    expect(getUserTurnSearchAnchors(items)).toEqual([
+      {
+        id: "user-1",
+        preview: "Find the duplicate prompt",
+        searchText: "Find the duplicate prompt",
+        timestampMs: Date.parse("2026-07-02T12:00:00.000Z"),
+      },
+    ]);
+
+    expect(
+      getAllTurnSearchAnchors(items).map((anchor) => ({
+        id: anchor.id,
+        preview: anchor.preview,
+        searchText: anchor.searchText,
+      })),
+    ).toEqual([
+      {
+        id: "user-1",
+        preview: "Find the duplicate prompt",
+        searchText: "Find the duplicate prompt",
+      },
+      {
+        id: "assistant-1",
+        preview: "The answer is stable",
+        searchText: "The answer is stable",
+      },
+      {
+        id: "system-1",
+        preview: "Compacted transcript retained tail",
+        searchText: "Compacted transcript\nretained tail",
+      },
     ]);
   });
 });

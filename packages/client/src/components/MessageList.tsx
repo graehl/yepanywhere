@@ -39,7 +39,6 @@ import {
   MESSAGE_STALE_THRESHOLD_MS,
   parseTimestampMs,
 } from "../lib/messageAge";
-import { parseUserPrompt } from "../lib/parseUserPrompt";
 import type { ActiveToolApproval } from "../lib/preprocessMessages";
 import {
   dispatchSessionIsearchGuideState,
@@ -48,11 +47,24 @@ import {
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   buildSessionDetailRenderItems,
+  getAllTurnSearchAnchors,
+  getContentBlocksText,
+  getPromptTextForCorrection,
+  getSearchableUserTurnPreview,
+  getSearchPreviewFallback,
+  getSystemSearchText,
+  getToolSearchPreview,
+  getToolSearchText,
+  getUserTurnNavAnchors,
+  getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
+  isSessionSetupText,
+  joinSearchParts,
+  normalizeSearchText,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
 import { UI_KEYS } from "../lib/storageKeys";
-import type { ContentBlock, Message } from "../types";
+import type { Message } from "../types";
 import type { RenderItem } from "../types/renderItems";
 import { AttachmentChip } from "./AttachmentChip";
 import {
@@ -238,51 +250,6 @@ function getThinkingDurationMs(
   return durationMs >= 100 && durationMs < 24 * 60 * 60 * 1000
     ? durationMs
     : undefined;
-}
-
-const SESSION_SETUP_PREFIXES = [
-  "# AGENTS.md instructions",
-  "<environment_context>",
-];
-
-function getPromptTextForCorrection(content: string | ContentBlock[]): string {
-  const rawText =
-    typeof content === "string"
-      ? content
-      : content
-          .filter(
-            (block): block is ContentBlock & { type: "text"; text: string } =>
-              block.type === "text" && typeof block.text === "string",
-          )
-          .map((block) => block.text)
-          .join("\n");
-  return parseUserPrompt(rawText).text.trim();
-}
-
-function getUserTurnPreview(content: string | ContentBlock[]): string {
-  const text = getPromptTextForCorrection(content).replace(/\s+/g, " ").trim();
-  return getSearchPreviewFallback(text);
-}
-
-function getSearchPreviewFallback(text: string): string {
-  const compactText = text.replace(/\s+/g, " ").trim();
-  if (compactText.length <= 180) {
-    return compactText;
-  }
-  return `${compactText.slice(0, 177).trimEnd()}...`;
-}
-
-function normalizeSearchText(text: string, caseSensitive = false): string {
-  const compactText = text.replace(/\s+/g, " ").trim();
-  return caseSensitive ? compactText : compactText.toLowerCase();
-}
-
-function getSearchableUserTurnPreview(item: RenderItem): string | null {
-  if (item.type !== "user_prompt" || item.isSubagent) {
-    return null;
-  }
-  const preview = getUserTurnPreview(item.content);
-  return preview && !isSessionSetupText(preview) ? preview : null;
 }
 
 function isCtrlKeyShortcut(
@@ -521,117 +488,6 @@ function buildSearchPreview(
     .join(" ... ");
 }
 
-function stringifySearchValue(value: unknown): string {
-  const seen = new WeakSet<object>();
-
-  const stringify = (nestedValue: unknown): string => {
-    if (nestedValue === null || nestedValue === undefined) {
-      return "";
-    }
-    if (typeof nestedValue === "string") {
-      return nestedValue;
-    }
-    if (
-      typeof nestedValue === "number" ||
-      typeof nestedValue === "boolean" ||
-      typeof nestedValue === "bigint"
-    ) {
-      return String(nestedValue);
-    }
-    if (typeof nestedValue !== "object") {
-      return String(nestedValue);
-    }
-    if (seen.has(nestedValue)) {
-      return "[Circular]";
-    }
-    seen.add(nestedValue);
-    if (Array.isArray(nestedValue)) {
-      return nestedValue.map(stringify).filter(Boolean).join("\n");
-    }
-    return Object.entries(nestedValue as Record<string, unknown>)
-      .map(([key, entryValue]) => {
-        const text = stringify(entryValue);
-        return text ? `${key}: ${text}` : key;
-      })
-      .filter(Boolean)
-      .join("\n");
-  };
-
-  return stringify(value);
-}
-
-function getContentBlocksText(content: string | ContentBlock[]): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  return content
-    .map((block) => {
-      if (block.type === "text" && typeof block.text === "string") {
-        return block.text;
-      }
-      if (block.type === "thinking" && typeof block.thinking === "string") {
-        return block.thinking;
-      }
-      if (block.type === "tool_use") {
-        return [block.name, block.id, stringifySearchValue(block.input)].join(
-          "\n",
-        );
-      }
-      if (block.type === "tool_result") {
-        return [
-          block.tool_use_id,
-          typeof block.content === "string"
-            ? block.content
-            : stringifySearchValue(block.content),
-        ].join("\n");
-      }
-      return stringifySearchValue(block);
-    })
-    .filter(Boolean)
-    .join("\n");
-}
-
-function joinSearchParts(parts: Array<string | null | undefined>): string {
-  return parts
-    .map((part) => part?.trim() ?? "")
-    .filter(Boolean)
-    .join("\n");
-}
-
-function getToolSearchText(item: RenderItem): string {
-  if (item.type !== "tool_call") {
-    return "";
-  }
-  return joinSearchParts([
-    item.toolName,
-    item.id,
-    item.status,
-    stringifySearchValue(item.toolInput),
-    item.toolResult?.isError ? "error" : null,
-    item.toolResult?.content,
-    stringifySearchValue(item.toolResult?.structured),
-  ]);
-}
-
-function getToolSearchPreview(item: RenderItem): string {
-  if (item.type !== "tool_call") {
-    return "";
-  }
-  const input = stringifySearchValue(item.toolInput).replace(/\s+/g, " ");
-  const detail = input ? `: ${getSearchPreviewFallback(input)}` : "";
-  return `${item.toolName}${detail}`;
-}
-
-function getSystemSearchText(item: RenderItem): string {
-  if (item.type !== "system") {
-    return "";
-  }
-  return joinSearchParts([
-    item.content,
-    ...(item.details ?? []).map(getContentBlocksText),
-  ]);
-}
-
 function getFullSessionSearchAnchorForItem(
   item: RenderItem,
 ): UserTurnNavAnchor | null {
@@ -794,11 +650,6 @@ function getSearchScopeKeys(scope: SessionIsearchScope): string {
     return "Ctrl+Alt+S";
   }
   return scope === "all" ? "Ctrl+S" : "Ctrl+R/Ctrl+Alt+R";
-}
-
-function isSessionSetupText(text: string): boolean {
-  const trimmed = text.trimStart();
-  return SESSION_SETUP_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
 }
 
 interface UserTurnSearchSession {
@@ -1898,21 +1749,10 @@ export const MessageList = memo(function MessageList({
     () => displayRenderItems.some((item) => getSearchableUserTurnPreview(item)),
     [displayRenderItems],
   );
-  const getUserTurnNavAnchors = useCallback((): UserTurnNavAnchor[] => {
-    const anchors: UserTurnNavAnchor[] = [];
-    for (const item of displayRenderItems) {
-      const preview = getSearchableUserTurnPreview(item);
-      if (!preview) {
-        continue;
-      }
-      anchors.push({
-        id: item.id,
-        preview,
-        timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-      });
-    }
-    return anchors;
-  }, [displayRenderItems]);
+  const getUserTurnNavAnchorList = useCallback(
+    (): UserTurnNavAnchor[] => getUserTurnNavAnchors(displayRenderItems),
+    [displayRenderItems],
+  );
   const searchReady =
     userTurnSearch.active &&
     normalizeSearchText(userTurnSearch.query).length >= 2;
@@ -1922,23 +1762,7 @@ export const MessageList = memo(function MessageList({
     if (!includeUserTurnSearchAnchors) {
       return [];
     }
-    const anchors: UserTurnNavAnchor[] = [];
-    for (const item of displayRenderItems) {
-      if (item.type !== "user_prompt" || item.isSubagent) {
-        continue;
-      }
-      const text = getPromptTextForCorrection(item.content);
-      const preview = getSearchPreviewFallback(text);
-      if (preview && !isSessionSetupText(preview)) {
-        anchors.push({
-          id: item.id,
-          preview,
-          searchText: text,
-          timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-        });
-      }
-    }
-    return anchors;
+    return getUserTurnSearchAnchors(displayRenderItems);
   }, [includeUserTurnSearchAnchors, displayRenderItems]);
   const includeAllTurnSearchAnchors =
     searchReady && userTurnSearch.scope === "all";
@@ -1946,47 +1770,7 @@ export const MessageList = memo(function MessageList({
     if (!includeAllTurnSearchAnchors) {
       return [];
     }
-    const anchors: UserTurnNavAnchor[] = [];
-    for (const item of displayRenderItems) {
-      if (item.type === "user_prompt") {
-        const text = getPromptTextForCorrection(item.content);
-        const preview = getSearchPreviewFallback(text);
-        if (preview && !isSessionSetupText(preview)) {
-          anchors.push({
-            id: item.id,
-            preview,
-            searchText: text,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          });
-        }
-        continue;
-      }
-      if (item.type === "text") {
-        const preview = getSearchPreviewFallback(item.text);
-        if (preview) {
-          anchors.push({
-            id: item.id,
-            preview,
-            searchText: item.text,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          });
-        }
-        continue;
-      }
-      if (item.type === "system") {
-        const systemSearchText = getSystemSearchText(item);
-        const preview = getSearchPreviewFallback(systemSearchText);
-        if (preview) {
-          anchors.push({
-            id: item.id,
-            preview,
-            searchText: systemSearchText,
-            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
-          });
-        }
-      }
-    }
-    return anchors;
+    return getAllTurnSearchAnchors(displayRenderItems);
   }, [includeAllTurnSearchAnchors, displayRenderItems]);
   const includeFullSessionSearchAnchors =
     searchReady && userTurnSearch.scope === "full";
@@ -2076,9 +1860,9 @@ export const MessageList = memo(function MessageList({
         ? userTurnSearchMatches
         : userTurnSearch.active
           ? []
-          : getUserTurnNavAnchors(),
+          : getUserTurnNavAnchorList(),
     [
-      getUserTurnNavAnchors,
+      getUserTurnNavAnchorList,
       searchReady,
       userTurnSearch.active,
       userTurnSearchMatches,

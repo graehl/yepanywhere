@@ -215,6 +215,10 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`: preprocessing, transcript display-object
   insertion, stable render item reuse, and turn grouping. `MessageList` still
   owns DOM-local display policy, search state, progressive reveal, and scroll.
+- The next render-selector preflight moved user-turn navigation anchors and
+  user/all-turn search anchor derivation into `sessionDetail/renderSelectors`.
+  `MessageList` still owns full-session explored search assembly, DOM
+  navigation, search state, progressive reveal, and scroll.
 
 ## Verification Details
 

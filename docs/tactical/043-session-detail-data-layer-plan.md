@@ -54,6 +54,8 @@ What is already in place:
 - Render-item projection has its first selector boundary: preprocessing,
   transcript display-object insertion, stable item reuse, and turn grouping now
   live in `sessionDetail/renderSelectors`.
+- User-turn navigation anchors plus user/all-turn search anchors now derive
+  from render items through `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -88,7 +90,7 @@ Ownership is intentionally still split while we migrate:
   same-tab cache entries.
 - `MessageList` still owns display policy, progressive rendering, scroll
   snapshots, selection, quote/search UI, and DOM timing. The first pure
-  render-item projection helper now lives outside the component.
+  render-item projection helpers now live outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -131,8 +133,9 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving search/nav anchor derivation
-  behind pure helpers without taking over scroll or progressive rendering.
+- Continue the render-selector preflight by moving full-session explored search
+  anchor derivation behind pure helpers without taking over scroll or
+  progressive rendering.
 
 Then:
 
@@ -158,8 +161,9 @@ Dogfood toggle:
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
-- `MessageList` still performs semantic render-item derivation. Store
-  canonical state does not yet mean render canonical state.
+- `MessageList` still performs some semantic render-item derivation,
+  especially full-session explored search and `/btw`. Store canonical state
+  does not yet mean render canonical state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.
 - A store-authoritative messages toggle may expose reducer gaps quickly; that

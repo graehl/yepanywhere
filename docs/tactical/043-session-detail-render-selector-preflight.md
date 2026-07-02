@@ -24,16 +24,19 @@ Covered outputs:
 - preprocessed `RenderItem[]`;
 - inserted transcript display objects;
 - stable render item object reuse;
-- turn grouping for user, assistant, and standalone display-object entries.
+- turn grouping for user, assistant, and standalone display-object entries;
+- user-turn navigation anchors;
+- user-turn and all-turn search anchors.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
-ref, thinking expansion state, search state, progressive reveal, selection,
-scroll anchoring, and actual rendering.
+ref, thinking expansion state, search state, full-session explored search
+assembly, progressive reveal, selection, scroll anchoring, and actual
+rendering.
 
 ## Still Local To MessageList
 
 - Thinking visibility and expansion policy.
-- Search anchor construction.
+- Full-session search anchor construction for explored assistant segments.
 - `/btw` timeline entries and aside rendering.
 - Progressive timeline slicing and reveal timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
@@ -42,6 +45,7 @@ scroll anchoring, and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is search/nav
-anchor derivation from render items, because it is data-shaped but still feeds
-DOM navigation owned by `MessageList`.
+projection out of `MessageList`. The next low-risk candidate is full-session
+search anchor derivation, including explored assistant segments, because it is
+still data-shaped but depends on `MessageList`'s current assistant-segment
+projection helpers.

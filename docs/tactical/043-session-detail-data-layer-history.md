@@ -189,6 +189,9 @@ Status 2026-07-02:
 - Added the store-authoritative returned `messages` dogfood toggle to the
   Development settings page, with warm hydration gating and focused hook
   coverage for the gate plus store-selected message updates.
+- Extended the same dev-only dogfood toggle to returned `agentContent`, with
+  the same warm hydration gating, local fallback, and coverage for enabled,
+  disabled, and warm-cache behavior.
 
 Reducer/helper behavior locked down during Slice 4:
 
@@ -206,6 +209,8 @@ Reducer/helper behavior locked down during Slice 4:
 - Ordinary subagent stream, loaded subagent content, and context-usage updates
   now use the same store-selected agent-content mirror with local helpers kept
   as fallback.
+- Returned `agentContent` can now be store-selected behind the Developer
+  setting without bypassing the warm snapshot deferred reveal path.
 
 ## Verification Details
 

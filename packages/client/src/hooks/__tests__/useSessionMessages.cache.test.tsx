@@ -22,7 +22,10 @@ import {
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
-import { selectSessionDetailMessages } from "../../lib/sessionDetail/selectors";
+import {
+  selectSessionDetailAgentContent,
+  selectSessionDetailMessages,
+} from "../../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
@@ -79,6 +82,20 @@ function readStoreMessageIds(
     )
     ?.map((message) => message.uuid)
     .filter((uuid): uuid is string => typeof uuid === "string");
+}
+
+function readStoreAgentContent(
+  projectId = "proj-1",
+  sessionId = "sess-1",
+) {
+  return defaultSessionDetailStore.readSelected(
+    {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId,
+      sessionId,
+    },
+    selectSessionDetailAgentContent,
+  );
 }
 
 describe("useSessionMessages cache", () => {
@@ -377,6 +394,215 @@ describe("useSessionMessages cache", () => {
         rendered.result.current.messages.map((message) => message.uuid),
       ).toEqual(["msg-1", "store-only-msg"]),
     );
+  });
+
+  it("can return store-selected agent content when the debug setting is enabled", async () => {
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    const storeOnlyMessage: Message = {
+      uuid: "agent-store-only-1",
+      type: "assistant",
+      message: { role: "assistant", content: "store only" },
+    };
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "mergeLoadedAgentContent",
+          agentId: "task-store",
+          content: {
+            messages: [storeOnlyMessage],
+            status: "completed",
+          },
+        },
+      );
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.agentContent["task-store"]).toEqual({
+        messages: [storeOnlyMessage],
+        status: "completed",
+      }),
+    );
+  });
+
+  it("does not return store-only agent content when the debug setting is disabled", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    const storeOnlyMessage: Message = {
+      uuid: "agent-store-only-1",
+      type: "assistant",
+      message: { role: "assistant", content: "store only" },
+    };
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "mergeLoadedAgentContent",
+          agentId: "task-store",
+          content: {
+            messages: [storeOnlyMessage],
+            status: "completed",
+          },
+        },
+      );
+    });
+
+    expect(rendered.result.current.agentContent).toEqual({});
+    expect(readStoreAgentContent()?.["task-store"]).toEqual({
+      messages: [storeOnlyMessage],
+      status: "completed",
+    });
+  });
+
+  it("keeps opted-in store-backed warm agent content gated until hydration", async () => {
+    enableSessionTranscriptCache();
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+    let resolveDelta!: (value: unknown) => void;
+    apiMocks.getSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDelta = resolve;
+      }),
+    );
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+
+    const warmMessage: Message = {
+      uuid: "agent-warm-1",
+      type: "assistant",
+      message: { role: "assistant", content: "warm" },
+    };
+    act(() => {
+      first.result.current.mergeLoadedAgentContent("task-warm", {
+        messages: [warmMessage],
+        status: "completed",
+      });
+    });
+    await waitFor(() =>
+      expect(first.result.current.agentContent["task-warm"]).toEqual({
+        messages: [warmMessage],
+        status: "completed",
+      }),
+    );
+    first.unmount();
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.agentContent).toEqual({});
+    expect(readStoreAgentContent()?.["task-warm"]).toEqual({
+      messages: [warmMessage],
+      status: "completed",
+    });
+
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.agentContent["task-warm"]).toEqual({
+      messages: [warmMessage],
+      status: "completed",
+    });
+
+    await act(async () => {
+      resolveDelta({
+        session: {
+          provider: "codex",
+          updatedAt: "2026-05-04T00:00:00.000Z",
+        },
+        messages: [],
+        ownership: { owner: "self" },
+        pendingInputRequest: null,
+        slashCommands: null,
+      });
+      await apiMocks.getSession.mock.results[1]?.value;
+    });
   });
 
   it("keeps store-selected messages authoritative across stream events", async () => {

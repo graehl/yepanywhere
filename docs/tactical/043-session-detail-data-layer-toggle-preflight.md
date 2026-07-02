@@ -11,20 +11,22 @@ Messages in the Development settings page.
 
 ## Toggle Shape
 
-Keep the first toggle narrow:
+The first toggle started narrow and now covers the two returned hook data
+surfaces that already have selector-backed mirrors:
 
-- Scope: returned `messages` only.
-- Source: `selectSessionDetailMessages(defaultSessionDetailStore)`.
-- Fallback: local `messages` state if the store entry is missing.
+- Scope: returned `messages` and `agentContent`.
+- Source: `selectSessionDetailMessages(defaultSessionDetailStore)` and
+  `selectSessionDetailAgentContent(defaultSessionDetailStore)`.
+- Fallback: local `messages`/`agentContent` state if the store entry is
+  missing or the hook has not reached the reveal point.
 - Still maintain local mirrors for diagnostics, fallback, and rollback.
-- Do not include `agentContent`, render selectors, scroll ownership, or `/btw`
-  in this first messages-only toggle.
+- Do not include render selectors, scroll ownership, or `/btw` in this toggle.
 
 One important guard: warm snapshot restore currently writes the store before it
-reveals local `messages`, because the hook intentionally yields through the
-loading path. A naive `store ?? local` read would bypass that yield. The toggle
-is gated until `loading` is false so dogfooding tests the data source change
-without also changing the deferred warm-reveal behavior.
+reveals local `messages`/`agentContent`, because the hook intentionally yields
+through the loading path. A naive `store ?? local` read would bypass that
+yield. The toggle is gated until `loading` is false so dogfooding tests the
+data source change without also changing the deferred warm-reveal behavior.
 
 ## Main Transcript Transition Audit
 
@@ -51,15 +53,14 @@ without also changing the deferred warm-reveal behavior.
 - Cursor and persisted timestamp watermark side effects stay outside the
   selector read. The store can own the returned array before it owns those refs,
   but tests must keep covering both.
-- Subagent `agentContent` is deliberately out of scope for the first
-  messages-only toggle. Its local mirror now follows store selections at the
-  public hook update boundaries, but live-vs-durable parity remains
-  broad-shape only.
+- Subagent `agentContent` live-vs-durable parity remains broad-shape only. The
+  dogfood toggle can prove store read ownership for the current shape, but it
+  does not make streamed and persisted subagent transcripts semantically
+  equivalent.
 
 ## Readiness Call
 
-The Developer settings opt-in is ready for dogfooding. The next implementation
-chunk should keep capturing any returned-`messages` divergence as a compact
-reducer or hook fixture while adding a hydration-gated returned-`agentContent`
-selector read behind the same dev-only setting. Render selectors, scroll
-ownership, and `/btw` remain out of scope.
+The Developer settings opt-in is ready for dogfooding returned `messages` and
+`agentContent`. The next implementation chunk should keep capturing any
+returned-data divergence as a compact reducer or hook fixture while starting a
+render-selector preflight. Scroll ownership and `/btw` remain out of scope.

@@ -594,7 +594,7 @@ export function useSessionMessages(
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
-  const canReadStoreBackedMessages = storeBackedMessagesEnabled && !loading;
+  const canReadStoreBackedDetail = storeBackedMessagesEnabled && !loading;
   const storeBackedMessages = useSyncExternalStore(
     useCallback(
       (listener) => {
@@ -604,7 +604,7 @@ export function useSessionMessages(
         return defaultSessionDetailStore.subscribe(
           { sourceKey, projectId, sessionId, tailTurns, tailFrom },
           (state) =>
-            canReadStoreBackedMessages && state
+            canReadStoreBackedDetail && state
               ? selectSessionDetailMessages(state)
               : undefined,
           listener,
@@ -617,12 +617,12 @@ export function useSessionMessages(
         tailTurns,
         tailFrom,
         storeBackedMessagesEnabled,
-        canReadStoreBackedMessages,
+        canReadStoreBackedDetail,
       ],
     ),
     useCallback(
       () =>
-        canReadStoreBackedMessages
+        canReadStoreBackedDetail
           ? defaultSessionDetailStore.readSelected(
               { sourceKey, projectId, sessionId, tailTurns, tailFrom },
               selectSessionDetailMessages,
@@ -634,12 +634,57 @@ export function useSessionMessages(
         sessionId,
         tailTurns,
         tailFrom,
-        canReadStoreBackedMessages,
+        canReadStoreBackedDetail,
       ],
     ),
     () => undefined,
   );
   const returnedMessages = storeBackedMessages ?? messages;
+  const storeBackedAgentContent = useSyncExternalStore(
+    useCallback(
+      (listener) => {
+        if (!storeBackedMessagesEnabled) {
+          return () => {};
+        }
+        return defaultSessionDetailStore.subscribe(
+          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          (state) =>
+            canReadStoreBackedDetail && state
+              ? selectSessionDetailAgentContent(state)
+              : undefined,
+          listener,
+        );
+      },
+      [
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+        storeBackedMessagesEnabled,
+        canReadStoreBackedDetail,
+      ],
+    ),
+    useCallback(
+      () =>
+        canReadStoreBackedDetail
+          ? defaultSessionDetailStore.readSelected(
+              { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+              selectSessionDetailAgentContent,
+            )
+          : undefined,
+      [
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+        canReadStoreBackedDetail,
+      ],
+    ),
+    () => undefined,
+  );
+  const returnedAgentContent = storeBackedAgentContent ?? agentContent;
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -686,13 +731,19 @@ export function useSessionMessages(
       messages: returnedMessages,
       session,
       pagination,
-      agentContent,
+      agentContent: returnedAgentContent,
       toolUseToAgentEntries: Array.from(toolUseToAgent.entries()),
       lastMessageId: lastMessageIdRef.current,
       maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       scrollSnapshot: scrollSnapshotRef.current,
     };
-  }, [agentContent, returnedMessages, pagination, session, toolUseToAgent]);
+  }, [
+    returnedAgentContent,
+    returnedMessages,
+    pagination,
+    session,
+    toolUseToAgent,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1743,7 +1794,7 @@ export function useSessionMessages(
 
   return {
     messages: returnedMessages,
-    agentContent,
+    agentContent: returnedAgentContent,
     toolUseToAgent,
     loading,
     sessionLoadProgress,

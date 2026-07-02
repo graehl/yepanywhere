@@ -40,15 +40,19 @@ What is already in place:
   streaming placeholder upsert/cleanup; those paths copy the store-selected
   map back into the local hook mirror after reducer/store dispatch.
 - A Developer settings debug toggle can now return store-selected `messages`
-  after initial hydration has reached the same reveal point as the local
-  mirror. Local mirrors still run for fallback and diagnostics.
+  and `agentContent` after initial hydration has reached the same reveal point
+  as the local mirror. Local mirrors still run for fallback and diagnostics.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
+- Focused hook coverage also verifies that store-authoritative returned
+  `agentContent` is gated during warm hydration, ignores selector-only entries
+  when the toggle is off, and returns selector-only entries when the toggle is
+  on.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
-data layer, but the broad returned `messages` and `agentContent` values are
-not yet globally store-authoritative.
+data layer, but store-authoritative returned `messages` and `agentContent` are
+still dev-only and default-off. Render-item derivation is not store-owned yet.
 
 ## Why This Exists
 
@@ -118,11 +122,11 @@ DOM timing problems.
 Next likely slice:
 
 - Continue dogfooding the Developer settings store-authoritative returned
-  `messages` toggle and turn any observed divergence into a compact reducer or
-  hook fixture.
-- Add a dev-only, hydration-gated returned `agentContent` selector read behind
-  the same Developer setting, with local mirror fallback and focused hook
-  coverage.
+  `messages`/`agentContent` toggle and turn any observed divergence into a
+  compact reducer or hook fixture.
+- Start the render-selector preflight: inventory the `MessageList`
+  render-item derivation inputs and identify which selectors can be made pure
+  without taking over scroll or progressive rendering.
 
 Then:
 
@@ -134,10 +138,9 @@ Then:
 Dogfood toggle:
 
 - Name: Store-Backed Session Messages in the Development settings page.
-- Current scope: returned `messages`.
-- Next candidate: returned `agentContent`, after the same warm-hydration guard.
-- Behavior today: `effectiveMessages = selectSessionDetailMessages(store) ??
-  localMessages`.
+- Current scope: returned `messages` and `agentContent`.
+- Behavior today: read store-selected `messages` and `agentContent` after
+  hydration, with the local mirrors as fallback.
 - Keep local mirrors running for comparison, diagnostics, fallback, and
   rollback.
 - Do not include render selectors or `/btw` in this toggle.

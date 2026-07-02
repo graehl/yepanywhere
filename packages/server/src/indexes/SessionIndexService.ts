@@ -616,19 +616,12 @@ export class SessionIndexService implements ISessionIndexService {
     sessionId: string,
     changeType: FileChangeEvent["changeType"],
   ): boolean {
+    // Only loaded indexes can prove membership, so scopes known solely from
+    // validation timestamps or dirty marks can never match here.
     let marked = false;
-    const knownScopeKeys = new Set<string>([
-      ...this.indexCache.keys(),
-      ...this.lastFullValidationAt.keys(),
-      ...this.dirtyDirs.values(),
-      ...this.dirtySessionsByDir.keys(),
-    ]);
-
-    for (const knownKey of knownScopeKeys) {
-      const scopeKey = this.getScopeKeyFromKnownKey(knownKey);
+    for (const [scopeKey, index] of this.indexCache) {
       if (!scopeKey.startsWith("codex::")) continue;
-      const index = this.indexCache.get(scopeKey);
-      if (!index?.sessions[sessionId]) continue;
+      if (!index.sessions[sessionId]) continue;
       this.markCodexScopeDirty(scopeKey, sessionId, changeType);
       marked = true;
     }

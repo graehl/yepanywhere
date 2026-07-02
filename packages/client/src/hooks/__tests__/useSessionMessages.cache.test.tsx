@@ -1051,6 +1051,81 @@ describe("useSessionMessages cache", () => {
     ]);
   });
 
+  it("mirrors main stream messages from the session detail store after stream events", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1"]);
+
+    act(() => {
+      rendered.result.current.handleStreamMessageEvent({
+        uuid: "stream-msg",
+        type: "assistant",
+        timestamp: "2026-05-04T00:01:00.000Z",
+        message: { role: "assistant", content: "stream update" },
+      });
+    });
+
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1", "store-only-msg", "stream-msg"]);
+    expect(readStoreMessageIds()).toEqual([
+      "msg-1",
+      "store-only-msg",
+      "stream-msg",
+    ]);
+  });
+
   it("keeps store-selected messages authoritative across catch-up", async () => {
     enableStoreBackedMessages();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});

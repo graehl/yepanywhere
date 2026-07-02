@@ -41,8 +41,8 @@ What is already in place:
 - Public raw setter escape hatches have been removed for tool-use mappings,
   session metadata, agent content, and messages.
 - Narrow selectors are already used for retained scroll, pagination,
-  older-page cursor selection, and main streaming placeholder message
-  upsert/cleanup.
+  older-page cursor selection, main stream-message fallback mirroring, and main
+  streaming placeholder message upsert/cleanup.
 - `toolUseToAgent` registration now has a selector-backed mirror: after the
   reducer/store dispatch, the local fallback `Map` copies the store-selected
   mapping entries instead of independently rebuilding from its previous value.

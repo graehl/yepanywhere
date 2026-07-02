@@ -794,8 +794,6 @@ export function useSessionMessages(
   }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
   // Process a stream message event.
-  // When replaying buffered startup events for Codex, suppress entries that are
-  // semantically identical to already-loaded JSONL messages but have different UUIDs.
   const processStreamMessage = useCallback(
     (incoming: Message, fromBufferedReplay = false) => {
       const provider = providerRef.current;
@@ -817,6 +815,14 @@ export function useSessionMessages(
         fromBufferedReplay,
         streamingEnabled,
       });
+      const selectorBackedMessages = readSelectorBackedMessages();
+      if (selectorBackedMessages) {
+        applyMessages(selectorBackedMessages);
+        reportStoreDivergence("stream-message", {
+          messages: selectorBackedMessages,
+        });
+        return;
+      }
 
       const prev = messagesRef.current;
       let nextMessages = prev;
@@ -847,7 +853,12 @@ export function useSessionMessages(
         messages: nextMessages,
       });
     },
-    [applyMessages, dispatchSessionDetailAction, reportStoreDivergence],
+    [
+      applyMessages,
+      dispatchSessionDetailAction,
+      readSelectorBackedMessages,
+      reportStoreDivergence,
+    ],
   );
 
   // Process a buffered stream subagent message

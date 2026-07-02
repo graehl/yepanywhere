@@ -316,7 +316,53 @@ export type AssistantTimelineRow =
       kind: "item";
       item: RenderItem;
       itemIndex: number;
+      staleNowMs?: number;
       thinkingDurationMs?: number;
+    };
+
+export interface TimelineEntryDisplayRowsInput<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+> {
+  entries: readonly RenderTimelineEntry<TTurnGroup, TAside>[];
+  latestCorrectablePromptId?: string | null;
+  latestVisibleTimestampMs: number | null;
+  nowMs: number;
+}
+
+export type TimelineEntryDisplayRow<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+> =
+  | {
+      kind: "btw";
+      key: string;
+      aside: TAside;
+    }
+  | {
+      kind: "empty";
+      key: string;
+      group: TTurnGroup;
+    }
+  | {
+      kind: "standalone";
+      key: string;
+      group: TTurnGroup;
+      item: RenderItem;
+    }
+  | {
+      kind: "user";
+      key: string;
+      group: TTurnGroup;
+      item: RenderItem;
+      allowsPromptActions: boolean;
+      isLatestCorrectable: boolean;
+      staleNowMs?: number;
+    }
+  | {
+      kind: "assistant";
+      key: string;
+      group: TTurnGroup;
     };
 
 export function buildSessionDetailRenderItems({
@@ -1082,6 +1128,17 @@ export function buildAssistantRenderSegments(
   return segments;
 }
 
+export function getRenderItemStaleNowMs(
+  item: RenderItem,
+  latestVisibleTimestampMs: number | null,
+  nowMs: number,
+): number | undefined {
+  return getLatestMessageTimestampMs(item.sourceMessages) ===
+    latestVisibleTimestampMs
+    ? nowMs
+    : undefined;
+}
+
 export function buildAssistantTimelineRows({
   items,
   latestVisibleTimestampMs,
@@ -1105,10 +1162,78 @@ export function buildAssistantTimelineRows({
       kind: "item",
       item: segment.item,
       itemIndex,
+      staleNowMs: getRenderItemStaleNowMs(
+        segment.item,
+        latestVisibleTimestampMs,
+        nowMs,
+      ),
       thinkingDurationMs:
         itemIndex >= 0
           ? getThinkingDurationMs(segment.item, items, itemIndex, nowMs)
           : undefined,
+    };
+  });
+}
+
+export function buildTimelineEntryDisplayRows<
+  TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
+  TAside extends RenderTimelineAside = RenderTimelineAside,
+>({
+  entries,
+  latestCorrectablePromptId,
+  latestVisibleTimestampMs,
+  nowMs,
+}: TimelineEntryDisplayRowsInput<TTurnGroup, TAside>): Array<
+  TimelineEntryDisplayRow<TTurnGroup, TAside>
+> {
+  return entries.map((entry) => {
+    if (entry.kind === "btw") {
+      return {
+        kind: "btw",
+        key: entry.key,
+        aside: entry.aside,
+      };
+    }
+
+    const { group } = entry;
+    const firstItem = group.items[0];
+    if (!firstItem) {
+      return {
+        kind: "empty",
+        key: entry.key,
+        group,
+      };
+    }
+
+    if (group.isStandalone) {
+      return {
+        kind: "standalone",
+        key: firstItem.id,
+        group,
+        item: firstItem,
+      };
+    }
+
+    if (group.isUserPrompt) {
+      return {
+        kind: "user",
+        key: firstItem.id,
+        group,
+        item: firstItem,
+        allowsPromptActions: !firstItem.isSubagent,
+        isLatestCorrectable: latestCorrectablePromptId === firstItem.id,
+        staleNowMs: getRenderItemStaleNowMs(
+          firstItem,
+          latestVisibleTimestampMs,
+          nowMs,
+        ),
+      };
+    }
+
+    return {
+      kind: "assistant",
+      key: entry.key,
+      group,
     };
   });
 }

@@ -98,6 +98,10 @@ What is already in place:
 - Assistant timeline row metadata now derives through
   `sessionDetail/renderSelectors`, including explored-tool segment timestamps,
   stale-now hints, render-item indexes, and thinking durations.
+- Timeline entry display row metadata now derives through
+  `sessionDetail/renderSelectors`, including `/btw`, empty, standalone, user,
+  and assistant row classification plus user-prompt action eligibility,
+  latest-correctable flags, row keys, and stale-now hints.
 
 Current diagnostic stance:
 
@@ -147,7 +151,8 @@ Ownership is intentionally still split while we migrate:
   correctable prompt, timeline-entry, progressive-count, and
   progressive-visibility projections plus thinking summary/display, timestamp,
   composer-tail, composer-tail row metadata, and assistant timeline row
-  metadata derivation now live outside the component.
+  metadata and timeline display-row metadata derivation now live outside the
+  component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -192,9 +197,9 @@ Next likely slice:
   compact reducer or hook fixture, except for known `scroll-snapshot` noise.
 - Continue the render-selector preflight with small pure projection moves that
   do not own DOM measurement or effects. Good candidates are search/navigation
-  display projections or compact row class/state helpers around user/standalone
-  rows. Keep scroll snapshots, follow-tail behavior, and `/btw` ownership local
-  for now.
+  display projections or extracting assistant timeline row memoization inputs.
+  Keep scroll snapshots, follow-tail behavior, and `/btw` ownership local for
+  now.
 
 Then:
 
@@ -220,9 +225,10 @@ Dogfood toggle:
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
-- `MessageList` still performs some semantic display derivation, especially
-  progressive reveal state/timing and `/btw` ownership. Store canonical state
-  does not yet mean render canonical state.
+- `MessageList` still performs semantic display work for stateful UI,
+  especially progressive reveal state/timing, search navigation state, and
+  `/btw` ownership. Store canonical state does not yet mean render canonical
+  state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.
 - `scroll-snapshot` diagnostics are currently useful as a reminder that final

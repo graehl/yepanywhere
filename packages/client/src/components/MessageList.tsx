@@ -47,6 +47,7 @@ import {
   buildAssistantTimelineRows,
   buildComposerTailDisplayRows,
   buildSessionDetailRenderItems,
+  buildTimelineEntryDisplayRows,
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
@@ -1734,6 +1735,21 @@ export const MessageList = memo(function MessageList({
     progressiveRevealActive,
     visibleTimelineEntries,
   ]);
+  const timelineEntryRows = useMemo(
+    () =>
+      buildTimelineEntryDisplayRows({
+        entries: progressiveTimelineEntries,
+        latestCorrectablePromptId: latestCorrectablePrompt?.id ?? null,
+        latestVisibleTimestampMs,
+        nowMs,
+      }),
+    [
+      progressiveTimelineEntries,
+      latestCorrectablePrompt?.id,
+      latestVisibleTimestampMs,
+      nowMs,
+    ],
+  );
   useEffect(() => {
     if (!progressiveRenderAllowed) {
       progressiveActiveRenderKeyRef.current = null;
@@ -2665,14 +2681,6 @@ export const MessageList = memo(function MessageList({
     !isScrolledToBottom && typeof document !== "undefined"
       ? document.querySelector<HTMLElement>(".session-input-inner")
       : null;
-  const getItemStaleNowMs = useCallback(
-    (item: RenderItem) =>
-      getLatestMessageTimestampMs(item.sourceMessages) ===
-      latestVisibleTimestampMs
-        ? nowMs
-        : undefined,
-    [latestVisibleTimestampMs, nowMs],
-  );
   const searchPanel = userTurnSearch.active ? (
     <div
       className="user-turn-search-panel"
@@ -2864,12 +2872,12 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         )}
-        {progressiveTimelineEntries.map((entry) => {
-          if (entry.kind === "btw") {
+        {timelineEntryRows.map((timelineRow) => {
+          if (timelineRow.kind === "btw") {
             return (
               <BtwAsideTimelineCard
-                key={entry.key}
-                aside={entry.aside}
+                key={timelineRow.key}
+                aside={timelineRow.aside}
                 onFocus={onFocusBtwAside}
                 onDone={onDoneBtwAside}
                 onStop={onStopBtwAside}
@@ -2879,13 +2887,15 @@ export const MessageList = memo(function MessageList({
             );
           }
 
-          const { group } = entry;
-          if (group.isStandalone) {
-            const item = group.items[0];
-            if (!item) return null;
+          if (timelineRow.kind === "empty") {
+            return null;
+          }
+
+          if (timelineRow.kind === "standalone") {
+            const { item } = timelineRow;
             return (
               <RenderItemComponent
-                key={item.id}
+                key={timelineRow.key}
                 item={item}
                 isStreaming={isStreaming}
                 thinkingExpanded={false}
@@ -2898,20 +2908,19 @@ export const MessageList = memo(function MessageList({
               />
             );
           }
-          if (group.isUserPrompt) {
-            // User prompts render directly without timeline wrapper
-            const item = group.items[0];
-            if (!item) return null;
+
+          if (timelineRow.kind === "user") {
+            const { item } = timelineRow;
             return (
               <RenderItemComponent
-                key={item.id}
+                key={timelineRow.key}
                 item={item}
                 isStreaming={isStreaming}
                 thinkingExpanded={getThinkingItemExpanded(item)}
                 toggleThinkingExpanded={noopToggleThinkingExpanded}
                 sessionProvider={provider}
                 onCorrectUserPrompt={
-                  latestCorrectablePrompt?.id === item.id
+                  timelineRow.isLatestCorrectable && latestCorrectablePrompt
                     ? () =>
                         onCorrectLatestUserMessage?.(
                           latestCorrectablePrompt.id,
@@ -2920,44 +2929,43 @@ export const MessageList = memo(function MessageList({
                     : undefined
                 }
                 onTrimBeforeUserPrompt={
-                  onTrimBeforeUserMessage && !item.isSubagent
+                  onTrimBeforeUserMessage && timelineRow.allowsPromptActions
                     ? () => onTrimBeforeUserMessage(item.id)
                     : undefined
                 }
                 onForkBeforeUserPrompt={
-                  onForkBeforeUserMessage && !item.isSubagent
+                  onForkBeforeUserMessage && timelineRow.allowsPromptActions
                     ? () => onForkBeforeUserMessage(item.id)
                     : undefined
                 }
-                staleNowMs={getItemStaleNowMs(item)}
+                staleNowMs={timelineRow.staleNowMs}
                 latestVisibleTimestampMs={latestVisibleTimestampMs}
               />
             );
           }
-          // Assistant items wrapped in timeline container - key based on first item
-          const firstItem = group.items[0];
-          if (!firstItem) return null;
+
+          const { group } = timelineRow;
           return (
-            <div key={entry.key} className="assistant-turn">
+            <div key={timelineRow.key} className="assistant-turn">
               {buildAssistantTimelineRows({
                 items: group.items,
                 latestVisibleTimestampMs,
                 nowMs,
-              }).map((row) => {
-                if (row.kind === "explored") {
+              }).map((assistantRow) => {
+                if (assistantRow.kind === "explored") {
                   return (
                     <ExploredToolGroup
-                      key={row.id}
-                      id={row.id}
-                      items={row.items}
+                      key={assistantRow.id}
+                      id={assistantRow.id}
+                      items={assistantRow.items}
                       sessionProvider={provider}
-                      staleNowMs={row.staleNowMs}
+                      staleNowMs={assistantRow.staleNowMs}
                       latestVisibleTimestampMs={latestVisibleTimestampMs}
                     />
                   );
                 }
 
-                const { item } = row;
+                const { item } = assistantRow;
                 return (
                   <RenderItemComponent
                     key={item.id}
@@ -2988,9 +2996,9 @@ export const MessageList = memo(function MessageList({
                       item.type === "text" ? handleQuoteTextBlock : undefined
                     }
                     alwaysShowQuoteCircle={alwaysShowQuoteCircles}
-                    staleNowMs={getItemStaleNowMs(item)}
+                    staleNowMs={assistantRow.staleNowMs}
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
-                    thinkingDurationMs={row.thinkingDurationMs}
+                    thinkingDurationMs={assistantRow.thinkingDurationMs}
                   />
                 );
               })}

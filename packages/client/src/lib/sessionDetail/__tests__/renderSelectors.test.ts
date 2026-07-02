@@ -8,6 +8,7 @@ import {
   buildAssistantRenderSegments,
   buildAssistantTimelineRows,
   buildSessionDetailRenderItems,
+  buildTimelineEntryDisplayRows,
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
@@ -38,6 +39,7 @@ import {
   selectSessionDetailRenderItems,
   selectLatestCorrectablePrompt,
   type ProgressiveTimelineEntry,
+  type RenderTimelineEntry,
   type RenderTurnGroup,
 } from "../renderSelectors";
 import { createInitialSessionDetailState } from "../transcriptReducer";
@@ -792,6 +794,170 @@ describe("session detail render selectors", () => {
         id: "answer-1",
         itemIndex: 3,
         thinkingDurationMs: undefined,
+      },
+    ]);
+  });
+
+  it("derives timeline entry display row metadata", () => {
+    const user: RenderItem = {
+      type: "user_prompt",
+      id: "user-1",
+      content: "Check the logs",
+      sourceMessages: [sourceMessage("user-msg", "2026-07-02T12:00:00.000Z")],
+    };
+    const subagentUser: RenderItem = {
+      type: "user_prompt",
+      id: "subagent-user-1",
+      content: "Subagent prompt",
+      isSubagent: true,
+      sourceMessages: [
+        sourceMessage("subagent-user-msg", "2026-07-02T12:00:30.000Z"),
+      ],
+    };
+    const standalone: RenderItem = {
+      type: "system",
+      id: "checkpoint-1",
+      subtype: "compact_boundary",
+      content: "Compacted context",
+      sourceMessages: [
+        sourceMessage("checkpoint-msg", "2026-07-02T12:01:00.000Z"),
+      ],
+    };
+    const assistant: RenderItem = {
+      type: "text",
+      id: "assistant-1",
+      text: "Done",
+      sourceMessages: [
+        sourceMessage("assistant-msg", "2026-07-02T12:02:00.000Z"),
+      ],
+    };
+    const entries: Array<RenderTimelineEntry> = [
+      {
+        kind: "turn",
+        key: "turn-empty",
+        timestampMs: null,
+        ordinal: 0,
+        group: { isUserPrompt: false, items: [] },
+      },
+      {
+        kind: "turn",
+        key: "turn-user",
+        timestampMs: Date.parse("2026-07-02T12:00:00.000Z"),
+        ordinal: 1,
+        group: { isUserPrompt: true, items: [user] },
+      },
+      {
+        kind: "turn",
+        key: "turn-subagent-user",
+        timestampMs: Date.parse("2026-07-02T12:00:30.000Z"),
+        ordinal: 2,
+        group: { isUserPrompt: true, items: [subagentUser] },
+      },
+      {
+        kind: "turn",
+        key: "turn-standalone",
+        timestampMs: Date.parse("2026-07-02T12:01:00.000Z"),
+        ordinal: 3,
+        group: {
+          isStandalone: true,
+          isUserPrompt: false,
+          items: [standalone],
+        },
+      },
+      {
+        kind: "turn",
+        key: "turn-assistant",
+        timestampMs: Date.parse("2026-07-02T12:02:00.000Z"),
+        ordinal: 4,
+        group: { isUserPrompt: false, items: [assistant] },
+      },
+      {
+        kind: "btw",
+        key: "btw-aside-1",
+        timestampMs: Date.parse("2026-07-02T12:03:00.000Z"),
+        ordinal: 5,
+        aside: {
+          id: "aside-1",
+          updatedAt: "2026-07-02T12:03:00.000Z",
+        },
+      },
+    ];
+
+    const rows = buildTimelineEntryDisplayRows({
+      entries,
+      latestCorrectablePromptId: "user-1",
+      latestVisibleTimestampMs: Date.parse("2026-07-02T12:00:00.000Z"),
+      nowMs: Date.parse("2026-07-02T12:10:00.000Z"),
+    });
+
+    expect(
+      rows.map((row) => {
+        if (row.kind === "btw") {
+          return {
+            kind: row.kind,
+            key: row.key,
+            asideId: row.aside.id,
+          };
+        }
+        if (row.kind === "empty") {
+          return {
+            kind: row.kind,
+            key: row.key,
+          };
+        }
+        if (row.kind === "assistant") {
+          return {
+            kind: row.kind,
+            key: row.key,
+            firstItemId: row.group.items[0]?.id,
+          };
+        }
+        return {
+          kind: row.kind,
+          key: row.key,
+          id: row.item.id,
+          allowsPromptActions:
+            row.kind === "user" ? row.allowsPromptActions : undefined,
+          isLatestCorrectable:
+            row.kind === "user" ? row.isLatestCorrectable : undefined,
+          staleNowMs: row.kind === "user" ? row.staleNowMs : undefined,
+        };
+      }),
+    ).toEqual([
+      { kind: "empty", key: "turn-empty" },
+      {
+        kind: "user",
+        key: "user-1",
+        id: "user-1",
+        allowsPromptActions: true,
+        isLatestCorrectable: true,
+        staleNowMs: Date.parse("2026-07-02T12:10:00.000Z"),
+      },
+      {
+        kind: "user",
+        key: "subagent-user-1",
+        id: "subagent-user-1",
+        allowsPromptActions: false,
+        isLatestCorrectable: false,
+        staleNowMs: undefined,
+      },
+      {
+        kind: "standalone",
+        key: "checkpoint-1",
+        id: "checkpoint-1",
+        allowsPromptActions: undefined,
+        isLatestCorrectable: undefined,
+        staleNowMs: undefined,
+      },
+      {
+        kind: "assistant",
+        key: "turn-assistant",
+        firstItemId: "assistant-1",
+      },
+      {
+        kind: "btw",
+        key: "btw-aside-1",
+        asideId: "aside-1",
       },
     ]);
   });

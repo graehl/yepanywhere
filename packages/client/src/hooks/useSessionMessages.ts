@@ -1001,13 +1001,12 @@ export function useSessionMessages(
         data.pagination,
         loadedMessages,
       );
-      dispatchSessionDetailAction(
-        createCatchupMessagesAction({
-          session: data.session,
-          messages: data.messages,
-          pagination: nextPagination,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
+        session: data.session,
+        messages: data.messages,
+        pagination: nextPagination,
+      });
       setSessionLoadProgress(
         createSessionLoadProgress("rendering", {
           messageCount: loadedMessages.length,
@@ -1074,13 +1073,12 @@ export function useSessionMessages(
         data.pagination,
         loadedMessages,
       );
-      dispatchSessionDetailAction(
-        createCatchupMessagesAction({
-          session: data.session,
-          messages: data.messages,
-          pagination: nextPagination,
-        }),
-      );
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
+        session: data.session,
+        messages: data.messages,
+        pagination: nextPagination,
+      });
       const lastJsonlId = findLastJsonlMessageId(loadedMessages);
       if (lastJsonlId) {
         lastMessageIdRef.current = lastJsonlId;

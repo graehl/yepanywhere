@@ -103,6 +103,16 @@ function returnedDataWarningCalls(warn: {
   );
 }
 
+function reactCrossUpdateErrorCalls(error: {
+  mock: { calls: Array<readonly unknown[]> };
+}) {
+  return error.mock.calls.filter(
+    ([message]) =>
+      typeof message === "string" &&
+      message.includes("Cannot update a component"),
+  );
+}
+
 describe("useSessionMessages cache", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -866,6 +876,7 @@ describe("useSessionMessages cache", () => {
 
   it("keeps store-selected messages authoritative across catch-up", async () => {
     enableStoreBackedMessages();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -959,6 +970,7 @@ describe("useSessionMessages cache", () => {
       "msg-2",
     ]);
     expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
+    expect(reactCrossUpdateErrorCalls(error)).toHaveLength(0);
   });
 
   it("keeps store-selected messages authoritative across older-page prepend", async () => {

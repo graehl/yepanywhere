@@ -62,6 +62,9 @@ What is already in place:
   tail window: the store-backed returned data keeps the broader message set and
   reconciles pagination so `hasOlderMessages`/`returnedMessageCount` describe
   the merged window rather than the narrower tail response.
+- The catch-up store-authoritative hook fixture now guards against React's
+  cross-update warning. Metadata reconciliation no longer dispatches to the
+  external store from inside the legacy `setSession` functional updater.
 - The render-selector preflight is complete: transcript/view shape
   derivation — render items and turn grouping, search anchors/projections,
   timeline and progressive-reveal entries, thinking summaries, composer tail
@@ -69,7 +72,6 @@ What is already in place:
   modules behind the `renderSelectors` barrel. The full covered-output list is
   in
   [`043-session-detail-render-selector-preflight.md`](043-session-detail-render-selector-preflight.md).
-
 Current diagnostic stance:
 
 - Treat `scroll-snapshot` store divergence logs as known noisy signal
@@ -99,8 +101,8 @@ Current diagnostic stance:
   accumulated transcript, and a React warning caused by external-store
   notification during a React state reducer. The tail-window/full-history
   contract now has reducer/store/hook fixtures and warm-refresh pagination
-  reconciliation; notification scheduling remains a separate bounded follow-up
-  if it continues to show up in the dogfood path.
+  reconciliation; the warning case is covered by the catch-up hook fixture and
+  fixed by keeping metadata store dispatch out of the legacy state updater.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -196,9 +198,6 @@ Next likely slice:
   actions may expand that window. A store-authoritative return path must not
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
-- Next bounded follow-up from the browser pass is external-store notification
-  scheduling: avoid notifying `useSyncExternalStore` subscribers while legacy
-  hook state is inside a React functional updater.
 - Move the next implementation chunks back to `useSessionMessages`: reduce
   independent local mirror ownership, make store-selected returned detail the
   normal test path behind the Developer toggle, and identify one legacy mirror

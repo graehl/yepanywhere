@@ -50,6 +50,12 @@ data source change without also changing the deferred warm-reveal behavior.
 
 - Warm snapshot timing is the main behavioral risk. The store has messages
   earlier than the returned local mirror during deferred loading.
+- Compaction-tail views need an explicit contract during cutover. Cold
+  `loadPersistedTranscript` state is the REST-returned window, even when
+  `pagination.totalMessageCount` is larger than the returned row count; older
+  page loads and catch-up can then expand that window. A retained full-history
+  entry must not silently replace the returned tail window in the UI just
+  because the store has more rows.
 - Stream/replay parity depends on provider-specific approximate dedupe. Reducer
   fixtures cover the important Codex shapes, but the hook still computes local
   state independently after dispatch.
@@ -60,6 +66,13 @@ data source change without also changing the deferred warm-reveal behavior.
   dogfood toggle can prove store read ownership for the current shape, but it
   does not make streamed and persisted subagent transcripts semantically
   equivalent.
+- Browser dogfood should capture console diagnostics from real navigation:
+  enable Store-Backed Session Messages and session-detail shadow diagnostics,
+  drive `/inbox` to several session detail pages, and record
+  `[SessionDetailReturnedData]`, `[SessionDetailStore]`,
+  `[SessionDetailShadow]`, React errors, request failures, and scroll bottom
+  deltas. Treat returned-data warnings as blockers; treat shadow/store
+  warnings as fixture candidates unless they are scroll-only noise.
 
 ## Readiness Call
 

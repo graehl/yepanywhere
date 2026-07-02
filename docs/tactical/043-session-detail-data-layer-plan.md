@@ -76,6 +76,25 @@ Current diagnostic stance:
   show catastrophic failures or fresh store divergence. The returned
   data invariant is now the primary signal for the actual UI-consumed data when
   the toggle is enabled.
+- Browser mismatch checks should use the real inbox-to-session path, not only
+  unit fixtures. A useful read-only pass is: launch Playwright against
+  `https://127.0.0.1:3400`, ignore local HTTPS errors, block service workers
+  if possible, set `yep-anywhere-developer-mode` with
+  `sessionDetailStoreMessagesEnabled: true`, set
+  `yep-anywhere-session-detail-shadow-diagnostics-enabled` to `true`, click a
+  few visible `/inbox` session links, and capture console/page/request
+  failures plus `[SessionDetailShadow]`, `[SessionDetailStore]`, and
+  `[SessionDetailReturnedData]` logs. Also sample
+  `main.session-messages` `scrollTop`, `scrollHeight`, and `clientHeight` so
+  scroll-to-top symptoms are separated from data divergence.
+- A 2026-07-02 browser pass found no scroll-to-top reproduction and no
+  `[SessionDetailReturnedData]` warnings, but did expose two follow-up
+  signals: a Codex compaction-tail case where live state represented a
+  returned tail window while the store/shadow entry had a much larger
+  accumulated transcript, and a React warning caused by external-store
+  notification during a React state reducer. Keep both bounded: protect the
+  tail-window/full-history contract with fixtures, and only fix notification
+  scheduling if it continues to show up in the dogfood path.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -164,6 +183,13 @@ Next likely slice:
   `messages`/`agentContent` toggle and turn any non-scroll divergence into a
   compact reducer or hook fixture. Treat returned-data invariant warnings as
   higher signal than legacy local-vs-store diagnostics.
+- Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
+  represents the REST-returned transcript window, including ordinary
+  `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
+  than `pagination.returnedMessageCount`; `prependOlderMessages` and catch-up
+  actions may expand that window. A store-authoritative return path must not
+  accidentally swap a tail-window UI back to a full-history retained entry
+  unless the user actually loaded that broader window.
 - Move the next implementation chunks back to `useSessionMessages`: reduce
   independent local mirror ownership, make store-selected returned detail the
   normal test path behind the Developer toggle, and identify one legacy mirror
@@ -191,6 +217,15 @@ Dogfood toggle:
 
 - Persisted catch-up and older-page transitions still mix transcript writes
   with cursor/watermark side effects.
+- Compaction-tail and full-history states are easy to confuse because the
+  default route has no explicit `tailTurns`/`tailFrom` URL parameter even
+  though the client requests `tailCompactions: 2`. Treat message-count
+  differences where `totalMessageCount > returnedMessageCount` as a cutover
+  invariant to classify, not automatic noise.
+- Store subscribers can currently be notified from inside legacy React state
+  updaters in some metadata/stream paths. That is a real dogfood warning, but
+  lower priority than returned-data mismatches unless it produces visible UI
+  breakage.
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.

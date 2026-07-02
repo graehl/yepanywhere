@@ -68,6 +68,7 @@ import {
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
+  hasVisibleThinkingTextDelta,
   normalizeSearchText,
   selectLatestCorrectablePrompt,
   type RenderTurnGroup,
@@ -1329,17 +1330,12 @@ export const MessageList = memo(function MessageList({
   useLayoutEffect(() => {
     const previousThinkingTextLengths = previousThinkingTextLengthsRef.current;
     const nextThinkingTextLengths = getThinkingTextLengths(renderItems);
-    let visibleThinkingDelta = false;
-
-    if (previousThinkingTextLengths !== null && thinkingItemsVisible) {
-      for (const [itemId, nextLength] of nextThinkingTextLengths) {
-        const isExpanded = resolveThinkingItemExpanded(itemId);
-        const previousLength = previousThinkingTextLengths.get(itemId) ?? 0;
-        if (isExpanded && nextLength > previousLength) {
-          visibleThinkingDelta = true;
-        }
-      }
-    }
+    const visibleThinkingDelta = hasVisibleThinkingTextDelta({
+      isThinkingItemExpanded: resolveThinkingItemExpanded,
+      nextTextLengths: nextThinkingTextLengths,
+      previousTextLengths: previousThinkingTextLengths,
+      thinkingItemsVisible,
+    });
 
     previousThinkingTextLengthsRef.current = nextThinkingTextLengths;
 

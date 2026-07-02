@@ -82,6 +82,9 @@ What is already in place:
   visibility flag.
 - Thinking id and text-length summaries now derive through
   `sessionDetail/renderSelectors` for the local expansion/follow effects.
+- Visible thinking text-delta detection now derives through
+  `sessionDetail/renderSelectors`, using the summary maps plus the local
+  expansion predicate.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -163,8 +166,8 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving visible thinking text-delta
-  detection behind a pure helper without taking over follow/scroll effects,
+- Continue the render-selector preflight by moving auto-expanded thinking-id
+  reconciliation behind a pure helper without taking over state updates,
   thinking visibility state, expansion state, or rendering.
 
 Then:

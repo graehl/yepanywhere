@@ -41,7 +41,9 @@ Covered outputs:
 - display render item filtering from render items plus the local thinking
   visibility flag;
 - thinking id and text-length summary derivation for local expansion/follow
-  effects.
+  effects;
+- visible thinking text-delta detection from thinking text-length summaries plus
+  the local expansion predicate.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -61,6 +63,6 @@ and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is visible
-thinking text-delta detection from thinking text-length summaries plus the
-local expansion predicate, while keeping follow/scroll effects local.
+projection out of `MessageList`. The next low-risk candidate is auto-expanded
+thinking-id reconciliation from previous/observed/current id sets plus the
+historical-seed flag, while keeping state updates and rendering local.

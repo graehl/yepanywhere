@@ -349,6 +349,35 @@ export function getThinkingItemIds(items: readonly RenderItem[]): Set<string> {
   return ids;
 }
 
+export interface VisibleThinkingTextDeltaInput {
+  isThinkingItemExpanded: (itemId: string) => boolean;
+  nextTextLengths: ReadonlyMap<string, number>;
+  previousTextLengths: ReadonlyMap<string, number> | null;
+  thinkingItemsVisible: boolean;
+}
+
+export function hasVisibleThinkingTextDelta({
+  isThinkingItemExpanded,
+  nextTextLengths,
+  previousTextLengths,
+  thinkingItemsVisible,
+}: VisibleThinkingTextDeltaInput): boolean {
+  if (previousTextLengths === null || !thinkingItemsVisible) {
+    return false;
+  }
+
+  for (const [itemId, nextLength] of nextTextLengths) {
+    if (!isThinkingItemExpanded(itemId)) {
+      continue;
+    }
+    const previousLength = previousTextLengths.get(itemId) ?? 0;
+    if (nextLength > previousLength) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function getDisplayRenderItems(
   items: readonly RenderItem[],
   options: { thinkingItemsVisible: boolean },

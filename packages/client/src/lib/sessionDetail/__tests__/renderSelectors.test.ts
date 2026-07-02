@@ -24,6 +24,7 @@ import {
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
+  hasVisibleThinkingTextDelta,
   selectSessionDetailRenderItems,
   selectLatestCorrectablePrompt,
   type ProgressiveTimelineEntry,
@@ -860,6 +861,61 @@ describe("session detail render selectors", () => {
     ]);
     expect(Array.from(getThinkingItemIds([text]))).toEqual([]);
     expect(Array.from(getThinkingTextLengths([text]))).toEqual([]);
+  });
+
+  it("detects visible thinking text deltas", () => {
+    const previous = new Map([
+      ["thinking-1", 5],
+      ["thinking-2", 10],
+    ]);
+    const next = new Map([
+      ["thinking-1", 6],
+      ["thinking-2", 10],
+      ["thinking-3", 4],
+    ]);
+    const expanded = new Set(["thinking-1", "thinking-3"]);
+    const isThinkingItemExpanded = (itemId: string) => expanded.has(itemId);
+
+    expect(
+      hasVisibleThinkingTextDelta({
+        isThinkingItemExpanded,
+        nextTextLengths: next,
+        previousTextLengths: previous,
+        thinkingItemsVisible: true,
+      }),
+    ).toBe(true);
+    expect(
+      hasVisibleThinkingTextDelta({
+        isThinkingItemExpanded,
+        nextTextLengths: next,
+        previousTextLengths: previous,
+        thinkingItemsVisible: false,
+      }),
+    ).toBe(false);
+    expect(
+      hasVisibleThinkingTextDelta({
+        isThinkingItemExpanded,
+        nextTextLengths: next,
+        previousTextLengths: null,
+        thinkingItemsVisible: true,
+      }),
+    ).toBe(false);
+    expect(
+      hasVisibleThinkingTextDelta({
+        isThinkingItemExpanded: () => false,
+        nextTextLengths: next,
+        previousTextLengths: previous,
+        thinkingItemsVisible: true,
+      }),
+    ).toBe(false);
+    expect(
+      hasVisibleThinkingTextDelta({
+        isThinkingItemExpanded: (itemId) => itemId === "thinking-3",
+        nextTextLengths: next,
+        previousTextLengths: previous,
+        thinkingItemsVisible: true,
+      }),
+    ).toBe(true);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

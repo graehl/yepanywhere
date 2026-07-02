@@ -266,6 +266,9 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, preserving the inputs for the local
   expansion/follow effects while keeping their state mutations in
   `MessageList`.
+- Visible thinking text-delta detection now lives in
+  `sessionDetail/renderSelectors`, preserving the local expansion predicate and
+  leaving follow/scroll effects in `MessageList`.
 
 ## Verification Details
 

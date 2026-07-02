@@ -1,46 +1,19 @@
-import { toolRegistry } from "../../components/renderers/tools";
+import {
+  getExplorationKind,
+  toolRegistry,
+} from "../../components/renderers/tools";
 import { getToolSummary } from "../../components/tools/summaries";
 import { getLatestMessageTimestampMs } from "../messageAge";
 import { getPathBasename, makeDisplayPath } from "../text";
 import type { RenderItem, ToolCallItem } from "../../types/renderItems";
 
-const EXPLORATION_GROUP_MAX_GAP_MS = 5 * 60 * 1000;
+export { getExplorationKind };
 
-type ExplorationKind = "read" | "search" | "list";
+const EXPLORATION_GROUP_MAX_GAP_MS = 5 * 60 * 1000;
 
 export type AssistantRenderSegment =
   | { kind: "item"; item: RenderItem }
   | { kind: "explored"; id: string; items: ToolCallItem[] };
-
-export function getExplorationKind(toolName: string): ExplorationKind | null {
-  const normalized = toolName.toLowerCase();
-  const canonical = toolRegistry.get(toolName).tool;
-
-  if (canonical === "Read" || normalized === "read") {
-    return "read";
-  }
-  if (
-    canonical === "Grep" ||
-    normalized === "grep" ||
-    normalized === "search" ||
-    normalized === "grepsearch" ||
-    normalized === "grep_search"
-  ) {
-    return "search";
-  }
-  if (
-    canonical === "Glob" ||
-    normalized === "glob" ||
-    normalized === "ls" ||
-    normalized === "list" ||
-    normalized === "listdir" ||
-    normalized === "list_dir" ||
-    normalized === "list-dir"
-  ) {
-    return "list";
-  }
-  return null;
-}
 
 export function isExplorationToolCall(item: RenderItem): item is ToolCallItem {
   return (

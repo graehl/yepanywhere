@@ -143,6 +143,30 @@ reloaded history agree:
   — the complete name+field shape that pi still defers. Shared by the live
   provider and the durable reader so both render identically.
 
+### Exploration-kind classification
+
+A second, weaker client normalization sits beside the renderer aliases in the
+same module (`renderers/tools/index.tsx`): `getExplorationKind` classifies
+tool names as `read`/`search`/`list`-shaped actions so the transcript can fold
+consecutive exploration calls into one "Explored" group
+(`ExploredToolGroup`, `sessionDetail/exploration`).
+
+The two tables are deliberately separate because they assert different
+strengths of claim:
+
+- A `TOOL_NAME_ALIASES` entry routes the tool to a canonical renderer, which
+  is only safe when the input schema matches that renderer's expectations;
+  otherwise the honest raw-JSON fallback is better than a misrendered card.
+- An `EXPLORATION_TOOL_KINDS` entry claims only "this action reads/searches/
+  lists" — safe for any input schema — so provider names like `grep_search`
+  or `list_dir` can group as exploration while still rendering through the
+  fallback.
+
+Rule: both tables live in the registry module as the single owner of client
+tool-name normalization; classify a new provider's tool names there (not in a
+consumer), and keep each normalization site commented with a pointer to this
+section.
+
 ### The uniform diff augment
 
 Renaming gets a block to the right renderer; the **diff augment** gives every

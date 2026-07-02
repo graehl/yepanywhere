@@ -2,8 +2,8 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 import { clearSessionRouteSnapshots } from "../lib/sessionRouteSnapshots";
 
-const DEFAULT_SESSION_DOM_LINGER_ENABLED = true;
-const DEFAULT_SESSION_TRANSCRIPT_CACHE_ENABLED = true;
+const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
+const DEFAULT_SESSION_TRANSCRIPT_CACHE_ENABLED = false;
 
 const listeners = new Set<() => void>();
 
@@ -105,7 +105,7 @@ export function useSessionPerformanceSettings() {
   const snapshot = useSyncExternalStore(
     subscribe,
     getSnapshot,
-    () => "1:1",
+    () => "0:0",
   );
   const settings = useMemo(() => parseSnapshot(snapshot), [snapshot]);
 

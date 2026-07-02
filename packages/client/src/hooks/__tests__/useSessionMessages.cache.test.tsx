@@ -33,6 +33,10 @@ vi.mock("../useStreamingEnabled", () => ({
 
 import { getStreamingEnabled } from "../useStreamingEnabled";
 
+function enableSessionTranscriptCache() {
+  window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
+}
+
 describe("useSessionMessages cache", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -50,6 +54,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("hydrates retained session snapshots after an initial loading state", async () => {
+    enableSessionTranscriptCache();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -139,6 +145,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("reuses the warm session cache before a slow delta fetch resolves", async () => {
+    enableSessionTranscriptCache();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -242,6 +250,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not reuse warm cached messages across summary sources", async () => {
+    enableSessionTranscriptCache();
+
     const macbook = createClientSummaryHostSourceKey("macbook");
     const winnative = createClientSummaryHostSourceKey("winnative");
     apiMocks.getSession.mockResolvedValueOnce({
@@ -329,6 +339,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not restore retained messages when transcript cache is disabled", async () => {
+    enableSessionTranscriptCache();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -398,6 +410,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not use durable recap overlays as warm-cache cursors", async () => {
+    enableSessionTranscriptCache();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -469,6 +483,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("keeps warm cached messages when an incremental refresh has no delta", async () => {
+    enableSessionTranscriptCache();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",

@@ -106,6 +106,8 @@ export function useRetainedClientQuery<T>({
   }, []);
 
   useEffect(() => {
+    // `void x` marks an intentional rerun trigger: the key belongs in the
+    // dependency array even though the body never reads it.
     void sourceKey;
     void queryKey;
     void coverageKey;

@@ -42,8 +42,9 @@ What is already in place:
   streaming placeholder upsert/cleanup; those paths copy the store-selected
   map back into the local hook mirror after reducer/store dispatch.
 - A Developer settings debug toggle can now return store-selected `messages`
-  and `agentContent` after initial hydration has reached the same reveal point
-  as the local mirror. Local mirrors still run for fallback and diagnostics.
+  and `agentContent` from one coherent store-state snapshot after initial
+  hydration has reached the same reveal point as the local mirror. Local mirrors
+  still run for fallback and diagnostics.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -125,9 +126,10 @@ Current diagnostic stance:
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
-still dev-only and default-off. Render-item derivation has a pure selector
-preflight, but `MessageList` still owns display policy, search navigation
-state, and DOM behavior.
+still dev-only and default-off. The render-selector preflight is complete
+enough for cutover planning: `MessageList` still owns stateful UI, callbacks,
+scroll, DOM behavior, and JSX, but broad transcript/view shape derivation is no
+longer hidden inside the component.
 
 ## Why This Exists
 
@@ -167,8 +169,8 @@ Ownership is intentionally still split while we migrate:
   content now enters through the action layer.
 
 This split is acceptable while the hook return shape remains compatible. The
-migration should keep replacing local derivations with selector-backed reads in
-narrow slices.
+selector preflight should not continue as an open-ended cleanup project; the
+next meaningful migration work is in the hook/store adapter.
 
 ## Constraints
 
@@ -202,13 +204,16 @@ DOM timing problems.
 
 Next likely slice:
 
+- Treat the render-selector preflight as complete enough. Do not keep
+  extracting every remaining branch from `MessageList` unless it directly
+  unlocks store cutover or fixes a fixture-backed bug.
 - Continue dogfooding the Developer settings store-authoritative returned
-  `messages`/`agentContent` toggle and turn any observed divergence into a
-  compact reducer or hook fixture, except for known `scroll-snapshot` noise.
-- Continue the render-selector preflight with small pure projection moves that
-  do not own DOM measurement or effects. Good candidates are search/navigation
-  metadata helpers or remaining row metadata helpers. Keep scroll snapshots,
-  follow-tail behavior, labels, callbacks, and `/btw` ownership local for now.
+  `messages`/`agentContent` toggle and turn any non-scroll divergence into a
+  compact reducer or hook fixture.
+- Move the next implementation chunks back to `useSessionMessages`: reduce
+  independent local mirror ownership, make store-selected returned detail the
+  normal test path behind the Developer toggle, and identify one legacy mirror
+  path at a time that can become fallback-only.
 
 Then:
 
@@ -221,8 +226,9 @@ Dogfood toggle:
 
 - Name: Store-Backed Session Messages in the Development settings page.
 - Current scope: returned `messages` and `agentContent`.
-- Behavior today: read store-selected `messages` and `agentContent` after
-  hydration, with the local mirrors as fallback.
+- Behavior today: read store-selected `messages` and `agentContent` from one
+  coherent store-state snapshot after hydration, with the local mirrors as
+  fallback.
 - Keep local mirrors running for comparison, diagnostics, fallback, and
   rollback.
 - Do not include render selectors or `/btw` in this toggle.

@@ -15,8 +15,8 @@ The first toggle started narrow and now covers the two returned hook data
 surfaces that already have selector-backed mirrors:
 
 - Scope: returned `messages` and `agentContent`.
-- Source: `selectSessionDetailMessages(defaultSessionDetailStore)` and
-  `selectSessionDetailAgentContent(defaultSessionDetailStore)`.
+- Source: one stable `defaultSessionDetailStore` state snapshot, using
+  `state.messages` and `state.agentContent` together.
 - Fallback: local `messages`/`agentContent` state if the store entry is
   missing or the hook has not reached the reveal point.
 - Still maintain local mirrors for diagnostics, fallback, and rollback.
@@ -61,6 +61,8 @@ data source change without also changing the deferred warm-reveal behavior.
 ## Readiness Call
 
 The Developer settings opt-in is ready for dogfooding returned `messages` and
-`agentContent`. The next implementation chunk should keep capturing any
-returned-data divergence as a compact reducer or hook fixture while starting a
-render-selector preflight. Scroll ownership and `/btw` remain out of scope.
+`agentContent`. The render-selector preflight is now complete enough, so the
+next implementation chunks should focus on the hook/store adapter: keep
+capturing any returned-data divergence as a compact reducer or hook fixture,
+then make one legacy local mirror path at a time fallback-only. Scroll
+ownership and `/btw` remain out of scope.

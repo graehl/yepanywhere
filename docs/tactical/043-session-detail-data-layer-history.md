@@ -313,6 +313,13 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, deriving project-queue cancel and deferred
   recovered resume/delete plus queued-message cancel eligibility while
   `MessageList` keeps labels, buttons, callbacks, and attachment rendering.
+- Render-selector preflight is now treated as complete enough for cutover
+  planning. Future selector work should be justified by store ownership,
+  fixture-backed bugs, or known render-shape divergence rather than routine
+  cleanup.
+- The store-backed returned `messages`/`agentContent` dogfood path now reads
+  both surfaces from one coherent store-state snapshot instead of two separate
+  subscriptions.
 - Direction note: existing `scroll-snapshot` shadow divergence logs are treated
   as known noisy signal from the older snapshot path. Do not chase them as a
   near-term migration blocker until the non-scroll store/render surfaces are

@@ -86,10 +86,13 @@ composer tail row labels/rendering/actions, and actual rendering.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
 - DOM measurement and row anchoring.
 
-## Next Preflight Slice
+## Checkpoint
 
-Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidates are
-search/navigation metadata helpers or remaining row metadata helpers, while
-keeping DOM measurement, scroll effects, snapshot ownership, labels, callbacks,
-and row actions local.
+This preflight is complete enough for store cutover planning. Do not keep
+extracting every remaining conditional from `MessageList` unless it directly
+unlocks store ownership, fixes a fixture-backed bug, or prevents a known render
+shape divergence.
+
+The remaining local responsibilities are intentionally stateful or UI-owned:
+DOM measurement, scroll effects, snapshot ownership, labels, callbacks, row
+actions, `/btw` ownership, and actual JSX rendering.

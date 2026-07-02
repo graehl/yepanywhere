@@ -561,8 +561,7 @@ export function useSessionMessages(
   const updateSession = useCallback(
     (update: SessionMetadataUpdate) => {
       setSession((previous) => {
-        const next =
-          typeof update === "function" ? update(previous) : update;
+        const next = typeof update === "function" ? update(previous) : update;
         if (next === previous) {
           return previous;
         }
@@ -595,7 +594,7 @@ export function useSessionMessages(
   );
 
   const canReadStoreBackedDetail = storeBackedMessagesEnabled && !loading;
-  const storeBackedMessages = useSyncExternalStore(
+  const storeBackedDetailState = useSyncExternalStore(
     useCallback(
       (listener) => {
         if (!storeBackedMessagesEnabled) {
@@ -603,10 +602,7 @@ export function useSessionMessages(
         }
         return defaultSessionDetailStore.subscribe(
           { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-          (state) =>
-            canReadStoreBackedDetail && state
-              ? selectSessionDetailMessages(state)
-              : undefined,
+          (state) => (canReadStoreBackedDetail && state ? state : undefined),
           listener,
         );
       },
@@ -625,7 +621,7 @@ export function useSessionMessages(
         canReadStoreBackedDetail
           ? defaultSessionDetailStore.readSelected(
               { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-              selectSessionDetailMessages,
+              (state) => state,
             )
           : undefined,
       [
@@ -639,52 +635,9 @@ export function useSessionMessages(
     ),
     () => undefined,
   );
-  const returnedMessages = storeBackedMessages ?? messages;
-  const storeBackedAgentContent = useSyncExternalStore(
-    useCallback(
-      (listener) => {
-        if (!storeBackedMessagesEnabled) {
-          return () => {};
-        }
-        return defaultSessionDetailStore.subscribe(
-          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-          (state) =>
-            canReadStoreBackedDetail && state
-              ? selectSessionDetailAgentContent(state)
-              : undefined,
-          listener,
-        );
-      },
-      [
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-        storeBackedMessagesEnabled,
-        canReadStoreBackedDetail,
-      ],
-    ),
-    useCallback(
-      () =>
-        canReadStoreBackedDetail
-          ? defaultSessionDetailStore.readSelected(
-              { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-              selectSessionDetailAgentContent,
-            )
-          : undefined,
-      [
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-        canReadStoreBackedDetail,
-      ],
-    ),
-    () => undefined,
-  );
-  const returnedAgentContent = storeBackedAgentContent ?? agentContent;
+  const returnedMessages = storeBackedDetailState?.messages ?? messages;
+  const returnedAgentContent =
+    storeBackedDetailState?.agentContent ?? agentContent;
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -1789,8 +1742,7 @@ export function useSessionMessages(
     ) ??
     cachedLoad?.scrollSnapshot ??
     null;
-  const selectedPagination =
-    readSelectorBackedPagination();
+  const selectedPagination = readSelectorBackedPagination();
 
   return {
     messages: returnedMessages,

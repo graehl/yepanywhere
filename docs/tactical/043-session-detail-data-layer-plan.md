@@ -55,10 +55,10 @@ What is already in place:
   events, loaded subagent content, context-usage updates, and subagent
   streaming placeholder upsert/cleanup; those paths copy the store-selected
   map back into the local hook mirror after reducer/store dispatch.
-- A Developer settings debug toggle can now return store-selected `messages`,
-  `agentContent`, and tool-use mappings from one coherent store-state snapshot
-  after initial hydration has reached the same reveal point as the local
-  mirror. Local mirrors still run for fallback and diagnostics.
+- Store-selected `messages`, `agentContent`, and tool-use mappings are now the
+  default returned hook data after initial hydration has reached the same reveal
+  point as the local mirror. The Development settings switch remains as a
+  rollback path to compare against the legacy hook-local mirror.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -218,20 +218,21 @@ Next likely slice:
 
 Then:
 
-- Keep the toggle dev-only and default-off until dogfooding has produced
-  fixtures for any live divergence.
+- Keep the Development settings switch available as a dev-only rollback while
+  dogfooding the default store-backed path.
 - Do not broaden to scroll ownership or `/btw` until returned `messages` and
   `agentContent` are boring.
 
 Dogfood toggle:
 
 - Name: Store-Backed Session Messages in the Development settings page.
-- Current scope: returned `messages`, `agentContent`, and tool-use mappings.
+- Current default scope: returned `messages`, `agentContent`, and tool-use
+  mappings.
 - Behavior today: read store-selected `messages`, `agentContent`, and tool-use
   mappings from one coherent store-state snapshot after hydration, with the
   local mirrors as fallback.
-- Keep local mirrors running for comparison, diagnostics, fallback, and
-  rollback.
+- Keep local mirrors running for comparison, diagnostics, fallback, and the
+  Development settings rollback.
 - Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks

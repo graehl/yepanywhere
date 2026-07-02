@@ -54,6 +54,10 @@ function enableStoreBackedMessages() {
   setSessionDetailStoreMessagesEnabledValue(true);
 }
 
+function disableStoreBackedMessages() {
+  setSessionDetailStoreMessagesEnabledValue(false);
+}
+
 function scrollSnapshot(): SessionRouteScrollSnapshot {
   return {
     atBottom: false,
@@ -721,6 +725,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not return store-only agent content when the debug setting is disabled", async () => {
+    disableStoreBackedMessages();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "codex",
@@ -779,6 +785,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not return store-only tool-use mappings when the debug setting is disabled", async () => {
+    disableStoreBackedMessages();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "codex",
@@ -1052,6 +1060,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("mirrors main stream messages from the session detail store after stream events", async () => {
+    disableStoreBackedMessages();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -1609,6 +1619,7 @@ describe("useSessionMessages cache", () => {
     expect(
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["win-msg"]);
+    second.unmount();
   });
 
   it("does not restore retained messages when transcript cache is disabled", async () => {
@@ -1948,6 +1959,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("uses selector-backed pagination when loading older messages", async () => {
+    disableStoreBackedMessages();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -2072,6 +2085,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("mirrors incremental catch-up messages into the session detail store", async () => {
+    disableStoreBackedMessages();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -2582,6 +2597,8 @@ describe("useSessionMessages cache", () => {
   });
 
   it("clears main streaming placeholders through the session detail store", async () => {
+    disableStoreBackedMessages();
+
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "codex",

@@ -49,7 +49,7 @@ vi.mock("../../../i18n", () => ({
           developmentDiagnosticsDescription: "Capture browser logs",
           developmentStoreMessagesTitle: "Store-Backed Session Messages",
           developmentStoreMessagesDescription:
-            "Return session messages from the session detail store",
+            "Return session messages from the session detail store. Turn off to compare against the legacy hook-local mirror.",
           developmentServiceWorkerTitle: "Service Worker",
           developmentServiceWorkerDescription: "Enable service worker",
           developmentRestartTitle: "Restart Server",
@@ -85,7 +85,9 @@ describe("DevelopmentSettings", () => {
 
     expect(screen.getByText("Store-Backed Session Messages")).toBeTruthy();
     expect(
-      screen.getByText("Return session messages from the session detail store"),
+      screen.getByText(
+        "Return session messages from the session detail store. Turn off to compare against the legacy hook-local mirror.",
+      ),
     ).toBeTruthy();
   });
 });

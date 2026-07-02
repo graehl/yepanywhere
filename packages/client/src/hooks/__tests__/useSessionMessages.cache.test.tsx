@@ -18,6 +18,7 @@ import {
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
+import { selectSessionDetailMessages } from "../../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
@@ -53,6 +54,22 @@ function scrollSnapshot(): SessionRouteScrollSnapshot {
     },
     updatedAtMs: 42,
   };
+}
+
+function readStoreMessageIds(
+  projectId = "proj-1",
+  sessionId = "sess-1",
+): string[] | undefined {
+  return defaultSessionDetailStore
+    .readSelected(
+      {
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId,
+        sessionId,
+      },
+      selectSessionDetailMessages,
+    )
+    ?.map((message) => message.uuid);
 }
 
 describe("useSessionMessages cache", () => {
@@ -160,6 +177,7 @@ describe("useSessionMessages cache", () => {
     expect(
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "msg-2"]);
+    expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
   });
 
   it("mirrors active loads into the session detail store without retaining when cache is disabled", async () => {
@@ -380,6 +398,7 @@ describe("useSessionMessages cache", () => {
     expect(
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "msg-2"]);
+    expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
     expect(second.result.current.pagination?.totalMessageCount).toBe(1);
   });
 
@@ -683,6 +702,7 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.pagination?.truncatedBeforeMessageId).toBe(
       "older-msg",
     );
+    expect(readStoreMessageIds()).toEqual(["msg-1"]);
   });
 
   it("uses selector-backed pagination when loading older messages", async () => {
@@ -779,8 +799,78 @@ describe("useSessionMessages cache", () => {
     expect(rendered.result.current.messages.map((message) => message.uuid)).toEqual(
       ["older-msg", "msg-1"],
     );
+    expect(readStoreMessageIds()).toEqual(["older-msg", "msg-1"]);
     expect(rendered.result.current.pagination?.hasOlderMessages).toBe(false);
     expect(rendered.result.current.pagination?.returnedMessageCount).toBe(2);
+  });
+
+  it("mirrors incremental catch-up messages into the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    apiMocks.getSession.mockClear();
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-2",
+          type: "assistant",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "assistant", content: "hi" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+    });
+
+    await act(async () => {
+      await result.current.fetchNewMessages();
+    });
+
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      "msg-1",
+    );
+    expect(result.current.messages.map((message) => message.uuid)).toEqual([
+      "msg-1",
+      "msg-2",
+    ]);
+    expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
   });
 
   it("coalesces concurrent incremental refreshes", async () => {

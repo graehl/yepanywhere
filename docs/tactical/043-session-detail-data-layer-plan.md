@@ -6,6 +6,8 @@ This is the current tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
 Completed-slice detail lives in
 [`043-session-detail-data-layer-history.md`](043-session-detail-data-layer-history.md).
+The dogfood-toggle transition audit lives in
+[`043-session-detail-data-layer-toggle-preflight.md`](043-session-detail-data-layer-toggle-preflight.md).
 
 ## Current Status
 
@@ -109,19 +111,16 @@ DOM timing problems.
 
 Next likely slice:
 
-- Preflight a hidden dogfood toggle for store-authoritative returned
-  `messages`. Before flipping even a localStorage-only switch, enumerate each
-  remaining `setMessages` transition and confirm the matching reducer/store
-  action already carries the same cursor, provenance, and pagination effects.
+- Add a hidden dogfood toggle for store-authoritative returned `messages`,
+  using the hydration guard called out in the preflight note so warm snapshot
+  restore does not accidentally bypass the intentional loading yield.
 
 Then:
 
-- Audit persisted catch-up and older-page transitions, but do not selectorize
-  them blindly. They carry cursor and persisted timestamp watermark side
-  effects, so they are higher risk than placeholder cleanup paths.
-- Add the hidden opt-in dogfood setting once the preflight has tests for
-  initial load, warm restore, ordinary stream, placeholder updates, catch-up,
-  and older-page prepend.
+- Keep the toggle localStorage/dev-only and default-off until dogfooding has
+  produced fixtures for any live divergence.
+- Do not broaden to `agentContent`, render selectors, scroll ownership, or
+  `/btw` until returned `messages` is boring.
 
 Potential dogfood toggle:
 

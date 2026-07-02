@@ -178,6 +178,8 @@ Status 2026-07-02:
 - Added `selectSessionDetailAgentContent` and used it as the first
   store-backed `agentContent` mirror for subagent streaming placeholder
   upsert/cleanup.
+- Added the store-backed messages toggle preflight note and hook/store parity
+  assertions for warm catch-up, incremental catch-up, and older-page prepend.
 
 Reducer/helper behavior locked down during Slice 4:
 

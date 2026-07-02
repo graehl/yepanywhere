@@ -41,6 +41,9 @@ What is already in place:
 - A Developer settings debug toggle can now return store-selected `messages`
   after initial hydration has reached the same reveal point as the local
   mirror. Local mirrors still run for fallback and diagnostics.
+- Focused hook coverage now verifies that store-authoritative returned
+  `messages` preserve selector-only rows across ordinary stream events,
+  incremental catch-up, and older-page prepend.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but the broad returned `messages` and `agentContent` values are
@@ -113,9 +116,11 @@ DOM timing problems.
 
 Next likely slice:
 
-- Dogfood the Developer settings store-authoritative returned `messages`
-  toggle and turn any observed divergence into a compact reducer or hook
-  fixture before widening the surface.
+- Continue dogfooding the Developer settings store-authoritative returned
+  `messages` toggle and turn any observed divergence into a compact reducer or
+  hook fixture.
+- Prepare the next preflight slice for `agentContent` by auditing its remaining
+  local-only writes before widening the debug toggle.
 
 Then:
 

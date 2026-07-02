@@ -379,6 +379,296 @@ describe("useSessionMessages cache", () => {
     );
   });
 
+  it("keeps store-selected messages authoritative across stream events", async () => {
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+    await waitFor(() =>
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1", "store-only-msg"]),
+    );
+
+    act(() => {
+      rendered.result.current.handleStreamMessageEvent({
+        uuid: "stream-msg",
+        type: "assistant",
+        timestamp: "2026-05-04T00:01:00.000Z",
+        message: { role: "assistant", content: "stream update" },
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1", "store-only-msg", "stream-msg"]),
+    );
+    expect(readStoreMessageIds()).toEqual([
+      "msg-1",
+      "store-only-msg",
+      "stream-msg",
+    ]);
+  });
+
+  it("keeps store-selected messages authoritative across catch-up", async () => {
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+    await waitFor(() =>
+      expect(result.current.messages.map((message) => message.uuid)).toEqual([
+        "msg-1",
+        "store-only-msg",
+      ]),
+    );
+
+    apiMocks.getSession.mockClear();
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-2",
+          type: "assistant",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "assistant", content: "hi" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+    });
+
+    await act(async () => {
+      await result.current.fetchNewMessages();
+    });
+
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      "msg-1",
+    );
+    expect(result.current.messages.map((message) => message.uuid)).toEqual([
+      "msg-1",
+      "store-only-msg",
+      "msg-2",
+    ]);
+    expect(readStoreMessageIds()).toEqual([
+      "msg-1",
+      "store-only-msg",
+      "msg-2",
+    ]);
+  });
+
+  it("keeps store-selected messages authoritative across older-page prepend", async () => {
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "msg-1",
+        totalMessageCount: 2,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-03T23:59:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "older-msg",
+          type: "assistant",
+          timestamp: "2026-05-03T23:59:00.000Z",
+          message: { role: "assistant", content: "before" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 3,
+        returnedMessageCount: 3,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+    await waitFor(() =>
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1", "store-only-msg"]),
+    );
+
+    await act(async () => {
+      await rendered.result.current.loadOlderMessages();
+    });
+
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: "msg-1",
+      },
+    );
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["older-msg", "msg-1", "store-only-msg"]);
+    expect(readStoreMessageIds()).toEqual([
+      "older-msg",
+      "msg-1",
+      "store-only-msg",
+    ]);
+  });
+
   it("returns retained scroll snapshots through the store selector", async () => {
     enableSessionTranscriptCache();
 

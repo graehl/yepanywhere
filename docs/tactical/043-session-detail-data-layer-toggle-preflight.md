@@ -34,11 +34,11 @@ without also changing the deferred warm-reveal behavior.
 | Warm catch-up before hydration | Merges REST delta into warm snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Warm catch-up after hydration | Merges REST delta into revealed snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Cold persisted load | Sets tagged/reconciled REST snapshot | `loadPersistedTranscript` | Reducer and hook/store coverage exist |
-| Ordinary stream/replay | Merges stream row with replay suppression | `applyStreamMessage` | Reducer/provider fixtures cover dedupe; hook uses local mirror |
+| Ordinary stream/replay | Merges stream row with replay suppression | `applyStreamMessage` | Store-backed return parity asserted |
 | Main streaming placeholder upsert | Copies selector-backed store result | `upsertStreamingPlaceholder` | Selector-backed |
 | Main streaming placeholder cleanup | Copies selector-backed store result | `clearStreamingPlaceholders` | Selector-backed |
-| Incremental persisted catch-up | Merges new REST rows and updates cursor | `applyCatchupMessages` | Hook/store parity asserted |
-| Older-page prepend | Prepends older REST rows and updates cursor | `prependOlderMessages` | Hook/store parity asserted |
+| Incremental persisted catch-up | Merges new REST rows and updates cursor | `applyCatchupMessages` | Store-backed return parity asserted |
+| Older-page prepend | Prepends older REST rows and updates cursor | `prependOlderMessages` | Store-backed return parity asserted |
 
 ## Remaining Toggle Risks
 
@@ -56,6 +56,7 @@ without also changing the deferred warm-reveal behavior.
 ## Readiness Call
 
 The Developer settings opt-in is ready for dogfooding. The next implementation
-chunk should capture any divergence as a compact reducer or hook fixture before
-broadening the toggle to `agentContent`, render selectors, scroll ownership, or
-`/btw`.
+chunk should keep capturing any returned-`messages` divergence as a compact
+reducer or hook fixture while starting an `agentContent` preflight audit before
+broadening the toggle to subagent content, render selectors, scroll ownership,
+or `/btw`.

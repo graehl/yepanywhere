@@ -1458,15 +1458,22 @@ export function useSessionMessages(
       dispatchSessionDetailAction(
         createMergeLoadedAgentContentAction(agentId, content),
       );
+      const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
-        const next = mergeLoadedAgentContentMap(prev, agentId, content);
+        const next =
+          selectorBackedAgentContent ??
+          mergeLoadedAgentContentMap(prev, agentId, content);
         reportShadowDivergence("loaded-agent-content", {
           agentContent: next,
         });
         return next;
       });
     },
-    [dispatchSessionDetailAction, reportShadowDivergence],
+    [
+      dispatchSessionDetailAction,
+      readSelectorBackedAgentContent,
+      reportShadowDivergence,
+    ],
   );
 
   const updateAgentContextUsage = useCallback(
@@ -1474,15 +1481,22 @@ export function useSessionMessages(
       dispatchSessionDetailAction(
         createUpdateAgentContextUsageAction(agentId, contextUsage),
       );
+      const selectorBackedAgentContent = readSelectorBackedAgentContent();
       setAgentContent((prev) => {
-        const next = updateAgentContextUsageMap(prev, agentId, contextUsage);
+        const next =
+          selectorBackedAgentContent ??
+          updateAgentContextUsageMap(prev, agentId, contextUsage);
         reportShadowDivergence("agent-context-usage", {
           agentContent: next,
         });
         return next;
       });
     },
-    [dispatchSessionDetailAction, reportShadowDivergence],
+    [
+      dispatchSessionDetailAction,
+      readSelectorBackedAgentContent,
+      reportShadowDivergence,
+    ],
   );
 
   const clearAgentStreamingPlaceholders = useCallback(

@@ -36,9 +36,9 @@ What is already in place:
   older-page cursor selection, and main streaming placeholder message
   upsert/cleanup.
 - `agentContent` has selector-backed mirrors for ordinary subagent stream
-  events and subagent streaming placeholder upsert/cleanup; those paths copy
-  the store-selected map back into the local hook mirror after reducer/store
-  dispatch.
+  events, loaded subagent content, context-usage updates, and subagent
+  streaming placeholder upsert/cleanup; those paths copy the store-selected
+  map back into the local hook mirror after reducer/store dispatch.
 - A Developer settings debug toggle can now return store-selected `messages`
   after initial hydration has reached the same reveal point as the local
   mirror. Local mirrors still run for fallback and diagnostics.
@@ -120,27 +120,27 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages` toggle and turn any observed divergence into a compact reducer or
   hook fixture.
-- Continue the `agentContent` preflight by moving loaded subagent content and
-  context-usage updates to selector-backed mirrors before widening the debug
-  toggle.
+- Add a dev-only, hydration-gated returned `agentContent` selector read behind
+  the same Developer setting, with local mirror fallback and focused hook
+  coverage.
 
 Then:
 
 - Keep the toggle dev-only and default-off until dogfooding has produced
   fixtures for any live divergence.
-- Do not broaden to `agentContent`, render selectors, scroll ownership, or
-  `/btw` until returned `messages` is boring.
+- Do not broaden to render selectors, scroll ownership, or `/btw` until
+  returned `messages` and `agentContent` are boring.
 
 Dogfood toggle:
 
 - Name: Store-Backed Session Messages in the Development settings page.
-- Scope: returned `messages` only at first.
-- Behavior: `effectiveMessages = selectSessionDetailMessages(store) ??
+- Current scope: returned `messages`.
+- Next candidate: returned `agentContent`, after the same warm-hydration guard.
+- Behavior today: `effectiveMessages = selectSessionDetailMessages(store) ??
   localMessages`.
 - Keep local mirrors running for comparison, diagnostics, fallback, and
   rollback.
-- Do not include `agentContent`, render selectors, or `/btw` in the first
-  toggle.
+- Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks
 

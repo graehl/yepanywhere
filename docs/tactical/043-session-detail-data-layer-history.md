@@ -181,6 +181,9 @@ Status 2026-07-02:
 - Ordinary subagent stream events now also copy the store-selected
   `agentContent` map back into the local hook mirror after reducer/store
   dispatch, with coverage for preserving selector-only task entries.
+- Loaded subagent content and agent context-usage updates now follow the same
+  selector-backed mirror pattern, with coverage for preserving selector-only
+  task entries.
 - Added the store-backed messages toggle preflight note and hook/store parity
   assertions for warm catch-up, incremental catch-up, and older-page prepend.
 - Added the store-authoritative returned `messages` dogfood toggle to the
@@ -200,6 +203,9 @@ Reducer/helper behavior locked down during Slice 4:
 - Subagent streaming placeholder upsert/cleanup now copies the store-selected
   agent-content map into the local hook mirror after reducer/store dispatch,
   with the old local helper retained as fallback.
+- Ordinary subagent stream, loaded subagent content, and context-usage updates
+  now use the same store-selected agent-content mirror with local helpers kept
+  as fallback.
 
 ## Verification Details
 

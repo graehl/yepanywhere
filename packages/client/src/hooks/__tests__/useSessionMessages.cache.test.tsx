@@ -1861,6 +1861,173 @@ describe("useSessionMessages cache", () => {
     });
   });
 
+  it("mirrors loaded subagent content from the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const loadedMessage: Message = {
+      uuid: "agent-loaded-1",
+      type: "assistant",
+      message: { role: "assistant", content: "loaded" },
+    };
+    const storeOnlyMessage: Message = {
+      uuid: "agent-store-only-1",
+      type: "assistant",
+      message: { role: "assistant", content: "store only" },
+    };
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "mergeLoadedAgentContent",
+          agentId: "task-store",
+          content: {
+            messages: [storeOnlyMessage],
+            status: "completed",
+          },
+        },
+      );
+      result.current.mergeLoadedAgentContent("task-1", {
+        messages: [loadedMessage],
+        status: "completed",
+      });
+    });
+
+    expect(result.current.agentContent["task-store"]).toEqual({
+      messages: [storeOnlyMessage],
+      status: "completed",
+    });
+    expect(result.current.agentContent["task-1"]).toEqual({
+      messages: [loadedMessage],
+      status: "completed",
+    });
+    expect(
+      defaultSessionDetailStore.read({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      })?.agentContent,
+    ).toMatchObject({
+      "task-1": {
+        messages: [loadedMessage],
+        status: "completed",
+      },
+      "task-store": {
+        messages: [storeOnlyMessage],
+        status: "completed",
+      },
+    });
+  });
+
+  it("mirrors agent context usage from the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const contextUsage = { inputTokens: 1200, percentage: 24 };
+    const storeOnlyMessage: Message = {
+      uuid: "agent-store-only-1",
+      type: "assistant",
+      message: { role: "assistant", content: "store only" },
+    };
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "mergeLoadedAgentContent",
+          agentId: "task-store",
+          content: {
+            messages: [storeOnlyMessage],
+            status: "completed",
+          },
+        },
+      );
+      result.current.updateAgentContextUsage("task-1", contextUsage);
+    });
+
+    expect(result.current.agentContent["task-store"]).toEqual({
+      messages: [storeOnlyMessage],
+      status: "completed",
+    });
+    expect(result.current.agentContent["task-1"]).toEqual({
+      messages: [],
+      status: "running",
+      contextUsage,
+    });
+    expect(
+      defaultSessionDetailStore.read({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      })?.agentContent,
+    ).toMatchObject({
+      "task-1": {
+        messages: [],
+        status: "running",
+        contextUsage,
+      },
+      "task-store": {
+        messages: [storeOnlyMessage],
+        status: "completed",
+      },
+    });
+  });
+
   it("upserts subagent streaming placeholders through the session detail store", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

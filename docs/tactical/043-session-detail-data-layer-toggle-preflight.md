@@ -17,7 +17,8 @@ Keep the first toggle narrow:
 - Source: `selectSessionDetailMessages(defaultSessionDetailStore)`.
 - Fallback: local `messages` state if the store entry is missing.
 - Still maintain local mirrors for diagnostics, fallback, and rollback.
-- Do not include `agentContent`, render selectors, scroll ownership, or `/btw`.
+- Do not include `agentContent`, render selectors, scroll ownership, or `/btw`
+  in this first messages-only toggle.
 
 One important guard: warm snapshot restore currently writes the store before it
 reveals local `messages`, because the hook intentionally yields through the
@@ -50,13 +51,15 @@ without also changing the deferred warm-reveal behavior.
 - Cursor and persisted timestamp watermark side effects stay outside the
   selector read. The store can own the returned array before it owns those refs,
   but tests must keep covering both.
-- Subagent `agentContent` is deliberately out of scope for the first toggle.
-  Its live-vs-durable parity remains broad-shape only.
+- Subagent `agentContent` is deliberately out of scope for the first
+  messages-only toggle. Its local mirror now follows store selections at the
+  public hook update boundaries, but live-vs-durable parity remains
+  broad-shape only.
 
 ## Readiness Call
 
 The Developer settings opt-in is ready for dogfooding. The next implementation
 chunk should keep capturing any returned-`messages` divergence as a compact
-reducer or hook fixture while starting an `agentContent` preflight audit before
-broadening the toggle to subagent content, render selectors, scroll ownership,
-or `/btw`.
+reducer or hook fixture while adding a hydration-gated returned-`agentContent`
+selector read behind the same dev-only setting. Render selectors, scroll
+ownership, and `/btw` remain out of scope.

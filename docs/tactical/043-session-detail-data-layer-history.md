@@ -229,6 +229,11 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, preserving the existing behavior where a
   matching user turn keeps its assistant response visible and full-session
   explored child matches target the explored group.
+- Search match projection now lives in `sessionDetail/renderSelectors`,
+  including match ids, target ids, preview snippets, and selected-anchor
+  lookup. Match projection is kept separate from selected-anchor projection so
+  changing the selected id does not churn the match array and reset arrow-repeat
+  timers.
 
 ## Verification Details
 

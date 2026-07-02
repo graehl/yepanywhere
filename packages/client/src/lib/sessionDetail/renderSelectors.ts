@@ -40,6 +40,41 @@ export interface RenderNavAnchor {
   timestampMs?: number | null;
 }
 
+export interface SearchMatchProjectionInput<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+> {
+  anchors: readonly TAnchor[];
+  caseSensitive?: boolean;
+  query: string;
+  searchReady: boolean;
+}
+
+export interface SearchMatchProjection<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+> {
+  matchIds: Set<string>;
+  matchTargetIds: Set<string>;
+  matches: TAnchor[];
+  previewsById: Map<string, string>;
+}
+
+export interface SearchSelectionProjectionInput<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+> {
+  anchors: readonly TAnchor[];
+  previewsById: ReadonlyMap<string, string>;
+  searchReady: boolean;
+  selectedId?: string | null;
+}
+
+export interface SearchSelectionProjection<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+> {
+  selectedAnchor: TAnchor | null;
+  selectedPreview: string | null;
+  selectedTargetId: string | null;
+}
+
 export type RenderSearchScope = "user" | "all" | "full";
 
 export interface SearchVisibleTurnGroupsInput<
@@ -395,6 +430,113 @@ export function normalizeSearchText(
 ): string {
   const compactText = text.replace(/\s+/g, " ").trim();
   return caseSensitive ? compactText : compactText.toLowerCase();
+}
+
+export function buildSearchPreview(
+  text: string,
+  query: string,
+  caseSensitive = false,
+): string {
+  const compactText = text.replace(/\s+/g, " ").trim();
+  const normalizedText = normalizeSearchText(compactText, caseSensitive);
+  const normalizedQuery = normalizeSearchText(query, caseSensitive);
+  const fallback =
+    compactText.length > 420
+      ? `${compactText.slice(0, 417).trimEnd()}...`
+      : compactText;
+  if (!normalizedQuery) {
+    return fallback;
+  }
+
+  const matchIndexes: number[] = [];
+  let searchFrom = 0;
+  while (matchIndexes.length < 3) {
+    const index = normalizedText.indexOf(normalizedQuery, searchFrom);
+    if (index === -1) break;
+    matchIndexes.push(index);
+    searchFrom = index + normalizedQuery.length;
+  }
+  if (matchIndexes.length === 0) {
+    return fallback;
+  }
+
+  return matchIndexes
+    .map((index) => {
+      const start = Math.max(0, index - 96);
+      const end = Math.min(
+        compactText.length,
+        index + normalizedQuery.length + 180,
+      );
+      const prefix = start > 0 ? "..." : "";
+      const suffix = end < compactText.length ? "..." : "";
+      return `${prefix}${compactText.slice(start, end).trim()}${suffix}`;
+    })
+    .join(" ... ");
+}
+
+export function getSearchMatchProjection<
+  TAnchor extends RenderNavAnchor,
+>({
+  anchors,
+  caseSensitive = false,
+  query,
+  searchReady,
+}: SearchMatchProjectionInput<TAnchor>): SearchMatchProjection<TAnchor> {
+  const matches: TAnchor[] = [];
+  const matchIds = new Set<string>();
+  const matchTargetIds = new Set<string>();
+  const previewsById = new Map<string, string>();
+
+  if (searchReady) {
+    const normalizedQuery = normalizeSearchText(query, caseSensitive);
+    for (const anchor of anchors) {
+      const searchableText = anchor.searchText ?? anchor.preview;
+      if (
+        normalizeSearchText(searchableText, caseSensitive).includes(
+          normalizedQuery,
+        )
+      ) {
+        matches.push(anchor);
+        matchIds.add(anchor.id);
+        matchTargetIds.add(anchor.targetId ?? anchor.id);
+        previewsById.set(
+          anchor.id,
+          buildSearchPreview(searchableText, query, caseSensitive),
+        );
+      }
+    }
+  }
+
+  return {
+    matchIds,
+    matchTargetIds,
+    matches,
+    previewsById,
+  };
+}
+
+export function getSearchSelectionProjection<
+  TAnchor extends RenderNavAnchor,
+>({
+  anchors,
+  previewsById,
+  searchReady,
+  selectedId,
+}: SearchSelectionProjectionInput<TAnchor>): SearchSelectionProjection<TAnchor> {
+  const selectedAnchor =
+    selectedId && searchReady
+      ? (anchors.find((anchor) => anchor.id === selectedId) ?? null)
+      : null;
+  const selectedPreview =
+    selectedAnchor && searchReady
+      ? (previewsById.get(selectedAnchor.id) ?? null)
+      : null;
+
+  return {
+    selectedAnchor,
+    selectedPreview,
+    selectedTargetId: selectedAnchor?.targetId ?? selectedAnchor?.id ?? null,
+  };
 }
 
 export function isSessionSetupText(text: string): boolean {

@@ -52,7 +52,9 @@ import {
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
   getPromptTextForCorrection,
+  getSearchMatchProjection,
   getSearchableUserTurnPreview,
+  getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
@@ -422,48 +424,6 @@ function shouldRestoreInitialScrollSnapshot(
   }
 
   return true;
-}
-
-function buildSearchPreview(
-  text: string,
-  query: string,
-  caseSensitive = false,
-): string {
-  const compactText = text.replace(/\s+/g, " ").trim();
-  const normalizedText = normalizeSearchText(compactText, caseSensitive);
-  const normalizedQuery = normalizeSearchText(query, caseSensitive);
-  const fallback =
-    compactText.length > 420
-      ? `${compactText.slice(0, 417).trimEnd()}...`
-      : compactText;
-  if (!normalizedQuery) {
-    return fallback;
-  }
-
-  const matchIndexes: number[] = [];
-  let searchFrom = 0;
-  while (matchIndexes.length < 3) {
-    const index = normalizedText.indexOf(normalizedQuery, searchFrom);
-    if (index === -1) break;
-    matchIndexes.push(index);
-    searchFrom = index + normalizedQuery.length;
-  }
-  if (matchIndexes.length === 0) {
-    return fallback;
-  }
-
-  return matchIndexes
-    .map((index) => {
-      const start = Math.max(0, index - 96);
-      const end = Math.min(
-        compactText.length,
-        index + normalizedQuery.length + 180,
-      );
-      const prefix = start > 0 ? "..." : "";
-      const suffix = end < compactText.length ? "..." : "";
-      return `${prefix}${compactText.slice(start, end).trim()}${suffix}`;
-    })
-    .join(" ... ");
 }
 
 function getSearchScopeLabel(scope: SessionIsearchScope): string {
@@ -1623,59 +1583,47 @@ export const MessageList = memo(function MessageList({
       : userTurnSearch.scope === "all"
         ? sessionTurnNavAnchors
         : userTurnSearchAnchors;
-  const userTurnSearchMatches = useMemo(() => {
-    if (!searchReady) {
-      return [];
-    }
-    const query = normalizeSearchText(
-      userTurnSearch.query,
-      userTurnSearch.caseSensitive,
-    );
-    return activeSearchAnchors.filter((anchor) =>
-      normalizeSearchText(
-        anchor.searchText ?? anchor.preview,
-        userTurnSearch.caseSensitive,
-      ).includes(query),
-    );
-  }, [
-    activeSearchAnchors,
-    searchReady,
-    userTurnSearch.caseSensitive,
-    userTurnSearch.query,
-  ]);
-  const userTurnSearchMatchIds = useMemo(
-    () => new Set(userTurnSearchMatches.map((anchor) => anchor.id)),
-    [userTurnSearchMatches],
-  );
-  const userTurnSearchMatchTargetIds = useMemo(
+  const userTurnSearchProjection = useMemo(
     () =>
-      new Set(
-        userTurnSearchMatches.map((anchor) => anchor.targetId ?? anchor.id),
-      ),
-    [userTurnSearchMatches],
+      getSearchMatchProjection({
+        anchors: activeSearchAnchors,
+        caseSensitive: userTurnSearch.caseSensitive,
+        query: userTurnSearch.query,
+        searchReady,
+      }),
+    [
+      activeSearchAnchors,
+      searchReady,
+      userTurnSearch.caseSensitive,
+      userTurnSearch.query,
+    ],
   );
-  const userTurnSearchPreviewsById = useMemo(() => {
-    const previewsById = new Map<string, string>();
-    if (!searchReady) {
-      return previewsById;
-    }
-    for (const anchor of userTurnSearchMatches) {
-      previewsById.set(
-        anchor.id,
-        buildSearchPreview(
-          anchor.searchText ?? anchor.preview,
-          userTurnSearch.query,
-          userTurnSearch.caseSensitive,
-        ),
-      );
-    }
-    return previewsById;
-  }, [
-    searchReady,
-    userTurnSearch.caseSensitive,
-    userTurnSearch.query,
-    userTurnSearchMatches,
-  ]);
+  const userTurnSearchMatches = userTurnSearchProjection.matches;
+  const userTurnSearchMatchIds = userTurnSearchProjection.matchIds;
+  const userTurnSearchMatchTargetIds = userTurnSearchProjection.matchTargetIds;
+  const userTurnSearchPreviewsById = userTurnSearchProjection.previewsById;
+  const userTurnSearchSelectionProjection = useMemo(
+    () =>
+      getSearchSelectionProjection({
+        anchors: activeSearchAnchors,
+        previewsById: userTurnSearchPreviewsById,
+        searchReady,
+        selectedId: userTurnSearch.selectedId,
+      }),
+    [
+      activeSearchAnchors,
+      searchReady,
+      userTurnSearch.selectedId,
+      userTurnSearchPreviewsById,
+    ],
+  );
+  const selectedSearchAnchor =
+    userTurnSearchSelectionProjection.selectedAnchor;
+  const selectedSearchTargetId =
+    userTurnSearchSelectionProjection.selectedTargetId;
+  selectedSearchTargetIdRef.current = selectedSearchTargetId;
+  const userTurnSearchPreview =
+    userTurnSearchSelectionProjection.selectedPreview;
   const getNavigatorAnchors = useCallback(
     () =>
       searchReady
@@ -1690,19 +1638,6 @@ export const MessageList = memo(function MessageList({
       userTurnSearchMatches,
     ],
   );
-  const selectedSearchAnchor =
-    userTurnSearch.selectedId && searchReady
-      ? (activeSearchAnchors.find(
-          (anchor) => anchor.id === userTurnSearch.selectedId,
-        ) ?? null)
-      : null;
-  const selectedSearchTargetId =
-    selectedSearchAnchor?.targetId ?? selectedSearchAnchor?.id ?? null;
-  selectedSearchTargetIdRef.current = selectedSearchTargetId;
-  const userTurnSearchPreview =
-    selectedSearchAnchor && searchReady
-      ? (userTurnSearchPreviewsById.get(selectedSearchAnchor.id) ?? null)
-      : null;
   const userTurnNavSearchState = useMemo<UserTurnNavSearchState | null>(
     () =>
       searchReady

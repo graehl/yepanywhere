@@ -7,6 +7,8 @@ import {
   buildSessionDetailRenderItems,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
+  getSearchMatchProjection,
+  getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
@@ -437,5 +439,114 @@ describe("session detail render selectors", () => {
         }),
       ),
     ).toEqual(["read-1"]);
+  });
+
+  it("projects search matches, ids, selected anchor, and previews", () => {
+    const anchors = [
+      {
+        id: "anchor-1",
+        preview: "Alpha prompt",
+        searchText: "Alpha prompt with repeated alpha term",
+      },
+      {
+        id: "anchor-2",
+        preview: "Explored / Read: README.md",
+        searchText: "Read README.md",
+        targetId: "explored-read-1-grep-1",
+      },
+      {
+        id: "anchor-3",
+        preview: "Beta prompt",
+        searchText: "Beta only",
+      },
+    ];
+
+    const projection = getSearchMatchProjection({
+      anchors,
+      query: "readme",
+      searchReady: true,
+    });
+    const selection = getSearchSelectionProjection({
+      anchors,
+      previewsById: projection.previewsById,
+      searchReady: true,
+      selectedId: "anchor-2",
+    });
+
+    expect(projection.matches.map((anchor) => anchor.id)).toEqual([
+      "anchor-2",
+    ]);
+    expect(Array.from(projection.matchIds)).toEqual(["anchor-2"]);
+    expect(Array.from(projection.matchTargetIds)).toEqual([
+      "explored-read-1-grep-1",
+    ]);
+    expect(selection.selectedAnchor?.id).toBe("anchor-2");
+    expect(selection.selectedTargetId).toBe("explored-read-1-grep-1");
+    expect(selection.selectedPreview).toBe("Read README.md");
+    expect(projection.previewsById.get("anchor-2")).toBe("Read README.md");
+  });
+
+  it("preserves selected active anchors even when they are not matches", () => {
+    const anchors = [
+      {
+        id: "anchor-1",
+        preview: "Alpha prompt",
+        searchText: "Alpha prompt",
+      },
+      {
+        id: "anchor-2",
+        preview: "Beta prompt",
+        searchText: "Beta prompt",
+      },
+    ];
+
+    const projection = getSearchMatchProjection({
+      anchors,
+      caseSensitive: true,
+      query: "alpha",
+      searchReady: true,
+    });
+    const selection = getSearchSelectionProjection({
+      anchors,
+      previewsById: projection.previewsById,
+      searchReady: true,
+      selectedId: "anchor-2",
+    });
+
+    expect(projection.matches).toEqual([]);
+    expect(selection.selectedAnchor?.id).toBe("anchor-2");
+    expect(selection.selectedTargetId).toBe("anchor-2");
+    expect(selection.selectedPreview).toBeNull();
+    expect(projection.previewsById.size).toBe(0);
+  });
+
+  it("returns empty search projection when search is not ready", () => {
+    const anchors = [
+      {
+        id: "anchor-1",
+        preview: "Alpha prompt",
+        searchText: "Alpha prompt",
+      },
+    ];
+
+    const projection = getSearchMatchProjection({
+      anchors,
+      query: "alpha",
+      searchReady: false,
+    });
+    const selection = getSearchSelectionProjection({
+      anchors,
+      previewsById: projection.previewsById,
+      searchReady: false,
+      selectedId: "anchor-1",
+    });
+
+    expect(projection.matches).toEqual([]);
+    expect(projection.matchIds.size).toBe(0);
+    expect(projection.matchTargetIds.size).toBe(0);
+    expect(projection.previewsById.size).toBe(0);
+    expect(selection.selectedAnchor).toBeNull();
+    expect(selection.selectedTargetId).toBeNull();
+    expect(selection.selectedPreview).toBeNull();
   });
 });

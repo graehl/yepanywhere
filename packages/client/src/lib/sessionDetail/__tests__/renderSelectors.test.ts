@@ -8,14 +8,18 @@ import {
   buildVisibleTimelineEntries,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
+  getNextProgressiveEntryCount,
+  getProgressiveTimelineEntryWeight,
   getSearchMatchProjection,
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
+  getTailEntryCountForRenderItemTarget,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
   selectSessionDetailRenderItems,
   selectLatestCorrectablePrompt,
+  type ProgressiveTimelineEntry,
   type RenderTurnGroup,
 } from "../renderSelectors";
 import { createInitialSessionDetailState } from "../transcriptReducer";
@@ -525,6 +529,61 @@ describe("session detail render selectors", () => {
         firstItemId: "assistant-1",
       },
     ]);
+  });
+
+  it("derives progressive timeline entry weights and tail counts", () => {
+    const entries: ProgressiveTimelineEntry[] = [
+      {
+        kind: "turn" as const,
+        group: { items: Array.from({ length: 30 }) },
+      },
+      {
+        kind: "turn" as const,
+        group: { items: Array.from({ length: 45 }) },
+      },
+      {
+        kind: "turn" as const,
+        group: { items: [] },
+      },
+      { kind: "btw" as const },
+      {
+        kind: "turn" as const,
+        group: { items: Array.from({ length: 80 }) },
+      },
+      { kind: "btw" as const },
+    ];
+
+    expect(getProgressiveTimelineEntryWeight(entries[0]!)).toBe(30);
+    expect(getProgressiveTimelineEntryWeight(entries[2]!)).toBe(1);
+    expect(getProgressiveTimelineEntryWeight(entries[3]!)).toBe(1);
+    expect(getTailEntryCountForRenderItemTarget([], 120)).toBe(0);
+    expect(getTailEntryCountForRenderItemTarget(entries, 1)).toBe(1);
+    expect(getTailEntryCountForRenderItemTarget(entries, 90)).toBe(5);
+  });
+
+  it("derives the next progressive timeline entry count", () => {
+    const entries: ProgressiveTimelineEntry[] = [
+      {
+        kind: "turn" as const,
+        group: { items: Array.from({ length: 30 }) },
+      },
+      {
+        kind: "turn" as const,
+        group: { items: Array.from({ length: 40 }) },
+      },
+      {
+        kind: "turn" as const,
+        group: { items: Array.from({ length: 50 }) },
+      },
+      { kind: "btw" as const },
+    ];
+
+    expect(getNextProgressiveEntryCount([], 1, 90)).toBe(0);
+    expect(getNextProgressiveEntryCount(entries, 1, 60)).toBe(3);
+    expect(getNextProgressiveEntryCount(entries, entries.length, 60)).toBe(
+      entries.length,
+    );
+    expect(getNextProgressiveEntryCount(entries, -1, 0)).toBe(1);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

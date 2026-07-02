@@ -68,6 +68,8 @@ What is already in place:
 - Visible timeline entry derivation now derives through
   `sessionDetail/renderSelectors`, including timestamp ordering for visible
   turn groups plus `/btw` aside metadata.
+- Progressive timeline entry weighting and render-item target count derivation
+  now derive through `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -104,8 +106,8 @@ Ownership is intentionally still split while we migrate:
 - `MessageList` still owns display policy, progressive rendering, scroll
   snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
   assistant-segment, search-anchor, visible-group, search-match, latest
-  correctable prompt, and timeline-entry projections now live outside the
-  component.
+  correctable prompt, timeline-entry, and progressive-count projections now
+  live outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -148,9 +150,9 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving progressive timeline
-  sizing/count derivation behind pure helpers without taking over reveal
-  timers, scroll, or rendering.
+- Continue the render-selector preflight by moving progressive visibility
+  projection behind a pure helper without taking over reveal timers, scroll, or
+  rendering.
 
 Then:
 
@@ -177,8 +179,8 @@ Dogfood toggle:
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
 - `MessageList` still performs some semantic display derivation, especially
-  progressive reveal and `/btw` ownership. Store canonical state does not yet
-  mean render canonical state.
+  progressive reveal state/timing and `/btw` ownership. Store canonical state
+  does not yet mean render canonical state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.
 - A store-authoritative messages toggle may expose reducer gaps quickly; that

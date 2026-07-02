@@ -243,6 +243,10 @@ Reducer/helper behavior locked down during Slice 4:
   aside metadata and preserving the existing timestamp/ordinal ordering rules
   while `MessageList` keeps `/btw` ownership, progressive reveal, rendering,
   and scroll.
+- Progressive timeline entry weighting plus initial/reveal-batch count
+  derivation now live in `sessionDetail/renderSelectors`, preserving the
+  existing render-item target behavior while `MessageList` keeps reveal state,
+  timers, status UI, slicing, rendering, and scroll.
 
 ## Verification Details
 

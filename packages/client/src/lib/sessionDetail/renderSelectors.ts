@@ -125,6 +125,10 @@ export interface VisibleTimelineEntriesInput<
   turnGroups: readonly TTurnGroup[];
 }
 
+export type ProgressiveTimelineEntry =
+  | { kind: "turn"; group: { items: readonly unknown[] } }
+  | { kind: "btw" };
+
 const SESSION_SETUP_PREFIXES = [
   "# AGENTS.md instructions",
   "<environment_context>",
@@ -261,6 +265,55 @@ export function buildVisibleTimelineEntries<
     if (right.timestampMs !== null) return 1;
     return left.ordinal - right.ordinal;
   });
+}
+
+export function getProgressiveTimelineEntryWeight(
+  entry: ProgressiveTimelineEntry,
+): number {
+  return entry.kind === "turn" ? Math.max(1, entry.group.items.length) : 1;
+}
+
+export function getTailEntryCountForRenderItemTarget(
+  entries: readonly ProgressiveTimelineEntry[],
+  targetItems: number,
+): number {
+  if (entries.length === 0) {
+    return 0;
+  }
+
+  let count = 0;
+  let itemCount = 0;
+  for (
+    let index = entries.length - 1;
+    index >= 0 && itemCount < targetItems;
+    index -= 1
+  ) {
+    const entry = entries[index];
+    if (!entry) break;
+    count += 1;
+    itemCount += getProgressiveTimelineEntryWeight(entry);
+  }
+  return Math.max(1, count);
+}
+
+export function getNextProgressiveEntryCount(
+  entries: readonly ProgressiveTimelineEntry[],
+  currentCount: number,
+  targetItems: number,
+): number {
+  let count = Math.min(entries.length, Math.max(0, currentCount));
+  let itemCount = 0;
+  for (
+    let index = entries.length - count - 1;
+    index >= 0 && itemCount < targetItems;
+    index -= 1
+  ) {
+    const entry = entries[index];
+    if (!entry) break;
+    count += 1;
+    itemCount += getProgressiveTimelineEntryWeight(entry);
+  }
+  return Math.min(entries.length, Math.max(1, count));
 }
 
 export function getExplorationKind(toolName: string): ExplorationKind | null {

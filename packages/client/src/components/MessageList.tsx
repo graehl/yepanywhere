@@ -52,6 +52,8 @@ import {
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
+  getNextProgressiveEntryCount,
+  getTailEntryCountForRenderItemTarget,
   getSearchMatchProjection,
   getSearchableUserTurnPreview,
   getSearchSelectionProjection,
@@ -90,55 +92,6 @@ const PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET = 120;
 const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
-
-type ProgressiveTimelineEntry =
-  | { kind: "turn"; group: { items: readonly unknown[] } }
-  | { kind: "btw" };
-
-function getProgressiveTimelineEntryWeight(
-  entry: ProgressiveTimelineEntry,
-): number {
-  return entry.kind === "turn" ? Math.max(1, entry.group.items.length) : 1;
-}
-
-function getTailEntryCountForRenderItemTarget(
-  entries: readonly ProgressiveTimelineEntry[],
-  targetItems: number,
-): number {
-  let count = 0;
-  let itemCount = 0;
-  for (
-    let index = entries.length - 1;
-    index >= 0 && itemCount < targetItems;
-    index -= 1
-  ) {
-    const entry = entries[index];
-    if (!entry) break;
-    count += 1;
-    itemCount += getProgressiveTimelineEntryWeight(entry);
-  }
-  return Math.max(1, count);
-}
-
-function getNextProgressiveEntryCount(
-  entries: readonly ProgressiveTimelineEntry[],
-  currentCount: number,
-  targetItems: number,
-): number {
-  let count = Math.min(entries.length, Math.max(0, currentCount));
-  let itemCount = 0;
-  for (
-    let index = entries.length - count - 1;
-    index >= 0 && itemCount < targetItems;
-    index -= 1
-  ) {
-    const entry = entries[index];
-    if (!entry) break;
-    count += 1;
-    itemCount += getProgressiveTimelineEntryWeight(entry);
-  }
-  return Math.min(entries.length, Math.max(1, count));
-}
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));

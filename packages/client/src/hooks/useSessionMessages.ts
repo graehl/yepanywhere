@@ -27,6 +27,7 @@ import {
   createRestoreRouteSnapshotAction,
   createStreamMessageAction,
   createStreamSubagentMessageAction,
+  createUpdateAgentContextUsageAction,
 } from "../lib/sessionDetail/actionAdapters";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
@@ -44,8 +45,10 @@ import {
   createInitialSessionDetailState,
   mergeLoadedAgentContentMap,
   reduceSessionDetailState,
+  updateAgentContextUsageMap,
 } from "../lib/sessionDetail/transcriptReducer";
 import type {
+  AgentContextUsage,
   SessionDetailAction,
   SessionDetailState,
 } from "../lib/sessionDetail/types";
@@ -144,6 +147,11 @@ export interface UseSessionMessagesResult {
   registerToolUseAgent: (toolUseId: string, agentId: string) => void;
   /** Merge loaded subagent content with any live content already seen */
   mergeLoadedAgentContent: (agentId: string, content: AgentContent) => void;
+  /** Update agent context usage metadata */
+  updateAgentContextUsage: (
+    agentId: string,
+    contextUsage: AgentContextUsage,
+  ) => void;
   /** Update agent content (for lazy loading) */
   setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
   /** Direct messages setter (for clearing streaming placeholders) */
@@ -1344,6 +1352,22 @@ export function useSessionMessages(
     [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
+  const updateAgentContextUsage = useCallback(
+    (agentId: string, contextUsage: AgentContextUsage) => {
+      dispatchSessionDetailAction(
+        createUpdateAgentContextUsageAction(agentId, contextUsage),
+      );
+      setAgentContent((prev) => {
+        const next = updateAgentContextUsageMap(prev, agentId, contextUsage);
+        reportShadowDivergence("agent-context-usage", {
+          agentContent: next,
+        });
+        return next;
+      });
+    },
+    [dispatchSessionDetailAction, reportShadowDivergence],
+  );
+
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
 
   // Fetch new messages incrementally (for file change events)
@@ -1558,6 +1582,7 @@ export function useSessionMessages(
     handleStreamSubagentMessage,
     registerToolUseAgent,
     mergeLoadedAgentContent,
+    updateAgentContextUsage,
     setAgentContent,
     setMessages,
     fetchNewMessages,

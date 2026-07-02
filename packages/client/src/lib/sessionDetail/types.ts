@@ -15,6 +15,7 @@ export interface AgentContent {
   };
 }
 
+export type AgentContextUsage = NonNullable<AgentContent["contextUsage"]>;
 export type AgentContentMap = Record<string, AgentContent>;
 export type MarkdownAugmentMap = Record<string, MarkdownAugment>;
 
@@ -68,6 +69,11 @@ export type SessionDetailAction =
       type: "mergeLoadedAgentContent";
       agentId: string;
       content: AgentContent;
+    }
+  | {
+      type: "updateAgentContextUsage";
+      agentId: string;
+      contextUsage: AgentContextUsage;
     }
   | {
       type: "applyCatchupMessages";

@@ -12,6 +12,7 @@ import {
 import { getProvider } from "../../providers/registry";
 import type { Message } from "../../types";
 import type {
+  AgentContextUsage,
   AgentContent,
   AgentContentMap,
   MarkdownAugmentMap,
@@ -278,6 +279,24 @@ export function mergeLoadedAgentContentMap(
   };
 }
 
+export function updateAgentContextUsageMap(
+  agentContent: AgentContentMap,
+  agentId: string,
+  contextUsage: AgentContextUsage,
+): AgentContentMap {
+  const existing = agentContent[agentId] ?? {
+    messages: [],
+    status: "running" as const,
+  };
+  return {
+    ...agentContent,
+    [agentId]: {
+      ...existing,
+      contextUsage,
+    },
+  };
+}
+
 function findEquivalentJsonlMessageId(
   previousMessage: Message,
   nextMessages: readonly Message[],
@@ -428,6 +447,16 @@ export function reduceSessionDetailState(
           state.agentContent,
           action.agentId,
           action.content,
+        ),
+      };
+
+    case "updateAgentContextUsage":
+      return {
+        ...state,
+        agentContent: updateAgentContextUsageMap(
+          state.agentContent,
+          action.agentId,
+          action.contextUsage,
         ),
       };
 

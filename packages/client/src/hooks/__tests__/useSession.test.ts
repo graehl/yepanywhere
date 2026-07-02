@@ -30,6 +30,7 @@ const fetchNewMessages = vi.fn(async () => {});
 const fetchSessionMetadata = vi.fn(async () => {});
 const registerToolUseAgent = vi.fn();
 const mergeLoadedAgentContent = vi.fn();
+const updateAgentContextUsage = vi.fn();
 
 let fileActivityOptions:
   | {
@@ -42,6 +43,15 @@ let fileActivityOptions:
 let sessionStreamHandler:
   | ((data: { eventType: string; [key: string]: unknown }) => void)
   | null = null;
+
+let streamingContentOptions:
+  | {
+      onAgentContextUsage?: (
+        agentId: string,
+        usage: { inputTokens: number; percentage: number },
+      ) => void;
+    }
+  | undefined;
 
 const PROJECT_ID = "proj-1" as unknown as UrlProjectId;
 
@@ -144,6 +154,7 @@ vi.mock("../useSessionMessages", () => ({
     handleStreamSubagentMessage: vi.fn(),
     registerToolUseAgent,
     mergeLoadedAgentContent,
+    updateAgentContextUsage,
     setAgentContent: vi.fn(),
     setMessages: vi.fn(),
     fetchNewMessages,
@@ -176,11 +187,14 @@ vi.mock("../useSessionWatchStream", () => ({
 }));
 
 vi.mock("../useStreamingContent", () => ({
-  useStreamingContent: vi.fn(() => ({
-    handleStreamEvent: vi.fn(() => false),
-    clearStreaming: vi.fn(),
-    cleanup: vi.fn(),
-  })),
+  useStreamingContent: vi.fn((options) => {
+    streamingContentOptions = options;
+    return {
+      handleStreamEvent: vi.fn(() => false),
+      clearStreaming: vi.fn(),
+      cleanup: vi.fn(),
+    };
+  }),
 }));
 
 describe("useSession completion reconciliation", () => {
@@ -209,6 +223,7 @@ describe("useSession completion reconciliation", () => {
     installLocalStorageMock();
     fileActivityOptions = undefined;
     sessionStreamHandler = null;
+    streamingContentOptions = undefined;
     sessionMessagesMock.messages = [];
     sessionMessagesMock.provider = "codex";
   });
@@ -392,6 +407,22 @@ describe("useSession completion reconciliation", () => {
       "agent-1",
       agentContent,
     );
+  });
+
+  it("routes agent context usage through the action wrapper", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    const usage = { inputTokens: 2400, percentage: 48 };
+    act(() => {
+      streamingContentOptions?.onAgentContextUsage?.("agent-1", usage);
+    });
+
+    expect(updateAgentContextUsage).toHaveBeenCalledWith("agent-1", usage);
   });
 
   it("syncs metadata process state when reconnect keeps ownership self", async () => {

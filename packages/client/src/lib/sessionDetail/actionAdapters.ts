@@ -5,6 +5,7 @@ import type {
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
 import type {
+  AgentContextUsage,
   AgentContentMap,
   MarkdownAugmentMap,
   SessionDetailAction,
@@ -44,6 +45,11 @@ export type RegisterToolUseAgentAction = Extract<
 export type MergeLoadedAgentContentAction = Extract<
   SessionDetailAction,
   { type: "mergeLoadedAgentContent" }
+>;
+
+export type UpdateAgentContextUsageAction = Extract<
+  SessionDetailAction,
+  { type: "updateAgentContextUsage" }
 >;
 
 export type PrependOlderMessagesAction = Extract<
@@ -155,6 +161,17 @@ export function createMergeLoadedAgentContentAction(
     type: "mergeLoadedAgentContent",
     agentId,
     content,
+  };
+}
+
+export function createUpdateAgentContextUsageAction(
+  agentId: string,
+  contextUsage: AgentContextUsage,
+): UpdateAgentContextUsageAction {
+  return {
+    type: "updateAgentContextUsage",
+    agentId,
+    contextUsage,
   };
 }
 

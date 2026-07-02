@@ -521,6 +521,50 @@ describe("transcriptReducer", () => {
     expect(state.agentContent["agent-a"]?.status).toBe("completed");
   });
 
+  it("updates agent context usage without replacing existing messages", () => {
+    const liveMessage = assistantMessage(
+      "agent-assistant-1",
+      "live",
+      "2026-07-01T12:00:02.000Z",
+    );
+    const contextUsage = { inputTokens: 1200, percentage: 24 };
+    const state = reduceSessionDetailActions([
+      {
+        type: "applyStreamSubagentMessage",
+        agentId: "agent-a",
+        message: liveMessage,
+      },
+      {
+        type: "updateAgentContextUsage",
+        agentId: "agent-a",
+        contextUsage,
+      },
+    ]);
+
+    expect(state.agentContent["agent-a"]).toEqual({
+      messages: [liveMessage],
+      status: "running",
+      contextUsage,
+    });
+  });
+
+  it("creates a running agent entry for context usage received first", () => {
+    const contextUsage = { inputTokens: 800, percentage: 16 };
+    const state = reduceSessionDetailActions([
+      {
+        type: "updateAgentContextUsage",
+        agentId: "agent-a",
+        contextUsage,
+      },
+    ]);
+
+    expect(state.agentContent["agent-a"]).toEqual({
+      messages: [],
+      status: "running",
+      contextUsage,
+    });
+  });
+
   it("drops transient subagent streaming placeholders when streaming is disabled", () => {
     const streamingMessage: Message = {
       ...assistantMessage(

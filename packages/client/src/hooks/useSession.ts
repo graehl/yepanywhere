@@ -867,6 +867,7 @@ export function useSession(
     handleStreamSubagentMessage,
     registerToolUseAgent,
     mergeLoadedAgentContent,
+    updateAgentContextUsage,
     setAgentContent,
     setMessages,
     fetchNewMessages,
@@ -1410,18 +1411,9 @@ export function useSession(
   // Callback for agent context usage updates
   const handleAgentContextUsage = useCallback(
     (agentId: string, usage: { inputTokens: number; percentage: number }) => {
-      setAgentContent((prev) => {
-        const existing = prev[agentId] ?? {
-          messages: [],
-          status: "running",
-        };
-        return {
-          ...prev,
-          [agentId]: { ...existing, contextUsage: usage },
-        };
-      });
+      updateAgentContextUsage(agentId, usage);
     },
-    [setAgentContent],
+    [updateAgentContextUsage],
   );
 
   // Use streaming content hook for handling stream_event stream messages

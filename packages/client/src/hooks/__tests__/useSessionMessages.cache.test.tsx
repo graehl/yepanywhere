@@ -194,6 +194,7 @@ describe("useSessionMessages cache", () => {
     );
 
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(rendered.result.current.pagination?.totalMessageCount).toBe(1);
 
     const storeKey = {
       sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -681,6 +682,86 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.pagination?.truncatedBeforeMessageId).toBe(
       "older-msg",
     );
+  });
+
+  it("returns older-page pagination through the store selector", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "msg-1",
+        totalMessageCount: 2,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "older-msg",
+          type: "assistant",
+          timestamp: "2026-05-03T23:59:00.000Z",
+          message: { role: "assistant", content: "before" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 2,
+        returnedMessageCount: 2,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(rendered.result.current.pagination?.hasOlderMessages).toBe(true);
+
+    await act(async () => {
+      await rendered.result.current.loadOlderMessages();
+    });
+
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: "msg-1",
+      },
+    );
+    expect(rendered.result.current.messages.map((message) => message.uuid)).toEqual(
+      ["older-msg", "msg-1"],
+    );
+    expect(rendered.result.current.pagination?.hasOlderMessages).toBe(false);
+    expect(rendered.result.current.pagination?.returnedMessageCount).toBe(2);
   });
 
   it("coalesces concurrent incremental refreshes", async () => {

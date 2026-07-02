@@ -34,6 +34,7 @@ import {
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
 import {
+  selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
   selectSessionDetailScrollSnapshot,
 } from "../lib/sessionDetail/selectors";
@@ -1510,6 +1511,11 @@ export function useSessionMessages(
     ) ??
     cachedLoad?.scrollSnapshot ??
     null;
+  const selectedPagination =
+    defaultSessionDetailStore.readSelected(
+      snapshotKey,
+      selectSessionDetailPagination,
+    ) ?? pagination;
 
   return {
     messages,
@@ -1528,7 +1534,7 @@ export function useSessionMessages(
     setMessages,
     fetchNewMessages,
     fetchSessionMetadata,
-    pagination,
+    pagination: selectedPagination,
     loadingOlder,
     loadOlderMessages,
     initialScrollSnapshot: selectedInitialScrollSnapshot,

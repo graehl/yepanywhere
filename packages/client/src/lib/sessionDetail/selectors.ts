@@ -39,6 +39,12 @@ export function selectSessionDetailScrollSnapshot(
   return state.scrollSnapshot;
 }
 
+export function selectSessionDetailPagination(
+  state: SessionDetailState,
+): PaginationInfo | undefined {
+  return state.pagination;
+}
+
 export function selectSessionDetailPreprocessAugments(
   state: SessionDetailState,
   options: { activeToolApproval?: ActiveToolApproval } = {},

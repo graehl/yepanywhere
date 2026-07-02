@@ -565,6 +565,73 @@ describe("transcriptReducer", () => {
     });
   });
 
+  it("clears subagent streaming placeholders without replacing durable rows", () => {
+    const durableMessage = assistantMessage(
+      "agent-assistant-1",
+      "durable",
+      "2026-07-01T12:00:02.000Z",
+    );
+    const streamingMessage: Message = {
+      ...assistantMessage(
+        "agent-streaming",
+        "partial",
+        "2026-07-01T12:00:03.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions([
+      {
+        type: "mergeLoadedAgentContent",
+        agentId: "agent-a",
+        content: {
+          messages: [durableMessage, streamingMessage],
+          status: "running",
+        },
+      },
+      {
+        type: "clearAgentStreamingPlaceholders",
+        agentId: "agent-a",
+      },
+    ]);
+
+    expect(state.agentContent["agent-a"]).toEqual({
+      messages: [durableMessage],
+      status: "running",
+    });
+  });
+
+  it("keeps an empty agent entry when clearing only streaming placeholders", () => {
+    const streamingMessage: Message = {
+      ...assistantMessage(
+        "agent-streaming",
+        "partial",
+        "2026-07-01T12:00:02.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions([
+      {
+        type: "mergeLoadedAgentContent",
+        agentId: "agent-a",
+        content: {
+          messages: [streamingMessage],
+          status: "running",
+          contextUsage: { inputTokens: 400, percentage: 8 },
+        },
+      },
+      {
+        type: "clearAgentStreamingPlaceholders",
+        agentId: "agent-a",
+      },
+    ]);
+
+    expect(state.agentContent["agent-a"]).toEqual({
+      messages: [],
+      status: "running",
+      contextUsage: { inputTokens: 400, percentage: 8 },
+    });
+  });
+
   it("drops transient subagent streaming placeholders when streaming is disabled", () => {
     const streamingMessage: Message = {
       ...assistantMessage(

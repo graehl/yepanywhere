@@ -20,6 +20,7 @@ import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   createCatchupMessagesAction,
+  createClearAgentStreamingPlaceholdersAction,
   createLoadPersistedTranscriptAction,
   createMergeLoadedAgentContentAction,
   createPrependOlderMessagesAction,
@@ -42,6 +43,7 @@ import {
 } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
+  clearAgentStreamingPlaceholdersMap,
   createInitialSessionDetailState,
   mergeLoadedAgentContentMap,
   reduceSessionDetailState,
@@ -152,6 +154,8 @@ export interface UseSessionMessagesResult {
     agentId: string,
     contextUsage: AgentContextUsage,
   ) => void;
+  /** Remove transient streaming placeholder rows from a subagent */
+  clearAgentStreamingPlaceholders: (agentId: string) => void;
   /** Update agent content (for lazy loading) */
   setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
   /** Direct messages setter (for clearing streaming placeholders) */
@@ -1368,6 +1372,22 @@ export function useSessionMessages(
     [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
+  const clearAgentStreamingPlaceholders = useCallback(
+    (agentId: string) => {
+      dispatchSessionDetailAction(
+        createClearAgentStreamingPlaceholdersAction(agentId),
+      );
+      setAgentContent((prev) => {
+        const next = clearAgentStreamingPlaceholdersMap(prev, agentId);
+        reportShadowDivergence("agent-streaming-placeholder-cleanup", {
+          agentContent: next,
+        });
+        return next;
+      });
+    },
+    [dispatchSessionDetailAction, reportShadowDivergence],
+  );
+
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
 
   // Fetch new messages incrementally (for file change events)
@@ -1583,6 +1603,7 @@ export function useSessionMessages(
     registerToolUseAgent,
     mergeLoadedAgentContent,
     updateAgentContextUsage,
+    clearAgentStreamingPlaceholders,
     setAgentContent,
     setMessages,
     fetchNewMessages,

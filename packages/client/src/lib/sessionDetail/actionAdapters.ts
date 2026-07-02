@@ -52,6 +52,11 @@ export type UpdateAgentContextUsageAction = Extract<
   { type: "updateAgentContextUsage" }
 >;
 
+export type ClearAgentStreamingPlaceholdersAction = Extract<
+  SessionDetailAction,
+  { type: "clearAgentStreamingPlaceholders" }
+>;
+
 export type PrependOlderMessagesAction = Extract<
   SessionDetailAction,
   { type: "prependOlderMessages" }
@@ -172,6 +177,15 @@ export function createUpdateAgentContextUsageAction(
     type: "updateAgentContextUsage",
     agentId,
     contextUsage,
+  };
+}
+
+export function createClearAgentStreamingPlaceholdersAction(
+  agentId: string,
+): ClearAgentStreamingPlaceholdersAction {
+  return {
+    type: "clearAgentStreamingPlaceholders",
+    agentId,
   };
 }
 

@@ -297,6 +297,29 @@ export function updateAgentContextUsageMap(
   };
 }
 
+export function clearAgentStreamingPlaceholdersMap(
+  agentContent: AgentContentMap,
+  agentId: string,
+): AgentContentMap {
+  const existing = agentContent[agentId];
+  if (!existing) {
+    return agentContent;
+  }
+
+  const messages = clearStreamingMessages(existing.messages);
+  if (messages === existing.messages) {
+    return agentContent;
+  }
+
+  return {
+    ...agentContent,
+    [agentId]: {
+      ...existing,
+      messages,
+    },
+  };
+}
+
 function findEquivalentJsonlMessageId(
   previousMessage: Message,
   nextMessages: readonly Message[],
@@ -459,6 +482,16 @@ export function reduceSessionDetailState(
           action.contextUsage,
         ),
       };
+
+    case "clearAgentStreamingPlaceholders": {
+      const agentContent = clearAgentStreamingPlaceholdersMap(
+        state.agentContent,
+        action.agentId,
+      );
+      return agentContent === state.agentContent
+        ? state
+        : { ...state, agentContent };
+    }
 
     case "registerToolUseAgent": {
       if (

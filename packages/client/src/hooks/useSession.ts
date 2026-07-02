@@ -868,6 +868,7 @@ export function useSession(
     registerToolUseAgent,
     mergeLoadedAgentContent,
     updateAgentContextUsage,
+    clearAgentStreamingPlaceholders,
     setAgentContent,
     setMessages,
     fetchNewMessages,
@@ -1515,17 +1516,7 @@ export function useSession(
           clearStreaming();
 
           if (msgAgentId) {
-            // Remove streaming placeholders from this agent's content
-            setAgentContent((prev) => {
-              const existing = prev[msgAgentId];
-              if (!existing) return prev;
-              const filtered = existing.messages.filter((m) => !m._isStreaming);
-              if (filtered.length === existing.messages.length) return prev;
-              return {
-                ...prev,
-                [msgAgentId]: { ...existing, messages: filtered },
-              };
-            });
+            clearAgentStreamingPlaceholders(msgAgentId);
           } else {
             // Remove ALL streaming placeholder messages from main messages
             setMessages((prev) => prev.filter((m) => !m._isStreaming));
@@ -1938,7 +1929,7 @@ export function useSession(
       handleStreamMessageEvent,
       handleStreamSubagentMessage,
       registerToolUseAgent,
-      setAgentContent,
+      clearAgentStreamingPlaceholders,
       setMessages,
       setSession,
       fetchNewMessages,

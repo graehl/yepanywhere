@@ -27,7 +27,10 @@ that preserves the existing message-id dedupe behavior while giving the
 shadow reducer and store the same loaded-content action. Agent context-usage
 metadata now flows through `updateAgentContextUsage`, preserving the existing
 "running empty agent entry" fallback while removing that direct
-`setAgentContent` patch from `useSession`.
+`setAgentContent` patch from `useSession`. Subagent final-assistant cleanup
+now flows through `clearAgentStreamingPlaceholders`, preserving the existing
+placeholder filtering behavior while keeping the cleanup visible to the
+shadow reducer and store.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -306,12 +309,10 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, wrap the next
-  low-churn `setAgentContent` path. Stream-placeholder cleanup for subagent
-  completion is the likely target because the reducer already has comparable
-  disabled-streaming cleanup semantics; renderer lazy-load and token-sized
-  streaming updates should wait for narrower semantics. `messages` should
-  wait.
+- After selector/action parity is quiet in normal use, decide whether to wrap
+  renderer lazy-load merges or token-sized streaming updates next. Renderer
+  lazy-load crosses component/context ownership; token-sized streaming is
+  higher frequency. `messages` should wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -442,11 +443,17 @@ Status 2026-07-02:
   running empty entry when usage arrives first, and `useSession` now routes the
   streaming callback through the wrapper. Added reducer coverage for both
   ordering cases plus hook coverage for the streaming callback.
+- Added `clearAgentStreamingPlaceholders` as a typed action wrapper for
+  subagent final-assistant cleanup. The reducer owns the existing behavior of
+  filtering transient `_isStreaming` rows while keeping the agent entry, and
+  `useSession` now routes subagent assistant cleanup through the wrapper.
+  Added reducer coverage for durable-row preservation and empty-entry cleanup
+  with metadata, plus hook coverage for the final-assistant subagent path.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
   remove or wrap another raw exposed setter before attempting `messages`.
   `setAgentContent`, `setMessages`, and `setSession` still expose direct local
-  hook writes. Remaining `setAgentContent` users include stream-placeholder
-  cleanup, token-sized streaming updates, and renderer lazy-load merges.
+  hook writes. Remaining `setAgentContent` users include token-sized streaming
+  updates and renderer lazy-load merges.
 
 ## Slice 5: Hook Adapter Migration
 

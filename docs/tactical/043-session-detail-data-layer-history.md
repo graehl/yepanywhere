@@ -259,6 +259,9 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, preserving the latest-only expansion input
   while `MessageList` keeps thinking visibility, expansion state, and rendering
   local.
+- Display render item filtering now lives in `sessionDetail/renderSelectors`,
+  preserving the local thinking visibility flag as input while `MessageList`
+  keeps thinking visibility, expansion state, and rendering local.
 
 ## Verification Details
 

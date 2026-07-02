@@ -51,6 +51,7 @@ import {
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
+  getDisplayRenderItems,
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
   getLatestThinkingItemId,
@@ -1320,10 +1321,7 @@ export const MessageList = memo(function MessageList({
     ],
   );
   const displayRenderItems = useMemo(
-    () =>
-      thinkingItemsVisible
-        ? renderItems
-        : renderItems.filter((item) => item.type !== "thinking"),
+    () => getDisplayRenderItems(renderItems, { thinkingItemsVisible }),
     [renderItems, thinkingItemsVisible],
   );
   useLayoutEffect(() => {

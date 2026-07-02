@@ -327,6 +327,15 @@ export function getLatestThinkingItemId(
   return null;
 }
 
+export function getDisplayRenderItems(
+  items: readonly RenderItem[],
+  options: { thinkingItemsVisible: boolean },
+): readonly RenderItem[] {
+  return options.thinkingItemsVisible
+    ? items
+    : items.filter((item) => item.type !== "thinking");
+}
+
 export function buildVisibleTimelineEntries<
   TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
   TAside extends RenderTimelineAside = RenderTimelineAside,

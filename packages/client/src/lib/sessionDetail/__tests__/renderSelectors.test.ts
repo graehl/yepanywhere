@@ -8,6 +8,7 @@ import {
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
+  getDisplayRenderItems,
   getFullSessionSearchAnchors,
   getLatestThinkingItemId,
   getNextProgressiveEntryCount,
@@ -798,6 +799,30 @@ describe("session detail render selectors", () => {
     expect(getLatestThinkingItemId(items)).toBe("thinking-2");
     expect(countThinkingItems([text])).toBe(0);
     expect(getLatestThinkingItemId([text])).toBeNull();
+  });
+
+  it("filters display render items by thinking visibility", () => {
+    const text: RenderItem = {
+      type: "text",
+      id: "text-1",
+      text: "Answer",
+      sourceMessages: [],
+    };
+    const thinking: RenderItem = {
+      type: "thinking",
+      id: "thinking-1",
+      thinking: "Hidden when disabled",
+      status: "complete",
+      sourceMessages: [],
+    };
+    const items = [thinking, text];
+
+    expect(
+      getDisplayRenderItems(items, { thinkingItemsVisible: true }),
+    ).toBe(items);
+    expect(
+      getDisplayRenderItems(items, { thinkingItemsVisible: false }),
+    ).toEqual([text]);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

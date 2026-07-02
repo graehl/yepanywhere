@@ -77,6 +77,9 @@ What is already in place:
   `sessionDetail/renderSelectors`.
 - Thinking count and latest-thinking-id derivation now derive through
   `sessionDetail/renderSelectors`.
+- Display render item filtering now derives through
+  `sessionDetail/renderSelectors`, using render items plus the local thinking
+  visibility flag.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -114,8 +117,8 @@ Ownership is intentionally still split while we migrate:
   snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
   assistant-segment, search-anchor, visible-group, search-match, latest
   correctable prompt, timeline-entry, progressive-count, and
-  progressive-visibility projections plus thinking summary derivation now live
-  outside the component.
+  progressive-visibility projections plus thinking summary/display derivation
+  now live outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -158,9 +161,9 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving display render item
-  filtering behind a pure helper without taking over thinking visibility state,
-  expansion state, or rendering.
+- Continue the render-selector preflight by moving thinking id and text-length
+  summary derivation behind pure helpers without taking over thinking
+  visibility state, expansion state, or rendering.
 
 Then:
 

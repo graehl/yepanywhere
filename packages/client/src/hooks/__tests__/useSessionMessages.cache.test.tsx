@@ -21,6 +21,7 @@ import {
 import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
+import type { Message } from "../../types";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -1039,5 +1040,117 @@ describe("useSessionMessages cache", () => {
         message: { content: "done" },
       },
     ]);
+  });
+
+  it("upserts main streaming placeholders through the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const first: Message = {
+      uuid: "streaming-1",
+      type: "assistant",
+      _isStreaming: true,
+      message: { role: "assistant", content: "partial" },
+    };
+    const updated: Message = {
+      ...first,
+      message: { role: "assistant", content: "partial done" },
+    };
+
+    act(() => {
+      result.current.handleStreamingUpdate(first);
+      result.current.handleStreamingUpdate(updated);
+    });
+
+    expect(result.current.messages).toEqual([updated]);
+    expect(
+      defaultSessionDetailStore.read({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      })?.messages,
+    ).toEqual([updated]);
+  });
+
+  it("upserts subagent streaming placeholders through the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const first: Message = {
+      uuid: "agent-streaming-1",
+      type: "assistant",
+      _isStreaming: true,
+      message: { role: "assistant", content: "partial" },
+    };
+    const updated: Message = {
+      ...first,
+      message: { role: "assistant", content: "partial done" },
+    };
+
+    act(() => {
+      result.current.handleStreamingUpdate(first, "task-1");
+      result.current.handleStreamingUpdate(updated, "task-1");
+    });
+
+    expect(result.current.agentContent["task-1"]).toEqual({
+      messages: [updated],
+      status: "running",
+    });
+    expect(
+      defaultSessionDetailStore.read({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      })?.agentContent["task-1"],
+    ).toEqual({
+      messages: [updated],
+      status: "running",
+    });
   });
 });

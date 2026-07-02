@@ -61,6 +61,11 @@ export type SessionDetailAction =
       streamingEnabled?: boolean;
     }
   | {
+      type: "upsertStreamingPlaceholder";
+      message: Message;
+      agentId?: string;
+    }
+  | {
       type: "registerToolUseAgent";
       toolUseId: string;
       agentId: string;

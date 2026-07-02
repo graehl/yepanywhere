@@ -295,6 +295,37 @@ describe("transcriptReducer", () => {
     expect(state.messages).toEqual([]);
   });
 
+  it("upserts main streaming placeholders by message id", () => {
+    const first: Message = {
+      ...assistantMessage(
+        "assistant-streaming",
+        "partial",
+        "2026-07-01T12:00:00.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const updated: Message = {
+      ...assistantMessage(
+        "assistant-streaming",
+        "partial complete",
+        "2026-07-01T12:00:01.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions([
+      {
+        type: "upsertStreamingPlaceholder",
+        message: first,
+      },
+      {
+        type: "upsertStreamingPlaceholder",
+        message: updated,
+      },
+    ]);
+
+    expect(state.messages).toEqual([updated]);
+  });
+
   it("keeps distinct same-text user turns", () => {
     const state = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",
@@ -485,6 +516,42 @@ describe("transcriptReducer", () => {
     expect(state.toolUseToAgentEntries).toEqual([["toolu_1", "agent-a"]]);
     expect(state.agentContent["agent-a"]?.messages).toEqual([first]);
     expect(state.agentContent["agent-a"]?.status).toBe("running");
+  });
+
+  it("upserts subagent streaming placeholders by message id", () => {
+    const first: Message = {
+      ...assistantMessage(
+        "agent-streaming",
+        "partial",
+        "2026-07-01T12:00:02.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const updated: Message = {
+      ...assistantMessage(
+        "agent-streaming",
+        "partial complete",
+        "2026-07-01T12:00:03.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions([
+      {
+        type: "upsertStreamingPlaceholder",
+        agentId: "agent-a",
+        message: first,
+      },
+      {
+        type: "upsertStreamingPlaceholder",
+        agentId: "agent-a",
+        message: updated,
+      },
+    ]);
+
+    expect(state.agentContent["agent-a"]).toEqual({
+      messages: [updated],
+      status: "running",
+    });
   });
 
   it("merges loaded agent content without duplicating live messages", () => {

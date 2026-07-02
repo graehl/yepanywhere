@@ -30,7 +30,10 @@ metadata now flows through `updateAgentContextUsage`, preserving the existing
 `setAgentContent` patch from `useSession`. Subagent final-assistant cleanup
 now flows through `clearAgentStreamingPlaceholders`, preserving the existing
 placeholder filtering behavior while keeping the cleanup visible to the
-shadow reducer and store.
+shadow reducer and store. Throttled streaming placeholder updates now flow
+through `upsertStreamingPlaceholder`; raw provider deltas still accumulate in
+refs inside `useStreamingContent`, while the reducer/store see only the
+materialized placeholder rows.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -309,10 +312,11 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, decide whether to wrap
-  renderer lazy-load merges or token-sized streaming updates next. Renderer
-  lazy-load crosses component/context ownership; token-sized streaming is
-  higher frequency. `messages` should wait.
+- After selector/action parity is quiet in normal use, wrap the main
+  final-assistant streaming-placeholder cleanup or renderer lazy-load merges
+  next. Renderer lazy-load crosses component/context ownership; main cleanup
+  is narrower but touches `setMessages`. A broad `messages` cutover should
+  still wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -449,11 +453,18 @@ Status 2026-07-02:
   `useSession` now routes subagent assistant cleanup through the wrapper.
   Added reducer coverage for durable-row preservation and empty-entry cleanup
   with metadata, plus hook coverage for the final-assistant subagent path.
+- Added `upsertStreamingPlaceholder` for throttled streaming UI updates from
+  `useStreamingContent`. The reducer owns the replace-same-id/append-new-id
+  behavior for both main transcript placeholders and subagent placeholders,
+  while `useSessionMessages` mirrors the same helper into local hook state and
+  dispatches the action to the shadow reducer and store. Added reducer coverage
+  for main and subagent placeholder replacement plus hook/store coverage for
+  both public `handleStreamingUpdate` routes.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
   remove or wrap another raw exposed setter before attempting `messages`.
   `setAgentContent`, `setMessages`, and `setSession` still expose direct local
-  hook writes. Remaining `setAgentContent` users include token-sized streaming
-  updates and renderer lazy-load merges.
+  hook writes. Remaining `setAgentContent` users include internal hook state
+  mirrors and renderer lazy-load merges.
 
 ## Slice 5: Hook Adapter Migration
 

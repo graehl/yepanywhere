@@ -251,6 +251,48 @@ function applyStreamSubagentMessage(
   };
 }
 
+export function upsertStreamingPlaceholderMessages(
+  messages: Message[],
+  streamingMessage: Message,
+): Message[] {
+  const messageId = getMessageId(streamingMessage);
+  if (!messageId) {
+    return messages;
+  }
+  const existingIdx = findMessageIndexById(messages, messageId);
+  if (existingIdx >= 0) {
+    const updated = [...messages];
+    updated[existingIdx] = streamingMessage;
+    return updated;
+  }
+  return [...messages, streamingMessage];
+}
+
+export function upsertAgentStreamingPlaceholderMap(
+  agentContent: AgentContentMap,
+  agentId: string,
+  streamingMessage: Message,
+): AgentContentMap {
+  const existing = agentContent[agentId] ?? {
+    messages: [],
+    status: "running" as const,
+  };
+  const messages = upsertStreamingPlaceholderMessages(
+    existing.messages,
+    streamingMessage,
+  );
+  if (messages === existing.messages) {
+    return agentContent;
+  }
+  return {
+    ...agentContent,
+    [agentId]: {
+      ...existing,
+      messages,
+    },
+  };
+}
+
 export function mergeLoadedAgentContentMap(
   agentContent: AgentContentMap,
   agentId: string,
@@ -462,6 +504,24 @@ export function reduceSessionDetailState(
 
     case "applyStreamSubagentMessage":
       return applyStreamSubagentMessage(state, action);
+
+    case "upsertStreamingPlaceholder": {
+      if (action.agentId) {
+        const agentContent = upsertAgentStreamingPlaceholderMap(
+          state.agentContent,
+          action.agentId,
+          action.message,
+        );
+        return agentContent === state.agentContent
+          ? state
+          : { ...state, agentContent };
+      }
+      const messages = upsertStreamingPlaceholderMessages(
+        state.messages,
+        action.message,
+      );
+      return messages === state.messages ? state : { ...state, messages };
+    }
 
     case "mergeLoadedAgentContent":
       return {

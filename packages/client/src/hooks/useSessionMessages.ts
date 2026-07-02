@@ -29,6 +29,7 @@ import {
   createStreamMessageAction,
   createStreamSubagentMessageAction,
   createUpdateAgentContextUsageAction,
+  createUpsertStreamingPlaceholderAction,
 } from "../lib/sessionDetail/actionAdapters";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
@@ -47,6 +48,8 @@ import {
   createInitialSessionDetailState,
   mergeLoadedAgentContentMap,
   reduceSessionDetailState,
+  upsertAgentStreamingPlaceholderMap,
+  upsertStreamingPlaceholderMessages,
   updateAgentContextUsageMap,
 } from "../lib/sessionDetail/transcriptReducer";
 import type {
@@ -1246,46 +1249,34 @@ export function useSessionMessages(
       const messageId = getMessageId(streamingMessage);
       if (!messageId) return;
 
-      if (agentId) {
-        // Route to agentContent
-        setAgentContent((prev) => {
-          const existing = prev[agentId] ?? {
-            messages: [],
-            status: "running" as const,
-          };
-          const existingIdx = findMessageIndexById(
-            existing.messages,
-            messageId,
-          );
+      dispatchSessionDetailAction(
+        createUpsertStreamingPlaceholderAction(streamingMessage, agentId),
+      );
 
-          if (existingIdx >= 0) {
-            const updated = [...existing.messages];
-            updated[existingIdx] = streamingMessage;
-            return { ...prev, [agentId]: { ...existing, messages: updated } };
-          }
-          return {
-            ...prev,
-            [agentId]: {
-              ...existing,
-              messages: [...existing.messages, streamingMessage],
-            },
-          };
+      if (agentId) {
+        setAgentContent((prev) => {
+          const next = upsertAgentStreamingPlaceholderMap(
+            prev,
+            agentId,
+            streamingMessage,
+          );
+          reportShadowDivergence("streaming-placeholder", {
+            agentContent: next,
+          });
+          return next;
         });
         return;
       }
 
-      // Route to main messages
       setMessages((prev) => {
-        const existingIdx = findMessageIndexById(prev, messageId);
-        if (existingIdx >= 0) {
-          const updated = [...prev];
-          updated[existingIdx] = streamingMessage;
-          return updated;
-        }
-        return [...prev, streamingMessage];
+        const next = upsertStreamingPlaceholderMessages(prev, streamingMessage);
+        reportShadowDivergence("streaming-placeholder", {
+          messages: next,
+        });
+        return next;
       });
     },
-    [],
+    [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
   // Handle stream message event (with buffering)

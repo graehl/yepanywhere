@@ -37,6 +37,11 @@ export type ApplyStreamSubagentMessageAction = Extract<
   { type: "applyStreamSubagentMessage" }
 >;
 
+export type UpsertStreamingPlaceholderAction = Extract<
+  SessionDetailAction,
+  { type: "upsertStreamingPlaceholder" }
+>;
+
 export type RegisterToolUseAgentAction = Extract<
   SessionDetailAction,
   { type: "registerToolUseAgent" }
@@ -144,6 +149,17 @@ export function createStreamSubagentMessageAction(
     agentId,
     message,
     streamingEnabled: options.streamingEnabled,
+  };
+}
+
+export function createUpsertStreamingPlaceholderAction(
+  message: Message,
+  agentId?: string,
+): UpsertStreamingPlaceholderAction {
+  return {
+    type: "upsertStreamingPlaceholder",
+    message,
+    ...(agentId !== undefined ? { agentId } : {}),
   };
 }
 

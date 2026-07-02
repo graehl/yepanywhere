@@ -38,9 +38,9 @@ What is already in place:
 - `agentContent` has its first selector-backed mirror too: subagent streaming
   placeholder upsert/cleanup copies the store-selected map back into the local
   hook mirror after reducer/store dispatch.
-- A hidden localStorage dogfood toggle can now return store-selected
-  `messages` after initial hydration has reached the same reveal point as the
-  local mirror. Local mirrors still run for fallback and diagnostics.
+- A Developer settings debug toggle can now return store-selected `messages`
+  after initial hydration has reached the same reveal point as the local
+  mirror. Local mirrors still run for fallback and diagnostics.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but the broad returned `messages` and `agentContent` values are
@@ -91,8 +91,7 @@ narrow slices.
 - Prefer explicit actions and selectors over a broad global rerender source.
 - Keep the coarse client summary store separate from session detail state.
 - Default user-facing behavior must stay provider-like. Experimental runtime
-  changes should be default-off and preferably hidden/localStorage-only at
-  first.
+  changes should be default-off and placed in Developer settings first.
 
 ## Migration Shape
 
@@ -114,21 +113,20 @@ DOM timing problems.
 
 Next likely slice:
 
-- Dogfood the hidden store-authoritative returned `messages` toggle and turn
-  any observed divergence into a compact reducer or hook fixture before
-  widening the surface.
+- Dogfood the Developer settings store-authoritative returned `messages`
+  toggle and turn any observed divergence into a compact reducer or hook
+  fixture before widening the surface.
 
 Then:
 
-- Keep the toggle localStorage/dev-only and default-off until dogfooding has
-  produced fixtures for any live divergence.
+- Keep the toggle dev-only and default-off until dogfooding has produced
+  fixtures for any live divergence.
 - Do not broaden to `agentContent`, render selectors, scroll ownership, or
   `/btw` until returned `messages` is boring.
 
-Potential dogfood toggle:
+Dogfood toggle:
 
-- Name: `yep-anywhere-session-detail-store-messages-enabled`, not a polished
-  settings UI initially.
+- Name: Store-Backed Session Messages in the Development settings page.
 - Scope: returned `messages` only at first.
 - Behavior: `effectiveMessages = selectSessionDetailMessages(store) ??
   localMessages`.

@@ -23,6 +23,7 @@ import {
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
+import { useDeveloperMode } from "./useDeveloperMode";
 import { getSessionTranscriptCacheEnabled } from "./useSessionPerformanceSettings";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
@@ -57,7 +58,6 @@ import {
   selectSessionDetailScrollSnapshot,
 } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
-import { UI_KEYS } from "../lib/storageKeys";
 import {
   clearAgentStreamingPlaceholdersMap,
   clearStreamingPlaceholderMessages,
@@ -240,19 +240,6 @@ export function __resetSessionLoadCacheForTest(): void {
   resetSessionRouteSnapshotsForTests();
 }
 
-function getSessionDetailStoreMessagesEnabled(): boolean {
-  if (
-    typeof globalThis.localStorage === "undefined" ||
-    typeof globalThis.localStorage.getItem !== "function"
-  ) {
-    return false;
-  }
-  return (
-    globalThis.localStorage.getItem(UI_KEYS.sessionDetailStoreMessages) ===
-    "true"
-  );
-}
-
 function usesApproxMessageDedup(provider?: string): boolean {
   return getProvider(provider).capabilities.needsApproxMessageDedup;
 }
@@ -402,6 +389,8 @@ export function useSessionMessages(
     onLoadError,
   } = options;
   const sourceKey = useClientSummarySourceKey();
+  const { sessionDetailStoreMessagesEnabled: storeBackedMessagesEnabled } =
+    useDeveloperMode();
   const snapshotKey: SessionRouteSnapshotKeyInput = {
     sourceKey,
     projectId,
@@ -605,7 +594,6 @@ export function useSessionMessages(
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
-  const storeBackedMessagesEnabled = getSessionDetailStoreMessagesEnabled();
   const canReadStoreBackedMessages = storeBackedMessagesEnabled && !loading;
   const storeBackedMessages = useSyncExternalStore(
     useCallback(

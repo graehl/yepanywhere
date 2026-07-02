@@ -21,8 +21,12 @@ export function DevelopmentSettings() {
   } = useReloadNotifications();
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
-  const { remoteLogCollectionEnabled, setRemoteLogCollectionEnabled } =
-    useDeveloperMode();
+  const {
+    remoteLogCollectionEnabled,
+    setRemoteLogCollectionEnabled,
+    sessionDetailStoreMessagesEnabled,
+    setSessionDetailStoreMessagesEnabled,
+  } = useDeveloperMode();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const { settings: serverSettings, updateSetting: updateServerSetting } =
     useServerSettings();
@@ -33,21 +37,35 @@ export function DevelopmentSettings() {
         ? {
             validationEnabled: validationSettings.enabled,
             remoteLogCollectionEnabled,
+            sessionDetailStoreMessagesEnabled,
             serviceWorkerEnabled: serverSettings.serviceWorkerEnabled ?? true,
           }
         : null,
-    [validationSettings.enabled, remoteLogCollectionEnabled, serverSettings],
+    [
+      validationSettings.enabled,
+      remoteLogCollectionEnabled,
+      sessionDetailStoreMessagesEnabled,
+      serverSettings,
+    ],
   );
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
+      setSessionDetailStoreMessagesEnabled(
+        snapshot.sessionDetailStoreMessagesEnabled,
+      );
       void updateServerSetting(
         "serviceWorkerEnabled",
         snapshot.serviceWorkerEnabled,
       );
     },
-    [setValidationEnabled, setRemoteLogCollectionEnabled, updateServerSetting],
+    [
+      setValidationEnabled,
+      setRemoteLogCollectionEnabled,
+      setSessionDetailStoreMessagesEnabled,
+      updateServerSetting,
+    ],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
 
@@ -118,6 +136,22 @@ export function DevelopmentSettings() {
               type="checkbox"
               checked={remoteLogCollectionEnabled}
               onChange={(e) => setRemoteLogCollectionEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("developmentStoreMessagesTitle")}</strong>
+            <p>{t("developmentStoreMessagesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sessionDetailStoreMessagesEnabled}
+              onChange={(e) =>
+                setSessionDetailStoreMessagesEnabled(e.target.checked)
+              }
             />
             <span className="toggle-slider" />
           </label>

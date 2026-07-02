@@ -180,10 +180,9 @@ Status 2026-07-02:
   upsert/cleanup.
 - Added the store-backed messages toggle preflight note and hook/store parity
   assertions for warm catch-up, incremental catch-up, and older-page prepend.
-- Added the hidden store-authoritative returned `messages` dogfood toggle
-  behind `yep-anywhere-session-detail-store-messages-enabled`, with warm
-  hydration gating and focused hook coverage for the gate plus store-selected
-  message updates.
+- Added the store-authoritative returned `messages` dogfood toggle to the
+  Development settings page, with warm hydration gating and focused hook
+  coverage for the gate plus store-selected message updates.
 
 Reducer/helper behavior locked down during Slice 4:
 

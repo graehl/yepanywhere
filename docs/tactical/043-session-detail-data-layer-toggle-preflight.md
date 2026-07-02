@@ -4,10 +4,10 @@ Topic: session-detail-data-layer
 
 This note supports the tactical plan in
 [`043-session-detail-data-layer-plan.md`](043-session-detail-data-layer-plan.md).
-It records the remaining `useSessionMessages` main-transcript writes before a
-hidden dogfood toggle can return store-selected `messages` instead of local
-React state. The first hidden toggle now exists behind localStorage key
-`yep-anywhere-session-detail-store-messages-enabled`.
+It records the remaining `useSessionMessages` main-transcript writes before the
+Developer settings dogfood toggle returns store-selected `messages` instead of
+local React state. The first dogfood toggle now exists as Store-Backed Session
+Messages in the Development settings page.
 
 ## Toggle Shape
 
@@ -55,6 +55,7 @@ without also changing the deferred warm-reveal behavior.
 
 ## Readiness Call
 
-The hidden opt-in is ready for dogfooding. The next implementation chunk should
-capture any divergence as a compact reducer or hook fixture before broadening
-the toggle to `agentContent`, render selectors, scroll ownership, or `/btw`.
+The Developer settings opt-in is ready for dogfooding. The next implementation
+chunk should capture any divergence as a compact reducer or hook fixture before
+broadening the toggle to `agentContent`, render selectors, scroll ownership, or
+`/btw`.

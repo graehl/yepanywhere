@@ -13,6 +13,10 @@ import {
   useSessionMessages,
 } from "../useSessionMessages";
 import {
+  __resetDeveloperModeForTest,
+  setSessionDetailStoreMessagesEnabledValue,
+} from "../useDeveloperMode";
+import {
   createClientSummaryHostSourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
@@ -43,7 +47,7 @@ function enableSessionTranscriptCache() {
 }
 
 function enableStoreBackedMessages() {
-  window.localStorage.setItem(UI_KEYS.sessionDetailStoreMessages, "true");
+  setSessionDetailStoreMessagesEnabledValue(true);
 }
 
 function scrollSnapshot(): SessionRouteScrollSnapshot {
@@ -80,6 +84,7 @@ function readStoreMessageIds(
 describe("useSessionMessages cache", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    __resetDeveloperModeForTest();
     resetClientSummaryStoreForTests();
     __resetSessionLoadCacheForTest();
     (getStreamingEnabled as Mock).mockReturnValue(true);
@@ -89,6 +94,7 @@ describe("useSessionMessages cache", () => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     window.localStorage.clear();
+    __resetDeveloperModeForTest();
     __resetSessionLoadCacheForTest();
     resetClientSummaryStoreForTests();
   });
@@ -311,7 +317,7 @@ describe("useSessionMessages cache", () => {
     expect(defaultSessionDetailStore.read(storeKey)).toBeUndefined();
   });
 
-  it("can return store-selected messages when the hidden toggle is enabled", async () => {
+  it("can return store-selected messages when the debug setting is enabled", async () => {
     enableStoreBackedMessages();
 
     apiMocks.getSession.mockResolvedValueOnce({

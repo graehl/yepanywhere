@@ -42,8 +42,8 @@ What is already in place:
   session metadata, agent content, and messages.
 - Narrow selectors are already used for retained scroll, pagination,
   older-page cursor selection, main stream-message fallback mirroring,
-  persisted catch-up fallback mirroring, and main streaming placeholder
-  message upsert/cleanup.
+  persisted catch-up fallback mirroring, older-page fallback mirroring, and
+  main streaming placeholder message upsert/cleanup.
 - `toolUseToAgent` registration now has a selector-backed mirror: after the
   reducer/store dispatch, the local fallback `Map` copies the store-selected
   mapping entries instead of independently rebuilding from its previous value.
@@ -232,8 +232,9 @@ Dogfood toggle:
 
 ## Current Risks
 
-- Older-page transitions still mix transcript writes with cursor/watermark
-  side effects.
+- Initial load and warm hydration remain the largest local-mirror coordination
+  surfaces; stream, catch-up, older-page, mapping, and common subagent update
+  paths now copy store-selected data back into their fallback mirrors.
 - Compaction-tail and full-history states are easy to confuse because the
   default route has no explicit `tailTurns`/`tailFrom` URL parameter even
   though the client requests `tailCompactions: 2`. Treat message-count

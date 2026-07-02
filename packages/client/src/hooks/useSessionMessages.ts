@@ -1724,26 +1724,46 @@ export function useSessionMessages(
         _source: "jsonl" as const,
       }));
       updatePersistedTimestampWatermark(taggedOlder);
-      const combined = [...taggedOlder, ...messagesRef.current];
-      const nextMessages = usesApproxMessageDedup(data.session.provider)
-        ? reconcileLinearMessages(
-            combined,
-            approxDedupOptions(data.session.provider),
-          )
-        : combined;
-      const lastJsonlId = findLastJsonlMessageId(nextMessages);
-      if (lastJsonlId) {
-        lastMessageIdRef.current = lastJsonlId;
+      const selectorBackedMessages = readSelectorBackedMessages();
+      const selectorBackedPagination = defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailPagination,
+      );
+      if (selectorBackedMessages) {
+        const lastJsonlId = findLastJsonlMessageId(selectorBackedMessages);
+        if (lastJsonlId) {
+          lastMessageIdRef.current = lastJsonlId;
+        }
+        applyMessages(selectorBackedMessages);
+        reportStoreDivergence("older-page", {
+          messages: selectorBackedMessages,
+          session: data.session,
+          pagination: selectorBackedPagination ?? data.pagination,
+          lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+        });
+      } else {
+        const combined = [...taggedOlder, ...messagesRef.current];
+        const nextMessages = usesApproxMessageDedup(data.session.provider)
+          ? reconcileLinearMessages(
+              combined,
+              approxDedupOptions(data.session.provider),
+            )
+          : combined;
+        const lastJsonlId = findLastJsonlMessageId(nextMessages);
+        if (lastJsonlId) {
+          lastMessageIdRef.current = lastJsonlId;
+        }
+        applyMessages(nextMessages);
+        reportStoreDivergence("older-page", {
+          messages: nextMessages,
+          session: data.session,
+          pagination: data.pagination,
+          lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+        });
       }
-      applyMessages(nextMessages);
-      reportStoreDivergence("older-page", {
-        messages: nextMessages,
-        session: data.session,
-        pagination: data.pagination,
-        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-        maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-      });
-      setPagination(data.pagination);
+      setPagination(selectorBackedPagination ?? data.pagination);
     } catch {
       // Silent fail for loading older messages
     } finally {
@@ -1756,6 +1776,10 @@ export function useSessionMessages(
     readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
+    readSelectorBackedMessages,
+    sourceKey,
+    tailTurns,
+    tailFrom,
     reportStoreDivergence,
   ]);
 

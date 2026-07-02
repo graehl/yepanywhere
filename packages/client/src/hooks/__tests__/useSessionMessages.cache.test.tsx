@@ -1985,24 +1985,45 @@ describe("useSessionMessages cache", () => {
 
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
     expect(rendered.result.current.pagination?.hasOlderMessages).toBe(true);
-    defaultSessionDetailStore.dispatch(
-      {
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      },
-      {
-        type: "applyCatchupMessages",
-        messages: [],
-        pagination: {
-          hasOlderMessages: true,
-          truncatedBeforeMessageId: "store-cursor",
-          totalMessageCount: 2,
-          returnedMessageCount: 1,
-          totalCompactions: 0,
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
         },
-      },
-    );
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyCatchupMessages",
+          messages: [],
+          pagination: {
+            hasOlderMessages: true,
+            truncatedBeforeMessageId: "store-cursor",
+            totalMessageCount: 3,
+            returnedMessageCount: 2,
+            totalCompactions: 0,
+          },
+        },
+      );
+    });
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1"]);
 
     await act(async () => {
       await rendered.result.current.loadOlderMessages();
@@ -2020,8 +2041,12 @@ describe("useSessionMessages cache", () => {
     );
     expect(
       rendered.result.current.messages.map((message) => message.uuid),
-    ).toEqual(["older-msg", "msg-1"]);
-    expect(readStoreMessageIds()).toEqual(["older-msg", "msg-1"]);
+    ).toEqual(["older-msg", "msg-1", "store-only-msg"]);
+    expect(readStoreMessageIds()).toEqual([
+      "older-msg",
+      "msg-1",
+      "store-only-msg",
+    ]);
     expect(rendered.result.current.pagination?.hasOlderMessages).toBe(false);
     expect(rendered.result.current.pagination?.returnedMessageCount).toBe(2);
   });

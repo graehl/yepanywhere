@@ -216,6 +216,72 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(storeKey, { nowMs: 23 })).toBeUndefined();
   });
 
+  it("drops incremental actions for a missing entry instead of fabricating state", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+    const source = snapshot("session-a", ["msg-1"]);
+    const streamMessage = source.messages[0];
+    if (!streamMessage) throw new Error("expected fixture message");
+
+    expect(
+      store.dispatch(storeKey, {
+        type: "applyStreamMessage",
+        message: streamMessage,
+      }),
+    ).toBeUndefined();
+    expect(store.getStats().entryCount).toBe(0);
+
+    expect(
+      store.dispatch(storeKey, {
+        type: "loadPersistedTranscript",
+        messages: source.messages,
+        session: source.session,
+      }),
+    ).toBeDefined();
+    expect(store.getStats().entryCount).toBe(1);
+  });
+
+  it("does not resurrect an expired entry from a later stream dispatch", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+    const source = snapshot("session-a", ["msg-1", "msg-2"]);
+    const streamMessage = source.messages[0];
+    if (!streamMessage) throw new Error("expected fixture message");
+
+    store.writeRouteSnapshot(storeKey, source, { ttlMs: 10, nowMs: 0 });
+    // Unretained entry expires; the read deletes it.
+    expect(store.readRouteSnapshot(storeKey, { nowMs: 20 })).toBeUndefined();
+
+    expect(
+      store.dispatch(
+        storeKey,
+        { type: "applyStreamMessage", message: streamMessage },
+        { nowMs: 21 },
+      ),
+    ).toBeUndefined();
+    expect(store.getStats().entryCount).toBe(0);
+  });
+
+  it("resets entry state in place without dropping retention", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
+      nowMs: 0,
+    });
+    store.retain(storeKey, { nowMs: 1 });
+
+    store.resetEntryState(storeKey, { nowMs: 2 });
+
+    const stats = store.getStats();
+    expect(stats.entryCount).toBe(1);
+    expect(stats.entries[0]?.retainCount).toBe(1);
+    expect(stats.entries[0]?.messageCount).toBe(0);
+    expect(
+      store.readSelected(storeKey, (state) => state.session),
+    ).toBeNull();
+  });
+
   it("keeps retained entries out of LRU eviction candidates", () => {
     const store = createSessionDetailStore();
 

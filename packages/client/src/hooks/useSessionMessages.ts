@@ -459,7 +459,7 @@ export function useSessionMessages(
         );
         return;
       }
-      defaultSessionDetailStore.deleteEntry({
+      defaultSessionDetailStore.resetEntryState({
         sourceKey,
         projectId,
         sessionId,
@@ -468,6 +468,13 @@ export function useSessionMessages(
       });
     },
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+  );
+
+  // Hold the store entry for the mounted session: retention protects it from
+  // TTL/LRU eviction, so incremental dispatches always land on real state.
+  useEffect(
+    () => defaultSessionDetailStore.retain(snapshotKey),
+    [snapshotKey],
   );
 
   // Track provider for DAG ordering decisions

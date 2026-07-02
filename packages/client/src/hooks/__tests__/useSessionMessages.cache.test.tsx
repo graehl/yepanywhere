@@ -334,6 +334,53 @@ describe("useSessionMessages cache", () => {
     expect(defaultSessionDetailStore.read(storeKey)).toBeUndefined();
   });
 
+  it("retains the mounted session's store entry against eviction", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(1);
+
+    // A TTL sweep far in the future must not evict the mounted entry.
+    expect(
+      defaultSessionDetailStore.evictExpired({
+        nowMs: Date.now() + 60 * 60 * 1000,
+      }),
+    ).toBe(0);
+    expect(readStoreMessageIds()).toEqual(["msg-1"]);
+
+    rendered.unmount();
+    expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(0);
+  });
+
   it("can return store-selected messages when the debug setting is enabled", async () => {
     enableStoreBackedMessages();
 

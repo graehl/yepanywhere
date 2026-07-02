@@ -139,6 +139,13 @@ function estimateStateBytes(state: SessionDetailState): number {
   );
 }
 
+function isEntryCreatingAction(action: SessionDetailAction): boolean {
+  return (
+    action.type === "restoreRouteSnapshot" ||
+    action.type === "loadPersistedTranscript"
+  );
+}
+
 function routeSnapshotToState(
   snapshot: SessionRouteSnapshot,
 ): SessionDetailState {
@@ -252,7 +259,21 @@ export class SessionDetailStore {
   ): SessionDetailState | undefined {
     const at = now(options);
     const key = getSessionDetailStoreKey(input);
-    const entry = this.ensureEntry(input, at, options);
+    // Only transcript-establishing actions may create an entry. Applying an
+    // incremental action to a fabricated empty entry would present a
+    // truncated transcript as canonical after eviction, so those actions
+    // require the owner (a mounted hook holding retain()) to exist first.
+    const existing = this.entries.get(key);
+    if (!existing && !isEntryCreatingAction(action)) {
+      if (import.meta.env.DEV) {
+        console.warn(
+          "[SessionDetailStore] dropped action for missing entry",
+          { key, actionType: action.type },
+        );
+      }
+      return undefined;
+    }
+    const entry = existing ?? this.ensureEntry(input, at, options);
     const nextState = reduceSessionDetailState(entry.state, action);
     if (nextState === entry.state) {
       entry.lastAccessedAt = at;
@@ -387,6 +408,32 @@ export class SessionDetailStore {
       this.notifyKey(key);
     }
     return deleted;
+  }
+
+  /**
+   * Reset an entry's state to initial while preserving the entry itself —
+   * unlike deleteEntry, this keeps retain() ownership intact, so a mounted
+   * consumer restarting its load does not lose eviction protection.
+   */
+  resetEntryState(
+    input: SessionDetailStoreKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs" | "ttlMs"> = {},
+  ): void {
+    const at = now(options);
+    const key = getSessionDetailStoreKey(input);
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return;
+    }
+    if (entry.state.session === null && entry.state.messages.length === 0) {
+      return;
+    }
+    entry.state = createInitialSessionDetailState();
+    entry.updatedAt = at;
+    entry.lastAccessedAt = at;
+    entry.expiresAt = at + ttlMs(options);
+    entry.approxBytes = 0;
+    this.notifyKey(key);
   }
 
   getStats(): SessionDetailStoreStats {

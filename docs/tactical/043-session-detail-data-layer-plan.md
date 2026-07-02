@@ -31,6 +31,9 @@ What is already in place:
   logging transcript text. The earlier hook-local shadow reducer ref was
   removed once store parity reporting covered the same comparison; the store
   is the single mirrored reduction.
+- A dev-only returned-data invariant diagnostic now checks the store-backed
+  Developer toggle path itself: once hydration is complete and a store entry
+  exists, returned `messages`/`agentContent` should match the store snapshot.
 - Same-tab route snapshot retention now sits behind
   `defaultSessionDetailStore`, with TTL, max-entry, byte-cap, retain/release,
   selector subscriptions, and stats.
@@ -70,7 +73,9 @@ Current diagnostic stance:
   boring enough for a cleaner cutover audit.
 - Keep dogfooding the Developer toggle and turn non-scroll data divergences
   into compact fixtures. Fresh browser checks with the toggle enabled did not
-  show catastrophic failures or fresh store divergence.
+  show catastrophic failures or fresh store divergence. The returned
+  data invariant is now the primary signal for the actual UI-consumed data when
+  the toggle is enabled.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -157,7 +162,8 @@ Next likely slice:
   unlocks store cutover or fixes a fixture-backed bug.
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any non-scroll divergence into a
-  compact reducer or hook fixture.
+  compact reducer or hook fixture. Treat returned-data invariant warnings as
+  higher signal than legacy local-vs-store diagnostics.
 - Move the next implementation chunks back to `useSessionMessages`: reduce
   independent local mirror ownership, make store-selected returned detail the
   normal test path behind the Developer toggle, and identify one legacy mirror

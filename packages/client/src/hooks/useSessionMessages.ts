@@ -31,6 +31,7 @@ import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
+  reportSessionDetailReturnedDataDivergence,
   reportSessionDetailStoreDivergence,
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
@@ -621,6 +622,39 @@ export function useSessionMessages(
   const returnedMessages = storeBackedDetailState?.messages ?? messages;
   const returnedAgentContent =
     storeBackedDetailState?.agentContent ?? agentContent;
+  useEffect(() => {
+    if (
+      !storeBackedMessagesEnabled ||
+      loading ||
+      storeBackedDetailState === undefined
+    ) {
+      return;
+    }
+
+    reportSessionDetailReturnedDataDivergence({
+      boundary: "returned-detail",
+      projectId,
+      sessionId,
+      provider: session?.provider ?? providerRef.current,
+      returned: {
+        messages: returnedMessages,
+        agentContent: returnedAgentContent,
+      },
+      store: {
+        messages: storeBackedDetailState.messages,
+        agentContent: storeBackedDetailState.agentContent,
+      },
+    });
+  }, [
+    storeBackedMessagesEnabled,
+    loading,
+    storeBackedDetailState,
+    projectId,
+    sessionId,
+    session?.provider,
+    returnedMessages,
+    returnedAgentContent,
+  ]);
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<

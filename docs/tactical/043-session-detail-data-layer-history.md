@@ -320,6 +320,10 @@ Reducer/helper behavior locked down during Slice 4:
 - The store-backed returned `messages`/`agentContent` dogfood path now reads
   both surfaces from one coherent store-state snapshot instead of two separate
   subscriptions.
+- Added a returned-data invariant diagnostic for the store-backed Developer
+  toggle path. After hydration, when a store entry exists, returned
+  `messages`/`agentContent` are compared against the store snapshot with
+  redacted compact diffs if they diverge.
 - Direction note: existing `scroll-snapshot` shadow divergence logs are treated
   as known noisy signal from the older snapshot path. Do not chase them as a
   near-term migration blocker until the non-scroll store/render surfaces are

@@ -20,6 +20,9 @@ surfaces that already have selector-backed mirrors:
 - Fallback: local `messages`/`agentContent` state if the store entry is
   missing or the hook has not reached the reveal point.
 - Still maintain local mirrors for diagnostics, fallback, and rollback.
+- Confidence signal: when the toggle is active, hydration is complete, and the
+  store entry exists, a dev-only returned-data invariant diagnostic warns if
+  returned `messages`/`agentContent` differ from the store snapshot.
 - Do not include render selectors, scroll ownership, or `/btw` in this toggle.
 
 One important guard: warm snapshot restore currently writes the store before it

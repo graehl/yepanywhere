@@ -66,6 +66,8 @@ provider-like behavior.
 - [x] Capture anchor neighbor/timestamp context and use exact anchor,
   neighboring row, nearest timestamped row, then raw `scrollTop` as the restore
   fallback order.
+- [x] Suppress scroll snapshot writes while progressive hydration is active and
+  publish one settled snapshot after the reveal completes.
 
 ## Follow-Up Work
 

@@ -388,6 +388,116 @@ describe("MessageList", () => {
     expect(screen.queryByText(/Rendering transcript/)).toBeNull();
   });
 
+  it("does not publish scroll snapshots while progressively hydrating", () => {
+    vi.useFakeTimers();
+    const onScrollSnapshotChange = vi.fn();
+    const { container, unmount } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first request"),
+          assistantMessage("assistant-1", "first response"),
+        ]}
+        progressiveRenderEnabled
+        progressiveRenderKey="snapshot-gate-active"
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+
+    fireEvent.scroll(container);
+    expect(onScrollSnapshotChange).not.toHaveBeenCalled();
+
+    unmount();
+    expect(onScrollSnapshotChange).not.toHaveBeenCalled();
+  });
+
+  it("publishes a settled scroll snapshot after progressive hydration", async () => {
+    vi.useFakeTimers();
+    const onScrollSnapshotChange = vi.fn();
+    const assistantTimestamp = "2026-04-26T12:01:00.000Z";
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first request", "2026-04-26T12:00:00.000Z"),
+          assistantMessage("assistant-1", "first response", assistantTimestamp),
+        ]}
+        progressiveRenderEnabled
+        progressiveRenderKey="snapshot-gate-complete"
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    container.getBoundingClientRect = () => rectFor(0, 300);
+    const user1 = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistant1 = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    expect(user1).toBeTruthy();
+    expect(assistant1).toBeTruthy();
+    (user1 as HTMLElement).getBoundingClientRect = () => rectFor(40, 40);
+    (assistant1 as HTMLElement).getBoundingClientRect = () => rectFor(420, 80);
+
+    expect(onScrollSnapshotChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(onScrollSnapshotChange).toHaveBeenCalledTimes(1);
+    expect(onScrollSnapshotChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        atBottom: true,
+        scrollTop: 700,
+        anchor: expect.objectContaining({
+          id: "user-1",
+          topOffset: 40,
+          nextId: "assistant-1",
+          timestampMs: new Date("2026-04-26T12:00:00.000Z").getTime(),
+        }),
+      }),
+    );
+  });
+
   it("renders slash-command skill text as collapsed command details", () => {
     const { container } = render(
       <MessageList

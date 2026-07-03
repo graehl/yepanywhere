@@ -306,11 +306,11 @@ content.
   captured anchor can include the anchored message's persisted timestamp and
   the ids of the previous and next rendered rows.
 - Gate `publishScrollSnapshot` on settled content: no snapshot writes between
-  warm-hydration start and progressive-render completion. The write gate
-  belongs at the session detail store boundary (`patchScrollSnapshot` is
-  already a store action — see
-  [session-detail-data-layer.md](session-detail-data-layer.md)), so there is
-  a single writer to gate. Keep the existing restore-side discard heuristics
+  warm-hydration start and progressive-render completion. This landed on
+  2026-07-03 at the `MessageList` publisher, before the single
+  `updateRouteScrollSnapshot` writer can patch the session detail store; the
+  publisher emits one settled snapshot when progressive reveal completes. Keep
+  the existing restore-side discard heuristics
   (`shouldRestoreInitialScrollSnapshot`) as regression guards.
 - Diagnostics: emit a divergence event (the `reportStoreDivergence` pattern)
   whenever a restore resolves by anything other than the exact anchor, with a

@@ -923,6 +923,8 @@ export const MessageList = memo(function MessageList({
     typeof setTimeout
   > | null>(null);
   const previousProgressiveRevealActiveRef = useRef(false);
+  const scrollSnapshotWritesSuppressedRef = useRef(false);
+  const previousScrollSnapshotWritesSuppressedRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
@@ -1533,14 +1535,6 @@ export const MessageList = memo(function MessageList({
     [displayRenderItems],
   );
 
-  const publishScrollSnapshot = useCallback(() => {
-    if (!onScrollSnapshotChange) return;
-    const content = containerRef.current;
-    const container = content?.parentElement;
-    if (!content || !container) return;
-    onScrollSnapshotChange(captureScrollSnapshot(container, content));
-  }, [captureScrollSnapshot, onScrollSnapshotChange]);
-
   useEffect(() => {
     updateScrollPositionTimestamp({ atBottom: isScrolledToBottom });
   }, [isScrolledToBottom, updateScrollPositionTimestamp]);
@@ -1930,6 +1924,28 @@ export const MessageList = memo(function MessageList({
       scrollToBottom(container);
     }
   }, [progressiveRevealActive, scrollToBottom]);
+
+  const scrollSnapshotWritesSuppressed = progressiveRevealActive;
+  scrollSnapshotWritesSuppressedRef.current = scrollSnapshotWritesSuppressed;
+  const publishScrollSnapshot = useCallback(() => {
+    if (scrollSnapshotWritesSuppressedRef.current || !onScrollSnapshotChange) {
+      return;
+    }
+    const content = containerRef.current;
+    const container = content?.parentElement;
+    if (!content || !container) return;
+    onScrollSnapshotChange(captureScrollSnapshot(container, content));
+  }, [captureScrollSnapshot, onScrollSnapshotChange]);
+
+  useEffect(() => {
+    const wasSuppressed = previousScrollSnapshotWritesSuppressedRef.current;
+    previousScrollSnapshotWritesSuppressedRef.current =
+      scrollSnapshotWritesSuppressed;
+    if (inert || scrollSnapshotWritesSuppressed || !wasSuppressed) {
+      return;
+    }
+    publishScrollSnapshot();
+  }, [inert, publishScrollSnapshot, scrollSnapshotWritesSuppressed]);
 
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
@@ -2458,11 +2474,10 @@ export const MessageList = memo(function MessageList({
     }
     setIsScrolledToBottom(atBottom);
     updateScrollPositionTimestamp({ atBottom });
-    onScrollSnapshotChange?.(captureScrollSnapshot(container, content));
+    publishScrollSnapshot();
   }, [
-    captureScrollSnapshot,
     clearForcedCurrentScrollTimers,
-    onScrollSnapshotChange,
+    publishScrollSnapshot,
     updateScrollPositionTimestamp,
   ]);
 

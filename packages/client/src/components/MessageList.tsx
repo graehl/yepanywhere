@@ -385,7 +385,11 @@ function findFallbackRenderAnchorRow(
     }
   }
 
-  return findNearestTimestampedRenderRow(messageList, anchor.timestampMs, items);
+  return findNearestTimestampedRenderRow(
+    messageList,
+    anchor.timestampMs,
+    items,
+  );
 }
 
 interface UserTurnSearchSession {
@@ -659,6 +663,8 @@ interface Props {
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Steer a patient queued message, and earlier patient entries, into the session now */
+  onSteerDeferred?: (tempId: string) => void;
   /** Callback to resume a restart-paused recovered queue entry */
   onResumeRecoveredDeferred?: (queueId: string) => void;
   /** Callback to delete a restart-paused recovered queue entry */
@@ -868,6 +874,7 @@ export const MessageList = memo(function MessageList({
   composerDraftChange,
   quoteClearSignal = 0,
   onCancelDeferred,
+  onSteerDeferred,
   onResumeRecoveredDeferred,
   onDeleteRecoveredDeferred,
   onCancelProjectQueueMessage,
@@ -2718,11 +2725,7 @@ export const MessageList = memo(function MessageList({
   useLayoutEffect(() => {
     const wasInert = previousInertRef.current;
     previousInertRef.current = inert;
-    if (
-      wasInert &&
-      !inert &&
-      shouldAutoScrollRef.current
-    ) {
+    if (wasInert && !inert && shouldAutoScrollRef.current) {
       forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS);
     }
   }, [forceScrollToCurrent, inert]);
@@ -3333,6 +3336,14 @@ export const MessageList = memo(function MessageList({
                 timestampMs,
                 nowMs,
               });
+          const earlierPatientCount = tailRow.lanePosition?.patientIndex ?? 0;
+          const steerQueuedLabel =
+            earlierPatientCount > 0
+              ? t("sessionSteerQueuedMessageThrough", {
+                  count: String(earlierPatientCount),
+                  suffix: earlierPatientCount === 1 ? "" : "s",
+                })
+              : t("sessionSteerQueuedMessageNow");
           return (
             <div
               key={tailRow.key}
@@ -3408,6 +3419,23 @@ export const MessageList = memo(function MessageList({
                       showTextLabel
                       onClick={(event) => event.stopPropagation()}
                     />
+                    {tailRow.isPatient &&
+                    !tailRow.isRecovered &&
+                    deferred.tempId &&
+                    onSteerDeferred ? (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-steer"
+                        onClick={() =>
+                          onSteerDeferred(deferred.tempId as string)
+                        }
+                        aria-label={steerQueuedLabel}
+                        title={steerQueuedLabel}
+                      >
+                        <PlayIcon />
+                        <span>{t("sessionSteerNow")}</span>
+                      </button>
+                    ) : null}
                     {tailRow.allowsRecoveredResume &&
                     recoveredQueueId &&
                     onResumeRecoveredDeferred ? (

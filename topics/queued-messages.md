@@ -102,7 +102,11 @@ not rejected. The point of this note is to ship a correct minimum first.
 - **Editing a queued message.** To change a queued message, cancel it and queue
   a new one. (Future: in-place edit can be added on top of the server model.)
 - **Reordering / reshuffling the queue.** (Future: server-side reorder by id.)
-- **Steering a queued message into the active turn.**
+- **Steering a queued message into the active turn.** (Landed 2026-07-03 for
+  patient entries, on top of the server model: the chip's `Steer now` action
+  steers that entry plus every patient entry ahead of it — see
+  [message-control-steer-queue-btw-later-interrupt.md](message-control-steer-queue-btw-later-interrupt.md)
+  § Patient countdown and promotion.)
 - **"Jump to context" / nearest-timestamp navigation** from a queued chip.
 - **Disk persistence of short-term direct/deferred queues.** A planned durable
   slice is patient-only; direct `MessageQueue` entries and short-term

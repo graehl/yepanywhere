@@ -782,7 +782,11 @@ describe("Process", () => {
         idleTimeoutMs: 100,
       });
 
-      controller.push({ type: "system", subtype: "init", session_id: "sess-1" });
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "sess-1",
+      });
       controller.push({
         type: "system",
         subtype: "api_retry",
@@ -879,7 +883,11 @@ describe("Process", () => {
         idleTimeoutMs: 100,
       });
 
-      controller.push({ type: "system", subtype: "init", session_id: "sess-1" });
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "sess-1",
+      });
       controller.push({
         type: "system",
         subtype: "api_retry",
@@ -2138,6 +2146,109 @@ describe("Process", () => {
       expect(queue.depth).toBe(1);
       const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
       expect(queuedProviderTurn.value?.message.content).toBe("regular queued");
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("steers a patient entry and earlier patient entries as separate steers by default", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage({
+        text: "when done, patient one",
+        tempId: "temp-patient-1",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "regular queued",
+        tempId: "temp-regular",
+        metadata: { deliveryIntent: "deferred" },
+      });
+      process.deferMessage({
+        text: "patient two",
+        tempId: "temp-patient-2",
+        metadata: { deliveryIntent: "patient" },
+      });
+
+      // Only patient entries accept the steer-through action.
+      expect(
+        process.steerPatientDeferredMessagesThrough("temp-regular"),
+      ).toMatchObject({ success: false });
+
+      expect(
+        process.steerPatientDeferredMessagesThrough("temp-patient-2"),
+      ).toEqual({ success: true, steered: 2 });
+
+      // The regular deferred entry keeps its queue position.
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-regular" },
+      ]);
+
+      // Each patient message steers separately, prefix stripped, steer lane.
+      expect(queue.drain()).toMatchObject([
+        {
+          text: "patient one",
+          tempId: "temp-patient-1",
+          priority: "next",
+          metadata: { deliveryIntent: "steer" },
+        },
+        {
+          text: "patient two",
+          tempId: "temp-patient-2",
+          priority: "next",
+          metadata: { deliveryIntent: "steer" },
+        },
+      ]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("steers patient entries as one combined turn when send batching is enabled", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: false },
+      });
+
+      process.deferMessage({
+        text: "when done, patient one",
+        tempId: "temp-patient-1",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "patient two",
+        tempId: "temp-patient-2",
+        metadata: { deliveryIntent: "patient" },
+      });
+
+      expect(
+        process.steerPatientDeferredMessagesThrough("temp-patient-2"),
+      ).toEqual({ success: true, steered: 2 });
+
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(queue.drain()).toMatchObject([
+        {
+          text: `patient one\n\n${CONCAT_SEPARATOR}\n\npatient two`,
+          tempIds: ["temp-patient-1", "temp-patient-2"],
+          priority: "next",
+        },
+      ]);
 
       controller.finish();
       await process.abort();

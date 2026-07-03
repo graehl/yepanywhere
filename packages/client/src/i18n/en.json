@@ -571,6 +571,7 @@
   "sessionCorrectionCancel": "Cancel correction",
   "sessionSteerNow": "Steer now",
   "sessionSteerQueuedMessageNow": "Steer queued message now",
+  "sessionSteerQueuedMessageThrough": "Steer this and {count} earlier patient message{suffix} now",
   "sessionSwitchedModel": "Switched to {model}",
   "sessionApproveFailed": "Failed to approve",
   "sessionDenyFailed": "Failed to deny",

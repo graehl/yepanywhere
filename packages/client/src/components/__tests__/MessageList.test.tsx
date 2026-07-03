@@ -31,6 +31,8 @@ vi.mock("../../i18n", () => ({
         sessionQuoteBlock: "Quote this block",
         sessionSteerNow: "Steer now",
         sessionSteerQueuedMessageNow: "Steer queued message now",
+        sessionSteerQueuedMessageThrough:
+          "Steer this and {count} earlier patient message{suffix} now",
         sessionQueuedInlineEditLabel: "Edit queued message text",
         sessionQueuedInlineSave: "Save edit",
         sessionQueuedInlineCancel: "Cancel edit (Esc)",
@@ -1046,6 +1048,44 @@ describe("MessageList", () => {
     expect(screen.getByText("Queued regular (#2)")).toBeTruthy();
   });
 
+  it("offers steer-now only on live patient chips, labeled with earlier patient count", () => {
+    const onSteerDeferred = vi.fn();
+    render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-regular",
+            content: "regular first",
+            timestamp: "2026-04-25T00:00:00.000Z",
+          },
+          {
+            tempId: "temp-patient-1",
+            content: "patient one",
+            timestamp: "2026-04-25T00:00:01.000Z",
+            metadata: { deliveryIntent: "patient" },
+          },
+          {
+            tempId: "temp-patient-2",
+            content: "patient two",
+            timestamp: "2026-04-25T00:00:02.000Z",
+            metadata: { deliveryIntent: "patient" },
+          },
+        ]}
+        onSteerDeferred={onSteerDeferred}
+      />,
+    );
+
+    // Only the two patient rows carry the action; the regular row does not.
+    expect(screen.getAllByText("Steer now")).toHaveLength(2);
+    expect(screen.getByLabelText("Steer queued message now")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByLabelText("Steer this and 1 earlier patient message now"),
+    );
+    expect(onSteerDeferred).toHaveBeenCalledWith("temp-patient-2");
+  });
+
   it("renders project queue messages below normal queued messages with project position", () => {
     const { container } = render(
       <MessageList
@@ -1576,7 +1616,11 @@ describe("MessageList", () => {
       <MessageList
         messages={[
           userMessage("user-1", "previous request", "2026-04-26T12:00:00.000Z"),
-          assistantMessage("assistant-1", "visible response", assistantTimestamp),
+          assistantMessage(
+            "assistant-1",
+            "visible response",
+            assistantTimestamp,
+          ),
           userMessage("user-2", "next request", "2026-04-26T12:02:00.000Z"),
         ]}
         onScrollSnapshotChange={onScrollSnapshotChange}
@@ -2154,8 +2198,16 @@ describe("MessageList", () => {
       render(
         <MessageList
           messages={[
-            userMessage("user-1", "surviving request", "2026-04-26T12:00:00.000Z"),
-            assistantMessage("assistant-1", "surviving response", assistantTimestamp),
+            userMessage(
+              "user-1",
+              "surviving request",
+              "2026-04-26T12:00:00.000Z",
+            ),
+            assistantMessage(
+              "assistant-1",
+              "surviving response",
+              assistantTimestamp,
+            ),
           ]}
           initialScrollSnapshot={{
             atBottom: false,

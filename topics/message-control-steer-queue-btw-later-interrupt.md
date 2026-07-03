@@ -94,14 +94,24 @@ Rationale:
 
 ### Patient countdown and promotion proposal
 
-Status: proposal.
+Status: promotion landed 2026-07-03; countdown still a proposal.
 
 - When a session is idle and patient queued rows are counting toward autosend,
   patient rows should show a countdown to the quiet-threshold send time.
-- Patient rows should expose an explicit promote/send-now action.
+  (Still open.)
+- Patient rows should expose an explicit promote/send-now action. Landed: each
+  live patient chip has a `Steer now` action
+  (`POST /sessions/:id/deferred/:tempId/steer`,
+  `Process.steerPatientDeferredMessagesThrough`).
 - Promoting a lower patient row should promote all patient rows above it, because
   that preserves typed order within the patient lane and avoids sending a later
-  patient thought while earlier patient context remains delayed.
+  patient thought while earlier patient context remains delayed. Landed: the
+  action steers the clicked entry plus every patient entry ahead of it; when
+  the queued-send batching window (`deferredJoinWindowSeconds`) is enabled they
+  deliver as one concatenated steering turn, otherwise as separate steers in
+  queue order. Each steered message drops one recognized patient prefix and
+  switches to the steer intent (Claude `priority: "next"`); regular deferred
+  entries keep their queue positions.
 - This is distinct from regular queued rows jumping ahead during active work:
   promotion is a user override of patient waiting, not a change to the ordinary
   regular-vs-patient delivery ordering.

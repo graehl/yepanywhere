@@ -1062,6 +1062,15 @@ export const api = {
       { method: "DELETE" },
     ),
 
+  steerDeferredMessagesThrough: (sessionId: string, tempId: string) =>
+    fetchJSON<{
+      steered: boolean;
+      count?: number;
+      deferredMessages: DeferredQueueMessage[];
+    }>(`/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}/steer`, {
+      method: "POST",
+    }),
+
   deleteRecoveredQueuedMessage: (sessionId: string, queueId: string) =>
     fetchJSON<{ deleted: boolean; deferredMessages: DeferredQueueMessage[] }>(
       `/sessions/${sessionId}/recovered-queue/${encodeURIComponent(queueId)}`,

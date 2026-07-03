@@ -23,6 +23,7 @@ import {
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   clampPatientPatienceSeconds,
   normalizeRecapAfterSeconds,
+  stripPatientQueuePrefix,
 } from "@yep-anywhere/shared";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../defaults.js";
 import { getLogger } from "../logging/logger.js";
@@ -300,9 +301,7 @@ function normalizeMaxRetries(
   if (maxRetries === undefined) {
     return undefined;
   }
-  return maxRetries >= CLAUDE_UNBOUNDED_MAX_RETRIES
-    ? "unbounded"
-    : maxRetries;
+  return maxRetries >= CLAUDE_UNBOUNDED_MAX_RETRIES ? "unbounded" : maxRetries;
 }
 
 function buildClaudeApiRetryStatus(
@@ -978,7 +977,8 @@ export class Process {
    */
   isRetainingProviderWork(): boolean {
     return (
-      this._state.type === "idle" && this.getProviderRetentionSnapshot().retained
+      this._state.type === "idle" &&
+      this.getProviderRetentionSnapshot().retained
     );
   }
 
@@ -1383,10 +1383,7 @@ export class Process {
       const deferredEntries = this.deferredQueue;
       const deferredDrained = deferredEntries.map((e) => e.message);
       this.deferredQueue = [];
-      this.deletePersistedPatientDeferredEntries(
-        deferredEntries,
-        "promoted",
-      );
+      this.deletePersistedPatientDeferredEntries(deferredEntries, "promoted");
       this.emitDeferredQueueChange("promoted");
 
       const all = [
@@ -3733,6 +3730,91 @@ export class Process {
       group.length === 1 ? group[0]!.message.tempId : undefined,
     );
     return { promoted: true, nextPatienceMsRemaining };
+  }
+
+  /**
+   * A queued patient message rewritten for immediate steering: the steer
+   * delivery intent replaces the patient one (and its now-moot patience),
+   * and one recognized patient prefix is stripped because its "when done"
+   * wording no longer applies to an immediate send.
+   */
+  private toSteeredPatientMessage(message: UserMessage): UserMessage {
+    const { patienceSeconds: _patience, ...metadata } = message.metadata ?? {};
+    return {
+      ...message,
+      text: stripPatientQueuePrefix(message.text),
+      metadata: { ...metadata, deliveryIntent: "steer" },
+    };
+  }
+
+  /**
+   * Steer a queued patient entry — and every patient entry ahead of it, so
+   * earlier patient context is never skipped — into the session now instead
+   * of waiting for verified quiet. Regular deferred entries keep their queue
+   * positions. When the join window (queued-send batching) is enabled the
+   * group delivers as one concatenated steering turn; with the default
+   * window of 0 each entry is steered separately in queue order.
+   */
+  steerPatientDeferredMessagesThrough(tempId: string): {
+    success: boolean;
+    steered?: number;
+    error?: string;
+  } {
+    const targetIndex = this.deferredQueue.findIndex(
+      (entry) => entry.message.tempId === tempId,
+    );
+    if (targetIndex === -1) {
+      return { success: false, error: "Deferred message not found" };
+    }
+    const target = this.deferredQueue[targetIndex]!;
+    if (target.message.metadata?.deliveryIntent !== "patient") {
+      return { success: false, error: "Not a patient queued message" };
+    }
+
+    const group = this.deferredQueue
+      .slice(0, targetIndex + 1)
+      .filter((entry) => entry.message.metadata?.deliveryIntent === "patient");
+    const anchors = this.deferredComposeAnchors(group);
+    const steerMessages = group.map((entry, index) =>
+      this.prepareProviderMessage(
+        this.toSteeredPatientMessage(entry.message),
+        anchors[index],
+      ),
+    );
+
+    const { joinWindowSeconds } = this.resolveDeferredDelivery();
+    const turns =
+      joinWindowSeconds > 0 && steerMessages.length > 1
+        ? [{ providerTurn: this.concatMessages(steerMessages), entries: group }]
+        : steerMessages.map((message, index) => ({
+            providerTurn: message,
+            entries: [group[index]!],
+          }));
+
+    let steered = 0;
+    let error: string | undefined;
+    for (const turn of turns) {
+      const result = this.queuePreparedMessage(turn.providerTurn);
+      if (!result.success) {
+        error = result.error;
+        break;
+      }
+      const sentEntries = new Set(turn.entries);
+      this.deferredQueue = this.deferredQueue.filter(
+        (entry) => !sentEntries.has(entry),
+      );
+      this.deletePersistedPatientDeferredEntries(turn.entries, "promoted");
+      steered += turn.entries.length;
+    }
+
+    if (steered === 0) {
+      return { success: false, error: error ?? "Failed to steer message" };
+    }
+    this.emitDeferredQueueChange(
+      "promoted",
+      steered === 1 ? group[0]!.message.tempId : undefined,
+    );
+    return { success: true, steered };
   }
 
   /**

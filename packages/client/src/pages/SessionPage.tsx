@@ -2971,6 +2971,24 @@ function SessionPageContent({
     [deferredMessages, sessionId, showToast, t],
   );
 
+  const handleSteerDeferred = useCallback(
+    async (tempId: string) => {
+      // No optimistic removal: the chips clear when the server's next
+      // deferred-queue state (without the steered entries) is mirrored.
+      try {
+        await api.steerDeferredMessagesThrough(sessionId, tempId);
+      } catch (err) {
+        console.error("Failed to steer deferred message:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("sessionDeferredSteerFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [sessionId, showToast, t],
+  );
+
   const handleDeleteRecoveredDeferred = useCallback(
     async (queueId: string) => {
       try {
@@ -5601,6 +5619,7 @@ function SessionPageContent({
                   composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
+                  onSteerDeferred={handleSteerDeferred}
                   onResumeRecoveredDeferred={handleResumeRecoveredDeferred}
                   onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
                   onCancelProjectQueueMessage={handleCancelProjectQueueItem}

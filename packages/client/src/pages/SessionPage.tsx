@@ -158,7 +158,7 @@ import {
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
 import type { Message, Project } from "../types";
-import { truncateSessionTitle } from "@yep-anywhere/shared";
+import { sanitizeSessionTitle } from "@yep-anywhere/shared";
 import { getSessionDisplayTitle } from "../utils";
 
 const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
@@ -4361,11 +4361,13 @@ function SessionPageContent({
   const sessionTitle = getSessionDisplayTitle(session);
   // The indexed auto-title is hard-capped at 120 chars for list surfaces,
   // which starves the wide header row. With no custom title, prefer the full
-  // first message (sanitized, capped far beyond what any viewport renders)
-  // and let the CSS ellipsis truncate to the actual available width.
+  // first message and let the CSS ellipsis truncate to the actual available
+  // width. The 600-char cap only bounds DOM/document.title cost — it is far
+  // beyond what any viewport renders and cuts silently, so a visible "…"
+  // here is always layout-generated, never baked into the string.
   const headerAutoTitle =
     !session?.customTitle && session?.fullTitle
-      ? truncateSessionTitle(session.fullTitle, 600)
+      ? sanitizeSessionTitle(session.fullTitle).slice(0, 600).trimEnd()
       : null;
   const displayTitle =
     localCustomTitle ??

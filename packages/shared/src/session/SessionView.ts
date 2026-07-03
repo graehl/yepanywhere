@@ -46,13 +46,10 @@ export function sanitizeSessionTitle(title: string): string {
     .trim();
 }
 
-export function truncateSessionTitle(
-  title: string,
-  maxLength: number = SESSION_TITLE_MAX_LENGTH,
-): string {
+export function truncateSessionTitle(title: string): string {
   const sanitized = sanitizeSessionTitle(title);
-  if (sanitized.length <= maxLength) return sanitized;
-  return `${sanitized.slice(0, maxLength - 3).trimEnd()}...`;
+  if (sanitized.length <= SESSION_TITLE_MAX_LENGTH) return sanitized;
+  return `${sanitized.slice(0, SESSION_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
 }
 
 export class SessionView {

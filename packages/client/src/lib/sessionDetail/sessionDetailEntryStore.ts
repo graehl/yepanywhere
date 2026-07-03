@@ -1,5 +1,3 @@
-import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
-import { cloneScrollSnapshot } from "./sessionDetailSnapshots";
 import { createInitialSessionDetailState } from "./transcriptReducer";
 import type { SessionDetailState } from "./types";
 
@@ -36,23 +34,6 @@ export class SessionDetailEntryStore {
   replaceState(state: SessionDetailState): void {
     this.stateValue = state;
     this.notify();
-  }
-
-  patchScrollSnapshot(
-    scrollSnapshot: SessionRouteScrollSnapshot,
-    notify: boolean,
-  ): boolean {
-    if (!this.stateValue) {
-      return false;
-    }
-    this.stateValue = {
-      ...this.stateValue,
-      scrollSnapshot: cloneScrollSnapshot(scrollSnapshot),
-    };
-    if (notify) {
-      this.notify();
-    }
-    return true;
   }
 
   resetState(): boolean {

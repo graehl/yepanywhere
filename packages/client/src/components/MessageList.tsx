@@ -42,6 +42,11 @@ import {
   dispatchSessionIsearchGuideState,
   type SessionIsearchScope,
 } from "../lib/sessionIsearchGuide";
+import {
+  decideSessionScrollRestore,
+  DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
+  type SessionScrollBehaviorMode,
+} from "../lib/sessionScrollBehavior";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   buildComposerTailDisplayRows,
@@ -285,24 +290,6 @@ function getFirstVisibleRenderAnchor(
     }
   }
   return null;
-}
-
-function shouldRestoreInitialScrollSnapshot(
-  snapshot: SessionRouteScrollSnapshot,
-): boolean {
-  if (snapshot.atBottom) {
-    return true;
-  }
-
-  // A top-of-transcript snapshot, with or without a first-row anchor, can be
-  // produced by a transient cached/progressive restore before tail follow has
-  // settled. Treat it as "no useful retained position" so ordinary session
-  // opens follow the tail instead of pinning the transcript to the top.
-  if (snapshot.scrollTop <= FOLLOW_BOTTOM_TOLERANCE_PX) {
-    return false;
-  }
-
-  return true;
 }
 
 interface UserTurnSearchSession {
@@ -612,6 +599,7 @@ interface Props {
   progressiveRenderKey?: string;
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
+  scrollBehaviorMode?: SessionScrollBehaviorMode;
   inert?: boolean;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
@@ -803,6 +791,7 @@ export const MessageList = memo(function MessageList({
   progressiveRenderKey,
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
+  scrollBehaviorMode = DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
   inert = false,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
@@ -1431,9 +1420,7 @@ export const MessageList = memo(function MessageList({
   const captureScrollSnapshot = useCallback(
     (container: HTMLElement, content: HTMLDivElement) => {
       const atBottom = isAtScrollBottom(container, content);
-      const anchor = atBottom
-        ? undefined
-        : (getFirstVisibleRenderAnchor(content, container) ?? undefined);
+      const anchor = getFirstVisibleRenderAnchor(content, container) ?? undefined;
       return {
         atBottom,
         scrollTop: container.scrollTop,
@@ -2584,9 +2571,8 @@ export const MessageList = memo(function MessageList({
         isProgrammaticScrollRef.current = true;
         resizeContainer.scrollTop = targetScrollTop;
         lastHeightRef.current = resizeContainer.scrollHeight;
-        const nearBottom = isNearScrollBottom(resizeContainer);
-        shouldAutoScrollRef.current = nearBottom;
-        setIsScrolledToBottom(nearBottom);
+        shouldAutoScrollRef.current = false;
+        setIsScrolledToBottom(false);
 
         requestAnimationFrame(() => {
           isProgrammaticScrollRef.current = false;
@@ -2628,9 +2614,16 @@ export const MessageList = memo(function MessageList({
     if (
       !isInitialLoadRef.current ||
       !initialScrollSnapshot ||
-      !shouldRestoreInitialScrollSnapshot(initialScrollSnapshot) ||
       displayRenderItems.length === 0
     ) {
+      return;
+    }
+    const restoreDecision = decideSessionScrollRestore({
+      mode: scrollBehaviorMode,
+      snapshot: initialScrollSnapshot,
+      topTolerancePx: FOLLOW_BOTTOM_TOLERANCE_PX,
+    });
+    if (restoreDecision === "skip") {
       return;
     }
     const content = containerRef.current;
@@ -2638,7 +2631,7 @@ export const MessageList = memo(function MessageList({
     if (!content || !container) return;
 
     isProgrammaticScrollRef.current = true;
-    if (initialScrollSnapshot.atBottom) {
+    if (restoreDecision === "follow-bottom") {
       scrollToBottom(container);
       shouldAutoScrollRef.current = true;
       setIsScrolledToBottom(true);
@@ -2685,6 +2678,7 @@ export const MessageList = memo(function MessageList({
     initialScrollSnapshot,
     publishScrollSnapshot,
     scrollToBottom,
+    scrollBehaviorMode,
     updateScrollPositionTimestamp,
   ]);
 

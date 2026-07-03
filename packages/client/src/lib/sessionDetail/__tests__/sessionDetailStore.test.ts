@@ -277,7 +277,7 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(key("two"))?.lastMessageId).toBe("two");
   });
 
-  it("patches scroll snapshots without notifying ordinary subscribers", () => {
+  it("keeps scroll snapshots outside ordinary selector subscriptions", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");
     let notifications = 0;
@@ -285,7 +285,7 @@ describe("SessionDetailStore", () => {
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]));
     store.subscribe(
       storeKey,
-      (state) => state?.scrollSnapshot?.scrollTop ?? -1,
+      (state) => state?.messages.length ?? -1,
       () => {
         notifications += 1;
       },
@@ -300,6 +300,7 @@ describe("SessionDetailStore", () => {
     });
 
     expect(notifications).toBe(0);
+    expect(store.readScrollSnapshot(storeKey)?.scrollTop).toBe(42);
     expect(store.readRouteSnapshot(storeKey)?.scrollSnapshot?.scrollTop).toBe(
       42,
     );
@@ -316,7 +317,8 @@ describe("SessionDetailStore", () => {
       { notify: true },
     );
 
-    expect(notifications).toBe(1);
+    expect(notifications).toBe(0);
+    expect(store.readScrollSnapshot(storeKey)?.scrollTop).toBe(100);
   });
 
   it("retains entries through expiry until released", () => {

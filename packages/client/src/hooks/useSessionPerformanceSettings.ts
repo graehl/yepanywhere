@@ -3,6 +3,12 @@ import {
   configureSessionDetailRetention,
   defaultSessionDetailStore,
 } from "../lib/sessionDetail/sessionDetailStore";
+import {
+  DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
+  parseSessionScrollBehaviorMode,
+  shouldRetainSessionScrollMemory,
+  type SessionScrollBehaviorMode,
+} from "../lib/sessionScrollBehavior";
 import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
@@ -79,6 +85,7 @@ function subscribe(listener: () => void) {
       event.key === UI_KEYS.sessionTranscriptCache ||
       event.key === UI_KEYS.sessionTranscriptCacheBudgetMb ||
       event.key === UI_KEYS.sessionTranscriptCacheTtlHours ||
+      event.key === UI_KEYS.sessionScrollBehavior ||
       event.key === null
     ) {
       applySessionDetailRetentionPreferences();
@@ -97,11 +104,12 @@ function getSnapshot() {
     getSessionDomLingerEnabled() ? "1" : "0",
     String(getSessionTranscriptCacheBudgetMb()),
     String(getSessionTranscriptCacheTtlHours()),
+    getSessionScrollBehaviorMode(),
   ].join(":");
 }
 
 function parseSnapshot(snapshot: string) {
-  const [domLinger, budgetMb, ttlHours] = snapshot.split(":");
+  const [domLinger, budgetMb, ttlHours, scrollBehavior] = snapshot.split(":");
   const parsedBudget = Number(budgetMb);
   const parsedTtl = Number(ttlHours);
   const sessionTranscriptCacheBudgetMb = Number.isFinite(parsedBudget)
@@ -114,6 +122,8 @@ function parseSnapshot(snapshot: string) {
     sessionTranscriptCacheTtlHours: Number.isFinite(parsedTtl)
       ? parsedTtl
       : DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS,
+    sessionScrollBehaviorMode:
+      parseSessionScrollBehaviorMode(scrollBehavior),
   };
 }
 
@@ -146,6 +156,12 @@ export function getSessionTranscriptCacheTtlHours(): number {
 
 export function getSessionTranscriptCacheEnabled(): boolean {
   return getSessionTranscriptCacheBudgetMb() > 0;
+}
+
+export function getSessionScrollBehaviorMode(): SessionScrollBehaviorMode {
+  return parseSessionScrollBehaviorMode(
+    getStorage()?.getItem(UI_KEYS.sessionScrollBehavior),
+  );
 }
 
 function applySessionDetailRetentionPreferences(): void {
@@ -193,6 +209,17 @@ export function setSessionTranscriptCacheTtlHoursPreference(
   emitChange();
 }
 
+export function setSessionScrollBehaviorModePreference(
+  mode: SessionScrollBehaviorMode,
+): void {
+  const normalized = parseSessionScrollBehaviorMode(mode);
+  savePreference(UI_KEYS.sessionScrollBehavior, normalized);
+  if (!shouldRetainSessionScrollMemory(normalized)) {
+    defaultSessionDetailStore.clearScrollSnapshots();
+  }
+  emitChange();
+}
+
 /**
  * Most recent measured transcript size at session leave; feeds the
  * budget slider's "sessions like your last" hint.
@@ -226,7 +253,11 @@ if (typeof window !== "undefined") {
 }
 
 export function useSessionPerformanceSettings() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => "0:0:1");
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}`,
+  );
   const settings = useMemo(() => parseSnapshot(snapshot), [snapshot]);
 
   const setSessionDomLingerEnabled = useCallback(
@@ -241,11 +272,16 @@ export function useSessionPerformanceSettings() {
     setSessionTranscriptCacheTtlHoursPreference,
     [],
   );
+  const setSessionScrollBehaviorMode = useCallback(
+    setSessionScrollBehaviorModePreference,
+    [],
+  );
 
   return {
     ...settings,
     setSessionDomLingerEnabled,
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
+    setSessionScrollBehaviorMode,
   };
 }

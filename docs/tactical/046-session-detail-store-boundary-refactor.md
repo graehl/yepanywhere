@@ -329,10 +329,11 @@ semantics or test obligations.
 - **Introduce a typed entry handle:** have `retain()` return an object with
   `release()`, key metadata, and maybe debug stats. This can make ownership more
   legible than a bare release callback, but would touch hook ergonomics.
-- **Separate scroll snapshot state:** keep scroll snapshots outside
-  `SessionDetailState` so non-notifying scroll updates become structurally
-  obvious. This could simplify entry-store semantics, but it changes route
-  snapshot conversion and divergence diagnostics.
+- **Completed 2026-07-03 — separate scroll snapshot state:** scroll snapshots
+  now live at the cache-entry boundary instead of in `SessionDetailState`, so
+  non-reactive scroll memory is structurally separate from reducer-owned
+  transcript/session state. The follow-on scroll policy work is tracked in
+  [047-session-scroll-memory-policy.md](047-session-scroll-memory-policy.md).
 - **Promote snapshot conversion into a local adapter:** isolate
   `SessionRouteSnapshot` conversion from reducer state so cache and route DTO
   boundaries are explicit. The module split can prepare this without changing
@@ -350,6 +351,7 @@ Before and after each implementation phase, run focused coverage for:
 - `packages/client/src/hooks/__tests__/useSessionMessages.cache.test.tsx`
 - `packages/client/src/hooks/__tests__/useSessionPerformanceSettings.test.ts`
 - `packages/client/src/lib/sessionDetail/__tests__/transcriptReducer.test.ts`
+- `packages/client/src/components/__tests__/MessageList.test.tsx`
 
 For implementation phases touching hook behavior, also run the project lint and
 typecheck wrappers before landing.

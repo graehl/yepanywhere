@@ -86,6 +86,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useSessionLoadingProgress } from "../hooks/useSessionLoadingProgress";
 import type { SessionLoadProgress } from "../hooks/useSessionMessages";
+import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
 import { useVersion } from "../hooks/useVersion";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import type { DraftAttachmentState } from "../lib/draftEnvelope";
@@ -870,6 +871,7 @@ function SessionPageContent({
     clientTailParams.tailTurns !== undefined ||
     clientTailParams.tailFrom !== undefined;
   const { sessionLoadingProgressEnabled } = useSessionLoadingProgress();
+  const { sessionScrollBehaviorMode } = useSessionPerformanceSettings();
   const [
     sessionLoadingProgressDetailsVisible,
     setSessionLoadingProgressDetailsVisible,
@@ -5613,6 +5615,7 @@ function SessionPageContent({
                   progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
                   initialScrollSnapshot={initialScrollSnapshot}
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
+                  scrollBehaviorMode={sessionScrollBehaviorMode}
                   getForkSummaryTargetHref={getForkSummaryTargetHref}
                   onCancelForkSummary={(objectId) => {
                     void cancelForkSummaryJob(objectId);

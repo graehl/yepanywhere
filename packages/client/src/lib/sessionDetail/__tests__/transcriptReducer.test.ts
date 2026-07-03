@@ -843,8 +843,8 @@ describe("transcriptReducer", () => {
     expect(state.agentContent).toEqual({});
   });
 
-  it("keeps retained scroll snapshots patchable outside message changes", () => {
-    const initialSnapshot = {
+  it("leaves retained scroll snapshots outside reducer state", () => {
+    const scrollSnapshot = {
       atBottom: false,
       scrollTop: 240,
       scrollHeight: 1000,
@@ -855,26 +855,18 @@ describe("transcriptReducer", () => {
       },
       updatedAtMs: 1782910000000,
     };
-    const patchedSnapshot = {
-      ...initialSnapshot,
-      atBottom: true,
-      scrollTop: 400,
-      updatedAtMs: 1782910001000,
-    };
     const loaded = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",
       session: sessionMetadata(),
       messages: [
         assistantMessage("assistant-1", "loaded", "2026-07-01T12:00:00.000Z"),
       ],
-      scrollSnapshot: initialSnapshot,
-    });
-    const patched = reduceSessionDetailState(loaded, {
-      type: "patchScrollSnapshot",
-      scrollSnapshot: patchedSnapshot,
+      scrollSnapshot,
     });
 
-    expect(patched.messages).toBe(loaded.messages);
-    expect(patched.scrollSnapshot).toEqual(patchedSnapshot);
+    expect(loaded.messages).toHaveLength(1);
+    expect(
+      (loaded as { scrollSnapshot?: typeof scrollSnapshot }).scrollSnapshot,
+    ).toBeUndefined();
   });
 });

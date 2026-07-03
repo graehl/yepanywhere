@@ -474,7 +474,6 @@ export function reduceSessionDetailState(
           action.snapshot.lastMessageId ??
           findLastJsonlMessageId(action.snapshot.messages),
         maxPersistedTimestampMs: action.snapshot.maxPersistedTimestampMs,
-        scrollSnapshot: action.snapshot.scrollSnapshot,
       };
 
     case "loadPersistedTranscript": {
@@ -505,7 +504,6 @@ export function reduceSessionDetailState(
           Number.NEGATIVE_INFINITY,
           taggedMessages,
         ),
-        scrollSnapshot: action.scrollSnapshot,
       };
     }
 
@@ -638,12 +636,6 @@ export function reduceSessionDetailState(
         ),
       };
     }
-
-    case "patchScrollSnapshot":
-      return {
-        ...state,
-        scrollSnapshot: action.scrollSnapshot,
-      };
 
     case "applyFinalMarkdownAugment": {
       const existing = state.markdownAugments[action.messageId];

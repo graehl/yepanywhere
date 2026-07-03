@@ -28,6 +28,7 @@ export function routeSnapshotToState(
 
 export function stateToRouteSnapshot(
   state: SessionDetailState,
+  scrollSnapshot?: SessionRouteScrollSnapshot,
 ): SessionRouteSnapshot | undefined {
   if (!state.session) {
     return undefined;
@@ -40,8 +41,8 @@ export function stateToRouteSnapshot(
     toolUseToAgentEntries: state.toolUseToAgentEntries,
     lastMessageId: state.lastMessageId,
     maxPersistedTimestampMs: state.maxPersistedTimestampMs,
-    scrollSnapshot: state.scrollSnapshot
-      ? cloneScrollSnapshot(state.scrollSnapshot)
+    scrollSnapshot: scrollSnapshot
+      ? cloneScrollSnapshot(scrollSnapshot)
       : undefined,
   };
 }

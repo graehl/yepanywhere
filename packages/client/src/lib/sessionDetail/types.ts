@@ -29,7 +29,6 @@ export interface SessionDetailState {
   lastMessageId?: string;
   maxPersistedTimestampMs: number;
   deferredMessages: DeferredQueueMessage[];
-  scrollSnapshot?: SessionRouteScrollSnapshot;
 }
 
 export type SessionDetailAction =
@@ -101,10 +100,6 @@ export type SessionDetailAction =
       type: "prependOlderMessages";
       messages: Message[];
       pagination?: PaginationInfo;
-    }
-  | {
-      type: "patchScrollSnapshot";
-      scrollSnapshot: SessionRouteScrollSnapshot;
     }
   | {
       type: "applyFinalMarkdownAugment";

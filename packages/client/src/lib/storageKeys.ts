@@ -64,6 +64,7 @@ export const UI_KEYS = {
   sessionTranscriptCacheTtlHours:
     "yep-anywhere-session-transcript-cache-ttl-hours",
   sessionLastTranscriptBytes: "yep-anywhere-session-last-transcript-bytes",
+  sessionScrollBehavior: "yep-anywhere-session-scroll-behavior",
   sessionDetailShadowDiagnostics:
     "yep-anywhere-session-detail-shadow-diagnostics-enabled",
   stableToolPreviewRendering:

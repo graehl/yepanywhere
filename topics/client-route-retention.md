@@ -253,12 +253,15 @@ lean, 2026-07-02): the objectively right restore target is probably *what the
 user last viewed*, even if follow mode was engaged when they left; landing on
 never-seen content is the failure to avoid.
 
-1. **Follow-mode returns cannot restore last-viewed content.**
-   `captureScrollSnapshot` suppresses anchor capture when `atBottom`, and the
-   restore effect maps `atBottom` to scroll-to-bottom with follow re-engaged.
-   When the server moved while away, a warm return lands at the *new* bottom —
-   content the user never saw — and the data needed to do better was never
-   captured.
+1. **Follow-mode returns can still choose newest-bottom over last-viewed
+   content.** Before 2026-07-03, `captureScrollSnapshot` suppressed anchor
+   capture when `atBottom`, so the data needed to do better was never captured.
+   The 2026-07-03 scroll-memory slice now captures anchors even when the
+   viewport is at bottom and routes restore through a browser-local policy.
+   The default `live-tail` policy still maps `atBottom` to scroll-to-bottom
+   with follow re-engaged, so when the server moved while away a warm return
+   can still intentionally land at the *new* bottom. The `remember-place`
+   policy can instead restore the captured last-viewed anchor.
 2. **Anchor miss falls back to stale pixel geometry.** When `findRenderRow`
    misses the anchor id, restore clamps the captured `scrollTop` into the
    current `scrollHeight`. After a delta merge, partial progressive hydration,
@@ -295,12 +298,13 @@ reload would produce given the same reading history — the last-viewed row when
 one is recorded, else the tail — and snapshots are captured only from settled
 content.
 
-**Slice 1 — capture side (no visible behavior change).**
+**Slice 1 — capture side (partially landed 2026-07-03).**
 
 - Capture the anchor unconditionally: `atBottom` becomes a restore-policy bit
-  rather than capture suppression. Record order context beside the anchor id
-  for neighbor recovery: the anchored message's persisted timestamp and the
-  ids of the previous and next rendered rows.
+  rather than capture suppression. The anchor capture and policy split landed
+  on 2026-07-03. Recording order context beside the anchor id remains open:
+  the anchored message's persisted timestamp and the ids of the previous and
+  next rendered rows.
 - Gate `publishScrollSnapshot` on settled content: no snapshot writes between
   warm-hydration start and progressive-render completion. The write gate
   belongs at the session detail store boundary (`patchScrollSnapshot` is

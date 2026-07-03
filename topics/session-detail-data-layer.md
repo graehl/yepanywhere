@@ -78,8 +78,8 @@ A session detail store should own core session data and lifecycle:
 - subagent/agent transcript content;
 - tool-use-to-agent mappings and provider parent/tree relationships;
 - load state, load progress, replay/catch-up watermarks, and persisted cursors;
-- retained scroll snapshot metadata, without making every scroll tick a
-  reactive UI event;
+- retained scroll snapshot metadata at the cache-entry boundary, outside the
+  reducer state, without making every scroll tick a reactive UI event;
 - same-tab retention and eviction rules for warm session detail snapshots.
 
 ### MessageList-owned state
@@ -156,7 +156,8 @@ global rerender source. Useful properties:
 - imperative reducer actions for stream, REST, replay, pagination, and subagent
   events;
 - selector-based subscriptions so metadata changes do not rerender the whole
-  transcript and scroll snapshot patches do not notify ordinary subscribers;
+  transcript. Scroll snapshot patches should stay outside reducer selectors
+  entirely and be read through explicit cache-entry APIs;
 - explicit same-tab retention with TTL and byte-budget caps (both
   user-configurable in Performance settings; no entry-count cap),
   source/auth scoping, diagnostics, and clear APIs;

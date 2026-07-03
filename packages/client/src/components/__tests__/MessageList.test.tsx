@@ -1740,6 +1740,112 @@ describe("MessageList", () => {
     expect(scrollContainer.scrollTop).toBe(500);
   });
 
+  it("keeps live-tail bottom restore even when the snapshot has an anchor", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 100,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        initialScrollSnapshot={{
+          atBottom: true,
+          scrollTop: 100,
+          scrollHeight: 1000,
+          clientHeight: 500,
+          anchor: { id: "user-1", topOffset: 20 },
+          updatedAtMs: Date.now(),
+        }}
+      />,
+      { container: scrollContainer },
+    );
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
+  it("restores an at-bottom anchor in remember-place mode", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 100,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 360,
+        width: 360,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === scrollContainer) {
+          return rectFor(0, 500);
+        }
+        if (this.dataset.renderId === "user-1") {
+          return rectFor(120, 40);
+        }
+        return rectFor(0, 40);
+      });
+
+    try {
+      render(
+        <MessageList
+          messages={[
+            userMessage("user-1", "earlier request"),
+            assistantMessage("assistant-1", "current response"),
+          ]}
+          initialScrollSnapshot={{
+            atBottom: true,
+            scrollTop: 100,
+            scrollHeight: 1000,
+            clientHeight: 500,
+            anchor: { id: "user-1", topOffset: 20 },
+            updatedAtMs: Date.now(),
+          }}
+          scrollBehaviorMode="remember-place"
+        />,
+        { container: scrollContainer },
+      );
+    } finally {
+      rectSpy.mockRestore();
+    }
+
+    expect(scrollContainer.scrollTop).toBe(200);
+  });
+
   it("keeps following the tail when progressive restore reveals rows", () => {
     vi.useFakeTimers();
     const scrollContainer = document.createElement("div");

@@ -29,7 +29,6 @@ export function selectSessionDetailRuntimeSnapshot(
     toolUseToAgentEntries: state.toolUseToAgentEntries,
     lastMessageId: state.lastMessageId,
     maxPersistedTimestampMs: state.maxPersistedTimestampMs,
-    scrollSnapshot: state.scrollSnapshot,
   };
 }
 
@@ -49,12 +48,6 @@ export function selectSessionDetailToolUseToAgentEntries(
   state: SessionDetailState,
 ): Array<[string, string]> {
   return state.toolUseToAgentEntries;
-}
-
-export function selectSessionDetailScrollSnapshot(
-  state: SessionDetailState,
-): SessionRouteScrollSnapshot | undefined {
-  return state.scrollSnapshot;
 }
 
 export function selectSessionDetailPagination(

@@ -130,12 +130,14 @@ Consequences:
 - **`ResizeObserver`** (MessageList.tsx) re-pins to bottom on every height
   increase while `shouldAutoScrollRef` is true. During streaming this fires at
   the flush cadence (~200ms).
-- **Near-bottom re-engage** — both the `ResizeObserver` else-branch and the
-  programmatic-scroll release flip `shouldAutoScrollRef` back to true whenever
-  `isNearScrollBottom` holds, i.e. within `BOTTOM_FOLLOW_VIEWPORT_FRACTION`
-  (0.45) of the viewport, capped at `MAX_BOTTOM_FOLLOW_THRESHOLD_PX` (520).
-  Wheel/touch scroll calls `stopFollowingForUserScroll`, but a *small* scroll-up
-  that stays inside this band is re-captured on the next flush.
+- **Near-bottom re-engage** — historical behavior let size/resize paths
+  re-arm `shouldAutoScrollRef` whenever `isNearScrollBottom` held, i.e. within
+  `BOTTOM_FOLLOW_VIEWPORT_FRACTION` (0.45) of the viewport, capped at
+  `MAX_BOTTOM_FOLLOW_THRESHOLD_PX` (520). As of 2026-07-03, transcript
+  `ResizeObserver` growth and window resize no longer *start* following from
+  near-bottom geometry; they only continue an already-following viewport.
+  Programmatic-scroll release still uses the near-bottom check to confirm
+  explicit bottom commands.
 - **`RENDERING_PERFORMANCE.md` "Transcript Layout Stability"** is the
   kzahel-side statement of the invariant (no timers/visibility/stream-status
   effects changing historical row height; tidy only via explicit user control).
@@ -156,9 +158,10 @@ Consequences:
 
 ## Follow-engagement policy & proposed preferences
 
-The regime boundary — *when* the view (re)engages "following the tail" — is
-currently a fixed heuristic (near-bottom re-engage, send-forces-bottom, and the
-thinking-delta guard). Several observed bugs (#1, #3, #4 below) are at root
+The regime boundary — *when* the view (re)engages "following the tail" — is now
+represented by a browser-local policy value for route restore, with several
+live-follow axes still implemented as fixed behavior (send-forces-bottom and
+the thinking-delta guard). Several observed bugs (#1, #3, #4 below) are at root
 disagreements about that policy, and different users hold different
 expectations. The policy decomposes into a few orthogonal axes; surfacing some
 as preferences would resolve much of the "is this a bug or intended?" ambiguity:
@@ -175,13 +178,14 @@ as preferences would resolve much of the "is this a bug or intended?" ambiguity:
   (current special case, `cebac6b7`) vs *never auto-follow* (manual Follow is
   the only thing that ever moves the view to the tail).
 
-Design caution: expose these as a **small set of named modes** (e.g. "Follow
-live output" / "Don't follow thinking" / "Manual follow only"), not four
-orthogonal toggles — orthogonal toggles are 2⁴ states to reason about and test,
-whereas the internal model can stay axis-based. Persist via the existing
-`UI_KEYS` localStorage pattern already used for `sessionThinkingVisible` /
-`sessionThinkingLatestOnly`; `AppearanceSettings.tsx` is the natural home. This
-does not substitute for fixing the bugs — a broken default is broken under every
+Design caution: expose these as a **small set of named modes** (currently
+`live-tail`, `remember-place`, `manual-follow`, and `no-memory` internally), not
+four orthogonal toggles — orthogonal toggles are 2⁴ states to reason about and
+test, whereas the internal model can stay axis-based. The first hidden policy
+value persists via the existing `UI_KEYS` localStorage pattern already used for
+`sessionThinkingVisible` / `sessionThinkingLatestOnly`; settings UI exposure is
+deferred until the copy and advanced-placement story are settled. This does not
+substitute for fixing the bugs — a broken default is broken under every
 preference — but it clarifies which behaviors are bugs versus legitimately
 user-dependent.
 

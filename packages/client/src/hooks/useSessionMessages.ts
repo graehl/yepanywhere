@@ -44,10 +44,12 @@ import {
 } from "../lib/sessionDetail/streamBuffer";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
+  getSessionScrollBehaviorMode,
   getSessionTranscriptCacheEnabled,
   recordLastSessionTranscriptBytes,
 } from "./useSessionPerformanceSettings";
 import { getStreamingEnabled } from "./useStreamingEnabled";
+import { shouldRetainSessionScrollMemory } from "../lib/sessionScrollBehavior";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
@@ -60,7 +62,6 @@ import {
   selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
-  selectSessionDetailScrollSnapshot,
   selectSessionDetailToolUseToAgentEntries,
 } from "../lib/sessionDetail/selectors";
 import {
@@ -204,7 +205,14 @@ function writeSessionLoadCache(
   if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
     return false;
   }
-  return defaultSessionDetailStore.writeRouteSnapshot(input, entry);
+  return defaultSessionDetailStore.writeRouteSnapshot(input, {
+    ...entry,
+    scrollSnapshot: shouldRetainSessionScrollMemory(
+      getSessionScrollBehaviorMode(),
+    )
+      ? entry.scrollSnapshot
+      : undefined,
+  });
 }
 
 export function __resetSessionLoadCacheForTest(): void {
@@ -302,17 +310,12 @@ export function useSessionMessages(
     setPagination(next);
   }, []);
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
-    cachedLoad?.scrollSnapshot,
+    shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
+      ? cachedLoad?.scrollSnapshot
+      : undefined,
   );
   const dispatchSessionDetailAction = useCallback(
     (action: SessionDetailAction) => {
-      if (action.type === "patchScrollSnapshot") {
-        defaultSessionDetailStore.patchScrollSnapshot(
-          snapshotKey,
-          action.scrollSnapshot,
-        );
-        return;
-      }
       defaultSessionDetailStore.dispatch(snapshotKey, action);
     },
     [snapshotKey],
@@ -333,7 +336,11 @@ export function useSessionMessages(
     }
     return writeSessionLoadCache(snapshotKey, {
       ...snapshot,
-      scrollSnapshot: scrollSnapshotRef.current,
+      scrollSnapshot: shouldRetainSessionScrollMemory(
+        getSessionScrollBehaviorMode(),
+      )
+        ? scrollSnapshotRef.current
+        : undefined,
     });
   }, [readCurrentStoreRouteSnapshot, snapshotKey]);
   const recordCurrentEntryBytes = useCallback(() => {
@@ -448,11 +455,21 @@ export function useSessionMessages(
   );
 
   const readSelectorBackedRuntimeSnapshot = useCallback(
-    () =>
-      defaultSessionDetailStore.readSelected(
+    () => {
+      const selected = defaultSessionDetailStore.readSelected(
         snapshotKey,
         selectSessionDetailRuntimeSnapshot,
-      ),
+      );
+      if (!selected) {
+        return undefined;
+      }
+      return {
+        ...selected,
+        scrollSnapshot: defaultSessionDetailStore.readScrollSnapshot(
+          snapshotKey,
+        ),
+      };
+    },
     [snapshotKey],
   );
 
@@ -746,7 +763,11 @@ export function useSessionMessages(
         lastMessageIdRef.current = snapshot.lastMessageId;
       }
       maxPersistedTimestampMsRef.current = snapshot.maxPersistedTimestampMs;
-      scrollSnapshotRef.current = snapshot.scrollSnapshot;
+      scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
+        getSessionScrollBehaviorMode(),
+      )
+        ? snapshot.scrollSnapshot
+        : undefined;
       applySession(snapshot.session);
       applyPagination(snapshot.pagination);
       setRevealedSnapshotKey(snapshotKeyString);
@@ -940,7 +961,11 @@ export function useSessionMessages(
     });
     initialLoadCompleteRef.current = false;
     resetSessionDetailStreamBuffer(streamBufferRef.current);
-    scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
+    scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
+      getSessionScrollBehaviorMode(),
+    )
+      ? warmLoad?.scrollSnapshot
+      : undefined;
     setRevealedSnapshotKey(null);
     if (warmLoad) {
       resetSessionDetailState(warmLoad);
@@ -1368,16 +1393,19 @@ export function useSessionMessages(
 
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
+      if (
+        !shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
+      ) {
+        scrollSnapshotRef.current = undefined;
+        return;
+      }
       scrollSnapshotRef.current = snapshot;
-      dispatchSessionDetailAction({
-        type: "patchScrollSnapshot",
-        scrollSnapshot: snapshot,
-      });
+      defaultSessionDetailStore.patchScrollSnapshot(snapshotKey, snapshot);
       reportStoreDivergence("scroll-snapshot", {
         scrollSnapshot: snapshot,
       });
     },
-    [dispatchSessionDetailAction, reportStoreDivergence],
+    [reportStoreDivergence, snapshotKey],
   );
 
   // Fetch session metadata only
@@ -1397,12 +1425,11 @@ export function useSessionMessages(
     }
   }, [projectId, sessionId, updateSession]);
   const selectedInitialScrollSnapshot =
-    defaultSessionDetailStore.readSelected(
-      snapshotKey,
-      selectSessionDetailScrollSnapshot,
-    ) ??
-    cachedLoad?.scrollSnapshot ??
-    null;
+    shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
+      ? (defaultSessionDetailStore.readScrollSnapshot(snapshotKey) ??
+        cachedLoad?.scrollSnapshot ??
+        null)
+      : null;
   const selectedPagination = readSelectorBackedPagination();
 
   return {

@@ -46,6 +46,13 @@ export class SessionDetailStore {
     return this.cache.readRouteSnapshot(input, options);
   }
 
+  readScrollSnapshot(
+    input: SessionDetailEntryKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): SessionRouteScrollSnapshot | undefined {
+    return this.cache.readScrollSnapshot(input, options);
+  }
+
   readSelected<T>(
     input: SessionDetailEntryKeyInput,
     selector: (state: SessionDetailState) => T,
@@ -111,6 +118,10 @@ export class SessionDetailStore {
 
   clear(): void {
     this.cache.clear();
+  }
+
+  clearScrollSnapshots(): void {
+    this.cache.clearScrollSnapshots();
   }
 
   deleteEntry(input: SessionDetailEntryKeyInput): boolean {

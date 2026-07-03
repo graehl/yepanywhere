@@ -60,25 +60,24 @@ export class SessionDetailCache {
     input: SessionDetailEntryKeyInput,
     options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
   ): SessionDetailState | undefined {
-    const at = getSessionDetailNow(options);
-    const key = getSessionDetailEntryKey(input);
-    const entry = this.entries.get(key);
-    if (!entry) {
-      return undefined;
-    }
-    if (this.deleteIfExpired(entry, at)) {
-      return undefined;
-    }
-    entry.markAccessed(at);
-    return entry.state;
+    return this.readEntry(input, options)?.state;
   }
 
   readRouteSnapshot(
     input: SessionDetailEntryKeyInput,
     options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
   ): SessionRouteSnapshot | undefined {
-    const state = this.read(input, options);
-    return state ? stateToRouteSnapshot(state) : undefined;
+    const entry = this.readEntry(input, options);
+    return entry?.state
+      ? stateToRouteSnapshot(entry.state, entry.scrollSnapshot)
+      : undefined;
+  }
+
+  readScrollSnapshot(
+    input: SessionDetailEntryKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): SessionRouteScrollSnapshot | undefined {
+    return this.readEntry(input, options)?.scrollSnapshot;
   }
 
   readSelected<T>(
@@ -107,7 +106,13 @@ export class SessionDetailCache {
     }
 
     const entry = this.getOrCreateEntry(input);
-    entry.replaceState(state, at, options, approxBytes);
+    entry.replaceState(
+      state,
+      at,
+      options,
+      approxBytes,
+      snapshot.scrollSnapshot,
+    );
     this.evictLeastRecentlyUsed(options);
     return true;
   }
@@ -151,6 +156,15 @@ export class SessionDetailCache {
       isEntryCreatingAction(action),
     );
     entry.applyState(nextState, at, options, approxBytes);
+    const actionScrollSnapshot =
+      action.type === "restoreRouteSnapshot"
+        ? action.snapshot.scrollSnapshot
+        : action.type === "loadPersistedTranscript"
+          ? action.scrollSnapshot
+          : undefined;
+    if (actionScrollSnapshot) {
+      entry.setScrollSnapshot(actionScrollSnapshot, at);
+    }
 
     if (
       entry.approxBytes > getSessionDetailMaxBytes(options) &&
@@ -177,7 +191,7 @@ export class SessionDetailCache {
     if (!entry || this.deleteIfExpired(entry, at)) {
       return;
     }
-    entry.patchScrollSnapshot(scrollSnapshot, at, options.notify === true);
+    entry.setScrollSnapshot(scrollSnapshot, at);
   }
 
   subscribe<T>(
@@ -247,6 +261,12 @@ export class SessionDetailCache {
     }
   }
 
+  clearScrollSnapshots(): void {
+    for (const entry of Array.from(this.entries.values())) {
+      entry.clearScrollSnapshot();
+    }
+  }
+
   deleteEntry(input: SessionDetailEntryKeyInput): boolean {
     const key = getSessionDetailEntryKey(input);
     return this.deleteRecordByKey(key);
@@ -296,6 +316,23 @@ export class SessionDetailCache {
   ): SessionDetailEntry {
     const entry = this.getOrCreateEntry(input);
     entry.ensureRecord(at, options);
+    return entry;
+  }
+
+  private readEntry(
+    input: SessionDetailEntryKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs">,
+  ): SessionDetailEntry | undefined {
+    const at = getSessionDetailNow(options);
+    const key = getSessionDetailEntryKey(input);
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return undefined;
+    }
+    if (this.deleteIfExpired(entry, at)) {
+      return undefined;
+    }
+    entry.markAccessed(at);
     return entry;
   }
 

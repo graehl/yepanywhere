@@ -12,6 +12,7 @@ import type { SessionRouteSnapshot } from "../../lib/sessionRouteSnapshots";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   getLastSessionTranscriptBytes,
+  getSessionScrollBehaviorMode,
   getSessionDomLingerEnabled,
   getSessionTranscriptCacheBudgetMb,
   getSessionTranscriptCacheEnabled,
@@ -82,10 +83,12 @@ describe("useSessionPerformanceSettings", () => {
     expect(result.current.sessionTranscriptCacheBudgetMb).toBe(0);
     expect(result.current.sessionTranscriptCacheEnabled).toBe(false);
     expect(result.current.sessionTranscriptCacheTtlHours).toBe(1);
+    expect(result.current.sessionScrollBehaviorMode).toBe("live-tail");
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheTtlHours()).toBe(1);
+    expect(getSessionScrollBehaviorMode()).toBe("live-tail");
   });
 
   it("seeds the budget from the legacy boolean toggle", () => {
@@ -170,5 +173,52 @@ describe("useSessionPerformanceSettings", () => {
     expect(getLastSessionTranscriptBytes()).toBe(1_500_000);
     recordLastSessionTranscriptBytes(0);
     expect(getLastSessionTranscriptBytes()).toBe(1_500_000);
+  });
+
+  it("persists scroll behavior mode and clears only scroll memory when disabled", () => {
+    const storeKey = {
+      sourceKey: SOURCE,
+      projectId: PROJECT_ID,
+      sessionId: "session-a",
+    };
+    const { result } = renderHook(() => useSessionPerformanceSettings());
+
+    act(() => {
+      result.current.setSessionScrollBehaviorMode("remember-place");
+    });
+
+    expect(result.current.sessionScrollBehaviorMode).toBe("remember-place");
+    expect(localStorage.getItem(UI_KEYS.sessionScrollBehavior)).toBe(
+      "remember-place",
+    );
+    expect(getSessionScrollBehaviorMode()).toBe("remember-place");
+
+    defaultSessionDetailStore.writeRouteSnapshot(storeKey, {
+      ...snapshot(),
+      scrollSnapshot: {
+        atBottom: true,
+        scrollTop: 120,
+        scrollHeight: 800,
+        clientHeight: 400,
+        updatedAtMs: 10,
+      },
+    });
+    expect(defaultSessionDetailStore.readRouteSnapshot(storeKey)).toBeDefined();
+    expect(
+      defaultSessionDetailStore.readScrollSnapshot(storeKey),
+    ).toBeDefined();
+
+    act(() => {
+      result.current.setSessionScrollBehaviorMode("no-memory");
+    });
+
+    expect(result.current.sessionScrollBehaviorMode).toBe("no-memory");
+    expect(defaultSessionDetailStore.readRouteSnapshot(storeKey)).toBeDefined();
+    expect(
+      defaultSessionDetailStore.readRouteSnapshot(storeKey)?.scrollSnapshot,
+    ).toBeUndefined();
+    expect(
+      defaultSessionDetailStore.readScrollSnapshot(storeKey),
+    ).toBeUndefined();
   });
 });

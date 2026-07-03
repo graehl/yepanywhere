@@ -1,5 +1,6 @@
 import type { ClientSummarySourceKey } from "../clientSummaryStore";
 import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
+import { cloneScrollSnapshot } from "./sessionDetailSnapshots";
 import {
   estimateSessionDetailStateBytes,
   type EstimateStateBytesOptions,
@@ -46,6 +47,7 @@ interface SessionDetailEntryMetadata {
 
 export class SessionDetailEntry {
   private metadata: SessionDetailEntryMetadata | null = null;
+  private scrollSnapshotValue: SessionRouteScrollSnapshot | undefined;
   private readonly store = new SessionDetailEntryStore();
 
   constructor(
@@ -71,6 +73,12 @@ export class SessionDetailEntry {
 
   get approxBytes(): number {
     return this.metadata?.approxBytes ?? 0;
+  }
+
+  get scrollSnapshot(): SessionRouteScrollSnapshot | undefined {
+    return this.scrollSnapshotValue
+      ? cloneScrollSnapshot(this.scrollSnapshotValue)
+      : undefined;
   }
 
   get lastAccessedAt(): number {
@@ -106,6 +114,7 @@ export class SessionDetailEntry {
     at: number,
     options: SessionDetailRetentionOptions,
     approxBytes: number,
+    scrollSnapshot?: SessionRouteScrollSnapshot,
   ): void {
     const existing = this.metadata;
     this.metadata = {
@@ -117,6 +126,9 @@ export class SessionDetailEntry {
       approxBytes,
     };
     this.store.replaceState(state);
+    this.scrollSnapshotValue = scrollSnapshot
+      ? cloneScrollSnapshot(scrollSnapshot)
+      : undefined;
   }
 
   applyState(
@@ -133,19 +145,25 @@ export class SessionDetailEntry {
     this.store.replaceState(state);
   }
 
-  patchScrollSnapshot(
+  setScrollSnapshot(
     scrollSnapshot: SessionRouteScrollSnapshot,
     at: number,
-    notify: boolean,
-  ): void {
+  ): boolean {
     if (!this.metadata) {
-      return;
+      return false;
     }
-    if (!this.store.patchScrollSnapshot(scrollSnapshot, notify)) {
-      return;
-    }
+    this.scrollSnapshotValue = cloneScrollSnapshot(scrollSnapshot);
     this.metadata.updatedAt = at;
     this.metadata.lastAccessedAt = at;
+    return true;
+  }
+
+  clearScrollSnapshot(): boolean {
+    if (!this.scrollSnapshotValue) {
+      return false;
+    }
+    this.scrollSnapshotValue = undefined;
+    return true;
   }
 
   resetState(
@@ -181,6 +199,7 @@ export class SessionDetailEntry {
       return false;
     }
     this.metadata = null;
+    this.scrollSnapshotValue = undefined;
     this.store.clear();
     return true;
   }
@@ -224,7 +243,7 @@ export class SessionDetailEntry {
       updatedAt: this.metadata.updatedAt,
       lastAccessedAt: this.metadata.lastAccessedAt,
       expiresAt: this.metadata.expiresAt,
-      hasScrollSnapshot: state.scrollSnapshot !== undefined,
+      hasScrollSnapshot: this.scrollSnapshotValue !== undefined,
     };
   }
 

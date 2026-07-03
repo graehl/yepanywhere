@@ -62,6 +62,7 @@ import {
   selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
+  selectSessionDetailSession,
   selectSessionDetailToolUseToAgentEntries,
 } from "../lib/sessionDetail/selectors";
 import {
@@ -189,6 +190,15 @@ interface ReturnedDetailStoreState {
   toolUseToAgentEntries: Array<[string, string]>;
 }
 
+interface StoreBackedSessionDetail {
+  /** Transcript fields, gated until the route reveal completes. */
+  revealed: ReturnedDetailStoreState | undefined;
+  /** Loaded-window pagination; not reveal-gated so warm values stay visible. */
+  pagination: PaginationInfo | undefined;
+  /** Session metadata; null until reveal so loading semantics hold. */
+  session: SessionMetadata | null;
+}
+
 function readSessionLoadCache(
   input: SessionDetailEntryKeyInput,
 ): SessionRouteSnapshot | undefined {
@@ -289,26 +299,11 @@ export function useSessionMessages(
   );
   const [sessionLoadProgress, setSessionLoadProgress] =
     useState<SessionLoadProgress>(() => createSessionLoadProgress("idle"));
-  const [session, setSession] = useState<SessionMetadata | null>(null);
-  const [pagination, setPagination] = useState<PaginationInfo | undefined>(
-    undefined,
-  );
   const [loadingOlder, setLoadingOlder] = useState(false);
 
-  // State updaters must stay pure (React may replay them mid-render), so
-  // store dispatches and divergence reports cannot live inside setState
-  // callbacks. Session/pagination still write local state directly; returned
-  // transcript data comes from the store after reveal.
-  const sessionRef = useRef<SessionMetadata | null>(null);
-  const paginationRef = useRef<PaginationInfo | undefined>(undefined);
-  const applySession = useCallback((next: SessionMetadata | null) => {
-    sessionRef.current = next;
-    setSession(next);
-  }, []);
-  const applyPagination = useCallback((next: PaginationInfo | undefined) => {
-    paginationRef.current = next;
-    setPagination(next);
-  }, []);
+  // Session and pagination are store-authoritative: the reducer owns them and
+  // the hook returns store-selected values, so there are no local mirrors to
+  // drift. The refs below hold hook-only bookkeeping.
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ? cachedLoad?.scrollSnapshot
@@ -318,6 +313,15 @@ export function useSessionMessages(
     (action: SessionDetailAction) => {
       defaultSessionDetailStore.dispatch(snapshotKey, action);
     },
+    [snapshotKey],
+  );
+
+  const readStoreSession = useCallback(
+    () =>
+      defaultSessionDetailStore.readSelected(
+        snapshotKey,
+        selectSessionDetailSession,
+      ) ?? null,
     [snapshotKey],
   );
 
@@ -393,12 +397,14 @@ export function useSessionMessages(
       if (!store) {
         return;
       }
-      const liveSession =
-        livePatch.session ?? sessionRef.current ?? store.session;
+      // Session and pagination are store-authoritative, so their live values
+      // default to the store snapshot; only explicitly patched fields can
+      // still diverge here.
+      const liveSession = livePatch.session ?? store.session;
       const live: SessionDetailRuntimeStateInput = {
         messages: livePatch.messages ?? store.messages,
         session: liveSession,
-        pagination: livePatch.pagination ?? paginationRef.current,
+        pagination: livePatch.pagination ?? store.pagination,
         agentContent: livePatch.agentContent ?? store.agentContent,
         toolUseToAgentEntries:
           livePatch.toolUseToAgentEntries ?? store.toolUseToAgentEntries,
@@ -422,7 +428,7 @@ export function useSessionMessages(
 
   const updateSession = useCallback(
     (update: SessionMetadataUpdate) => {
-      const previous = sessionRef.current;
+      const previous = readStoreSession();
       const next = typeof update === "function" ? update(previous) : update;
       if (next === previous) {
         return;
@@ -431,9 +437,8 @@ export function useSessionMessages(
       reportStoreDivergence("session-metadata", {
         session: next,
       });
-      applySession(next);
     },
-    [applySession, dispatchSessionDetailAction, reportStoreDivergence],
+    [dispatchSessionDetailAction, readStoreSession, reportStoreDivergence],
   );
 
   const readSelectorBackedMessages = useCallback(
@@ -550,76 +555,84 @@ export function useSessionMessages(
 
   const canRevealReturnedDetail =
     revealedSnapshotKey === snapshotKeyString && !loading;
-  const selectReturnedDetailStoreState = useMemo(() => {
-    let previous: ReturnedDetailStoreState | undefined;
+  const selectStoreBackedDetail = useMemo(() => {
+    let previous: StoreBackedSessionDetail | undefined;
+    let previousRevealed: ReturnedDetailStoreState | undefined;
     return (
       state: SessionDetailState | undefined,
-    ): ReturnedDetailStoreState | undefined => {
-      if (!canRevealReturnedDetail || !state) {
+    ): StoreBackedSessionDetail | undefined => {
+      if (!state) {
         return undefined;
       }
+      let revealed: ReturnedDetailStoreState | undefined;
+      if (canRevealReturnedDetail) {
+        revealed =
+          previousRevealed &&
+          previousRevealed.messages === state.messages &&
+          previousRevealed.agentContent === state.agentContent &&
+          previousRevealed.toolUseToAgentEntries ===
+            state.toolUseToAgentEntries
+            ? previousRevealed
+            : {
+                messages: state.messages,
+                agentContent: state.agentContent,
+                toolUseToAgentEntries: state.toolUseToAgentEntries,
+              };
+        previousRevealed = revealed;
+      }
+      const session = canRevealReturnedDetail ? state.session : null;
       if (
         previous &&
-        previous.messages === state.messages &&
-        previous.agentContent === state.agentContent &&
-        previous.toolUseToAgentEntries === state.toolUseToAgentEntries
+        previous.revealed === revealed &&
+        previous.pagination === state.pagination &&
+        previous.session === session
       ) {
         return previous;
       }
-      previous = {
-        messages: state.messages,
-        agentContent: state.agentContent,
-        toolUseToAgentEntries: state.toolUseToAgentEntries,
-      };
+      previous = { revealed, pagination: state.pagination, session };
       return previous;
     };
   }, [canRevealReturnedDetail]);
-  const storeBackedReturnedDetail = useSyncExternalStore(
+  const storeBackedDetail = useSyncExternalStore(
     useCallback(
       (listener) => {
         return defaultSessionDetailStore.subscribe(
           snapshotKey,
-          selectReturnedDetailStoreState,
+          selectStoreBackedDetail,
           listener,
         );
       },
-      [snapshotKey, selectReturnedDetailStoreState],
+      [snapshotKey, selectStoreBackedDetail],
     ),
     useCallback(
       () =>
         defaultSessionDetailStore.readSelected(
           snapshotKey,
-          selectReturnedDetailStoreState,
+          selectStoreBackedDetail,
         ),
-      [snapshotKey, selectReturnedDetailStoreState],
+      [snapshotKey, selectStoreBackedDetail],
     ),
     () => undefined,
   );
-  const returnedMessages = canRevealReturnedDetail
-    ? (storeBackedReturnedDetail?.messages ?? EMPTY_RETURNED_MESSAGES)
-    : EMPTY_RETURNED_MESSAGES;
-  const returnedAgentContent = canRevealReturnedDetail
-    ? (storeBackedReturnedDetail?.agentContent ?? EMPTY_RETURNED_AGENT_CONTENT)
-    : EMPTY_RETURNED_AGENT_CONTENT;
+  const returnedMessages =
+    storeBackedDetail?.revealed?.messages ?? EMPTY_RETURNED_MESSAGES;
+  const returnedAgentContent =
+    storeBackedDetail?.revealed?.agentContent ?? EMPTY_RETURNED_AGENT_CONTENT;
   const returnedToolUseToAgent = useMemo(
-    () => {
-      if (!canRevealReturnedDetail) {
-        return new Map<string, string>();
-      }
-      return storeBackedReturnedDetail
-        ? new Map(storeBackedReturnedDetail.toolUseToAgentEntries)
-        : new Map<string, string>();
-    },
-    [canRevealReturnedDetail, storeBackedReturnedDetail],
+    () =>
+      storeBackedDetail?.revealed
+        ? new Map(storeBackedDetail.revealed.toolUseToAgentEntries)
+        : new Map<string, string>(),
+    [storeBackedDetail?.revealed],
   );
   useEffect(() => {
-    if (!canRevealReturnedDetail || storeBackedReturnedDetail) {
+    if (!canRevealReturnedDetail || storeBackedDetail?.revealed) {
       return;
     }
     warnMissingStoreBackedDetailAfterReveal();
   }, [
     canRevealReturnedDetail,
-    storeBackedReturnedDetail,
+    storeBackedDetail,
     warnMissingStoreBackedDetailAfterReveal,
   ]);
 
@@ -768,8 +781,6 @@ export function useSessionMessages(
       )
         ? snapshot.scrollSnapshot
         : undefined;
-      applySession(snapshot.session);
-      applyPagination(snapshot.pagination);
       setRevealedSnapshotKey(snapshotKeyString);
     };
 
@@ -979,8 +990,6 @@ export function useSessionMessages(
       providerRef.current = warmLoad.session.provider;
       lastMessageIdRef.current = warmLoad.lastMessageId;
       setLoading(true);
-      applySession(null);
-      applyPagination(undefined);
       void (async () => {
         setSessionLoadProgress(
           createSessionLoadProgressForWindow("rendering", {
@@ -1014,8 +1023,6 @@ export function useSessionMessages(
       providerRef.current = undefined;
       lastMessageIdRef.current = undefined;
       setLoading(true);
-      applySession(null);
-      applyPagination(undefined);
     }
 
     api
@@ -1142,8 +1149,6 @@ export function useSessionMessages(
     updatePersistedTimestampWatermark,
     resetSessionDetailState,
     dispatchSessionDetailAction,
-    applyPagination,
-    applySession,
     readCurrentStoreRouteSnapshot,
     readSelectorBackedRuntimeSnapshot,
     snapshotKey,
@@ -1325,8 +1330,8 @@ export function useSessionMessages(
       defaultSessionDetailStore.readSelected(
         snapshotKey,
         selectSessionDetailPagination,
-      ) ?? pagination,
-    [snapshotKey, pagination],
+      ),
+    [snapshotKey],
   );
 
   // Load older messages (previous chunk before the current truncation point)
@@ -1354,13 +1359,7 @@ export function useSessionMessages(
         _source: "jsonl" as const,
       }));
       updatePersistedTimestampWatermark(taggedOlder);
-      const selectorBackedMessages = readSelectorBackedMessages();
-      const selectorBackedPagination = defaultSessionDetailStore.readSelected(
-        snapshotKey,
-        selectSessionDetailPagination,
-      );
-      const nextMessages =
-        selectorBackedMessages ?? readMessagesAfterDispatch("older-page");
+      const nextMessages = readMessagesAfterDispatch("older-page");
       const lastJsonlId = findLastJsonlMessageId(nextMessages);
       if (lastJsonlId) {
         lastMessageIdRef.current = lastJsonlId;
@@ -1368,11 +1367,9 @@ export function useSessionMessages(
       reportStoreDivergence("older-page", {
         messages: nextMessages,
         session: data.session,
-        pagination: selectorBackedPagination ?? data.pagination,
         lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
         maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       });
-      applyPagination(selectorBackedPagination ?? data.pagination);
     } catch {
       // Silent fail for loading older messages
     } finally {
@@ -1381,14 +1378,11 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    applyPagination,
     readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
-    readSelectorBackedMessages,
     readMessagesAfterDispatch,
     reportStoreDivergence,
-    snapshotKey,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
@@ -1430,7 +1424,6 @@ export function useSessionMessages(
         cachedLoad?.scrollSnapshot ??
         null)
       : null;
-  const selectedPagination = readSelectorBackedPagination();
 
   return {
     messages: returnedMessages,
@@ -1438,7 +1431,7 @@ export function useSessionMessages(
     toolUseToAgent: returnedToolUseToAgent,
     loading,
     sessionLoadProgress,
-    session,
+    session: storeBackedDetail?.session ?? null,
     updateSession,
     handleStreamingUpdate,
     handleStreamMessageEvent,
@@ -1450,7 +1443,7 @@ export function useSessionMessages(
     clearStreamingPlaceholders,
     fetchNewMessages,
     fetchSessionMetadata,
-    pagination: selectedPagination,
+    pagination: storeBackedDetail?.pagination,
     loadingOlder,
     loadOlderMessages,
     initialScrollSnapshot: selectedInitialScrollSnapshot,

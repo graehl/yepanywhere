@@ -56,6 +56,12 @@ export function selectSessionDetailPagination(
   return state.pagination;
 }
 
+export function selectSessionDetailSession(
+  state: SessionDetailState,
+): SessionMetadata | null {
+  return state.session;
+}
+
 export function selectSessionDetailPreprocessAugments(
   state: SessionDetailState,
   options: { activeToolApproval?: ActiveToolApproval } = {},

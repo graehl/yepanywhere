@@ -520,7 +520,7 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("does not rerender returned transcript data for metadata-only store changes", async () => {
+  it("keeps transcript identities stable for metadata-only store changes", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -585,7 +585,10 @@ describe("useSessionMessages cache", () => {
       );
     });
 
-    expect(renderCount).toBe(settledRenderCount);
+    // Session is store-backed, so the metadata change re-renders exactly once
+    // and surfaces the new session without churning transcript identities.
+    expect(renderCount).toBe(settledRenderCount + 1);
+    expect(rendered.result.current.session?.title).toBe("After");
     expect(rendered.result.current.messages).toBe(returnedMessages);
     expect(rendered.result.current.agentContent).toBe(returnedAgentContent);
     expect(rendered.result.current.toolUseToAgent).toBe(returnedToolUseToAgent);

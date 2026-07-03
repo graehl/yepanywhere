@@ -13,6 +13,8 @@
     "i18n:missing": "node scripts/report-i18n-missing.mjs",
     "i18n:prune": "node scripts/prune-i18n-placeholders.mjs --write",
     "i18n:scan": "node scripts/find-raw-i18n-copy.mjs",
+    "console:scan": "node scripts/find-console-chatter.mjs",
+    "console:volume": "node scripts/report-client-log-volume.mjs",
     "dev": "node scripts/dev.js",
     "staging": "node scripts/staging.js",
     "dev:auto": "pnpm --filter server dev & pnpm --filter client dev",

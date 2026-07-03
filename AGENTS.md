@@ -131,6 +131,14 @@ than suppressing the report; a warning that must stand needs an inline
 justification. DEVELOPMENT.md carries the contributor-facing statement of
 the same policy.
 
+## Client Console Chatter Budget
+
+When a change touches `packages/client`, or a client console looks
+chatty, run `pnpm console:scan` with the pre-commit checks and read
+[`topics/console-chatter.md`](topics/console-chatter.md) — it carries
+the budget policy, the remediation preference order, the measurement
+tools, and the ratcheting baseline.
+
 ## Commit Lock Protocol
 
 Before staging or committing, acquire `.git/yepanywhere-commit.lock`. The

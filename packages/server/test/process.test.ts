@@ -771,6 +771,231 @@ describe("Process", () => {
     });
   });
 
+  describe("provider runtime status", () => {
+    it("records Claude api_retry status in process info", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({ type: "system", subtype: "init", session_id: "sess-1" });
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+        retry_delay_ms: 60_000,
+        attempt: 1,
+        max_retries: 2_147_483_647,
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+
+      const status = process.getInfo().providerRuntimeStatus;
+      expect(status).toMatchObject({
+        kind: "retrying",
+        provider: "claude",
+        reason: "rate_limit",
+        httpStatus: 429,
+        retryDelayMs: 60_000,
+        attempt: 1,
+        maxRetries: "unbounded",
+        eventCount: 1,
+        source: "claude.system.api_retry",
+      });
+      expect(status?.startedAt).toBe(status?.lastSeenAt);
+      const retryDelay =
+        Date.parse(status?.retryAt ?? "") -
+        Date.parse(status?.lastSeenAt ?? "");
+      expect(retryDelay).toBe(60_000);
+
+      controller.finish();
+    });
+
+    it("updates Claude api_retry status without resetting the incident start", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({ type: "system", subtype: "init", session_id: "sess-1" });
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+        retry_delay_ms: 60_000,
+        attempt: 1,
+        max_retries: 2_147_483_647,
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.eventCount).toBe(1);
+      });
+      const firstStartedAt = process.getInfo().providerRuntimeStatus?.startedAt;
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 529,
+        error: "overloaded",
+        retry_delay_ms: 30_000,
+        attempt: 2,
+        max_retries: 3,
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.eventCount).toBe(2);
+      });
+
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "retrying",
+        provider: "claude",
+        reason: "overloaded",
+        httpStatus: 529,
+        retryDelayMs: 30_000,
+        attempt: 2,
+        maxRetries: 3,
+        startedAt: firstStartedAt,
+        eventCount: 2,
+      });
+
+      controller.finish();
+    });
+
+    it("ignores Claude-shaped api_retry messages for non-Claude providers", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+        retry_delay_ms: 60_000,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(process.getInfo().providerRuntimeStatus).toBe(null);
+
+      controller.finish();
+    });
+
+    it("clears retry status when assistant progress resumes", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+
+      controller.push({
+        type: "assistant",
+        message: { role: "assistant", content: "Recovered" },
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus).toBe(null);
+      });
+
+      controller.finish();
+    });
+
+    it("clears retry status when the turn ends", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+
+      controller.push({ type: "result", session_id: "sess-1" });
+
+      await waitFor(() => {
+        expect(process.state.type).toBe("idle");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toBe(null);
+
+      controller.finish();
+    });
+
+    it("clears retry status when aborted", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+
+      const abortPromise = process.abort();
+      expect(process.getInfo().providerRuntimeStatus).toBe(null);
+      controller.finish();
+      await abortPromise;
+    });
+  });
+
   describe("message queue", () => {
     it("queues messages and returns position", async () => {
       const iterator = createMockIterator([

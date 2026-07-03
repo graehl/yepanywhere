@@ -169,6 +169,30 @@ export type PendingInputType = "tool-approval" | "user-question";
 /** Agent activity - what the agent is doing */
 export type AgentActivity = "in-turn" | "idle" | "waiting-input" | "terminated";
 
+export type ProviderRuntimeRetryReason =
+  | "rate_limit"
+  | "overloaded"
+  | "server_error"
+  | "network"
+  | "unknown";
+
+export type ProviderRuntimeStatus =
+  | {
+      kind: "retrying";
+      provider: ProviderName;
+      reason: ProviderRuntimeRetryReason;
+      httpStatus?: number;
+      startedAt: string;
+      lastSeenAt: string;
+      retryAt?: string;
+      retryDelayMs?: number;
+      attempt?: number;
+      maxRetries?: number | "unbounded";
+      eventCount: number;
+      source: string;
+    }
+  | null;
+
 /** Context usage information extracted from the last assistant message */
 export interface ContextUsage {
   /** Input tokens used for context-window meter (provider-specific semantics) */

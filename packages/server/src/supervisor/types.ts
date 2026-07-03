@@ -7,6 +7,7 @@ import type {
   PendingInputType,
   PermissionRules,
   PromptSuggestionMode,
+  ProviderRuntimeStatus,
   ProviderName,
   RecapMode,
   ThinkingConfig,
@@ -238,6 +239,8 @@ export interface ProcessInfo {
   pid?: number;
   /** Provider/session progress evidence, separate from transport liveness. */
   liveness?: SessionLivenessSnapshot;
+  /** Current provider retry/failure status for the live turn, when available. */
+  providerRuntimeStatus?: ProviderRuntimeStatus;
   /** Current recap behavior for this live process. */
   recapMode?: RecapMode;
   /** Browser-away duration before YA asks this process for a recap. */

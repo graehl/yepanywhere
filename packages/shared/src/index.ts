@@ -302,6 +302,8 @@ export type {
   // Session types
   PendingInputType,
   AgentActivity,
+  ProviderRuntimeRetryReason,
+  ProviderRuntimeStatus,
   ContextUsage,
   SessionOwnership,
   SessionSandboxPolicy,

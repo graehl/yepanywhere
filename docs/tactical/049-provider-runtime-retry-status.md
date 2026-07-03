@@ -145,6 +145,11 @@ When the status changes, emit a lightweight process event, for example:
 The websocket subscription layer can translate that into a client activity
 event carrying the actual current status.
 
+This was intentionally deferred from the first committed implementation chunk:
+the first slice exposes the status through `ProcessInfo` and `/api/processes`
+only. The event/client-store work belongs in the next chunk so the server
+normalization can land independently.
+
 ## API And Wire Surfaces
 
 Expose `providerRuntimeStatus?: ProviderRuntimeStatus` through existing status
@@ -242,13 +247,13 @@ branches for the basic banner/chip.
 Land the smallest server-visible slice before touching the client summary store
 or session UI:
 
-1. Add the shared `ProviderRuntimeStatus` type.
-2. Add in-memory `providerRuntimeStatus` tracking to `Process`.
-3. Detect Claude `system/api_retry` in `Process.processMessages()`.
-4. Clear status on `result`, idle transition, error, termination, and real
-   assistant progress.
-5. Include `providerRuntimeStatus` in `ProcessInfo` and `/api/processes`.
-6. Add server unit tests for set, update, and clear behavior.
+1. [x] Add the shared `ProviderRuntimeStatus` type.
+2. [x] Add in-memory `providerRuntimeStatus` tracking to `Process`.
+3. [x] Detect Claude `system/api_retry` in `Process.processMessages()`.
+4. [x] Clear status on `result`, idle transition, error, termination, abort,
+   and real assistant progress.
+5. [x] Include `providerRuntimeStatus` in `ProcessInfo` and `/api/processes`.
+6. [x] Add server unit tests for set, update, ignore, and clear behavior.
 
 This chunk proves the core model with a live/debuggable API shape. It can be
 verified against a retrying process with:
@@ -256,6 +261,26 @@ verified against a retrying process with:
 ```bash
 curl -k https://localhost:3400/api/processes \
   | jq '.processes[] | {sessionId,state,providerRuntimeStatus}'
+```
+
+Implemented in the first server slice:
+
+- `packages/shared/src/app-types.ts` exports the provider-neutral status shape.
+- `packages/server/src/supervisor/Process.ts` normalizes Claude
+  `system/api_retry` into the live process status and clears it conservatively.
+- `packages/server/src/supervisor/types.ts` exposes the snapshot on
+  `ProcessInfo`, so existing process routes include it automatically.
+- `packages/server/test/process.test.ts` covers capture, update,
+  non-Claude ignore behavior, and clearing on assistant progress, turn end, and
+  abort.
+
+Validation run:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- process.test.ts -t "provider runtime status"
+pnpm --filter @yep-anywhere/server test -- process.test.ts
+pnpm typecheck
+pnpm lint
 ```
 
 Do not add the websocket activity event in this first chunk. REST/process-info

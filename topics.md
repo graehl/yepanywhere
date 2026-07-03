@@ -109,3 +109,5 @@
 - provider-output-contract - Single spec for normalized provider output
   (message envelope, tool results, status, lineage links); named TS types
   as the type definition, validation kept off hot paths.
+- provider-runtime-status - Live provider retry/failure status surfaced from
+  provider streams into YA process/session UI state.

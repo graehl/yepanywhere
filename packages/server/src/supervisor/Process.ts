@@ -6,6 +6,7 @@ import type {
   PermissionRules,
   PromptSuggestionMode,
   ProviderName,
+  ProviderRuntimeStatus,
   RecapMode,
   SessionLivenessSnapshot,
   SessionWakeReason,
@@ -112,6 +113,8 @@ export interface RecapRequestResult {
   /** YA-owned message row to persist as a viewer-only overlay. */
   syntheticMessage?: DurableRecapMessage;
 }
+
+const CLAUDE_UNBOUNDED_MAX_RETRIES = 2_147_483_647;
 
 /**
  * Whether a queued entry should ride the verified-idle "patient" path instead
@@ -239,6 +242,112 @@ function isClaudeSdkApiErrorMessage(
     isClaudeSdkProvider(provider) &&
     message.type === "assistant" &&
     message.isApiErrorMessage === true
+  );
+}
+
+function isClaudeSdkApiRetryMessage(
+  provider: ProviderName,
+  message: SDKMessage,
+): boolean {
+  return (
+    isClaudeSdkProvider(provider) &&
+    message.type === "system" &&
+    message.subtype === "api_retry"
+  );
+}
+
+type ProviderRuntimeRetryStatus = Exclude<ProviderRuntimeStatus, null>;
+type ProviderRuntimeReason = ProviderRuntimeRetryStatus["reason"];
+
+function readFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const number = readFiniteNumber(value);
+  if (number === undefined || number <= 0) {
+    return undefined;
+  }
+  return Math.trunc(number);
+}
+
+function normalizeProviderRuntimeReason(error: unknown): ProviderRuntimeReason {
+  switch (error) {
+    case "rate_limit":
+      return "rate_limit";
+    case "overloaded":
+      return "overloaded";
+    case "server_error":
+      return "server_error";
+    case "network":
+      return "network";
+    default:
+      return "unknown";
+  }
+}
+
+function normalizeMaxRetries(
+  value: unknown,
+): ProviderRuntimeRetryStatus["maxRetries"] | undefined {
+  const maxRetries = readPositiveInteger(value);
+  if (maxRetries === undefined) {
+    return undefined;
+  }
+  return maxRetries >= CLAUDE_UNBOUNDED_MAX_RETRIES
+    ? "unbounded"
+    : maxRetries;
+}
+
+function buildClaudeApiRetryStatus(
+  provider: ProviderName,
+  previous: ProviderRuntimeStatus,
+  message: SDKMessage,
+  receivedAt: Date,
+): ProviderRuntimeRetryStatus {
+  const lastSeenAt = receivedAt.toISOString();
+  const httpStatus = readPositiveInteger(message.error_status);
+  const attempt = readPositiveInteger(message.attempt);
+  const maxRetries = normalizeMaxRetries(message.max_retries);
+  const retryDelayMs = readFiniteNumber(message.retry_delay_ms);
+  const nonNegativeRetryDelayMs =
+    retryDelayMs !== undefined && retryDelayMs >= 0
+      ? Math.trunc(retryDelayMs)
+      : undefined;
+  const retryAt =
+    nonNegativeRetryDelayMs !== undefined
+      ? new Date(receivedAt.getTime() + nonNegativeRetryDelayMs).toISOString()
+      : undefined;
+
+  return {
+    kind: "retrying",
+    provider,
+    reason: normalizeProviderRuntimeReason(message.error),
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+    startedAt: previous?.kind === "retrying" ? previous.startedAt : lastSeenAt,
+    lastSeenAt,
+    ...(retryAt ? { retryAt } : {}),
+    ...(nonNegativeRetryDelayMs !== undefined
+      ? { retryDelayMs: nonNegativeRetryDelayMs }
+      : {}),
+    ...(attempt !== undefined ? { attempt } : {}),
+    ...(maxRetries !== undefined ? { maxRetries } : {}),
+    eventCount: previous?.kind === "retrying" ? previous.eventCount + 1 : 1,
+    source: "claude.system.api_retry",
+  };
+}
+
+function isProviderRuntimeProgressMessage(message: SDKMessage): boolean {
+  return (
+    message.type === "assistant" ||
+    message.type === "stream_event" ||
+    message.type === "result"
   );
 }
 
@@ -489,6 +598,7 @@ export class Process {
   private pendingRecapRequest: PendingRecapRequest | null = null;
   private lastNativeRecap: NativeRecapRecord | null = null;
   private nativeRecapWaiters = new Set<() => void>();
+  private providerRuntimeStatus: ProviderRuntimeStatus = null;
   private _recapMode: RecapMode;
   private _recapAfterSeconds: number;
   private _promptSuggestionMode: PromptSuggestionMode;
@@ -1083,6 +1193,29 @@ export class Process {
     );
   }
 
+  private observeProviderRuntimeStatus(
+    message: SDKMessage,
+    receivedAt: Date,
+  ): void {
+    if (isClaudeSdkApiRetryMessage(this.provider, message)) {
+      this.providerRuntimeStatus = buildClaudeApiRetryStatus(
+        this.provider,
+        this.providerRuntimeStatus,
+        message,
+        receivedAt,
+      );
+      return;
+    }
+
+    if (isProviderRuntimeProgressMessage(message)) {
+      this.clearProviderRuntimeStatus();
+    }
+  }
+
+  private clearProviderRuntimeStatus(): void {
+    this.providerRuntimeStatus = null;
+  }
+
   private toLivenessState(): LivenessProcessState {
     switch (this._state.type) {
       case "waiting-input":
@@ -1477,6 +1610,7 @@ export class Process {
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
+    this.clearProviderRuntimeStatus();
 
     // Resolve all pending tool approvals with denial
     for (const pending of this.pendingToolApprovals.values()) {
@@ -1558,6 +1692,7 @@ export class Process {
       executor: this.executor,
       pid: this.pid,
       liveness: this.getLivenessSnapshot(),
+      providerRuntimeStatus: this.providerRuntimeStatus,
       recapMode: this._recapMode,
       recapAfterSeconds: this._recapAfterSeconds,
       promptSuggestionMode: this._promptSuggestionMode,
@@ -3023,6 +3158,7 @@ export class Process {
     this.clearIdleTimer();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
+    this.clearProviderRuntimeStatus();
 
     // Call the SDK's abort function if available
     if (this.abortFn) {
@@ -3060,6 +3196,7 @@ export class Process {
         this._lastMessageTime = receivedAt;
         this._lastProviderMessageTime = receivedAt;
         this.recordNativeRecap(message, receivedAt);
+        this.observeProviderRuntimeStatus(message, receivedAt);
 
         // Store message in history for replay to late-joining clients.
         // Exclude stream_event messages - they're transient streaming deltas that
@@ -3228,6 +3365,7 @@ export class Process {
         `Process error: ${this._sessionId} - ${err.message}`,
       );
 
+      this.clearProviderRuntimeStatus();
       this.emit({ type: "error", error: err });
 
       // Detect process termination errors - set flag synchronously BEFORE markTerminated
@@ -3324,6 +3462,7 @@ export class Process {
 
   private transitionToIdle(): void {
     this.clearIdleTimer();
+    this.clearProviderRuntimeStatus();
 
     // Promote deferred messages as the same stitched user turn the provider
     // receives, so the live echo and later transcript catch-up agree.
@@ -3686,6 +3825,7 @@ export class Process {
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
+    this.clearProviderRuntimeStatus();
 
     this.emit({ type: "idle-reap" });
 

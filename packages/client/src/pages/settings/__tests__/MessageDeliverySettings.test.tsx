@@ -135,6 +135,19 @@ describe("MessageDeliverySettings", () => {
     });
   });
 
+  it("saves the busy-composer default action immediately", () => {
+    render(<MessageDeliverySettings />);
+
+    fireEvent.change(
+      screen.getByLabelText("appearanceToolbarDefaultActionTitle"),
+      { target: { value: "queue" } },
+    );
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({
+      clientDefaults: { busyComposerDefaultAction: "queue" },
+    });
+  });
+
   it("saves the Project Queue Ctrl+Enter preference immediately", () => {
     render(<MessageDeliverySettings />);
 
@@ -184,6 +197,7 @@ describe("MessageDeliverySettings", () => {
       projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
       composeAnchorsEnabled: true,
       clientDefaults: {
+        busyComposerDefaultAction: "steer",
         steerNowDefault: false,
         patientQueueDefault: false,
         projectQueueCtrlEnterEnabled: true,

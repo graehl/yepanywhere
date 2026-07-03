@@ -30,9 +30,18 @@ type Equality<T> = (left: T, right: T) => boolean;
 export interface SessionDetailStoreStats {
   entryCount: number;
   retainedEntryCount: number;
+  warmCacheEntryCount: number;
   approxBytes: number;
   /** Aggregate with rows shared across entries charged once. */
   dedupedApproxBytes: number;
+  /** Entries held by mounted or lingering session views. */
+  retainedApproxBytes: number;
+  /** Aggregate retained bytes with rows shared across retained entries charged once. */
+  retainedDedupedApproxBytes: number;
+  /** Unretained entries available only as warm route cache. */
+  warmCacheApproxBytes: number;
+  /** Aggregate warm-cache bytes with rows shared across warm entries charged once. */
+  warmCacheDedupedApproxBytes: number;
   entries: SessionDetailStoreEntryStats[];
 }
 
@@ -321,16 +330,24 @@ export class SessionDetailCache {
   }
 
   getStats(): SessionDetailStoreStats {
-    const entries = this.recordEntries().map((entry) => entry.toStats());
+    const recordEntries = this.recordEntries();
+    const retainedEntries = recordEntries.filter(
+      (entry) => entry.retainCount > 0,
+    );
+    const warmCacheEntries = recordEntries.filter(
+      (entry) => entry.retainCount === 0,
+    );
+    const entries = recordEntries.map((entry) => entry.toStats());
     return {
       entryCount: entries.length,
-      retainedEntryCount: entries.filter((entry) => entry.retainCount > 0)
-        .length,
-      approxBytes: entries.reduce(
-        (total, entry) => total + entry.approxBytes,
-        0,
-      ),
-      dedupedApproxBytes: this.dedupedApproxBytes(),
+      retainedEntryCount: retainedEntries.length,
+      warmCacheEntryCount: warmCacheEntries.length,
+      approxBytes: sumApproxBytes(recordEntries),
+      dedupedApproxBytes: this.dedupedApproxBytes(recordEntries),
+      retainedApproxBytes: sumApproxBytes(retainedEntries),
+      retainedDedupedApproxBytes: this.dedupedApproxBytes(retainedEntries),
+      warmCacheApproxBytes: sumApproxBytes(warmCacheEntries),
+      warmCacheDedupedApproxBytes: this.dedupedApproxBytes(warmCacheEntries),
       entries,
     };
   }
@@ -416,10 +433,12 @@ export class SessionDetailCache {
   }
 
   /** Aggregate usage with rows shared across entries charged once. */
-  private dedupedApproxBytes(): number {
+  private dedupedApproxBytes(
+    entries: readonly SessionDetailEntry[] = this.recordEntries(),
+  ): number {
     const seen = new Set<object>();
     let total = 0;
-    for (const entry of this.recordEntries()) {
+    for (const entry of entries) {
       total += entry.estimateBytes({
         measureUncached: false,
         seen,
@@ -457,4 +476,8 @@ export class SessionDetailCache {
   private recordEntries(): SessionDetailEntry[] {
     return Array.from(this.entries.values()).filter((entry) => entry.hasRecord);
   }
+}
+
+function sumApproxBytes(entries: readonly SessionDetailEntry[]): number {
+  return entries.reduce((total, entry) => total + entry.approxBytes, 0);
 }

@@ -94,6 +94,43 @@ describe("SessionDetailStore", () => {
     });
   });
 
+  it("separates retained live bytes from warm cache bytes in stats", () => {
+    const store = createSessionDetailStore();
+    const warmKey = key("warm-session");
+    const liveKey = key("live-session");
+
+    store.writeRouteSnapshot(
+      warmKey,
+      snapshot("warm-session", ["warm-msg"]),
+    );
+    store.writeRouteSnapshot(
+      liveKey,
+      snapshot("live-session", ["live-msg"]),
+    );
+    const release = store.retain(liveKey);
+
+    const stats = store.getStats();
+    const warmEntry = stats.entries.find(
+      (entry) => entry.key === getSessionDetailEntryKey(warmKey),
+    );
+    const liveEntry = stats.entries.find(
+      (entry) => entry.key === getSessionDetailEntryKey(liveKey),
+    );
+
+    expect(stats.entryCount).toBe(2);
+    expect(stats.retainedEntryCount).toBe(1);
+    expect(stats.warmCacheEntryCount).toBe(1);
+    expect(stats.retainedApproxBytes).toBe(liveEntry?.approxBytes);
+    expect(stats.warmCacheApproxBytes).toBe(warmEntry?.approxBytes);
+    expect(stats.approxBytes).toBe(
+      stats.retainedApproxBytes + stats.warmCacheApproxBytes,
+    );
+    expect(stats.retainedDedupedApproxBytes).toBeGreaterThan(0);
+    expect(stats.warmCacheDedupedApproxBytes).toBeGreaterThan(0);
+
+    release();
+  });
+
   it("notifies selector subscribers only when the selected value changes", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");

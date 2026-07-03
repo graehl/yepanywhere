@@ -159,6 +159,7 @@
   "performanceTranscriptCacheMbValue": "{count} MB",
   "performanceTranscriptCacheEquivalentLast": "≈ {count} sessions the size of your last viewed ({size} MB)",
   "performanceTranscriptCacheEquivalentTypical": "≈ {count} typical sessions (~{size} MB each)",
+  "performanceTranscriptCacheCurrentUsage": "Current memory: {warmSize} MB warm cache, {liveSize} MB live sessions",
   "performanceTranscriptCacheTtlTitle": "Transcript Cache Lifetime",
   "performanceTranscriptCacheTtlDescription": "How long an unvisited cached transcript stays in memory before it is freed.",
   "performanceTranscriptCacheTtlHoursValue": "{count} h",

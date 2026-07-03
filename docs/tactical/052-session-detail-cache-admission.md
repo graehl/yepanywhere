@@ -2,9 +2,11 @@
 
 Topic: session-detail-data-layer
 
-Status: Second implementation chunk landed 2026-07-03. Over-budget cache
+Status: Third implementation chunk landed 2026-07-03. Over-budget cache
 admission failures no longer delete a mounted session detail entry, and active
 session-detail replacement now uses a separate API from warm-cache admission.
+Performance diagnostics now report live retained transcript memory separately
+from warm-cache memory.
 
 ## Problem
 
@@ -91,10 +93,11 @@ The first follow-up cleanup makes this boundary explicit:
   reject an oversized snapshot, and unretained stale cache records are still
   cleared on rejection.
 
-Remaining cleanup should consider diagnostics that distinguish "live retained
-bytes" from "warm-cache-admitted bytes" so Performance settings remain
-understandable when a mounted transcript exceeds the configured warm-cache
-budget.
+Performance diagnostics now expose those buckets directly: retained entries are
+reported as live session memory, while unretained entries are reported as warm
+cache memory. The Performance settings cache row uses that split so a mounted
+transcript that exceeds the configured warm-cache budget does not read as warm
+cache occupancy.
 
 ## Status Notes
 
@@ -112,3 +115,7 @@ budget.
   `writeRouteSnapshot`. Store coverage checks that retained active replacement
   succeeds even when the snapshot is larger than the warm-cache budget, and
   that the replacement target cannot evict itself before retain attaches.
+- 2026-07-03: Third implementation chunk added store stats buckets for retained
+  live entries versus unretained warm-cache entries, plus a Performance settings
+  current-memory line that displays warm cache and live session memory
+  separately.

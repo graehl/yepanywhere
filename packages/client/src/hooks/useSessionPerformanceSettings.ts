@@ -32,6 +32,14 @@ export const TRANSCRIPT_CACHE_TTL_HOUR_STOPS = [
  * (see sessionDetail/transcriptCharge.ts). */
 export const TYPICAL_SESSION_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
 
+export interface SessionTranscriptMemoryStats {
+  totalBytes: number;
+  liveRetainedBytes: number;
+  liveRetainedEntryCount: number;
+  warmCacheBytes: number;
+  warmCacheEntryCount: number;
+}
+
 const listeners = new Set<() => void>();
 
 function getStorage(): Storage | null {
@@ -236,6 +244,17 @@ export function getLastSessionTranscriptBytes(): number | null {
     UI_KEYS.sessionLastTranscriptBytes,
   );
   return stored !== null && stored > 0 ? stored : null;
+}
+
+export function getSessionTranscriptMemoryStats(): SessionTranscriptMemoryStats {
+  const stats = defaultSessionDetailStore.getStats();
+  return {
+    totalBytes: stats.dedupedApproxBytes,
+    liveRetainedBytes: stats.retainedDedupedApproxBytes,
+    liveRetainedEntryCount: stats.retainedEntryCount,
+    warmCacheBytes: stats.warmCacheDedupedApproxBytes,
+    warmCacheEntryCount: stats.warmCacheEntryCount,
+  };
 }
 
 // TTL eviction otherwise only runs when something calls into the store,

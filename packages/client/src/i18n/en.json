@@ -1034,6 +1034,7 @@
   "modelSwitchActivating": "Activating…",
   "modelSwitchActivateFailed": "Failed to activate session",
   "modelSwitchCurrent": "Current",
+  "modelSwitchNextSend": "Next message",
   "sessionRestartTitle": "Handoff Session",
   "sessionRestartStart": "Start handoff",
   "sessionRestarting": "Starting handoff...",

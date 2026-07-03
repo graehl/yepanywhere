@@ -13181,19 +13181,6 @@ a.sidebar-nav-item {
   outline-offset: 2px;
 }
 
-/* Provider/model chip floated on the session composer's top-right corner
-   (echoes the header badge next to where the user is typing). */
-.composer-model-float {
-  position: absolute;
-  top: -11px;
-  right: 12px;
-  z-index: 1;
-}
-
-.composer-model-float .provider-badge {
-  background: var(--bg-surface);
-}
-
 /* Interactive model chip in the new-session below-composer toolbar. */
 .composer-model-chip .filter-dropdown-button {
   padding: 2px 4px;

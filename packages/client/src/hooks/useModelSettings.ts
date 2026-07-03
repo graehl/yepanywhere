@@ -541,6 +541,13 @@ export function getThinkingMode(): ThinkingMode {
 }
 
 /**
+ * Get effort level without React state.
+ */
+export function getEffortLevel(): EffortLevel {
+  return loadEffortLevel();
+}
+
+/**
  * Get the "Show thinking" preference (default/on/off) without React state.
  */
 export function getShowThinkingSetting(): ShowThinking {

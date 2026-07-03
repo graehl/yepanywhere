@@ -6,7 +6,9 @@ import type {
 import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import {
+  getEffortLevel,
   getShowThinkingSetting,
+  getThinkingMode,
   useModelSettings,
 } from "../hooks/useModelSettings";
 import { useI18n } from "../i18n";
@@ -31,6 +33,8 @@ interface ModelSwitchModalProps {
   processId?: string;
   sessionId: string;
   currentModel?: string;
+  /** Session provider, for effort labels/tones when no process is live. */
+  sessionProvider?: ProviderName;
   onModelChanged: (next: {
     processId: string;
     model?: string;
@@ -84,6 +88,7 @@ export function ModelSwitchModal({
   processId,
   sessionId,
   currentModel,
+  sessionProvider,
   onModelChanged,
   infoPane,
   initialTab,
@@ -119,6 +124,18 @@ export function ModelSwitchModal({
 
   useEffect(() => {
     if (!processId) {
+      // No live process: the status row shows what the next send will
+      // request. The idle-send path resolves thinking via
+      // getThinkingSetting() (getImplicitComposerThinking in SessionPage),
+      // which reads the same stored mode/effort the composer's thinking
+      // chooser edits while the session is idle.
+      const requestedMode = getThinkingMode();
+      const requestedEffort = getEffortLevel();
+      setProvider(sessionProvider ?? null);
+      setCurrentThinkingMode(requestedMode);
+      setThinkingModeState(requestedMode);
+      setCurrentEffortLevel(requestedEffort);
+      setEffortLevelState(requestedEffort);
       setLoading(false);
       return;
     }
@@ -171,7 +188,7 @@ export function ModelSwitchModal({
     return () => {
       cancelled = true;
     };
-  }, [currentModel, processId, sessionId, t]);
+  }, [currentModel, processId, sessionId, sessionProvider, t]);
 
   const selectedModelInfo = useMemo(
     () => models.find((model) => model.id === selectedModel) ?? null,
@@ -352,7 +369,9 @@ export function ModelSwitchModal({
             <div className="model-switch-status">
               <div className="model-switch-status-row">
                 <span className="model-switch-status-marker">
-                  {t("modelSwitchCurrent")}
+                  {processId
+                    ? t("modelSwitchCurrent")
+                    : t("modelSwitchNextSend")}
                 </span>
                 <span
                   className={`model-switch-indicator-dot tone-${currentIndicatorTone}`}

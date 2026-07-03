@@ -6,11 +6,12 @@ Replace the verbose provider + model text in the composer header badge with
 something that still communicates provider identity at a glance without
 occupying as much horizontal space.
 
-`ProviderBadge` surfaces have grown beyond the session header: the session
-composer's top-right float, the New Session model picker options and its
-below-composer chip, and the floating composer's default-model chip all
-render the same badge, so the compactness constraints here apply to all of
-them.
+`ProviderBadge` surfaces have grown beyond the session header: the New
+Session model picker options and its below-composer chip, and the floating
+composer's default-model chip render the same badge, so the compactness
+constraints here apply to all of them. (A session-composer top-right float
+shipped briefly and was removed as redundant with the header badge —
+2026-07-03.)
 
 ## Current implementation (unicode symbols) — not good enough
 

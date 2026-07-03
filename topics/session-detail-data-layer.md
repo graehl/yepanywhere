@@ -157,8 +157,9 @@ global rerender source. Useful properties:
   events;
 - selector-based subscriptions so metadata changes do not rerender the whole
   transcript and scroll snapshot patches do not notify ordinary subscribers;
-- explicit same-tab retention with TTL, entry count, byte caps, source/auth
-  scoping, diagnostics, and clear APIs;
+- explicit same-tab retention with TTL and byte-budget caps (both
+  user-configurable in Performance settings; no entry-count cap),
+  source/auth scoping, diagnostics, and clear APIs;
 - no hidden `globalThis.__YA_SESSION_ROUTE_SNAPSHOTS__` ownership.
 
 The store can still be memory-only. Memory-only is correct for same-tab warm

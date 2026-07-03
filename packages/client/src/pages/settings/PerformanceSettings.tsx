@@ -1,11 +1,31 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
-import { useSessionPerformanceSettings } from "../../hooks/useSessionPerformanceSettings";
+import {
+  getLastSessionTranscriptBytes,
+  TRANSCRIPT_CACHE_BUDGET_MB_STOPS,
+  TRANSCRIPT_CACHE_TTL_HOUR_STOPS,
+  TYPICAL_SESSION_TRANSCRIPT_BYTES,
+  useSessionPerformanceSettings,
+} from "../../hooks/useSessionPerformanceSettings";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
+
+function nearestStopIndex(stops: readonly number[], value: number): number {
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  stops.forEach((stop, index) => {
+    const distance = Math.abs(stop - value);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
 
 export function PerformanceSettings() {
   const { t } = useI18n();
@@ -15,26 +35,99 @@ export function PerformanceSettings() {
     useSessionLoadingProgress();
   const {
     sessionDomLingerEnabled,
-    sessionTranscriptCacheEnabled,
+    sessionTranscriptCacheBudgetMb,
+    sessionTranscriptCacheTtlHours,
     setSessionDomLingerEnabled,
-    setSessionTranscriptCacheEnabled,
+    setSessionTranscriptCacheBudgetMb,
+    setSessionTranscriptCacheTtlHours,
   } = useSessionPerformanceSettings();
   const { stableToolPreviewRendering, setStableToolPreviewRendering } =
     useStableToolPreviewRendering();
+
+  const [budgetDraftIndex, setBudgetDraftIndex] = useState<number | null>(null);
+  const [ttlDraftIndex, setTtlDraftIndex] = useState<number | null>(null);
+
+  const budgetIndex =
+    budgetDraftIndex ??
+    nearestStopIndex(
+      TRANSCRIPT_CACHE_BUDGET_MB_STOPS,
+      sessionTranscriptCacheBudgetMb,
+    );
+  const ttlIndex =
+    ttlDraftIndex ??
+    nearestStopIndex(
+      TRANSCRIPT_CACHE_TTL_HOUR_STOPS,
+      sessionTranscriptCacheTtlHours,
+    );
+  const budgetMb = TRANSCRIPT_CACHE_BUDGET_MB_STOPS[budgetIndex] ?? 0;
+  const ttlHours = TRANSCRIPT_CACHE_TTL_HOUR_STOPS[ttlIndex] ?? 1;
+
+  const budgetLabel =
+    budgetMb === 0
+      ? t("commonOff")
+      : t("performanceTranscriptCacheMbValue", { count: budgetMb });
+  const ttlLabel =
+    ttlHours < 24
+      ? t("performanceTranscriptCacheTtlHoursValue", { count: ttlHours })
+      : t("performanceTranscriptCacheTtlDaysValue", {
+          count: Math.round(ttlHours / 24),
+        });
+
+  const budgetEquivalent = useMemo(() => {
+    if (budgetMb === 0) {
+      return null;
+    }
+    const lastBytes = getLastSessionTranscriptBytes();
+    const perSession = lastBytes ?? TYPICAL_SESSION_TRANSCRIPT_BYTES;
+    const count = Math.max(
+      1,
+      Math.floor((budgetMb * 1024 * 1024) / perSession),
+    );
+    const size = (perSession / (1024 * 1024)).toFixed(1);
+    return t(
+      lastBytes !== null
+        ? "performanceTranscriptCacheEquivalentLast"
+        : "performanceTranscriptCacheEquivalentTypical",
+      { count, size },
+    );
+  }, [budgetMb, t]);
+
+  const commitBudget = useCallback(
+    (index: number) => {
+      setBudgetDraftIndex(null);
+      const stop = TRANSCRIPT_CACHE_BUDGET_MB_STOPS[index];
+      if (stop !== undefined) {
+        setSessionTranscriptCacheBudgetMb(stop);
+      }
+    },
+    [setSessionTranscriptCacheBudgetMb],
+  );
+  const commitTtl = useCallback(
+    (index: number) => {
+      setTtlDraftIndex(null);
+      const stop = TRANSCRIPT_CACHE_TTL_HOUR_STOPS[index];
+      if (stop !== undefined) {
+        setSessionTranscriptCacheTtlHours(stop);
+      }
+    },
+    [setSessionTranscriptCacheTtlHours],
+  );
 
   const undoState = useMemo(
     () => ({
       streamingEnabled,
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
-      sessionTranscriptCacheEnabled,
+      sessionTranscriptCacheBudgetMb,
+      sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
     }),
     [
       streamingEnabled,
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
-      sessionTranscriptCacheEnabled,
+      sessionTranscriptCacheBudgetMb,
+      sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
     ],
   );
@@ -43,14 +136,20 @@ export function PerformanceSettings() {
       setStreamingEnabled(snapshot.streamingEnabled);
       setSessionLoadingProgressEnabled(snapshot.sessionLoadingProgressEnabled);
       setSessionDomLingerEnabled(snapshot.sessionDomLingerEnabled);
-      setSessionTranscriptCacheEnabled(snapshot.sessionTranscriptCacheEnabled);
+      setSessionTranscriptCacheBudgetMb(
+        snapshot.sessionTranscriptCacheBudgetMb,
+      );
+      setSessionTranscriptCacheTtlHours(
+        snapshot.sessionTranscriptCacheTtlHours,
+      );
       setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
     },
     [
       setStreamingEnabled,
       setSessionLoadingProgressEnabled,
       setSessionDomLingerEnabled,
-      setSessionTranscriptCacheEnabled,
+      setSessionTranscriptCacheBudgetMb,
+      setSessionTranscriptCacheTtlHours,
       setStableToolPreviewRendering,
     ],
   );
@@ -111,22 +210,43 @@ export function PerformanceSettings() {
             <span className="toggle-slider" />
           </label>
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
             <strong>{t("performanceTranscriptCacheTitle")}</strong>
             <p>{t("performanceTranscriptCacheDescription")}</p>
+            {budgetEquivalent ? <p>{budgetEquivalent}</p> : null}
           </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={sessionTranscriptCacheEnabled}
-              onChange={(event) =>
-                setSessionTranscriptCacheEnabled(event.target.checked)
-              }
+          <div className="settings-item-actions">
+            <CommittedRangeInput
+              min={0}
+              max={TRANSCRIPT_CACHE_BUDGET_MB_STOPS.length - 1}
+              step={1}
+              value={budgetIndex}
+              onDraftChange={setBudgetDraftIndex}
+              onCommit={commitBudget}
               aria-label={t("performanceTranscriptCacheTitle")}
             />
-            <span className="toggle-slider" />
-          </label>
+            <span className="settings-input-unit">{budgetLabel}</span>
+          </div>
+        </div>
+        <div className="settings-item settings-item--wide-control">
+          <div className="settings-item-info">
+            <strong>{t("performanceTranscriptCacheTtlTitle")}</strong>
+            <p>{t("performanceTranscriptCacheTtlDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <CommittedRangeInput
+              min={0}
+              max={TRANSCRIPT_CACHE_TTL_HOUR_STOPS.length - 1}
+              step={1}
+              value={ttlIndex}
+              onDraftChange={setTtlDraftIndex}
+              onCommit={commitTtl}
+              disabled={budgetMb === 0}
+              aria-label={t("performanceTranscriptCacheTtlTitle")}
+            />
+            <span className="settings-input-unit">{ttlLabel}</span>
+          </div>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

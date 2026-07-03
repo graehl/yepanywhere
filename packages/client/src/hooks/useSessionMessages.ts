@@ -24,7 +24,10 @@ import {
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
 import { useDeveloperMode } from "./useDeveloperMode";
-import { getSessionTranscriptCacheEnabled } from "./useSessionPerformanceSettings";
+import {
+  getSessionTranscriptCacheEnabled,
+  recordLastSessionTranscriptBytes,
+} from "./useSessionPerformanceSettings";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -777,6 +780,22 @@ export function useSessionMessages(
 
   useEffect(() => {
     return () => {
+      // Feeds the budget slider's "sessions like your last" hint.
+      const recordCurrentEntryBytes = () => {
+        const key = getSessionRouteSnapshotKey({
+          sourceKey,
+          projectId,
+          sessionId,
+          tailTurns,
+          tailFrom,
+        });
+        const bytes = defaultSessionDetailStore
+          .getStats()
+          .entries.find((entry) => entry.key === key)?.approxBytes;
+        if (bytes) {
+          recordLastSessionTranscriptBytes(bytes);
+        }
+      };
       const snapshot = latestSnapshotRef.current;
       if (snapshot && getSessionTranscriptCacheEnabled()) {
         writeSessionLoadCache(
@@ -790,8 +809,10 @@ export function useSessionMessages(
           tailTurns,
           tailFrom,
         );
+        recordCurrentEntryBytes();
         return;
       }
+      recordCurrentEntryBytes();
       defaultSessionDetailStore.deleteEntry({
         sourceKey,
         projectId,

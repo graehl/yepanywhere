@@ -36,8 +36,14 @@ What is already in place:
   exists, returned `messages`, `agentContent`, and tool-use mappings should
   match the store snapshot.
 - Same-tab route snapshot retention now sits behind
-  `defaultSessionDetailStore`, with TTL, max-entry, byte-cap, retain/release,
-  selector subscriptions, and stats.
+  `defaultSessionDetailStore`, with TTL, byte-cap, retain/release, selector
+  subscriptions, and stats. TTL and the byte budget are user-configurable
+  Performance-settings sliders (budget 0 = off, replacing the old boolean
+  toggle, whose stored value still seeds the budget); the entry-count cap
+  is retired in favor of the budget. Row charges are measured per object
+  (memoized by identity, calibrated against real transcripts in
+  `sessionDetail/transcriptCharge.ts`) and rows shared across entries are
+  charged once in aggregate eviction accounting.
 - Public raw setter escape hatches have been removed for tool-use mappings,
   session metadata, agent content, and messages.
 - Narrow selectors are already used for retained scroll, pagination,

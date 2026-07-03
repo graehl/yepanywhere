@@ -130,6 +130,47 @@ they rely only on the fields below.
   `isSubagent`, `orphanedToolUseIds` — documented in
   `AppMessageExtensions`.
 
+## Inline base64 is interchange-only
+
+JSON is the interchange representation, and base64 is how binary survives
+inside it. The API wire format and the persisted jsonl legitimately carry
+images as inline base64 content blocks — JSON has no binary type, and the
+transcript is a replayable log. That legitimacy ends at ingest: past the
+boundary where wire messages become retained client/session state, binary
+payloads belong behind refs/handles (server-served media refs, or client
+`Blob` + object URL), never as inline base64 strings held in memory. A heap-resident base64 string costs ~2.7x
+the raw bytes (base64 overhead x UTF-16), is pinned to the JS heap where a
+`Blob` could be spilled by the browser, and re-streams at full weight to
+remote clients on every fresh transcript load.
+
+Direction: the **server** owns the conversion, not the client. Whatever
+the harness emits with inline base64 — user-pasted screenshots, tool
+results, or assistant-*generated* images — is extracted at the server's
+provider seam; the client receives either binary over the existing
+authenticated channel or a media URL. The URL form carries security
+obligations, not just plumbing:
+
+- same authn/authz as the transcript itself — an unguessable capability
+  URL is not authorization (URLs leak via logs, history, referers, and
+  shared screens);
+- opaque media ids mapped server-side, never client-supplied paths;
+- correct `Content-Type` with sniffing disabled, and script-capable
+  formats (SVG) served neutralized — generated media is untrusted input;
+- must work over both transports: direct HTTP and the relay tunnel,
+  where a side-channel HTTPS fetch would bypass the end-to-end
+  encryption — media on the relay path rides the encrypted channel.
+
+Known debt: today the client `Message` model retains wire-shaped blocks,
+so inline base64 rides through to render and into the session-detail
+transcript cache. The measured retention charges
+([session-detail-data-layer](session-detail-data-layer.md)) count that
+payload at true weight, which contains the damage but does not fix the
+representation. The intended client seam is the session-detail ingest
+boundary once the store-authoritative migration completes, consuming the
+server-served refs above (which also cut transcript transfer to mobile
+clients). When it lands, resume/replay and the offline Zod validation
+paths must reconstitute or tolerate handles.
+
 ## Status
 
 The status half of the contract is

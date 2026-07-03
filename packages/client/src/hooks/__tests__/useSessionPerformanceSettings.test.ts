@@ -4,6 +4,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
+import { getSessionDetailRetentionDefaults } from "../../lib/sessionDetail/sessionDetailStore";
 import {
   readSessionRouteSnapshot,
   resetSessionRouteSnapshotsForTests,
@@ -12,8 +13,12 @@ import {
 } from "../../lib/sessionRouteSnapshots";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
+  getLastSessionTranscriptBytes,
   getSessionDomLingerEnabled,
+  getSessionTranscriptCacheBudgetMb,
   getSessionTranscriptCacheEnabled,
+  getSessionTranscriptCacheTtlHours,
+  recordLastSessionTranscriptBytes,
   useSessionPerformanceSettings,
 } from "../useSessionPerformanceSettings";
 
@@ -72,60 +77,100 @@ describe("useSessionPerformanceSettings", () => {
     resetSessionRouteSnapshotsForTests();
   });
 
-  it("defaults session retention features to disabled", () => {
+  it("defaults to dom-linger off and transcript cache off with a 1h TTL", () => {
     const { result } = renderHook(() => useSessionPerformanceSettings());
 
     expect(result.current.sessionDomLingerEnabled).toBe(false);
+    expect(result.current.sessionTranscriptCacheBudgetMb).toBe(0);
     expect(result.current.sessionTranscriptCacheEnabled).toBe(false);
+    expect(result.current.sessionTranscriptCacheTtlHours).toBe(1);
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
+    expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
+    expect(getSessionTranscriptCacheTtlHours()).toBe(1);
   });
 
-  it("reads stored disabled preferences", () => {
-    localStorage.setItem(UI_KEYS.sessionDomLinger, "false");
+  it("seeds the budget from the legacy boolean toggle", () => {
+    localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
+    expect(getSessionTranscriptCacheBudgetMb()).toBe(24);
+    expect(getSessionTranscriptCacheEnabled()).toBe(true);
+
     localStorage.setItem(UI_KEYS.sessionTranscriptCache, "false");
-
-    const { result } = renderHook(() => useSessionPerformanceSettings());
-
-    expect(result.current.sessionDomLingerEnabled).toBe(false);
-    expect(result.current.sessionTranscriptCacheEnabled).toBe(false);
-    expect(getSessionDomLingerEnabled()).toBe(false);
+    expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
+
+    // An explicit budget wins over the legacy toggle.
+    localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
+    localStorage.setItem(UI_KEYS.sessionTranscriptCacheBudgetMb, "64");
+    expect(getSessionTranscriptCacheBudgetMb()).toBe(64);
   });
 
-  it("persists and publishes updates", () => {
+  it("persists and publishes budget and TTL updates", () => {
     const { result: first } = renderHook(() => useSessionPerformanceSettings());
     const { result: second } = renderHook(() =>
       useSessionPerformanceSettings(),
     );
 
     act(() => {
-      first.current.setSessionDomLingerEnabled(false);
-      first.current.setSessionTranscriptCacheEnabled(false);
+      first.current.setSessionTranscriptCacheBudgetMb(48);
+      first.current.setSessionTranscriptCacheTtlHours(24);
     });
 
-    expect(first.current.sessionDomLingerEnabled).toBe(false);
-    expect(first.current.sessionTranscriptCacheEnabled).toBe(false);
-    expect(second.current.sessionDomLingerEnabled).toBe(false);
-    expect(second.current.sessionTranscriptCacheEnabled).toBe(false);
-    expect(localStorage.getItem(UI_KEYS.sessionDomLinger)).toBe("false");
-    expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("false");
+    expect(first.current.sessionTranscriptCacheBudgetMb).toBe(48);
+    expect(first.current.sessionTranscriptCacheEnabled).toBe(true);
+    expect(first.current.sessionTranscriptCacheTtlHours).toBe(24);
+    expect(second.current.sessionTranscriptCacheBudgetMb).toBe(48);
+    expect(second.current.sessionTranscriptCacheTtlHours).toBe(24);
+    expect(
+      localStorage.getItem(UI_KEYS.sessionTranscriptCacheBudgetMb),
+    ).toBe("48");
+    expect(
+      localStorage.getItem(UI_KEYS.sessionTranscriptCacheTtlHours),
+    ).toBe("24");
+    // Legacy boolean stays coherent for older bundles.
+    expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("true");
   });
 
-  it("clears retained session snapshots when transcript cache is disabled", () => {
+  it("configures store retention from the sliders with no entry cap", () => {
+    const { result } = renderHook(() => useSessionPerformanceSettings());
+
+    act(() => {
+      result.current.setSessionTranscriptCacheBudgetMb(48);
+      result.current.setSessionTranscriptCacheTtlHours(24);
+    });
+
+    const defaults = getSessionDetailRetentionDefaults();
+    expect(defaults.maxEntries).toBe(Number.POSITIVE_INFINITY);
+    expect(defaults.maxBytes).toBe(48 * 1024 * 1024);
+    expect(defaults.ttlMs).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it("clears retained session snapshots when the budget is set to zero", () => {
     const key = {
       sourceKey: SOURCE,
       projectId: PROJECT_ID,
       sessionId: "session-a",
     };
+    const { result } = renderHook(() => useSessionPerformanceSettings());
+    act(() => {
+      result.current.setSessionTranscriptCacheBudgetMb(24);
+    });
     writeSessionRouteSnapshot(key, snapshot());
     expect(readSessionRouteSnapshot(key)).toBeDefined();
 
-    const { result } = renderHook(() => useSessionPerformanceSettings());
     act(() => {
-      result.current.setSessionTranscriptCacheEnabled(false);
+      result.current.setSessionTranscriptCacheBudgetMb(0);
     });
 
     expect(readSessionRouteSnapshot(key)).toBeUndefined();
+    expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("false");
+  });
+
+  it("records and reads the last session transcript size", () => {
+    expect(getLastSessionTranscriptBytes()).toBeNull();
+    recordLastSessionTranscriptBytes(1_500_000);
+    expect(getLastSessionTranscriptBytes()).toBe(1_500_000);
+    recordLastSessionTranscriptBytes(0);
+    expect(getLastSessionTranscriptBytes()).toBe(1_500_000);
   });
 });

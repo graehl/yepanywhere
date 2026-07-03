@@ -3,6 +3,7 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
+import { estimateSessionDetailStateBytes } from "./transcriptCharge";
 import {
   createInitialSessionDetailState,
   reduceSessionDetailState,
@@ -46,6 +47,8 @@ export interface SessionDetailStoreStats {
   entryCount: number;
   retainedEntryCount: number;
   approxBytes: number;
+  /** Aggregate with rows shared across entries charged once. */
+  dedupedApproxBytes: number;
   entries: SessionDetailStoreEntryStats[];
 }
 
@@ -78,23 +81,45 @@ interface SessionDetailStoreEntry {
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 3;
 const DEFAULT_MAX_BYTES = 24 * 1024 * 1024;
-const APPROX_BYTES_PER_MESSAGE = 2048;
-const APPROX_BYTES_PER_AGENT_ENTRY = 1024;
+
+export interface SessionDetailRetentionDefaults {
+  ttlMs: number;
+  maxEntries: number;
+  maxBytes: number;
+}
+
+// Built-in fallbacks apply until user preferences configure them (the
+// performance-settings module does so at load and on change).
+const retentionDefaults: SessionDetailRetentionDefaults = {
+  ttlMs: DEFAULT_TTL_MS,
+  maxEntries: DEFAULT_MAX_ENTRIES,
+  maxBytes: DEFAULT_MAX_BYTES,
+};
+
+export function configureSessionDetailRetention(
+  overrides: Partial<SessionDetailRetentionDefaults>,
+): void {
+  Object.assign(retentionDefaults, overrides);
+}
+
+export function getSessionDetailRetentionDefaults(): SessionDetailRetentionDefaults {
+  return { ...retentionDefaults };
+}
 
 function now(options?: Pick<SessionDetailRetentionOptions, "nowMs">): number {
   return options?.nowMs ?? Date.now();
 }
 
 function ttlMs(options?: SessionDetailRetentionOptions): number {
-  return options?.ttlMs ?? DEFAULT_TTL_MS;
+  return options?.ttlMs ?? retentionDefaults.ttlMs;
 }
 
 function maxEntries(options?: SessionDetailRetentionOptions): number {
-  return options?.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  return options?.maxEntries ?? retentionDefaults.maxEntries;
 }
 
 function maxBytes(options?: SessionDetailRetentionOptions): number {
-  return options?.maxBytes ?? DEFAULT_MAX_BYTES;
+  return options?.maxBytes ?? retentionDefaults.maxBytes;
 }
 
 function cloneScrollSnapshot(
@@ -131,12 +156,14 @@ export function getSessionDetailStoreKey({
   return variant ? `${base}?${variant}` : base;
 }
 
-function estimateStateBytes(state: SessionDetailState): number {
-  return (
-    state.messages.length * APPROX_BYTES_PER_MESSAGE +
-    Object.keys(state.agentContent).length * APPROX_BYTES_PER_AGENT_ENTRY +
-    state.toolUseToAgentEntries.length * APPROX_BYTES_PER_AGENT_ENTRY
-  );
+// Boundary paths (loads, snapshot writes) measure every row; per-action
+// dispatch estimates skip serializing not-yet-measured rows (the growing
+// streaming row) and charge them a calibrated flat fallback instead.
+function estimateStateBytes(
+  state: SessionDetailState,
+  measureUncached = true,
+): number {
+  return estimateSessionDetailStateBytes(state, { measureUncached });
 }
 
 function isEntryCreatingAction(action: SessionDetailAction): boolean {
@@ -284,7 +311,10 @@ export class SessionDetailStore {
     entry.updatedAt = at;
     entry.lastAccessedAt = at;
     entry.expiresAt = at + ttlMs(options);
-    entry.approxBytes = estimateStateBytes(nextState);
+    entry.approxBytes = estimateStateBytes(
+      nextState,
+      isEntryCreatingAction(action),
+    );
 
     if (entry.approxBytes > maxBytes(options) && entry.retainCount === 0) {
       this.entries.delete(key);
@@ -462,6 +492,7 @@ export class SessionDetailStore {
         (total, entry) => total + entry.approxBytes,
         0,
       ),
+      dedupedApproxBytes: this.dedupedApproxBytes(),
       entries,
     };
   }
@@ -526,7 +557,17 @@ export class SessionDetailStore {
       this.notifyKey(victim.key);
     }
 
-    while (this.getStats().approxBytes > maxByteCount) {
+    // The naive per-entry sum is an upper bound on deduped usage, so an
+    // under-budget fast path avoids walking rows on ordinary dispatches.
+    let naiveTotal = 0;
+    for (const entry of this.entries.values()) {
+      naiveTotal += entry.approxBytes;
+    }
+    if (naiveTotal <= maxByteCount) {
+      return;
+    }
+
+    while (this.dedupedApproxBytes() > maxByteCount) {
       const victim = candidates()[0];
       if (!victim) {
         break;
@@ -534,6 +575,19 @@ export class SessionDetailStore {
       this.entries.delete(victim.key);
       this.notifyKey(victim.key);
     }
+  }
+
+  /** Aggregate usage with rows shared across entries charged once. */
+  private dedupedApproxBytes(): number {
+    const seen = new Set<object>();
+    let total = 0;
+    for (const entry of this.entries.values()) {
+      total += estimateSessionDetailStateBytes(entry.state, {
+        measureUncached: false,
+        seen,
+      });
+    }
+    return total;
   }
 
   private notifyKey(key: string): void {

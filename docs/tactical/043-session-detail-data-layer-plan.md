@@ -10,6 +10,11 @@ The store-backed returned-detail cutover audit lives in
 [`043-session-detail-data-layer-toggle-preflight.md`](043-session-detail-data-layer-toggle-preflight.md).
 The render-selector preflight lives in
 [`043-session-detail-render-selector-preflight.md`](043-session-detail-render-selector-preflight.md).
+The current-state audit of the landed detail-store shape lives in
+[`045-session-detail-store-current-state-audit.md`](045-session-detail-store-current-state-audit.md).
+The boundary-refactor tracker for splitting the cache manager from per-entry
+stores lives in
+[`046-session-detail-store-boundary-refactor.md`](046-session-detail-store-boundary-refactor.md).
 
 ## Current Status
 

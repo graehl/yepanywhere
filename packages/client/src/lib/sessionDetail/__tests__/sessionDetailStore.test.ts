@@ -7,8 +7,9 @@ import {
 import type { SessionRouteSnapshot } from "../../sessionRouteSnapshots";
 import {
   createSessionDetailStore,
+  getSessionDetailEntryKey,
   getSessionDetailStoreKey,
-  type SessionDetailStoreKeyInput,
+  type SessionDetailEntryKeyInput,
 } from "../sessionDetailStore";
 
 const SOURCE_A = asClientSummarySourceKey("host:a");
@@ -18,7 +19,7 @@ const PROJECT_ID = toUrlProjectId("/repo/project-a");
 function key(
   sessionId: string,
   sourceKey: ClientSummarySourceKey = SOURCE_A,
-): SessionDetailStoreKeyInput {
+): SessionDetailEntryKeyInput {
   return {
     sourceKey,
     projectId: "project-a",
@@ -70,8 +71,11 @@ describe("SessionDetailStore", () => {
       store.readRouteSnapshot(storeKey, { nowMs: 11 })?.lastMessageId,
     ).toBe("msg-1");
     expect(store.readRouteSnapshot(key("session-a", SOURCE_B))).toBeUndefined();
-    expect(getSessionDetailStoreKey(storeKey)).toBe(
+    expect(getSessionDetailEntryKey(storeKey)).toBe(
       "host%3Aa:project-a:session-a",
+    );
+    expect(getSessionDetailStoreKey(storeKey)).toBe(
+      getSessionDetailEntryKey(storeKey),
     );
 
     const stats = store.getStats();
@@ -178,10 +182,10 @@ describe("SessionDetailStore", () => {
         .readRouteSnapshot(tailFromKey)
         ?.messages.map((message) => message.uuid),
     ).toEqual(["msg-3"]);
-    expect(getSessionDetailStoreKey(tailTurnsKey)).toBe(
+    expect(getSessionDetailEntryKey(tailTurnsKey)).toBe(
       "host%3Aa:project-a:session-a?tailTurns=5",
     );
-    expect(getSessionDetailStoreKey(tailFromKey)).toBe(
+    expect(getSessionDetailEntryKey(tailFromKey)).toBe(
       "host%3Aa:project-a:session-a?tailFrom=msg-2",
     );
 

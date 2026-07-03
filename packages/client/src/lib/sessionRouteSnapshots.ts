@@ -3,9 +3,9 @@ import type { AgentContentMap } from "../hooks/useSessionMessages";
 import type { Message, SessionMetadata } from "../types";
 import {
   defaultSessionDetailStore,
-  getSessionDetailStoreKey,
+  getSessionDetailEntryKey,
+  type SessionDetailEntryKeyInput,
   type SessionDetailRetentionOptions,
-  type SessionDetailStoreKeyInput,
 } from "./sessionDetail/sessionDetailStore";
 
 export interface SessionRouteScrollSnapshot {
@@ -31,7 +31,7 @@ export interface SessionRouteSnapshot {
   scrollSnapshot?: SessionRouteScrollSnapshot;
 }
 
-export type SessionRouteSnapshotKeyInput = SessionDetailStoreKeyInput;
+export type SessionRouteSnapshotKeyInput = SessionDetailEntryKeyInput;
 export interface SessionRouteSnapshotWriteOptions
   extends SessionDetailRetentionOptions {}
 
@@ -42,7 +42,7 @@ export function getSessionRouteSnapshotKey({
   tailTurns,
   tailFrom,
 }: SessionRouteSnapshotKeyInput): string {
-  return getSessionDetailStoreKey({
+  return getSessionDetailEntryKey({
     sourceKey,
     projectId,
     sessionId,

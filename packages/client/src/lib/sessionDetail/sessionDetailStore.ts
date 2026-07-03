@@ -10,13 +10,15 @@ import {
 } from "./transcriptReducer";
 import type { SessionDetailAction, SessionDetailState } from "./types";
 
-export interface SessionDetailStoreKeyInput {
+export interface SessionDetailEntryKeyInput {
   sourceKey: ClientSummarySourceKey;
   projectId: string;
   sessionId: string;
   tailTurns?: number;
   tailFrom?: string;
 }
+
+export type SessionDetailStoreKeyInput = SessionDetailEntryKeyInput;
 
 export interface SessionDetailRetentionOptions {
   nowMs?: number;
@@ -135,13 +137,13 @@ function encodeKeyPart(value: string): string {
   return encodeURIComponent(value);
 }
 
-export function getSessionDetailStoreKey({
+export function getSessionDetailEntryKey({
   sourceKey,
   projectId,
   sessionId,
   tailTurns,
   tailFrom,
-}: SessionDetailStoreKeyInput): string {
+}: SessionDetailEntryKeyInput): string {
   const base = [
     encodeKeyPart(sourceKey),
     encodeKeyPart(projectId),
@@ -154,6 +156,12 @@ export function getSessionDetailStoreKey({
     .filter(Boolean)
     .join("&");
   return variant ? `${base}?${variant}` : base;
+}
+
+export function getSessionDetailStoreKey(
+  input: SessionDetailStoreKeyInput,
+): string {
+  return getSessionDetailEntryKey(input);
 }
 
 // Boundary paths (loads, snapshot writes) measure every row; per-action
@@ -207,11 +215,11 @@ export class SessionDetailStore {
   private listeners = new Map<string, Set<SelectorSubscription>>();
 
   read(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
   ): SessionDetailState | undefined {
     const at = now(options);
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     const entry = this.entries.get(key);
     if (!entry) {
       return undefined;
@@ -224,7 +232,7 @@ export class SessionDetailStore {
   }
 
   readRouteSnapshot(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
   ): SessionRouteSnapshot | undefined {
     const state = this.read(input, options);
@@ -232,7 +240,7 @@ export class SessionDetailStore {
   }
 
   readSelected<T>(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     selector: (state: SessionDetailState) => T,
     options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
   ): T | undefined {
@@ -241,12 +249,12 @@ export class SessionDetailStore {
   }
 
   writeRouteSnapshot(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     snapshot: SessionRouteSnapshot,
     options: SessionDetailRetentionOptions = {},
   ): boolean {
     const at = now(options);
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     this.evictExpired({ nowMs: at });
 
     const state = routeSnapshotToState(snapshot);
@@ -280,12 +288,12 @@ export class SessionDetailStore {
   }
 
   dispatch(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     action: SessionDetailAction,
     options: SessionDetailRetentionOptions = {},
   ): SessionDetailState | undefined {
     const at = now(options);
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     // Only transcript-establishing actions may create an entry. Applying an
     // incremental action to a fabricated empty entry would present a
     // truncated transcript as canonical after eviction, so those actions
@@ -328,14 +336,14 @@ export class SessionDetailStore {
   }
 
   patchScrollSnapshot(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     scrollSnapshot: SessionRouteScrollSnapshot,
     options: Pick<SessionDetailRetentionOptions, "nowMs"> & {
       notify?: boolean;
     } = {},
   ): void {
     const at = now(options);
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     const entry = this.entries.get(key);
     if (!entry || this.deleteIfExpired(entry, at)) {
       return;
@@ -352,12 +360,12 @@ export class SessionDetailStore {
   }
 
   subscribe<T>(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     selector: Selector<T>,
     listener: () => void,
     equality: Equality<T> = Object.is,
   ): () => void {
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     const subscription: SelectorSubscription = {
       selector: selector as Selector<unknown>,
       listener,
@@ -379,7 +387,7 @@ export class SessionDetailStore {
   }
 
   retain(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     options: SessionDetailRetentionOptions = {},
   ): () => void {
     const at = now(options);
@@ -397,11 +405,11 @@ export class SessionDetailStore {
   }
 
   release(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     options: SessionDetailRetentionOptions = {},
   ): void {
     const at = now(options);
-    const entry = this.entries.get(getSessionDetailStoreKey(input));
+    const entry = this.entries.get(getSessionDetailEntryKey(input));
     if (!entry) {
       return;
     }
@@ -431,8 +439,8 @@ export class SessionDetailStore {
     }
   }
 
-  deleteEntry(input: SessionDetailStoreKeyInput): boolean {
-    const key = getSessionDetailStoreKey(input);
+  deleteEntry(input: SessionDetailEntryKeyInput): boolean {
+    const key = getSessionDetailEntryKey(input);
     const deleted = this.entries.delete(key);
     if (deleted) {
       this.notifyKey(key);
@@ -446,11 +454,11 @@ export class SessionDetailStore {
    * consumer restarting its load does not lose eviction protection.
    */
   resetEntryState(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     options: Pick<SessionDetailRetentionOptions, "nowMs" | "ttlMs"> = {},
   ): void {
     const at = now(options);
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     const entry = this.entries.get(key);
     if (!entry) {
       return;
@@ -498,11 +506,11 @@ export class SessionDetailStore {
   }
 
   private ensureEntry(
-    input: SessionDetailStoreKeyInput,
+    input: SessionDetailEntryKeyInput,
     at: number,
     options: SessionDetailRetentionOptions,
   ): SessionDetailStoreEntry {
-    const key = getSessionDetailStoreKey(input);
+    const key = getSessionDetailEntryKey(input);
     const existing = this.entries.get(key);
     if (existing) {
       return existing;

@@ -63,8 +63,8 @@
       "compatibleThroughVersion": "0.142.4"
     },
     "claudeCode": {
-      "compatibleThroughVersion": "2.1.195",
-      "claudeAgentSdkVersion": "0.3.195"
+      "compatibleThroughVersion": "2.1.199",
+      "claudeAgentSdkVersion": "0.3.199"
     }
   },
   "dependencies": {

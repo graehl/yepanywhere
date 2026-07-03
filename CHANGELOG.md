@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pins it from the environment.
 
 ### Changed
+- Upgrade claude-agent-sdk to 0.3.199.
 - **Breaking (secure-by-default):** the project-files HTTP route no longer serves
   arbitrary absolute/`~` paths. Relative in-project paths are unchanged, but
   absolute paths outside projects/uploads/temp are denied until the folder is

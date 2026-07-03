@@ -294,16 +294,34 @@ store, and UI state at the same time.
 3. Detect Claude `system/api_retry` in Process message handling.
 4. Clear status on assistant/result/idle/error/termination paths.
 5. Include `providerRuntimeStatus` in `ProcessInfo`.
-6. Include `providerRuntimeStatus` in session metadata/session detail responses
-   when a live Process owns the session.
-7. Add a websocket/activity event for status changes, or piggyback on an
-   existing state/liveness update if that keeps the contract simpler.
-8. Add client summary store state, reducer, and selector for
+6. [x] Include `providerRuntimeStatus` in session metadata/session detail
+   responses when a live Process owns the session.
+7. [x] Piggyback the status on the existing session-stream `status` and
+   `connected` payloads, and add a global activity event:
+   `provider-runtime-status-changed`.
+8. [x] Add client summary store state, reducer, and selector for
    `providerRuntime.bySessionId`.
-9. Wire REST snapshots and activity events into that store.
-10. Render the status in the session composer/toolbar and Process info modal.
-11. Add focused tests for the reducer, Process update/clear behavior, and UI
-    display selection.
+9. [x] Wire REST snapshots, process snapshots, session-stream payloads, and
+   activity events into that store.
+10. [x] Render the status in the session composer/toolbar and Process info
+    modal.
+11. [x] Add focused tests for the reducer/store, Process update/clear event,
+    session subscription payloads, and toolbar display selection.
+
+Implemented in the second feature slice:
+
+- `Process` emits `provider-runtime-status-change` only when the in-memory
+  status actually changes.
+- Session subscriptions include the runtime status in `connected` and `status`
+  payloads. Status and completion payloads also carry the live YA session id so
+  temp-to-real id transitions write the client store under the canonical key.
+  Global activity subscribers receive
+  `provider-runtime-status-changed`.
+- Session metadata/detail REST responses and process snapshots all feed one
+  client summary-store section keyed by session id.
+- The composer status chip prefers explicit provider retry copy over generic
+  liveness, including compact/mobile floating status mode. The Process info
+  pane shows reason, HTTP status, retry time, attempts, event count, and source.
 
 ## Test Plan
 

@@ -1,6 +1,7 @@
 import type {
   ContextUsage,
   ProviderName,
+  ProviderRuntimeStatus,
   SessionLivenessSnapshot,
   SessionSandboxPolicy,
 } from "@yep-anywhere/shared";
@@ -31,6 +32,7 @@ interface ProcessInfo {
   model?: string;
   executor?: string;
   liveness?: SessionLivenessSnapshot;
+  providerRuntimeStatus?: ProviderRuntimeStatus;
 }
 
 interface ProcessInfoBodyProps {
@@ -40,6 +42,7 @@ interface ProcessInfoBodyProps {
   status: SessionStatus;
   processState: ProcessState;
   sessionLiveness?: SessionLivenessSnapshot | null;
+  providerRuntimeStatus?: ProviderRuntimeStatus;
   contextUsage?: ContextUsage;
   originator?: string;
   cliVersion?: string;
@@ -95,6 +98,32 @@ function formatDuration(startedAt: string): string {
 function formatTime(isoString: string): string {
   const date = new Date(isoString);
   return date.toLocaleString();
+}
+
+function formatMsDuration(ms: number): string {
+  if (ms >= 60_000) {
+    const minutes = Math.round(ms / 60_000);
+    return `${minutes}m`;
+  }
+  return `${Math.round(ms / 1000)}s`;
+}
+
+function formatProviderRuntimeReason(
+  status: Exclude<ProviderRuntimeStatus, null>,
+  t: (key: string) => string,
+): string {
+  switch (status.reason) {
+    case "rate_limit":
+      return t("providerRuntimeReasonRateLimit");
+    case "overloaded":
+      return t("providerRuntimeReasonOverloaded");
+    case "server_error":
+      return t("providerRuntimeReasonServerError");
+    case "network":
+      return t("providerRuntimeReasonNetwork");
+    case "unknown":
+      return t("providerRuntimeReasonUnknown");
+  }
 }
 
 function formatTimeAgo(
@@ -200,6 +229,7 @@ export function ProcessInfoBody({
   status,
   processState,
   sessionLiveness,
+  providerRuntimeStatus: liveProviderRuntimeStatus,
   contextUsage,
   originator,
   cliVersion,
@@ -218,6 +248,9 @@ export function ProcessInfoBody({
   const [error, setError] = useState<string | null>(null);
   const { connected: streamConnected, connectionState } = useActivityBusState();
   const liveness = processInfo?.liveness ?? sessionLiveness ?? null;
+  const providerRuntimeStatus = processInfo
+    ? (processInfo.providerRuntimeStatus ?? null)
+    : (liveProviderRuntimeStatus ?? null);
 
   // Fetch process info when modal opens (if session is owned)
   useEffect(() => {
@@ -343,6 +376,68 @@ export function ProcessInfoBody({
           mono
         />
       </Section>
+
+      {providerRuntimeStatus && (
+        <Section title={t("processInfoSectionProviderRuntime")}>
+          <InfoRow
+            label={t("processInfoLabelRuntimeStatus")}
+            value={t("processInfoRuntimeRetrying")}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeReason")}
+            value={formatProviderRuntimeReason(providerRuntimeStatus, tr)}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeHttpStatus")}
+            value={providerRuntimeStatus.httpStatus}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeRetryAt")}
+            value={
+              providerRuntimeStatus.retryAt
+                ? formatTime(providerRuntimeStatus.retryAt)
+                : null
+            }
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeRetryDelay")}
+            value={
+              providerRuntimeStatus.retryDelayMs !== undefined
+                ? formatMsDuration(providerRuntimeStatus.retryDelayMs)
+                : null
+            }
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeStarted")}
+            value={formatTime(providerRuntimeStatus.startedAt)}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeLastSeen")}
+            value={formatTime(providerRuntimeStatus.lastSeenAt)}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeAttempt")}
+            value={providerRuntimeStatus.attempt}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeMaxRetries")}
+            value={
+              providerRuntimeStatus.maxRetries === "unbounded"
+                ? t("processInfoRuntimeUnbounded")
+                : providerRuntimeStatus.maxRetries
+            }
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeEventCount")}
+            value={providerRuntimeStatus.eventCount}
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeSource")}
+            value={providerRuntimeStatus.source}
+            mono
+          />
+        </Section>
+      )}
 
       {/* Connection Info */}
       <Section title={t("processInfoSectionConnection")}>

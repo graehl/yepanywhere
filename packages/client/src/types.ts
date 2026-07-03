@@ -38,6 +38,7 @@ export type {
   AppConversationMessage,
   AppContentBlock,
   PendingInputType,
+  ProviderRuntimeStatus,
   AgentActivity,
   ContextUsage,
   SessionOwnership,

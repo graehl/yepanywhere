@@ -8,6 +8,7 @@ import type {
   ContextUsage,
   PendingInputType,
   ProjectQueueChangedEvent,
+  ProviderRuntimeStatus,
   PromptSuggestionMode,
   SafeRestartChangedEvent,
   TranscriptDisplayObject,
@@ -96,6 +97,15 @@ export interface ProcessTerminatedEvent {
   processId: string;
   provider: string;
   reason: string;
+  timestamp: string;
+}
+
+/** Event emitted when provider runtime retry/failure status changes. */
+export interface ProviderRuntimeStatusChangedEvent {
+  type: "provider-runtime-status-changed";
+  sessionId: string;
+  projectId: UrlProjectId;
+  providerRuntimeStatus: ProviderRuntimeStatus;
   timestamp: string;
 }
 
@@ -271,6 +281,7 @@ export type BusEvent =
   | SessionSeenEvent
   | ProcessStateEvent
   | ProcessTerminatedEvent
+  | ProviderRuntimeStatusChangedEvent
   | QueueRequestAddedEvent
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent

@@ -2,6 +2,7 @@ import {
   type MarkdownAugment,
   type ContextUsage,
   type ProviderName,
+  type ProviderRuntimeStatus,
   type RecapMode,
   type SessionQueuedMessageSummary,
   type SessionLivenessSnapshot,
@@ -13,6 +14,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
+import {
+  reportProviderRuntimeStatusSnapshot,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
@@ -498,6 +503,7 @@ export function useSession(
     detailedLoadingProgress?: boolean;
   },
 ) {
+  const sourceKey = useClientSummarySourceKey();
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
     initialStatus ?? { owner: "none" },
@@ -509,6 +515,20 @@ export function useSession(
   const [pendingInputRequest, setPendingInputRequest] =
     useState<InputRequest | null>(null);
   const [error, setError] = useState<Error | null>(null);
+
+  const reportProviderRuntimeStatus = useCallback(
+    (
+      targetSessionId: string,
+      providerRuntimeStatus: ProviderRuntimeStatus | undefined,
+    ) => {
+      reportProviderRuntimeStatusSnapshot(sourceKey, {
+        sessionId: targetSessionId,
+        projectId,
+        providerRuntimeStatus: providerRuntimeStatus ?? null,
+      });
+    },
+    [projectId, sourceKey],
+  );
 
   // Actual session ID from server (may differ from URL sessionId during temp→real ID transition)
   // This happens when createSession returns before the SDK sends the real session ID
@@ -1326,6 +1346,10 @@ export function useSession(
 
           // Fetch pending request in background (can't return promise from setState)
           api.getSessionMetadata(projectId, sessionId).then((result) => {
+            reportProviderRuntimeStatus(
+              sessionId,
+              result.providerRuntimeStatus,
+            );
             if (result.pendingInputRequest) {
               setPendingInputRequest(result.pendingInputRequest);
             }
@@ -1336,7 +1360,7 @@ export function useSession(
         });
       }
     },
-    [projectId, sessionId],
+    [projectId, reportProviderRuntimeStatus, sessionId],
   );
 
   // Handle activity bus reconnection (e.g., after phone screen wake).
@@ -1348,6 +1372,7 @@ export function useSession(
     fetchNewMessages();
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
       const metadataProcessState = parseProcessState(data.processState);
       setStatus(data.ownership);
       if (metadataProcessState) {
@@ -1371,7 +1396,7 @@ export function useSession(
     } catch {
       // Silent fail - non-critical
     }
-  }, [projectId, sessionId, fetchNewMessages]);
+  }, [projectId, sessionId, fetchNewMessages, reportProviderRuntimeStatus]);
 
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
@@ -1646,10 +1671,16 @@ export function useSession(
       } else if (data.eventType === "status") {
         const statusData = data as {
           eventType: string;
+          sessionId?: string;
           state: string;
           request?: InputRequest;
           liveness?: SessionLivenessSnapshot;
+          providerRuntimeStatus?: ProviderRuntimeStatus;
         };
+        reportProviderRuntimeStatus(
+          statusData.sessionId ?? statusData.request?.sessionId ?? sessionId,
+          statusData.providerRuntimeStatus,
+        );
         if (statusData.liveness) {
           setSessionLiveness(statusData.liveness);
         }
@@ -1718,7 +1749,12 @@ export function useSession(
           throttledFetch();
         }
       } else if (data.eventType === "complete") {
+        const completeData = data as {
+          eventType: string;
+          sessionId?: string;
+        };
         logSessionUiTrace("stream-complete", { sessionId });
+        reportProviderRuntimeStatus(completeData.sessionId ?? sessionId, null);
         setProcessState("idle");
         setStatus({ owner: "none" });
         setSessionLiveness(null);
@@ -1739,6 +1775,7 @@ export function useSession(
           recapMode?: RecapMode;
           deferredMessages?: DeferredMessage[];
           liveness?: SessionLivenessSnapshot;
+          providerRuntimeStatus?: ProviderRuntimeStatus;
         };
         setSessionLiveness(connectedData.liveness ?? null);
         if (connectedData.recapMode) {
@@ -1751,6 +1788,10 @@ export function useSession(
         // Check both the connected event's sessionId and the request's sessionId
         const serverSessionId =
           connectedData.sessionId ?? connectedData.request?.sessionId;
+        reportProviderRuntimeStatus(
+          serverSessionId ?? sessionId,
+          connectedData.providerRuntimeStatus,
+        );
         logSessionUiTrace("stream-connected", {
           sessionId,
           serverSessionId: serverSessionId ?? null,
@@ -1937,6 +1978,7 @@ export function useSession(
       updateSession,
       fetchNewMessages,
       throttledFetch,
+      reportProviderRuntimeStatus,
       session?.provider,
       session?.model,
     ],
@@ -1948,6 +1990,7 @@ export function useSession(
   const handleStreamError = useCallback(async () => {
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
       setDeferredMessages(data.deferredMessages ?? []);
       const metadataProcessState = parseProcessState(data.processState);
       if (data.ownership.owner !== "self") {
@@ -1974,7 +2017,7 @@ export function useSession(
       setProcessState("idle");
       setPendingInputRequest(null);
     }
-  }, [projectId, sessionId]);
+  }, [projectId, sessionId, reportProviderRuntimeStatus]);
 
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead

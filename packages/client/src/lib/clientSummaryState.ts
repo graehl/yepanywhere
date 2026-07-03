@@ -2,6 +2,7 @@ import type {
   AgentActivity,
   PendingInputType,
   ProviderName,
+  ProviderRuntimeStatus,
   ProjectQueueChangedEvent,
   ProjectQueueDispatchState,
   ProjectQueueItemSummary,
@@ -15,6 +16,7 @@ import type { GlobalSessionItem, InboxItem, InboxResponse } from "../api/client"
 import type { Project, SessionStatus } from "../types";
 import type {
   ProcessStateEvent,
+  ProviderRuntimeStatusChangedEvent,
   SessionCreatedEvent,
   SessionMetadataChangedEvent,
   SessionSeenEvent,
@@ -177,12 +179,24 @@ export interface LocalDecorationState {
   draftObservedAt?: number;
 }
 
+export interface ProviderRuntimeStatusRecord {
+  sessionId: string;
+  projectId?: string;
+  status: Exclude<ProviderRuntimeStatus, null>;
+  observedAt: number;
+}
+
+export interface ProviderRuntimeState {
+  bySessionId: ReadonlyMap<string, ProviderRuntimeStatusRecord>;
+}
+
 export interface ClientSummaryState {
   sessions: SessionCollectionState;
   projects: ProjectCollectionState;
   projectQueues: ProjectQueueCollectionState;
   inbox: InboxCollectionState;
   localDecorations: LocalDecorationState;
+  providerRuntime: ProviderRuntimeState;
 }
 
 export interface GlobalSessionsCollectionSnapshot {
@@ -206,6 +220,12 @@ export interface ProjectQueueGlobalCollectionSnapshot
   extends ProjectQueueListResponse {}
 
 export interface InboxCollectionSnapshot extends InboxResponse {}
+
+export interface ProviderRuntimeStatusSnapshot {
+  sessionId: string;
+  projectId?: string;
+  providerRuntimeStatus?: ProviderRuntimeStatus;
+}
 
 const ALL_PROJECTS_QUERY_KEY = "all-projects";
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
@@ -240,6 +260,9 @@ export function createEmptyClientSummaryState(): ClientSummaryState {
     },
     localDecorations: {
       draftSessionIds: new Set(),
+    },
+    providerRuntime: {
+      bySessionId: new Map(),
     },
   };
 }
@@ -548,11 +571,72 @@ function recoveredSessionQueuesEqual(
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function providerRuntimeStatusEqual(
+  a: ProviderRuntimeStatus,
+  b: ProviderRuntimeStatus,
+): boolean {
+  if (a === b) return true;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function projectQueueProjectStatusesEqual(
   a: ProjectQueueProjectStatus,
   b: ProjectQueueProjectStatus,
 ): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function putProviderRuntimeStatus(
+  state: ClientSummaryState,
+  sessionId: string,
+  projectId: string | undefined,
+  status: ProviderRuntimeStatus,
+  observedAt: number,
+): ClientSummaryState {
+  const existing = state.providerRuntime.bySessionId.get(sessionId);
+  if (existing && observedAt < existing.observedAt) {
+    return state;
+  }
+
+  if (status === null) {
+    if (!existing) {
+      return state;
+    }
+    const bySessionId = new Map(state.providerRuntime.bySessionId);
+    bySessionId.delete(sessionId);
+    return {
+      ...state,
+      providerRuntime: {
+        ...state.providerRuntime,
+        bySessionId,
+      },
+    };
+  }
+
+  if (
+    existing &&
+    observedAt === existing.observedAt &&
+    existing.projectId === projectId &&
+    providerRuntimeStatusEqual(existing.status, status)
+  ) {
+    return state;
+  }
+
+  const bySessionId = new Map(state.providerRuntime.bySessionId);
+  bySessionId.set(sessionId, {
+    sessionId,
+    projectId,
+    status,
+    observedAt,
+  });
+
+  return {
+    ...state,
+    providerRuntime: {
+      ...state.providerRuntime,
+      bySessionId,
+    },
+  };
 }
 
 function putProjectQueueDispatchState(
@@ -1432,6 +1516,37 @@ export function applyDraftSessionIdsSnapshot(
   };
 }
 
+export function applyProviderRuntimeStatusChanged(
+  state: ClientSummaryState,
+  event: ProviderRuntimeStatusChangedEvent,
+  observedAt = Date.now(),
+): ClientSummaryState {
+  return putProviderRuntimeStatus(
+    state,
+    event.sessionId,
+    event.projectId,
+    event.providerRuntimeStatus,
+    observedAt,
+  );
+}
+
+export function applyProviderRuntimeStatusFromSessionSnapshot(
+  state: ClientSummaryState,
+  snapshot: ProviderRuntimeStatusSnapshot,
+  observedAt = Date.now(),
+): ClientSummaryState {
+  if (snapshot.providerRuntimeStatus === undefined) {
+    return state;
+  }
+  return putProviderRuntimeStatus(
+    state,
+    snapshot.sessionId,
+    snapshot.projectId,
+    snapshot.providerRuntimeStatus,
+    observedAt,
+  );
+}
+
 export function applySessionCollectionCreated(
   state: ClientSummaryState,
   event: SessionCreatedEvent,
@@ -1630,6 +1745,16 @@ export function selectSessionCollectionRecord(
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
   return sessionId ? state.sessions.entities.get(sessionId) : undefined;
+}
+
+export function selectProviderRuntimeStatusForSession(
+  state: ClientSummaryState,
+  sessionId: string | null | undefined,
+): ProviderRuntimeStatus {
+  if (!sessionId) {
+    return null;
+  }
+  return state.providerRuntime.bySessionId.get(sessionId)?.status ?? null;
 }
 
 export function selectSessionCollectionQueryState(

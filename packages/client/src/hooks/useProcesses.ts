@@ -13,6 +13,7 @@ import {
 import { createClientQueryKey } from "../lib/clientQueryController";
 import {
   type ClientSummarySourceKey,
+  reportProviderRuntimeStatusSnapshot,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
 import { isRemoteClient } from "../lib/connection";
@@ -20,6 +21,7 @@ import type {
   AgentActivity,
   ContextUsage,
   ProviderName,
+  ProviderRuntimeStatus,
   SessionLivenessSnapshot,
   UrlProjectId,
 } from "../types";
@@ -49,6 +51,8 @@ export interface ProcessInfo {
   contextUsage?: ContextUsage;
   /** Provider/session progress evidence, separate from transport liveness. */
   liveness?: SessionLivenessSnapshot;
+  /** Current provider retry/failure status for the live turn, when available. */
+  providerRuntimeStatus?: ProviderRuntimeStatus;
   /** Browser-away duration before YA asks this process for a recap. */
   recapAfterSeconds?: number;
 }
@@ -109,13 +113,13 @@ function acceptProcessSnapshot(
   sourceKey: ClientSummarySourceKey,
   response: ProcessesResponse,
   requestStartedAt: number,
-): void {
+): boolean {
   const current = processSnapshotsBySource.get(sourceKey);
   if (
     current?.requestStartedAt !== undefined &&
     current.requestStartedAt > requestStartedAt
   ) {
-    return;
+    return false;
   }
 
   processSnapshotsBySource.set(sourceKey, {
@@ -124,6 +128,7 @@ function acceptProcessSnapshot(
     requestStartedAt,
   });
   emitProcessSnapshotChange();
+  return true;
 }
 
 function patchProcessSnapshotTitle(
@@ -197,11 +202,28 @@ export function useProcesses() {
       data: ProcessesResponse,
       context: { sourceKey: ClientSummarySourceKey; requestStartedAt: number },
     ) => {
-      acceptProcessSnapshot(
+      const accepted = acceptProcessSnapshot(
         context.sourceKey,
         data,
         context.requestStartedAt,
       );
+      if (!accepted) {
+        return;
+      }
+      for (const process of [
+        ...data.processes,
+        ...(data.terminatedProcesses ?? []),
+      ]) {
+        reportProviderRuntimeStatusSnapshot(
+          context.sourceKey,
+          {
+            sessionId: process.sessionId,
+            projectId: process.projectId,
+            providerRuntimeStatus: process.providerRuntimeStatus ?? null,
+          },
+          context.requestStartedAt,
+        );
+      }
     },
     [],
   );

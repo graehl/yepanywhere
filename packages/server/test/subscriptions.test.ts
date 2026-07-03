@@ -42,6 +42,19 @@ const MOCK_LIVENESS = {
   deferredQueueDepth: 0,
 };
 
+const MOCK_PROVIDER_RUNTIME_STATUS = {
+  kind: "retrying",
+  provider: "claude",
+  reason: "rate_limit",
+  httpStatus: 429,
+  startedAt: "2026-05-06T00:00:00.000Z",
+  lastSeenAt: "2026-05-06T00:00:00.000Z",
+  retryAt: "2026-05-06T00:01:00.000Z",
+  retryDelayMs: 60_000,
+  eventCount: 1,
+  source: "claude.system.api_retry",
+} as const;
+
 function createMockProcess(overrides?: Partial<Record<string, unknown>>): {
   process: Process;
   fireEvent: (event: ProcessEvent) => Promise<void>;
@@ -71,6 +84,7 @@ function createMockProcess(overrides?: Partial<Record<string, unknown>>): {
     registerLiveDeltaSubscriber: vi.fn(() => vi.fn()),
     getDeferredQueueSummary: vi.fn(() => []),
     getLivenessSnapshot: vi.fn(() => MOCK_LIVENESS),
+    getProviderRuntimeStatus: vi.fn(() => null),
     ...overrides,
   } as unknown as Process;
 
@@ -200,6 +214,7 @@ describe("createSessionSubscription", () => {
   it("emits connected with correct process state", () => {
     const { process } = createMockProcess({
       state: { type: "waiting-input", request: { prompt: "Continue?" } },
+      getProviderRuntimeStatus: vi.fn(() => MOCK_PROVIDER_RUNTIME_STATUS),
     });
     const { emit, events } = collectEmit();
 
@@ -216,7 +231,28 @@ describe("createSessionSubscription", () => {
       provider: "anthropic",
       model: "claude-sonnet-4-5-20250929",
       liveness: MOCK_LIVENESS,
+      providerRuntimeStatus: MOCK_PROVIDER_RUNTIME_STATUS,
       request: { prompt: "Continue?" },
+    });
+  });
+
+  it("emits provider runtime status on status updates", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+
+    createSessionSubscription(process, emit);
+
+    await fireEvent({
+      type: "provider-runtime-status-change",
+      status: MOCK_PROVIDER_RUNTIME_STATUS,
+    } as ProcessEvent);
+
+    const status = events.filter(([type]) => type === "status").at(-1);
+    expect(status?.[1]).toMatchObject({
+      sessionId: "sess-1",
+      state: "in-turn",
+      liveness: MOCK_LIVENESS,
+      providerRuntimeStatus: MOCK_PROVIDER_RUNTIME_STATUS,
     });
   });
 
@@ -277,6 +313,7 @@ describe("createSessionSubscription", () => {
     const status = events.find(([type]) => type === "status");
     expect(status).toBeDefined();
     expect(status?.[1]).toMatchObject({
+      sessionId: "sess-1",
       state: "waiting-input",
       liveness: MOCK_LIVENESS,
       request: { prompt: "Allow?" },
@@ -294,6 +331,7 @@ describe("createSessionSubscription", () => {
     const status = events.find(([type]) => type === "status");
     expect(status).toBeDefined();
     expect(status?.[1]).toMatchObject({
+      sessionId: "sess-1",
       state: "in-turn",
       liveness: MOCK_LIVENESS,
     });
@@ -490,6 +528,9 @@ describe("createSessionSubscription", () => {
     if (!complete) {
       throw new Error("expected complete event");
     }
+    expect((complete[1] as Record<string, unknown>).sessionId).toBe(
+      "sess-1",
+    );
     expect((complete[1] as Record<string, unknown>).timestamp).toBeDefined();
 
     // Events after complete should be ignored

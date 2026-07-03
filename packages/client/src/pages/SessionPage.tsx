@@ -116,6 +116,7 @@ import {
   reportProjectQueueCollectionSnapshot,
   useActiveProjectSessionIds,
   useClientSummarySourceKey,
+  useProviderRuntimeStatusForSession,
 } from "../lib/clientSummaryStore";
 import { activityBus } from "../lib/activityBus";
 import {
@@ -994,6 +995,8 @@ function SessionPageContent({
     streamingMarkdownCallbacks,
     sessionOptions,
   );
+  const providerRuntimeStatus =
+    useProviderRuntimeStatusForSession(actualSessionId);
   const sessionLoadingProgressText =
     sessionLoadingProgressEnabled && sessionLoadingProgressDetailsVisible
       ? getSessionLoadingProgressText(sessionLoadProgress, t)
@@ -5340,6 +5343,13 @@ function SessionPageContent({
               <ThinkingIndicator
                 variant="icon"
                 className="session-header-thinking"
+                label={
+                  providerRuntimeStatus
+                    ? t("toolbarProviderRuntimeAria", {
+                        summary: t("processInfoRuntimeRetrying"),
+                      })
+                    : undefined
+                }
               />
             )}
             {!loading && effectiveProvider && (
@@ -5447,6 +5457,7 @@ function SessionPageContent({
                 status={status}
                 processState={processState}
                 sessionLiveness={sessionLiveness}
+                providerRuntimeStatus={providerRuntimeStatus}
                 contextUsage={session.contextUsage}
                 originator={session.originator}
                 cliVersion={session.cliVersion}
@@ -5822,6 +5833,7 @@ function SessionPageContent({
                     lastActivityAt={activityAt}
                     positionTimestampMs={transcriptPositionTimestampMs}
                     sessionLiveness={sessionLiveness}
+                    providerRuntimeStatus={providerRuntimeStatus}
                     isRunning={status.owner === "self"}
                     isThinking={canStopOwnedProcess}
                     onStop={handleAbort}
@@ -5916,6 +5928,7 @@ function SessionPageContent({
                 lastActivityAt={activityAt}
                 positionTimestampMs={transcriptPositionTimestampMs}
                 sessionLiveness={sessionLiveness}
+                providerRuntimeStatus={providerRuntimeStatus}
                 projectId={projectId}
                 sessionId={sessionId}
                 attachments={mainComposerForAside ? [] : attachments}

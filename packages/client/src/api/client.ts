@@ -31,6 +31,7 @@ import type {
   PromptCacheKeepaliveSettings,
   ProviderInfo,
   ProviderName,
+  ProviderRuntimeStatus,
   RecapMode,
   PublicSessionShareSessionStatusResponse,
   PublicSessionShareViewerActionResponse,
@@ -529,6 +530,7 @@ export const api = {
       messages: Message[];
       ownership: SessionStatus;
       pendingInputRequest?: InputRequest | null;
+      providerRuntimeStatus?: ProviderRuntimeStatus;
       slashCommands?: SlashCommand[] | null;
       deferredMessages?: DeferredQueueMessage[];
       pagination?: PaginationInfo;
@@ -1222,6 +1224,7 @@ export const api = {
         /** YA model id (launch alias) for keying per-model settings. */
         requestedModel?: string;
         liveness?: SessionLivenessSnapshot;
+        providerRuntimeStatus?: ProviderRuntimeStatus;
         recapMode?: RecapMode;
         recapAfterSeconds?: number;
         promptSuggestionMode?: PromptSuggestionMode;

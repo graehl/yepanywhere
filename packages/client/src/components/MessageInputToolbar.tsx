@@ -1,5 +1,6 @@
 import type {
   ModelInfo,
+  ProviderRuntimeStatus,
   ProviderName,
   SessionLivenessSnapshot,
   ShowThinking,
@@ -264,6 +265,8 @@ export interface MessageInputToolbarProps {
   positionTimestampMs?: number | null;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
+  /** Provider-owned retry/failure status for the active turn. */
+  providerRuntimeStatus?: ProviderRuntimeStatus;
   /** Whether the provider exposes a soft-immediate steer lane. */
   showSteerNowMode?: boolean;
   /** Whether steering uses the soft-immediate lane for future sends. */
@@ -316,6 +319,14 @@ export type LivenessTone = "ok" | "warn" | "danger" | "muted";
 export interface LivenessDisplay {
   prefix: string;
   timestampMs: number | null;
+  tone: LivenessTone;
+  title: string;
+}
+
+interface ProviderRuntimeDisplay {
+  label: string;
+  summary: string;
+  retryAtMs: number | null;
   tone: LivenessTone;
   title: string;
 }
@@ -421,6 +432,96 @@ function describeLivenessSummary(
     state: display.prefix,
     age: formatLivenessAge(t, display.timestampMs, nowMs),
   });
+}
+
+function getProviderRuntimeProviderLabel(status: ProviderRuntimeStatus): string {
+  switch (status?.provider) {
+    case "claude":
+      return "Claude";
+    case "codex":
+      return "Codex";
+    case "codex-oss":
+      return "Codex OSS";
+    case "gemini":
+      return "Gemini";
+    case "opencode":
+      return "OpenCode";
+    default:
+      return status?.provider ?? "Provider";
+  }
+}
+
+function getProviderRuntimeReasonLabel(
+  status: Exclude<ProviderRuntimeStatus, null>,
+  t: ToolbarTranslate,
+): string {
+  switch (status.reason) {
+    case "rate_limit":
+      return t("providerRuntimeReasonRateLimit");
+    case "overloaded":
+      return t("providerRuntimeReasonOverloaded");
+    case "server_error":
+      return t("providerRuntimeReasonServerError");
+    case "network":
+      return t("providerRuntimeReasonNetwork");
+    case "unknown":
+      return t("providerRuntimeReasonUnknown");
+  }
+}
+
+function formatRetryClockTime(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function describeProviderRuntimeStatus(
+  status: ProviderRuntimeStatus,
+  t: ToolbarTranslate,
+): ProviderRuntimeDisplay | null {
+  if (!status) {
+    return null;
+  }
+
+  const provider = getProviderRuntimeProviderLabel(status);
+  const label =
+    status.reason === "rate_limit"
+      ? t("toolbarProviderRuntimeRateLimited", { provider })
+      : t("toolbarProviderRuntimeRetrying", { provider });
+  const retryAtMs = parseTimestampMs(status.retryAt);
+  const summary =
+    retryAtMs !== null
+      ? t("toolbarProviderRuntimeRetryAt", {
+          label,
+          time: formatRetryClockTime(retryAtMs),
+        })
+      : label;
+  const title = [
+    summary,
+    t("providerRuntimeReasonTitle", {
+      reason: getProviderRuntimeReasonLabel(status, t),
+    }),
+    status.httpStatus !== undefined
+      ? t("providerRuntimeHttpStatusTitle", { status: status.httpStatus })
+      : null,
+    status.lastSeenAt
+      ? t("providerRuntimeLastSeenTitle", { time: status.lastSeenAt })
+      : null,
+    status.source
+      ? t("providerRuntimeSourceTitle", { source: status.source })
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    label,
+    summary,
+    retryAtMs,
+    tone: status.reason === "server_error" ? "danger" : "warn",
+    title,
+  };
 }
 
 function getBtwTitle(mode: BtwToolbarMode, t: ToolbarTranslate): string {
@@ -565,6 +666,7 @@ interface ToolbarStatusControl {
   showLivenessChip: boolean;
   livenessDisplay: LivenessDisplay | null;
   livenessSummary: string | null;
+  providerRuntimeDisplay?: ProviderRuntimeDisplay | null;
   nowMs: number;
   showLastActivityChip: boolean;
   showLastActivityPrefix: boolean;
@@ -1096,14 +1198,19 @@ export function MessageInputToolbarView({
   const showLivenessChip =
     !statusFloats && (statusControl?.showLivenessChip ?? false);
   const livenessDisplay = statusControl?.livenessDisplay ?? null;
+  const providerRuntimeDisplay = statusControl?.providerRuntimeDisplay ?? null;
   const showPositionChip =
     (statusControl?.showPositionTimestamp ?? false) ||
     (statusFloats && (statusControl?.hasPositionAge ?? false));
   const showLastActivityChip =
     (statusControl?.showLastActivityChip ?? false) ||
     (statusFloats && (statusControl?.hasLastActivityAge ?? false));
+  const showProviderRuntimeChip = !!providerRuntimeDisplay;
   const showToolbarStatus =
-    showLivenessChip || showPositionChip || showLastActivityChip;
+    showProviderRuntimeChip ||
+    showLivenessChip ||
+    showPositionChip ||
+    showLastActivityChip;
   // The floating presentation needs `.status-floats` so the ages anchor over
   // the composer; wide+enabled keeps the inline row's positioning context.
   const applyStatusFloats =
@@ -1156,6 +1263,31 @@ export function MessageInputToolbarView({
             ) : (
               <span className="composer-liveness-time">
                 {livenessDisplay.prefix}
+              </span>
+            )}
+          </div>
+        )}
+        {showProviderRuntimeChip && providerRuntimeDisplay && (
+          <div
+            className={`composer-status-chip composer-provider-runtime-status is-${providerRuntimeDisplay.tone}`}
+            role="status"
+            aria-label={t("toolbarProviderRuntimeAria", {
+              summary: providerRuntimeDisplay.summary,
+            })}
+            title={providerRuntimeDisplay.title}
+          >
+            {providerRuntimeDisplay.retryAtMs !== null ? (
+              <time
+                className="composer-provider-runtime-time"
+                dateTime={new Date(
+                  providerRuntimeDisplay.retryAtMs,
+                ).toISOString()}
+              >
+                {providerRuntimeDisplay.summary}
+              </time>
+            ) : (
+              <span className="composer-provider-runtime-time">
+                {providerRuntimeDisplay.summary}
               </span>
             )}
           </div>
@@ -2271,6 +2403,7 @@ export function MessageInputToolbar({
   lastActivityAt,
   positionTimestampMs,
   sessionLiveness,
+  providerRuntimeStatus,
   showSteerNowMode = false,
   steerNowEnabled = false,
   onToggleSteerNow,
@@ -2452,8 +2585,13 @@ export function MessageInputToolbar({
   const livenessDisplay = sessionLiveness
     ? describeSessionLiveness(sessionLiveness, t)
     : null;
+  const providerRuntimeDisplay = describeProviderRuntimeStatus(
+    providerRuntimeStatus ?? null,
+    t,
+  );
   const showLivenessChip =
     toolbarVisibility.sessionStatus &&
+    !providerRuntimeDisplay &&
     !!livenessDisplay &&
     !(
       showLastActivityAge &&
@@ -2936,6 +3074,7 @@ export function MessageInputToolbar({
         showLivenessChip,
         livenessDisplay,
         livenessSummary,
+        providerRuntimeDisplay,
         nowMs,
         showLastActivityChip,
         showLastActivityPrefix,

@@ -4,6 +4,7 @@ import type {
   ContextUsage,
   PendingInputType,
   ProjectQueueChangedEvent,
+  ProviderRuntimeStatus,
   PromptSuggestionMode,
   SafeRestartChangedEvent,
   SafeRestartState,
@@ -73,6 +74,14 @@ export interface ProcessStateEvent {
   activity: AgentActivity;
   /** Type of pending input (only set when activity is "waiting-input") */
   pendingInputType?: PendingInputType;
+  timestamp: string;
+}
+
+export interface ProviderRuntimeStatusChangedEvent {
+  type: "provider-runtime-status-changed";
+  sessionId: string;
+  projectId: UrlProjectId;
+  providerRuntimeStatus: ProviderRuntimeStatus;
   timestamp: string;
 }
 
@@ -206,6 +215,7 @@ interface ActivityEventMap {
   "session-updated": SessionUpdatedEvent;
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
+  "provider-runtime-status-changed": ProviderRuntimeStatusChangedEvent;
   "project-queue-changed": ProjectQueueChangedEvent;
   "session-queue-persistence-changed": SessionQueuePersistenceChangedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
@@ -464,6 +474,7 @@ class ActivityBus {
       "session-updated",
       "session-seen",
       "process-state-changed",
+      "provider-runtime-status-changed",
       "project-queue-changed",
       "session-queue-persistence-changed",
       "session-metadata-changed",

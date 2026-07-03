@@ -45,7 +45,10 @@ import {
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import { shouldRetainSessionScrollMemory } from "../lib/sessionScrollBehavior";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
-import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  reportProviderRuntimeStatusSnapshot,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
   reportSessionDetailStoreDivergence,
@@ -710,6 +713,14 @@ export function useSessionMessages(
     const notifyLoadComplete = (
       data: Awaited<ReturnType<typeof api.getSession>>,
     ) => {
+      reportProviderRuntimeStatusSnapshot(
+        sourceKey,
+        {
+          sessionId,
+          projectId,
+          providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+        },
+      );
       onLoadComplete?.({
         session: data.session,
         status: data.ownership,
@@ -1134,6 +1145,7 @@ export function useSessionMessages(
     snapshotKey,
     snapshotKeyString,
     warnMissingSelectorAfterDispatch,
+    sourceKey,
   ]);
 
   // Handle streaming content updates (from useStreamingContent)
@@ -1255,6 +1267,11 @@ export function useSessionMessages(
       try {
         const afterMessageId = readStoreLastMessageId();
         const data = await api.getSession(projectId, sessionId, afterMessageId);
+        reportProviderRuntimeStatusSnapshot(sourceKey, {
+          sessionId,
+          projectId,
+          providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+        });
         if (data.messages.length > 0) {
           if (afterMessageId !== undefined && data.pagination) {
             dispatchSessionDetailAction({
@@ -1301,6 +1318,7 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
+    sourceKey,
     updateSession,
   ]);
 
@@ -1328,6 +1346,11 @@ export function useSessionMessages(
         tailCompactions: 2,
         beforeMessageId: currentPagination.truncatedBeforeMessageId,
       });
+      reportProviderRuntimeStatusSnapshot(sourceKey, {
+        sessionId,
+        projectId,
+        providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+      });
       dispatchSessionDetailAction({
         type: "prependOlderMessages",
         messages: data.messages,
@@ -1350,6 +1373,7 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
+    sourceKey,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
@@ -1373,6 +1397,11 @@ export function useSessionMessages(
   const fetchSessionMetadata = useCallback(async () => {
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      reportProviderRuntimeStatusSnapshot(sourceKey, {
+        sessionId,
+        projectId,
+        providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+      });
       const metadataSession = {
         ...data.session,
         ownership: data.ownership,
@@ -1384,7 +1413,7 @@ export function useSessionMessages(
     } catch {
       // Silent fail for metadata updates
     }
-  }, [projectId, sessionId, updateSession]);
+  }, [projectId, sessionId, sourceKey, updateSession]);
   const selectedInitialScrollSnapshot =
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ? (defaultSessionDetailStore.readScrollSnapshot(snapshotKey) ??

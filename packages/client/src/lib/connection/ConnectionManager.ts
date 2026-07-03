@@ -262,6 +262,7 @@ export class ConnectionManager {
    * Called by consumers when their subscription's onOpen fires.
    */
   markConnected(): void {
+    if (!this._started) return;
     this._reconnectAttempts = 0;
     this._reconnectPromise = null;
     this._cancelBackoff();

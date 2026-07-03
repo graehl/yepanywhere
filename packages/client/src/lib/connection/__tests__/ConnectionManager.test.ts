@@ -66,6 +66,15 @@ describe("ConnectionManager", () => {
       expect(cm.state).toBe("disconnected");
     });
 
+    it("ignores markConnected() before start()", () => {
+      const { cm, stateChanges } = setup();
+
+      cm.markConnected();
+
+      expect(cm.state).toBe("disconnected");
+      expect(stateChanges).toEqual([]);
+    });
+
     it("transitions to connected on start()", () => {
       const { cm, reconnectFn, stateChanges } = setup();
       cm.start(reconnectFn);
@@ -130,6 +139,21 @@ describe("ConnectionManager", () => {
   });
 
   describe("exponential backoff", () => {
+    it("out-of-band recovery cancels pending reconnect backoff", () => {
+      const { cm, reconnectFn, timers } = setup();
+      cm.start(reconnectFn);
+      cm.markConnected();
+
+      cm.handleError(new Error("socket closed"));
+      expect(cm.state).toBe("reconnecting");
+
+      cm.markConnected();
+
+      expect(cm.state).toBe("connected");
+      timers.advance(1000);
+      expect(reconnectFn).not.toHaveBeenCalled();
+    });
+
     it("delays increase: 1s, 2s, 4s, 8s, 16s, 30s (capped)", async () => {
       const { cm, reconnectFn, timers } = setup({
         maxAttempts: 7,

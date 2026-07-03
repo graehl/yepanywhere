@@ -302,9 +302,9 @@ content.
 
 - Capture the anchor unconditionally: `atBottom` becomes a restore-policy bit
   rather than capture suppression. The anchor capture and policy split landed
-  on 2026-07-03. Recording order context beside the anchor id remains open:
-  the anchored message's persisted timestamp and the ids of the previous and
-  next rendered rows.
+  on 2026-07-03. Neighbor/timestamp context also landed on 2026-07-03: each
+  captured anchor can include the anchored message's persisted timestamp and
+  the ids of the previous and next rendered rows.
 - Gate `publishScrollSnapshot` on settled content: no snapshot writes between
   warm-hydration start and progressive-render completion. The write gate
   belongs at the session detail store boundary (`patchScrollSnapshot` is
@@ -323,13 +323,12 @@ content.
   the anchor row mounts, then anchor with `topOffset`; or (b) progressive
   hydration completes without it. The pending-anchor wait landed for
   `remember-place` on 2026-07-03, including suppression of the competing
-  initial tail-follow effect while the anchor is still mounting. The
-  neighbor/timestamp fallback remains open: after hydration completes without
-  the anchor, resolve by nearest surviving neighbor — bisect current rows by
-  the recorded timestamp / neighbor ids and anchor to the closest survivor.
-  Raw pixel `scrollTop` should remain only as the final fallback for a
-  transcript with no surviving reference points, and should fire the slice-1
-  diagnostic.
+  initial tail-follow effect while the anchor is still mounting.
+  Neighbor/timestamp fallback also landed on 2026-07-03: after hydration
+  completes without the exact anchor, restore resolves by neighboring rendered
+  row, then nearest timestamped row. Raw pixel `scrollTop` remains only as the
+  final fallback for a transcript with no surviving reference points, and
+  should fire the slice-1 diagnostic once diagnostics land.
 
 **Slice 3 — truth reconciliation.**
 

@@ -63,11 +63,14 @@ provider-like behavior.
   still mounting older rows.
 - [x] Show a "new output below" follow affordance when `remember-place`
   restores a previously-bottom viewport above newer output.
+- [x] Capture anchor neighbor/timestamp context and use exact anchor,
+  neighboring row, nearest timestamped row, then raw `scrollTop` as the restore
+  fallback order.
 
 ## Follow-Up Work
 
 - Expose the policy in settings after the mode names and copy are settled.
-- Enrich captured anchors with neighbor/timestamp context and use raw
-  `scrollTop` only as the final fallback.
+- Add diagnostics for non-exact scroll restores so anchor misses can be counted
+  by reason instead of inferred from user reports.
 - Tighten fast-stream bottom-follow tests around large bursts and async row
   height changes.

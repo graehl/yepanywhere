@@ -21,6 +21,9 @@ export interface SessionRouteScrollSnapshot {
   anchor?: {
     id: string;
     topOffset: number;
+    previousId?: string;
+    nextId?: string;
+    timestampMs?: number;
   };
   updatedAtMs: number;
 }

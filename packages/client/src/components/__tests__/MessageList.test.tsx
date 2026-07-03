@@ -1459,6 +1459,83 @@ describe("MessageList", () => {
     });
   });
 
+  it("captures neighbor and timestamp context with scroll anchors", async () => {
+    const onScrollSnapshotChange = vi.fn();
+    const assistantTimestamp = "2026-04-26T12:01:00.000Z";
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "previous request", "2026-04-26T12:00:00.000Z"),
+          assistantMessage("assistant-1", "visible response", assistantTimestamp),
+          userMessage("user-2", "next request", "2026-04-26T12:02:00.000Z"),
+        ]}
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    container.getBoundingClientRect = () => rectFor(0, 300);
+
+    const user1 = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistant1 = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    const user2 = container.querySelector<HTMLElement>(
+      '[data-render-id="user-2"]',
+    );
+    expect(user1).toBeTruthy();
+    expect(assistant1).toBeTruthy();
+    expect(user2).toBeTruthy();
+    (user1 as HTMLElement).getBoundingClientRect = () => rectFor(-120, 40);
+    (assistant1 as HTMLElement).getBoundingClientRect = () => rectFor(40, 80);
+    (user2 as HTMLElement).getBoundingClientRect = () => rectFor(360, 40);
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    fireEvent.scroll(container);
+
+    await waitFor(() => {
+      expect(onScrollSnapshotChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          atBottom: false,
+          scrollTop: 120,
+          anchor: {
+            id: "assistant-1",
+            topOffset: 40,
+            previousId: "user-1",
+            nextId: "user-2",
+            timestampMs: new Date(assistantTimestamp).getTime(),
+          },
+        }),
+      );
+    });
+  });
+
   it("keeps catching up after Follow while output grows", async () => {
     const composerTarget = document.createElement("div");
     composerTarget.className = "session-input-inner";
@@ -1848,6 +1925,149 @@ describe("MessageList", () => {
     }
 
     expect(scrollContainer.scrollTop).toBe(200);
+  });
+
+  it("falls back to a neighboring row when a remembered anchor is gone", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 100,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 360,
+        width: 360,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === scrollContainer) {
+          return rectFor(0, 500);
+        }
+        if (this.dataset.renderId === "user-1") {
+          return rectFor(160, 40);
+        }
+        return rectFor(0, 40);
+      });
+
+    try {
+      render(
+        <MessageList
+          messages={[
+            userMessage("user-1", "surviving request"),
+            assistantMessage("assistant-1", "surviving response"),
+          ]}
+          initialScrollSnapshot={{
+            atBottom: false,
+            scrollTop: 100,
+            scrollHeight: 1000,
+            clientHeight: 500,
+            anchor: {
+              id: "deleted-row",
+              topOffset: 20,
+              previousId: "user-1",
+            },
+            updatedAtMs: Date.now(),
+          }}
+          scrollBehaviorMode="remember-place"
+        />,
+        { container: scrollContainer },
+      );
+    } finally {
+      rectSpy.mockRestore();
+    }
+
+    expect(scrollContainer.scrollTop).toBe(240);
+  });
+
+  it("falls back to the nearest timestamped row when an anchor is gone", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    const assistantTimestamp = "2026-04-26T12:01:00.000Z";
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 100,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 360,
+        width: 360,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === scrollContainer) {
+          return rectFor(0, 500);
+        }
+        if (this.dataset.renderId === "assistant-1") {
+          return rectFor(260, 80);
+        }
+        return rectFor(0, 40);
+      });
+
+    try {
+      render(
+        <MessageList
+          messages={[
+            userMessage("user-1", "surviving request", "2026-04-26T12:00:00.000Z"),
+            assistantMessage("assistant-1", "surviving response", assistantTimestamp),
+          ]}
+          initialScrollSnapshot={{
+            atBottom: false,
+            scrollTop: 100,
+            scrollHeight: 1000,
+            clientHeight: 500,
+            anchor: {
+              id: "deleted-row",
+              topOffset: 30,
+              timestampMs: new Date(assistantTimestamp).getTime(),
+            },
+            updatedAtMs: Date.now(),
+          }}
+          scrollBehaviorMode="remember-place"
+        />,
+        { container: scrollContainer },
+      );
+    } finally {
+      rectSpy.mockRestore();
+    }
+
+    expect(scrollContainer.scrollTop).toBe(330);
   });
 
   it("waits for a remember-place anchor to mount during progressive restore", () => {

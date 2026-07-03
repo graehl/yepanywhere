@@ -169,6 +169,41 @@ function findRenderRow(
 interface VisibleRenderAnchor {
   id: string;
   topOffset: number;
+  previousId?: string;
+  nextId?: string;
+  timestampMs?: number;
+}
+
+function getRowRenderId(row: HTMLElement | undefined): string | undefined {
+  const id = row?.dataset.renderId;
+  return id && id.length > 0 ? id : undefined;
+}
+
+function getRenderItemsById(
+  items: readonly RenderItem[],
+): Map<string, RenderItem> {
+  const itemsById = new Map<string, RenderItem>();
+  for (const item of items) {
+    itemsById.set(item.id, item);
+  }
+  return itemsById;
+}
+
+function getRenderItemTimestampMs(item: RenderItem | undefined): number | null {
+  return item ? getLatestMessageTimestampMs(item.sourceMessages) : null;
+}
+
+function restoreScrollToAnchorRow(
+  container: HTMLElement,
+  row: HTMLElement,
+  topOffset: number,
+): void {
+  const containerRect = container.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  container.scrollTop = Math.max(
+    0,
+    container.scrollTop + rowRect.top - containerRect.top - topOffset,
+  );
 }
 
 function getVisibleTurnEndTimestampMs(
@@ -269,12 +304,19 @@ function getTranscriptPositionTimestampMs(
 function getFirstVisibleRenderAnchor(
   messageList: HTMLDivElement,
   scrollContainer: HTMLElement,
+  items: readonly RenderItem[] = [],
 ): VisibleRenderAnchor | null {
   const containerRect = scrollContainer.getBoundingClientRect();
-  for (const row of messageList.querySelectorAll<HTMLElement>(
-    "[data-render-id]",
-  )) {
-    const id = row.dataset.renderId;
+  const rows = Array.from(
+    messageList.querySelectorAll<HTMLElement>("[data-render-id]"),
+  );
+  const itemsById = getRenderItemsById(items);
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (!row) {
+      continue;
+    }
+    const id = getRowRenderId(row);
     if (!id) {
       continue;
     }
@@ -283,13 +325,67 @@ function getFirstVisibleRenderAnchor(
       rowRect.bottom > containerRect.top &&
       rowRect.top < containerRect.bottom
     ) {
+      const previousId = getRowRenderId(rows[index - 1]);
+      const nextId = getRowRenderId(rows[index + 1]);
+      const timestampMs = getRenderItemTimestampMs(itemsById.get(id));
       return {
         id,
         topOffset: rowRect.top - containerRect.top,
+        ...(previousId ? { previousId } : {}),
+        ...(nextId ? { nextId } : {}),
+        ...(timestampMs !== null ? { timestampMs } : {}),
       };
     }
   }
   return null;
+}
+
+function findNearestTimestampedRenderRow(
+  messageList: HTMLDivElement,
+  timestampMs: number | undefined,
+  items: readonly RenderItem[],
+): HTMLElement | null {
+  if (timestampMs === undefined) {
+    return null;
+  }
+  const itemsById = getRenderItemsById(items);
+  let best: { row: HTMLElement; distanceMs: number } | null = null;
+
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-render-id]",
+  )) {
+    const id = getRowRenderId(row);
+    const rowTimestampMs = getRenderItemTimestampMs(
+      id ? itemsById.get(id) : undefined,
+    );
+    if (rowTimestampMs === null) {
+      continue;
+    }
+    const distanceMs = Math.abs(rowTimestampMs - timestampMs);
+    if (!best || distanceMs < best.distanceMs) {
+      best = { row, distanceMs };
+    }
+  }
+
+  return best?.row ?? null;
+}
+
+function findFallbackRenderAnchorRow(
+  messageList: HTMLDivElement,
+  anchor: NonNullable<SessionRouteScrollSnapshot["anchor"]>,
+  items: readonly RenderItem[],
+): HTMLElement | null {
+  for (const id of [anchor.previousId, anchor.nextId]) {
+    if (!id) {
+      continue;
+    }
+    const row = findRenderRow(messageList, id);
+    if (row) {
+      return row;
+    }
+  }
+
+  return findNearestTimestampedRenderRow(messageList, anchor.timestampMs, items);
 }
 
 interface UserTurnSearchSession {
@@ -1422,7 +1518,9 @@ export const MessageList = memo(function MessageList({
   const captureScrollSnapshot = useCallback(
     (container: HTMLElement, content: HTMLDivElement) => {
       const atBottom = isAtScrollBottom(container, content);
-      const anchor = getFirstVisibleRenderAnchor(content, container) ?? undefined;
+      const anchor =
+        getFirstVisibleRenderAnchor(content, container, displayRenderItems) ??
+        undefined;
       return {
         atBottom,
         scrollTop: container.scrollTop,
@@ -1432,7 +1530,7 @@ export const MessageList = memo(function MessageList({
         updatedAtMs: Date.now(),
       };
     },
-    [],
+    [displayRenderItems],
   );
 
   const publishScrollSnapshot = useCallback(() => {
@@ -2653,19 +2751,21 @@ export const MessageList = memo(function MessageList({
       if (anchor) {
         const row = findRenderRow(content, anchor.id);
         if (row) {
-          const containerRect = container.getBoundingClientRect();
-          const rowRect = row.getBoundingClientRect();
-          container.scrollTop = Math.max(
-            0,
-            container.scrollTop +
-              rowRect.top -
-              containerRect.top -
-              anchor.topOffset,
-          );
+          restoreScrollToAnchorRow(container, row, anchor.topOffset);
           restored = true;
         } else if (progressiveRevealActive) {
           isProgrammaticScrollRef.current = false;
           return;
+        } else {
+          const fallbackRow = findFallbackRenderAnchorRow(
+            content,
+            anchor,
+            displayRenderItems,
+          );
+          if (fallbackRow) {
+            restoreScrollToAnchorRow(container, fallbackRow, anchor.topOffset);
+            restored = true;
+          }
         }
       }
       if (!restored) {
@@ -2697,6 +2797,7 @@ export const MessageList = memo(function MessageList({
   }, [
     initialScrollSnapshot,
     initialScrollRestoreDecision,
+    displayRenderItems,
     mountedTimelineRowCount,
     publishScrollSnapshot,
     progressiveRevealActive,

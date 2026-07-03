@@ -408,6 +408,7 @@ export function useSessionMessages(
   const agentContentRef = useRef<AgentContentMap>({});
   const toolUseToAgentRef = useRef<Map<string, string>>(new Map());
   const sessionRef = useRef<SessionMetadata | null>(null);
+  const paginationRef = useRef<PaginationInfo | undefined>(undefined);
   const applyMessages = useCallback((next: Message[]) => {
     messagesRef.current = next;
     setMessages(next);
@@ -424,11 +425,14 @@ export function useSessionMessages(
     sessionRef.current = next;
     setSession(next);
   }, []);
+  const applyPagination = useCallback((next: PaginationInfo | undefined) => {
+    paginationRef.current = next;
+    setPagination(next);
+  }, []);
 
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
     cachedLoad?.scrollSnapshot,
   );
-  const latestSnapshotRef = useRef<SessionRouteSnapshot | null>(null);
   const dispatchSessionDetailAction = useCallback(
     (action: SessionDetailAction) => {
       if (action.type === "patchScrollSnapshot") {
@@ -445,6 +449,55 @@ export function useSessionMessages(
     },
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
+
+  const readCurrentStoreRouteSnapshot = useCallback(
+    () =>
+      defaultSessionDetailStore.readRouteSnapshot({
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+      }),
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+  );
+
+  const persistCurrentStoreRouteSnapshot = useCallback(() => {
+    if (!getSessionTranscriptCacheEnabled()) {
+      return false;
+    }
+    const snapshot = readCurrentStoreRouteSnapshot();
+    if (!snapshot) {
+      return false;
+    }
+    writeSessionLoadCache(
+      sourceKey,
+      projectId,
+      sessionId,
+      {
+        ...snapshot,
+        scrollSnapshot: scrollSnapshotRef.current,
+      },
+      tailTurns,
+      tailFrom,
+    );
+    return true;
+  }, [
+    readCurrentStoreRouteSnapshot,
+    sourceKey,
+    projectId,
+    sessionId,
+    tailTurns,
+    tailFrom,
+  ]);
+  const recordCurrentEntryBytes = useCallback(() => {
+    const bytes = defaultSessionDetailStore
+      .getStats()
+      .entries.find((entry) => entry.key === snapshotKeyString)?.approxBytes;
+    if (bytes) {
+      recordLastSessionTranscriptBytes(bytes);
+    }
+  }, [snapshotKeyString]);
   const resetSessionDetailState = useCallback(
     (snapshot?: SessionRouteSnapshot) => {
       if (snapshot) {
@@ -489,22 +542,20 @@ export function useSessionMessages(
       if (!isSessionDetailShadowDiagnosticsEnabled()) {
         return;
       }
-      const snapshot = latestSnapshotRef.current;
-      const liveSession = livePatch.session ?? snapshot?.session ?? null;
+      const liveSession = livePatch.session ?? sessionRef.current;
       const live: SessionDetailRuntimeStateInput = {
-        messages: livePatch.messages ?? snapshot?.messages ?? [],
+        messages: livePatch.messages ?? messagesRef.current,
         session: liveSession,
-        pagination: livePatch.pagination ?? snapshot?.pagination,
-        agentContent: livePatch.agentContent ?? snapshot?.agentContent ?? {},
+        pagination: livePatch.pagination ?? paginationRef.current,
+        agentContent: livePatch.agentContent ?? agentContentRef.current,
         toolUseToAgentEntries:
           livePatch.toolUseToAgentEntries ??
-          snapshot?.toolUseToAgentEntries ??
-          [],
+          Array.from(toolUseToAgentRef.current.entries()),
         lastMessageId: livePatch.lastMessageId ?? lastMessageIdRef.current,
         maxPersistedTimestampMs:
           livePatch.maxPersistedTimestampMs ??
           maxPersistedTimestampMsRef.current,
-        scrollSnapshot: livePatch.scrollSnapshot ?? snapshot?.scrollSnapshot,
+        scrollSnapshot: livePatch.scrollSnapshot ?? scrollSnapshotRef.current,
       };
       const store = defaultSessionDetailStore.readSelected(
         { sourceKey, projectId, sessionId, tailTurns, tailFrom },
@@ -717,59 +768,8 @@ export function useSessionMessages(
   }, [messages]);
 
   useEffect(() => {
-    if (!session) {
-      latestSnapshotRef.current = null;
-      return;
-    }
-    latestSnapshotRef.current = {
-      messages: returnedMessages,
-      session,
-      pagination,
-      agentContent: returnedAgentContent,
-      toolUseToAgentEntries: Array.from(returnedToolUseToAgent.entries()),
-      lastMessageId: lastMessageIdRef.current,
-      maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-      scrollSnapshot: scrollSnapshotRef.current,
-    };
-  }, [
-    returnedAgentContent,
-    returnedMessages,
-    pagination,
-    session,
-    returnedToolUseToAgent,
-  ]);
-
-  useEffect(() => {
     return () => {
-      // Feeds the budget slider's "sessions like your last" hint.
-      const recordCurrentEntryBytes = () => {
-        const key = getSessionRouteSnapshotKey({
-          sourceKey,
-          projectId,
-          sessionId,
-          tailTurns,
-          tailFrom,
-        });
-        const bytes = defaultSessionDetailStore
-          .getStats()
-          .entries.find((entry) => entry.key === key)?.approxBytes;
-        if (bytes) {
-          recordLastSessionTranscriptBytes(bytes);
-        }
-      };
-      const snapshot = latestSnapshotRef.current;
-      if (snapshot && getSessionTranscriptCacheEnabled()) {
-        writeSessionLoadCache(
-          sourceKey,
-          projectId,
-          sessionId,
-          {
-            ...snapshot,
-            scrollSnapshot: scrollSnapshotRef.current,
-          },
-          tailTurns,
-          tailFrom,
-        );
+      if (persistCurrentStoreRouteSnapshot()) {
         recordCurrentEntryBytes();
         return;
       }
@@ -782,7 +782,15 @@ export function useSessionMessages(
         tailFrom,
       });
     };
-  }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
+  }, [
+    persistCurrentStoreRouteSnapshot,
+    sourceKey,
+    projectId,
+    sessionId,
+    tailTurns,
+    tailFrom,
+    recordCurrentEntryBytes,
+  ]);
 
   // Process a stream message event.
   const processStreamMessage = useCallback(
@@ -922,7 +930,7 @@ export function useSessionMessages(
       applyToolUseToAgent(new Map(snapshot.toolUseToAgentEntries));
       applySession(snapshot.session);
       applyMessages(snapshot.messages);
-      setPagination(snapshot.pagination);
+      applyPagination(snapshot.pagination);
     };
 
     const finishWarmHydration = (options: {
@@ -1077,7 +1085,7 @@ export function useSessionMessages(
       providerRef.current = data.session.provider;
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
-      const latestSnapshot = latestSnapshotRef.current;
+      const latestSnapshot = readCurrentStoreRouteSnapshot();
       const baseMessages =
         latestSnapshot && latestSnapshot.messages.length > 0
           ? latestSnapshot.messages
@@ -1160,7 +1168,7 @@ export function useSessionMessages(
       applyAgentContent({});
       applyToolUseToAgent(new Map());
       applySession(null);
-      setPagination(undefined);
+      applyPagination(undefined);
       void (async () => {
         setSessionLoadProgress(
           createSessionLoadProgress("rendering", {
@@ -1198,7 +1206,7 @@ export function useSessionMessages(
       applyAgentContent({});
       applyToolUseToAgent(new Map());
       applySession(null);
-      setPagination(undefined);
+      applyPagination(undefined);
     }
 
     api
@@ -1382,8 +1390,10 @@ export function useSessionMessages(
     reportStoreDivergence,
     applyAgentContent,
     applyMessages,
+    applyPagination,
     applySession,
     applyToolUseToAgent,
+    readCurrentStoreRouteSnapshot,
     readSelectorBackedRuntimeSnapshot,
     warnMissingSelectorAfterDispatch,
   ]);
@@ -1670,7 +1680,7 @@ export function useSessionMessages(
         lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
         maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       });
-      setPagination(selectorBackedPagination ?? data.pagination);
+      applyPagination(selectorBackedPagination ?? data.pagination);
     } catch {
       // Silent fail for loading older messages
     } finally {
@@ -1680,6 +1690,7 @@ export function useSessionMessages(
     projectId,
     sessionId,
     applyMessages,
+    applyPagination,
     readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
@@ -1700,12 +1711,6 @@ export function useSessionMessages(
       });
       if (getSessionTranscriptCacheEnabled()) {
         patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
-      }
-      if (latestSnapshotRef.current) {
-        latestSnapshotRef.current = {
-          ...latestSnapshotRef.current,
-          scrollSnapshot: snapshot,
-        };
       }
       reportStoreDivergence("scroll-snapshot", {
         scrollSnapshot: snapshot,

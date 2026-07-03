@@ -93,8 +93,7 @@ warm-reveal behavior.
 
 The store-backed returned detail path is now the default, with the Development
 settings switch retained as a narrower rollback. The next implementation chunks
-should move `latestSnapshotRef`/route-cache ownership toward direct store reads
-and keep deleting redundant local mirror updates one boundary at a time,
+should keep deleting redundant local mirror updates one boundary at a time,
 capturing any visible regression or meaningful non-scroll store/local
-divergence as a compact reducer or hook fixture. Scroll ownership and `/btw`
-remain out of scope.
+divergence as a compact reducer or hook fixture. Route-cache persistence now
+reads directly from the store; scroll ownership and `/btw` remain out of scope.

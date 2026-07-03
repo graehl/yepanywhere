@@ -797,7 +797,7 @@ function getSessionLoadingProgressText(
 ): string | null {
   switch (progress.stage) {
     case "fetching":
-      return t("sessionLoadingFetching");
+      return null;
     case "loaded":
       return t("sessionLoadingLoadedMessages", {
         count: progress.messageCount ?? 0,

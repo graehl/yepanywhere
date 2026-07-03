@@ -694,7 +694,6 @@
   "pendingToolRiskDiscardBody": " Resuming a transcript whose last step is an unanswered tool call forces the provider to drop or synthesize a result, losing whatever that run was doing.",
   "pendingToolRiskCaveat": "YA cannot tell a program parked at a prompt from one that has exited — both leave the same unfinished tool call on disk — so this is a hedge, not a certainty. The safe move is to check the other program first.",
   "sessionLoading": "Loading session...",
-  "sessionLoadingFetching": "Fetching session...",
   "sessionLoadingLoadedMessages": "Loaded {count} messages.",
   "sessionLoadingPreparingTranscript": "Preparing transcript...",
   "sessionLoadingRenderingTranscript": "Rendering {count} messages...",

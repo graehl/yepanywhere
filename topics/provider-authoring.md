@@ -7,7 +7,10 @@
 
 Topic: provider-authoring
 
-See also: [provider-abstraction](provider-abstraction.md) (when to promote a
+See also: [provider-output-contract](provider-output-contract.md) (the
+normalized-output half of this map: the spec for what a provider's
+normalization must produce), [provider-abstraction](provider-abstraction.md)
+(when to promote a
 provider/model conditional to the `AgentProvider` seam — distinct from *how to
 add a provider*), [stream-persisted-render-parity](stream-persisted-render-parity.md)
 (a contract every provider must satisfy), [provider-state-machine](provider-state-machine.md),

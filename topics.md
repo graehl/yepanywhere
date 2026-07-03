@@ -106,3 +106,6 @@
 - composer-model-visibility - Provider/model identity echoed adjacent to
   composers (New Session chip, floating composer chip; the session-composer
   float was removed as redundant with the header badge).
+- provider-output-contract - Single spec for normalized provider output
+  (message envelope, tool results, status, lineage links); named TS types
+  as the type definition, validation kept off hot paths.

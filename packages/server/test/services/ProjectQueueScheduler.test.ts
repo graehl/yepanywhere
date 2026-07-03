@@ -27,12 +27,15 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitFor(assertion: () => void, timeoutMs = 250): Promise<void> {
+async function waitFor(
+  assertion: () => void | Promise<void>,
+  timeoutMs = 250,
+): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
   while (Date.now() - started < timeoutMs) {
     try {
-      assertion();
+      await assertion();
       return;
     } catch (error) {
       lastError = error;
@@ -406,6 +409,13 @@ describe("ProjectQueueScheduler", () => {
       sessionId: "session-1",
       message: { text: "blocked then retry" },
     });
+    await waitFor(async () => {
+      await expect(scheduler.getProjectStatus(projectId)).resolves.toMatchObject({
+        state: "empty",
+        itemCount: 0,
+        inFlight: false,
+      });
+    }, 500);
   });
 
   it("promoteNow skips the quiet timer but preserves idle blockers", async () => {

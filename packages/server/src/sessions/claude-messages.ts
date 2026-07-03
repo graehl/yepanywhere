@@ -1,8 +1,5 @@
 import type { ClaudeSessionEntry } from "@yep-anywhere/shared";
-import {
-  getLogicalParentUuid,
-  isCompactBoundary,
-} from "@yep-anywhere/shared";
+import { getLogicalParentUuid, isCompactBoundary } from "@yep-anywhere/shared";
 import {
   buildDag,
   collectAllToolResultIds,
@@ -59,7 +56,24 @@ function collectHistoricalQueueEntries(
     ) {
       const nextEntry = pendingEnqueues.shift();
       if (raw.operation === "remove" && nextEntry) {
-        historicalEntries.push(nextEntry);
+        // Stamp when the queued message was delivered into the turn (the
+        // remove op's timestamp). The entry only becomes visible at delivery
+        // while keeping its enqueue-position lineIndex, so incremental
+        // afterMessageId slicing needs this to know the entry is newer than
+        // a mid-turn anchor (see pagination.ts).
+        const deliveredAt =
+          typeof raw.timestamp === "string" ? raw.timestamp : undefined;
+        historicalEntries.push(
+          deliveredAt
+            ? {
+                lineIndex: nextEntry.lineIndex,
+                raw: {
+                  ...nextEntry.raw,
+                  queueDeliveredAt: deliveredAt,
+                } as unknown as ClaudeSessionEntry,
+              }
+            : nextEntry,
+        );
       }
     }
   }
@@ -92,8 +106,10 @@ function getEntryParentUuid(raw: ClaudeSessionEntry): string | undefined {
 }
 
 function isCompactSummaryEntry(raw: ClaudeSessionEntry): boolean {
-  return raw.type === "user" && (raw as { isCompactSummary?: unknown })
-    .isCompactSummary === true;
+  return (
+    raw.type === "user" &&
+    (raw as { isCompactSummary?: unknown }).isCompactSummary === true
+  );
 }
 
 export function collectVisibleClaudeEntries(

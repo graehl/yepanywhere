@@ -71,7 +71,51 @@ export function sliceAfterMessageIdWithMatch(
     return { messages, found: false };
   }
 
-  return { messages: messages.slice(index + 1), found: true };
+  return {
+    messages: [
+      ...collectLateDeliveredQueueEntries(messages, index),
+      ...messages.slice(index + 1),
+    ],
+    found: true,
+  };
+}
+
+/**
+ * Claude queue-operation entries become visible only when delivered into the
+ * turn but keep their enqueue position, which can precede a mid-turn anchor.
+ * A purely positional slice would then never send them to an incrementally
+ * fetching client. Include pre-anchor entries whose delivery
+ * (`queueDeliveredAt`, stamped in claude-messages.ts) postdates the anchor
+ * row; once the client's anchor moves past the delivery moment they stop
+ * matching, and re-sends merge idempotently by id client-side.
+ */
+function collectLateDeliveredQueueEntries(
+  messages: Message[],
+  anchorIndex: number,
+): Message[] {
+  const anchor = messages[anchorIndex];
+  const anchorTimestamp =
+    typeof anchor?.timestamp === "string"
+      ? Date.parse(anchor.timestamp)
+      : Number.NaN;
+  if (!Number.isFinite(anchorTimestamp)) {
+    return [];
+  }
+
+  const late: Message[] = [];
+  for (let i = 0; i < anchorIndex; i += 1) {
+    const message = messages[i];
+    const deliveredAt = (message as { queueDeliveredAt?: unknown })
+      ?.queueDeliveredAt;
+    if (typeof deliveredAt !== "string") {
+      continue;
+    }
+    const deliveredAtMs = Date.parse(deliveredAt);
+    if (Number.isFinite(deliveredAtMs) && deliveredAtMs > anchorTimestamp) {
+      late.push(message as Message);
+    }
+  }
+  return late;
 }
 
 function isCompactBoundary(m: Message): boolean {

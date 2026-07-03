@@ -23,7 +23,8 @@ import { CopyTextButton } from "./ui/CopyTextButton";
 
 /**
  * Faint copy-to-clipboard affordance rendered after a pathname. Copies the
- * raw path (no line suffix) so it pastes cleanly into shells/editors —
+ * project-relative path when the file is under the project (paste-safe at
+ * the repo root), the path verbatim otherwise; no line suffix either way —
  * drag-selecting the text of a clickable link is fiddly. Click must not
  * bubble: path links live inside tool rows whose row click toggles expansion.
  */
@@ -218,7 +219,7 @@ export const FilePathLink = memo(function FilePathLink({
           <span className="file-path-link-line">{visibleSuffix}</span>
         )}
       </a>
-      {showCopyButton && <FilePathCopyButton filePath={filePath} />}
+      {showCopyButton && <FilePathCopyButton filePath={viewerFilePath} />}
       {showModal && (
         <FileViewerModal
           projectId={projectId}

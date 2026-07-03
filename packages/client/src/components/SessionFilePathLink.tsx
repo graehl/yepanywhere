@@ -1,5 +1,5 @@
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
-import { makeDisplayPath } from "../lib/text";
+import { getProjectRelativePath, makeDisplayPath } from "../lib/text";
 import { FilePathCopyButton, FilePathLink } from "./FilePathLink";
 import type { FileViewerMode } from "./FileViewer";
 import { FilePathDisplay } from "./ui/FilePathDisplay";
@@ -42,7 +42,16 @@ export function SessionFilePathLink({
   return (
     <>
       <FilePathDisplay displayPath={resolvedDisplayPath} />
-      {showCopyButton && <FilePathCopyButton filePath={filePath} />}
+      {showCopyButton && (
+        <FilePathCopyButton
+          filePath={
+            // Relative when under the project; verbatim otherwise. Not the
+            // display path, which may be a caller label or ~-shortened.
+            getProjectRelativePath(filePath, sessionMetadata?.projectPath) ??
+            filePath
+          }
+        />
+      )}
     </>
   );
 }

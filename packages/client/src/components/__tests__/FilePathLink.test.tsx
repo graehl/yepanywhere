@@ -121,7 +121,7 @@ describe("FilePathLink", () => {
     );
   });
 
-  it("renders a copy-path button that copies the raw path without bubbling", async () => {
+  it("renders a copy-path button that copies the path without bubbling", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     const containerClick = vi.fn();
@@ -145,6 +145,44 @@ describe("FilePathLink", () => {
 
     expect(writeText).toHaveBeenCalledWith("docs/guide.md");
     expect(containerClick).not.toHaveBeenCalled();
+  });
+
+  it("copies absolute paths under the project as project-relative", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const projectId = toUrlProjectId("/local/graehl/yepanywhere");
+
+    render(
+      <FilePathLink
+        projectId={projectId}
+        filePath="/local/graehl/yepanywhere/ui-report/README.md"
+        displayText="ui-report/README.md"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith("ui-report/README.md");
+  });
+
+  it("copies paths outside the project verbatim", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const projectId = toUrlProjectId("/local/graehl/yepanywhere");
+
+    render(
+      <FilePathLink
+        projectId={projectId}
+        filePath="/home/graehl/.claude/CLAUDE.md"
+        displayText="CLAUDE.md"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith("/home/graehl/.claude/CLAUDE.md");
   });
 
   it("omits the copy button when showCopyButton is false", () => {

@@ -70,6 +70,10 @@ What is already in place:
   recompute legacy fallback data after dispatch. They read the store-selected
   result and only fall back to the current local mirror if the retained store
   entry is unexpectedly missing.
+- Those store-selected adapter paths now keep hook refs current but skip the
+  redundant React state writes while Store-Backed Session Detail is enabled.
+  When the Development switch is off, the same paths still write the local
+  mirrors so rollback mode keeps behaving like the old hook-local return path.
 - Store-selected `messages`, `agentContent`, and tool-use mappings are now the
   default returned hook data after initial hydration has reached the same reveal
   point as the local mirror. The Development settings switch remains as a
@@ -234,9 +238,11 @@ Next likely slice:
   Ordinary stream, placeholder, mapping, catch-up, and older-page recompute
   fallbacks have already been cut down to store-selected reads, and
   warm/initial reveal now shares one selected-runtime-snapshot helper. Route
-  cache persistence now reads back from the store. The next slices should
-  target redundant local mirror state updates and any diagnostics that still
-  mostly compare store-selected data to itself.
+  cache persistence now reads back from the store. Store-selected adapter paths
+  now avoid redundant React state writes while the default store-backed return
+  path is enabled. The next slices should target the remaining local mirror
+  state itself: reveal/reset scaffolding, rollback behavior, and any
+  diagnostics that still mostly compare store-selected data to itself.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -271,6 +277,9 @@ Dogfood switch:
 - Keep local mirrors only where they still support loading reveal, fallback,
   diagnostics for independently owned fields, or the Development settings
   rollback.
+- With the switch enabled, ordinary post-dispatch store-selected paths update
+  refs but do not set local mirror state. If the switch is flipped off during a
+  mounted session, the hook hydrates local mirror state from those refs.
 - Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks
@@ -280,9 +289,10 @@ Dogfood switch:
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot, but the hook still computes warm merge
   candidates for pagination reconciliation and fallback diagnostics.
-- The local mirror states still receive setState calls after store dispatches.
-  With store-backed return enabled, those writes mostly support the rollback
-  path and a few diagnostics; they are now the main cost to delete.
+- The local mirror states still exist for reveal/reset fallback and rollback
+  mode. With store-backed return enabled, ordinary post-dispatch paths keep
+  refs current without local setState, but the state variables remain a
+  structural cost until rollback semantics are retired or further narrowed.
 - The rollback switch mainly protects reveal timing, subscription behavior,
   object identity, and remaining locally owned refs. It should not be treated
   as an independent rollback for reducer data semantics on normal mounted

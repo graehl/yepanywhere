@@ -398,12 +398,14 @@ export function useSessionMessages(
     undefined,
   );
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const storeBackedMessagesEnabledRef = useRef(storeBackedMessagesEnabled);
+  storeBackedMessagesEnabledRef.current = storeBackedMessagesEnabled;
 
   // State updaters must stay pure (React may replay them mid-render), so
   // store dispatches and divergence reports cannot live inside setState
-  // callbacks. Instead these refs mirror the last written value, next values
-  // are computed eagerly from them in event context, and every write goes
-  // through the apply* helpers so ref and state never diverge.
+  // callbacks. The refs track the latest mirror values for event-time work;
+  // apply* writes refs and React state, while mirrorStoreSelected* can skip
+  // React state when the returned data already comes from the store.
   const messagesRef = useRef<Message[]>([]);
   const agentContentRef = useRef<AgentContentMap>({});
   const toolUseToAgentRef = useRef<Map<string, string>>(new Map());
@@ -429,6 +431,30 @@ export function useSessionMessages(
     paginationRef.current = next;
     setPagination(next);
   }, []);
+  const mirrorStoreSelectedMessages = useCallback((next: Message[]) => {
+    messagesRef.current = next;
+    if (!storeBackedMessagesEnabledRef.current) {
+      setMessages(next);
+    }
+  }, []);
+  const mirrorStoreSelectedAgentContent = useCallback(
+    (next: AgentContentMap) => {
+      agentContentRef.current = next;
+      if (!storeBackedMessagesEnabledRef.current) {
+        setAgentContent(next);
+      }
+    },
+    [],
+  );
+  const mirrorStoreSelectedToolUseToAgent = useCallback(
+    (next: Map<string, string>) => {
+      toolUseToAgentRef.current = next;
+      if (!storeBackedMessagesEnabledRef.current) {
+        setToolUseToAgent(next);
+      }
+    },
+    [],
+  );
 
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
     cachedLoad?.scrollSnapshot,
@@ -730,6 +756,20 @@ export function useSessionMessages(
         : toolUseToAgent,
     [storeBackedDetailState, toolUseToAgent],
   );
+  const previousStoreBackedMessagesEnabledRef = useRef(
+    storeBackedMessagesEnabled,
+  );
+  useEffect(() => {
+    const wasEnabled = previousStoreBackedMessagesEnabledRef.current;
+    previousStoreBackedMessagesEnabledRef.current =
+      storeBackedMessagesEnabled;
+    if (!wasEnabled || storeBackedMessagesEnabled) {
+      return;
+    }
+    setMessages(messagesRef.current);
+    setAgentContent(agentContentRef.current);
+    setToolUseToAgent(new Map(toolUseToAgentRef.current));
+  }, [storeBackedMessagesEnabled]);
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -804,14 +844,14 @@ export function useSessionMessages(
         streamingEnabled,
       });
       const nextMessages = readMessagesAfterDispatch("stream-message");
-      applyMessages(nextMessages);
+      mirrorStoreSelectedMessages(nextMessages);
       reportStoreDivergence("stream-message", {
         messages: nextMessages,
       });
     },
     [
-      applyMessages,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedMessages,
       readMessagesAfterDispatch,
       reportStoreDivergence,
     ],
@@ -828,14 +868,14 @@ export function useSessionMessages(
         streamingEnabled,
       });
       const next = readAgentContentAfterDispatch("stream-subagent-message");
-      applyAgentContent(next);
+      mirrorStoreSelectedAgentContent(next);
       reportStoreDivergence("stream-subagent-message", {
         agentContent: next,
       });
     },
     [
-      applyAgentContent,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
       reportStoreDivergence,
     ],
@@ -1412,7 +1452,7 @@ export function useSessionMessages(
 
       if (agentId) {
         const next = readAgentContentAfterDispatch("streaming-placeholder");
-        applyAgentContent(next);
+        mirrorStoreSelectedAgentContent(next);
         reportStoreDivergence("streaming-placeholder", {
           agentContent: next,
         });
@@ -1420,15 +1460,15 @@ export function useSessionMessages(
       }
 
       const next = readMessagesAfterDispatch("streaming-placeholder");
-      applyMessages(next);
+      mirrorStoreSelectedMessages(next);
       reportStoreDivergence("streaming-placeholder", {
         messages: next,
       });
     },
     [
-      applyAgentContent,
-      applyMessages,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedAgentContent,
+      mirrorStoreSelectedMessages,
       readAgentContentAfterDispatch,
       readMessagesAfterDispatch,
       reportStoreDivergence,
@@ -1472,14 +1512,14 @@ export function useSessionMessages(
         agentId,
       });
       const next = readToolUseToAgentAfterDispatch("tool-use-agent-map");
-      applyToolUseToAgent(next);
+      mirrorStoreSelectedToolUseToAgent(next);
       reportStoreDivergence("tool-use-agent-map", {
         toolUseToAgentEntries: Array.from(next.entries()),
       });
     },
     [
-      applyToolUseToAgent,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedToolUseToAgent,
       readToolUseToAgentAfterDispatch,
       reportStoreDivergence,
     ],
@@ -1493,14 +1533,14 @@ export function useSessionMessages(
         content,
       });
       const next = readAgentContentAfterDispatch("loaded-agent-content");
-      applyAgentContent(next);
+      mirrorStoreSelectedAgentContent(next);
       reportStoreDivergence("loaded-agent-content", {
         agentContent: next,
       });
     },
     [
-      applyAgentContent,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
       reportStoreDivergence,
     ],
@@ -1514,14 +1554,14 @@ export function useSessionMessages(
         contextUsage,
       });
       const next = readAgentContentAfterDispatch("agent-context-usage");
-      applyAgentContent(next);
+      mirrorStoreSelectedAgentContent(next);
       reportStoreDivergence("agent-context-usage", {
         agentContent: next,
       });
     },
     [
-      applyAgentContent,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
       reportStoreDivergence,
     ],
@@ -1536,14 +1576,14 @@ export function useSessionMessages(
       const next = readAgentContentAfterDispatch(
         "agent-streaming-placeholder-cleanup",
       );
-      applyAgentContent(next);
+      mirrorStoreSelectedAgentContent(next);
       reportStoreDivergence("agent-streaming-placeholder-cleanup", {
         agentContent: next,
       });
     },
     [
-      applyAgentContent,
       dispatchSessionDetailAction,
+      mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
       reportStoreDivergence,
     ],
@@ -1552,13 +1592,13 @@ export function useSessionMessages(
   const clearStreamingPlaceholders = useCallback(() => {
     dispatchSessionDetailAction({ type: "clearStreamingPlaceholders" });
     const next = readMessagesAfterDispatch("streaming-placeholder-cleanup");
-    applyMessages(next);
+    mirrorStoreSelectedMessages(next);
     reportStoreDivergence("streaming-placeholder-cleanup", {
       messages: next,
     });
   }, [
-    applyMessages,
     dispatchSessionDetailAction,
+    mirrorStoreSelectedMessages,
     readMessagesAfterDispatch,
     reportStoreDivergence,
   ]);
@@ -1590,7 +1630,7 @@ export function useSessionMessages(
           if (lastJsonlId) {
             lastMessageIdRef.current = lastJsonlId;
           }
-          applyMessages(nextMessages);
+          mirrorStoreSelectedMessages(nextMessages);
           reportStoreDivergence("catchup", {
             messages: nextMessages,
             session: data.session,
@@ -1619,9 +1659,9 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    applyMessages,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
+    mirrorStoreSelectedMessages,
     readMessagesAfterDispatch,
     reportStoreDivergence,
     updateSession,
@@ -1672,7 +1712,7 @@ export function useSessionMessages(
       if (lastJsonlId) {
         lastMessageIdRef.current = lastJsonlId;
       }
-      applyMessages(nextMessages);
+      mirrorStoreSelectedMessages(nextMessages);
       reportStoreDivergence("older-page", {
         messages: nextMessages,
         session: data.session,
@@ -1689,11 +1729,11 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    applyMessages,
     applyPagination,
     readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
+    mirrorStoreSelectedMessages,
     readSelectorBackedMessages,
     readMessagesAfterDispatch,
     sourceKey,

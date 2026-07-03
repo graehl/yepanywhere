@@ -256,6 +256,10 @@ export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
   | { type: "state-change"; state: ProcessState }
   | { type: "liveness-update" }
+  | {
+      type: "provider-runtime-status-change";
+      status: ProviderRuntimeStatus;
+    }
   | { type: "mode-change"; mode: PermissionMode; version: number }
   | { type: "session-id-changed"; oldSessionId: string; newSessionId: string }
   | {

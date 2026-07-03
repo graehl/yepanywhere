@@ -6,6 +6,7 @@ import {
   type PermissionRules,
   type PromptSuggestionMode,
   type ProviderName,
+  type ProviderRuntimeStatus,
   type RecapMode,
   type SessionLivenessProbeStatus,
   type SessionLivenessSnapshot,
@@ -42,6 +43,7 @@ import type {
   EventBus,
   ProcessStateEvent,
   ProcessTerminatedEvent,
+  ProviderRuntimeStatusChangedEvent,
   SessionAbortedEvent,
   SessionCreatedEvent,
   SessionStatusEvent,
@@ -3562,6 +3564,12 @@ export class Supervisor {
           process.provider,
           event.reason,
         );
+      } else if (event.type === "provider-runtime-status-change") {
+        this.emitProviderRuntimeStatusChange(
+          process.sessionId,
+          process.projectId,
+          event.status,
+        );
       }
     });
   }
@@ -3870,6 +3878,23 @@ export class Supervisor {
       processId,
       provider,
       reason,
+      timestamp: new Date().toISOString(),
+    };
+    this.eventBus.emit(event);
+  }
+
+  private emitProviderRuntimeStatusChange(
+    sessionId: string,
+    projectId: UrlProjectId,
+    providerRuntimeStatus: ProviderRuntimeStatus,
+  ): void {
+    if (!this.eventBus) return;
+
+    const event: ProviderRuntimeStatusChangedEvent = {
+      type: "provider-runtime-status-changed",
+      sessionId,
+      projectId,
+      providerRuntimeStatus,
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);

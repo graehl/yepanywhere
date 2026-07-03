@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type {
+  ProviderRuntimeStatus,
   ProjectQueueItemSummary,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -52,6 +53,7 @@ import {
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
+  reportProviderRuntimeStatusSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
   resetClientSummaryStoreForTests,
@@ -64,6 +66,7 @@ import {
   useInboxCountsByProject,
   useInboxResponseSnapshot,
   useProjectQueuedSessionIds,
+  useProviderRuntimeStatusForSession,
   useRecentSessionRecords,
   useSessionCollectionRecord,
   useStarredSessionRecords,
@@ -73,6 +76,18 @@ import { saveSessionDraft } from "../sessionDraftStorage";
 const PROJECT_ID = "project-1" as UrlProjectId;
 const RECENT = "2026-06-27T11:00:00.000Z";
 const SOURCE_KEY = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
+const RUNTIME_STATUS: Exclude<ProviderRuntimeStatus, null> = {
+  kind: "retrying",
+  provider: "claude",
+  reason: "rate_limit",
+  httpStatus: 429,
+  startedAt: RECENT,
+  lastSeenAt: RECENT,
+  retryAt: "2026-06-27T12:00:00.000Z",
+  retryDelayMs: 3_600_000,
+  eventCount: 1,
+  source: "claude.system.api_retry",
+};
 
 function globalSession(
   id: string,
@@ -142,18 +157,48 @@ afterEach(() => {
 describe("clientSummaryStore", () => {
   it("subscribes to activityBus once while hooks are mounted", () => {
     const first = renderHook(() => useRecentSessionRecords());
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(7);
-    expect(mockActivityBus.listenerCount()).toBe(7);
+    expect(mockActivityBus.on).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.listenerCount()).toBe(8);
 
     const second = renderHook(() => useSessionCollectionRecord("session-1"));
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(7);
-    expect(mockActivityBus.listenerCount()).toBe(7);
+    expect(mockActivityBus.on).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.listenerCount()).toBe(8);
 
     first.unmount();
-    expect(mockActivityBus.listenerCount()).toBe(7);
+    expect(mockActivityBus.listenerCount()).toBe(8);
 
     second.unmount();
     expect(mockActivityBus.listenerCount()).toBe(0);
+  });
+
+  it("stores provider runtime snapshots and clears from activity events", () => {
+    const status = renderHook(() =>
+      useProviderRuntimeStatusForSession("session-1"),
+    );
+
+    expect(status.result.current).toBe(null);
+
+    act(() => {
+      reportProviderRuntimeStatusSnapshot(SOURCE_KEY, {
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: RUNTIME_STATUS,
+      });
+    });
+
+    expect(status.result.current).toEqual(RUNTIME_STATUS);
+
+    act(() => {
+      mockActivityBus.emit("provider-runtime-status-changed", {
+        type: "provider-runtime-status-changed",
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: null,
+        timestamp: "2026-06-27T12:00:00.000Z",
+      });
+    });
+
+    expect(status.result.current).toBe(null);
   });
 
   it("reports snapshots and applies metadata events to projections", () => {

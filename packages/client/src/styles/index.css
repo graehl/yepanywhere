@@ -5093,6 +5093,14 @@ a.sidebar-nav-item {
   color: color-mix(in srgb, var(--warning-color) 74%, var(--text-primary));
 }
 
+.composer-provider-runtime-status.is-warn {
+  color: color-mix(in srgb, var(--warning-color) 82%, var(--text-primary));
+}
+
+.composer-provider-runtime-status.is-danger {
+  color: color-mix(in srgb, var(--error-color) 82%, var(--text-primary));
+}
+
 .composer-liveness-status.is-danger {
   color: color-mix(in srgb, var(--error-color) 76%, var(--text-primary));
 }
@@ -12454,6 +12462,16 @@ a.sidebar-nav-item {
   .composer-liveness-status.is-danger {
     border-color: color-mix(in srgb, var(--error-color) 30%, transparent);
     color: color-mix(in srgb, var(--error-color) 82%, var(--text-primary));
+  }
+
+  .composer-provider-runtime-status.is-warn {
+    border-color: color-mix(in srgb, var(--warning-color) 34%, transparent);
+    color: color-mix(in srgb, var(--warning-color) 86%, var(--text-primary));
+  }
+
+  .composer-provider-runtime-status.is-danger {
+    border-color: color-mix(in srgb, var(--error-color) 34%, transparent);
+    color: color-mix(in srgb, var(--error-color) 86%, var(--text-primary));
   }
 
   .composer-liveness-status.is-muted {

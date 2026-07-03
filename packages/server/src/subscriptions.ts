@@ -200,8 +200,10 @@ export function createSessionSubscription(
 
         case "state-change":
           emit("status", {
+            sessionId: process.sessionId,
             state: event.state.type,
             liveness: process.getLivenessSnapshot(),
+            providerRuntimeStatus: process.getProviderRuntimeStatus(),
             ...(event.state.type === "waiting-input"
               ? { request: event.state.request }
               : {}),
@@ -211,8 +213,24 @@ export function createSessionSubscription(
         case "liveness-update": {
           const currentState = process.state;
           emit("status", {
+            sessionId: process.sessionId,
             state: currentState.type,
             liveness: process.getLivenessSnapshot(),
+            providerRuntimeStatus: process.getProviderRuntimeStatus(),
+            ...(currentState.type === "waiting-input"
+              ? { request: currentState.request }
+              : {}),
+          });
+          break;
+        }
+
+        case "provider-runtime-status-change": {
+          const currentState = process.state;
+          emit("status", {
+            sessionId: process.sessionId,
+            state: currentState.type,
+            liveness: process.getLivenessSnapshot(),
+            providerRuntimeStatus: event.status,
             ...(currentState.type === "waiting-input"
               ? { request: currentState.request }
               : {}),
@@ -250,7 +268,10 @@ export function createSessionSubscription(
           if (augmenter) {
             await augmenter.flush();
           }
-          emit("complete", { timestamp: new Date().toISOString() });
+          emit("complete", {
+            sessionId: process.sessionId,
+            timestamp: new Date().toISOString(),
+          });
           completed = true;
           clearInterval(heartbeatInterval);
           break;
@@ -274,6 +295,7 @@ export function createSessionSubscription(
     provider: process.provider,
     model: process.resolvedModel,
     liveness: process.getLivenessSnapshot(),
+    providerRuntimeStatus: process.getProviderRuntimeStatus(),
     ...(currentState.type === "waiting-input"
       ? { request: currentState.request }
       : {}),

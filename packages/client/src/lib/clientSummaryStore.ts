@@ -8,6 +8,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import {
   activityBus,
   type ProcessStateEvent,
+  type ProviderRuntimeStatusChangedEvent,
   type SessionCreatedEvent,
   type SessionMetadataChangedEvent,
   type SessionSeenEvent,
@@ -19,6 +20,8 @@ import {
   applyGlobalSessionsCollectionSnapshot,
   applyInboxCollectionSnapshot,
   applyProjectCollectionSnapshot,
+  applyProviderRuntimeStatusChanged,
+  applyProviderRuntimeStatusFromSessionSnapshot,
   applyProjectsCollectionSnapshot,
   applyProjectQueueCollectionChanged,
   applyProjectQueueCollectionSnapshot,
@@ -40,6 +43,7 @@ import {
   selectInboxResponse,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
+  selectProviderRuntimeStatusForSession,
   selectProjectQueuedSessionIds,
   selectProjectQueueDispatchState,
   selectProjectQueueSidebarCount,
@@ -61,6 +65,7 @@ import {
   type ProjectQueueCollectionSnapshot,
   type ProjectQueueGlobalCollectionSnapshot,
   type ProjectsCollectionSnapshot,
+  type ProviderRuntimeStatusSnapshot,
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
   type SessionCollectionQueryState,
@@ -262,6 +267,15 @@ function reduceProjectQueueChanged(
   );
 }
 
+function reduceProviderRuntimeStatusChanged(
+  sourceKey: ClientSummarySourceKey,
+  event: ProviderRuntimeStatusChangedEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
+    applyProviderRuntimeStatusChanged(current, event),
+  );
+}
+
 function startActivityBusSubscription(sourceKey: ClientSummarySourceKey): void {
   if (activityBusUnsubscribers) {
     if (activityBusSubscriptionSourceKey === sourceKey) {
@@ -273,6 +287,9 @@ function startActivityBusSubscription(sourceKey: ClientSummarySourceKey): void {
   activityBusUnsubscribers = [
     activityBus.on("process-state-changed", (event) =>
       reduceProcessStateChanged(sourceKey, event),
+    ),
+    activityBus.on("provider-runtime-status-changed", (event) =>
+      reduceProviderRuntimeStatusChanged(sourceKey, event),
     ),
     activityBus.on("session-status-changed", (event) =>
       reduceSessionStatusChanged(sourceKey, event),
@@ -343,6 +360,16 @@ export function reportDraftSessionIdsSnapshot(
 ): void {
   updateSourceSnapshot(sourceKey, (current) =>
     applyDraftSessionIdsSnapshot(current, draftSessionIds, observedAt),
+  );
+}
+
+export function reportProviderRuntimeStatusSnapshot(
+  sourceKey: ClientSummarySourceKey,
+  input: ProviderRuntimeStatusSnapshot,
+  observedAt = Date.now(),
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
+    applyProviderRuntimeStatusFromSessionSnapshot(current, input, observedAt),
   );
 }
 
@@ -552,6 +579,16 @@ export function useSessionCollectionRecord(
   const store = useCurrentClientSummaryStore();
   return useStore(store, (state) =>
     selectSessionCollectionRecord(state, sessionId),
+  );
+}
+
+export function useProviderRuntimeStatusForSession(
+  sessionId: string | null | undefined,
+) {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, (state) =>
+    selectProviderRuntimeStatusForSession(state, sessionId),
   );
 }
 

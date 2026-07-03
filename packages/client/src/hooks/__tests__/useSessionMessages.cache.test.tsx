@@ -1579,7 +1579,10 @@ describe("useSessionMessages cache", () => {
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "store-only-msg", "msg-2"]);
     expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
-    expect(second.result.current.pagination?.totalMessageCount).toBe(1);
+    expect(second.result.current.pagination).toMatchObject({
+      totalMessageCount: 3,
+      returnedMessageCount: 3,
+    });
   });
 
   it("does not reuse warm cached messages across summary sources", async () => {
@@ -1886,7 +1889,7 @@ describe("useSessionMessages cache", () => {
     expect(readStoreMessageIds()).toEqual(["msg-1"]);
   });
 
-  it("keeps store-backed warm full-window data coherent when refresh returns a compacted tail", async () => {
+  it("replaces a warm full window when an after-cursor refresh returns a compacted tail", async () => {
     enableSessionTranscriptCache();
 
     apiMocks.getSession.mockResolvedValueOnce({
@@ -1989,20 +1992,14 @@ describe("useSessionMessages cache", () => {
 
     expect(
       second.result.current.messages.map((message) => message.uuid),
-    ).toEqual(["older-msg", "tail-msg-1", "tail-msg-2"]);
-    expect(readStoreMessageIds()).toEqual([
-      "older-msg",
-      "tail-msg-1",
-      "tail-msg-2",
-    ]);
+    ).toEqual(["tail-msg-1", "tail-msg-2"]);
+    expect(readStoreMessageIds()).toEqual(["tail-msg-1", "tail-msg-2"]);
     expect(second.result.current.pagination).toMatchObject({
-      hasOlderMessages: false,
+      hasOlderMessages: true,
       totalMessageCount: 3,
-      returnedMessageCount: 3,
+      returnedMessageCount: 2,
+      truncatedBeforeMessageId: "tail-msg-1",
     });
-    expect(
-      second.result.current.pagination?.truncatedBeforeMessageId,
-    ).toBeUndefined();
   });
 
   it("uses selector-backed pagination when loading older messages", async () => {
@@ -2087,8 +2084,32 @@ describe("useSessionMessages cache", () => {
           sessionId: "sess-1",
         },
         {
-          type: "applyCatchupMessages",
-          messages: [],
+          type: "replaceTailWindow",
+          session: {
+            id: "sess-1",
+            projectId: "proj-1" as SessionMetadata["projectId"],
+            provider: "claude",
+            title: "Session",
+            fullTitle: "Session",
+            createdAt: "2026-05-04T00:00:00.000Z",
+            updatedAt: "2026-05-04T00:00:30.000Z",
+            messageCount: 2,
+            ownership: { owner: "self", processId: "pid-1" },
+          },
+          messages: [
+            {
+              uuid: "msg-1",
+              type: "user",
+              timestamp: "2026-05-04T00:00:00.000Z",
+              message: { role: "user", content: "hello" },
+            },
+            {
+              uuid: "store-only-msg",
+              type: "assistant",
+              timestamp: "2026-05-04T00:00:30.000Z",
+              message: { role: "assistant", content: "store update" },
+            },
+          ],
           pagination: {
             hasOlderMessages: true,
             truncatedBeforeMessageId: "store-cursor",

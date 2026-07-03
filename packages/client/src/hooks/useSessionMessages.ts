@@ -45,7 +45,10 @@ import {
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import { shouldRetainSessionScrollMemory } from "../lib/sessionScrollBehavior";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
-import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  reportProviderRuntimeStatusSnapshot,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
   reportSessionDetailStoreDivergence,
@@ -704,11 +707,20 @@ export function useSessionMessages(
     let pendingWarmData: Awaited<ReturnType<typeof api.getSession>> | null =
       null;
     let pendingWarmError: Error | null = null;
+    let initialAfterMessageId: string | undefined;
     const warmLoad = readSessionLoadCache(snapshotKey);
 
     const notifyLoadComplete = (
       data: Awaited<ReturnType<typeof api.getSession>>,
     ) => {
+      reportProviderRuntimeStatusSnapshot(
+        sourceKey,
+        {
+          sessionId,
+          projectId,
+          providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+        },
+      );
       onLoadComplete?.({
         session: data.session,
         status: data.ownership,
@@ -820,6 +832,74 @@ export function useSessionMessages(
       return reveal;
     };
 
+    const applyWarmRefreshAction = (
+      data: Awaited<ReturnType<typeof api.getSession>>,
+      latestSnapshot?: Pick<SessionRouteSnapshot, "messages">,
+    ): {
+      messageCount: number;
+      pagination?: PaginationInfo;
+      sourceMessageCount: number;
+    } => {
+      if (!warmLoad) {
+        return {
+          messageCount: data.messages.length,
+          pagination: data.pagination,
+          sourceMessageCount: data.messages.length,
+        };
+      }
+
+      if (initialAfterMessageId === undefined) {
+        dispatchSessionDetailAction({
+          type: "loadPersistedTranscript",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        });
+        return {
+          messageCount: data.messages.length,
+          pagination: data.pagination,
+          sourceMessageCount: data.messages.length,
+        };
+      }
+
+      if (data.pagination) {
+        dispatchSessionDetailAction({
+          type: "replaceTailWindow",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        });
+        return {
+          messageCount: data.messages.length,
+          pagination: data.pagination,
+          sourceMessageCount: data.messages.length,
+        };
+      }
+
+      const warmRefresh = latestSnapshot
+        ? prepareWarmRefreshAfterHydration({
+            warmLoad,
+            latestSnapshot,
+            refreshMessages: data.messages,
+            refreshSession: data.session,
+          })
+        : prepareWarmRefreshBeforeHydration({
+            warmLoad,
+            refreshMessages: data.messages,
+            refreshSession: data.session,
+          });
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
+        session: data.session,
+        messages: data.messages,
+      });
+      return {
+        messageCount: warmRefresh.mergedMessages.length,
+        pagination: readSelectorBackedRuntimeSnapshot()?.pagination,
+        sourceMessageCount: warmRefresh.taggedMessages.length,
+      };
+    };
+
     const applyWarmDataBeforeHydration = (
       data: Awaited<ReturnType<typeof api.getSession>>,
     ) => {
@@ -843,28 +923,17 @@ export function useSessionMessages(
           pagination: data.pagination,
         }),
       );
-      const warmRefresh = prepareWarmRefreshBeforeHydration({
-        warmLoad,
-        refreshMessages: data.messages,
-        refreshSession: data.session,
-        refreshPagination: data.pagination,
-      });
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        session: data.session,
-        messages: data.messages,
-        pagination: warmRefresh.pagination,
-      });
+      const applied = applyWarmRefreshAction(data);
       setSessionLoadProgress(
         createSessionLoadProgressForWindow("rendering", {
-          messageCount: warmRefresh.mergedMessages.length,
-          pagination: warmRefresh.pagination,
+          messageCount: applied.messageCount,
+          pagination: applied.pagination,
         }),
       );
       const reveal = finishWarmHydration({
         loadedSession: data.session,
-        loadedPagination: warmRefresh.pagination,
-        sourceMessageCount: warmRefresh.taggedMessages.length,
+        loadedPagination: applied.pagination,
+        sourceMessageCount: applied.sourceMessageCount,
         provider: data.session.provider,
         diagnosticBoundary: "warm-catchup-before-hydration",
       });
@@ -885,24 +954,12 @@ export function useSessionMessages(
         appliedAfterSnapshotHydration: true,
       });
       const latestSnapshot = readCurrentStoreRouteSnapshot();
-      const warmRefresh = prepareWarmRefreshAfterHydration({
-        warmLoad,
-        latestSnapshot,
-        refreshMessages: data.messages,
-        refreshSession: data.session,
-        refreshPagination: data.pagination,
-      });
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        session: data.session,
-        messages: data.messages,
-        pagination: warmRefresh.pagination,
-      });
+      const applied = applyWarmRefreshAction(data, latestSnapshot);
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
         {
           session: data.session,
-          pagination: warmRefresh.pagination,
+          pagination: applied.pagination,
           lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
         },
@@ -974,7 +1031,7 @@ export function useSessionMessages(
       setLoading(true);
     }
 
-    const initialAfterMessageId = readStoreLastMessageId();
+    initialAfterMessageId = readStoreLastMessageId();
     api
       .getSession(projectId, sessionId, initialAfterMessageId, {
         tailCompactions: 2,
@@ -1088,6 +1145,7 @@ export function useSessionMessages(
     snapshotKey,
     snapshotKeyString,
     warnMissingSelectorAfterDispatch,
+    sourceKey,
   ]);
 
   // Handle streaming content updates (from useStreamingContent)
@@ -1207,17 +1265,28 @@ export function useSessionMessages(
 
     const request = (async () => {
       try {
-        const data = await api.getSession(
-          projectId,
+        const afterMessageId = readStoreLastMessageId();
+        const data = await api.getSession(projectId, sessionId, afterMessageId);
+        reportProviderRuntimeStatusSnapshot(sourceKey, {
           sessionId,
-          readStoreLastMessageId(),
-        );
+          projectId,
+          providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+        });
         if (data.messages.length > 0) {
-          dispatchSessionDetailAction({
-            type: "applyCatchupMessages",
-            messages: data.messages,
-            session: data.session,
-          });
+          if (afterMessageId !== undefined && data.pagination) {
+            dispatchSessionDetailAction({
+              type: "replaceTailWindow",
+              messages: data.messages,
+              session: data.session,
+              pagination: data.pagination,
+            });
+          } else {
+            dispatchSessionDetailAction({
+              type: "applyCatchupMessages",
+              messages: data.messages,
+              session: data.session,
+            });
+          }
           const nextMessages = readMessagesAfterDispatch("catchup");
           reportStoreDivergence("catchup", {
             messages: nextMessages,
@@ -1249,6 +1318,7 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
+    sourceKey,
     updateSession,
   ]);
 
@@ -1276,6 +1346,11 @@ export function useSessionMessages(
         tailCompactions: 2,
         beforeMessageId: currentPagination.truncatedBeforeMessageId,
       });
+      reportProviderRuntimeStatusSnapshot(sourceKey, {
+        sessionId,
+        projectId,
+        providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+      });
       dispatchSessionDetailAction({
         type: "prependOlderMessages",
         messages: data.messages,
@@ -1298,6 +1373,7 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
+    sourceKey,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
@@ -1321,6 +1397,11 @@ export function useSessionMessages(
   const fetchSessionMetadata = useCallback(async () => {
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      reportProviderRuntimeStatusSnapshot(sourceKey, {
+        sessionId,
+        projectId,
+        providerRuntimeStatus: data.providerRuntimeStatus ?? null,
+      });
       const metadataSession = {
         ...data.session,
         ownership: data.ownership,
@@ -1332,7 +1413,7 @@ export function useSessionMessages(
     } catch {
       // Silent fail for metadata updates
     }
-  }, [projectId, sessionId, updateSession]);
+  }, [projectId, sessionId, sourceKey, updateSession]);
   const selectedInitialScrollSnapshot =
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ? (defaultSessionDetailStore.readScrollSnapshot(snapshotKey) ??

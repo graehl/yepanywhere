@@ -5,7 +5,6 @@ import type { SessionRouteSnapshot } from "../../sessionRouteSnapshots";
 import {
   prepareWarmRefreshAfterHydration,
   prepareWarmRefreshBeforeHydration,
-  reconcileWarmRefreshPagination,
 } from "../warmRefresh";
 
 function message(uuid: string): Message {
@@ -65,28 +64,6 @@ function snapshot({
 }
 
 describe("warm refresh preparation", () => {
-  it("keeps broader warm pagination coherent when refresh is a compacted tail", () => {
-    expect(
-      reconcileWarmRefreshPagination(
-        pagination(3, { totalMessageCount: 3 }),
-        pagination(1, {
-          hasOlderMessages: true,
-          totalMessageCount: 5,
-          truncatedBeforeMessageId: "msg-3",
-          truncatedBy: "compact_boundary",
-        }),
-        [message("msg-1"), message("msg-2"), message("msg-3")],
-      ),
-    ).toEqual({
-      hasOlderMessages: false,
-      totalMessageCount: 5,
-      returnedMessageCount: 3,
-      totalCompactions: 0,
-      truncatedBeforeMessageId: undefined,
-      truncatedBy: undefined,
-    });
-  });
-
   it("merges a pre-hydration delta onto a cursor-backed warm snapshot", () => {
     const prepared = prepareWarmRefreshBeforeHydration({
       warmLoad: snapshot({
@@ -96,7 +73,6 @@ describe("warm refresh preparation", () => {
       }),
       refreshMessages: [message("delta-1")],
       refreshSession: session(),
-      refreshPagination: pagination(1),
     });
 
     expect(prepared.taggedMessages.map((item) => item._source)).toEqual([
@@ -116,7 +92,6 @@ describe("warm refresh preparation", () => {
       }),
       refreshMessages: [message("fresh-1")],
       refreshSession: session(),
-      refreshPagination: pagination(1),
     });
 
     expect(prepared.mergedMessages.map((item) => item.uuid)).toEqual([
@@ -136,7 +111,6 @@ describe("warm refresh preparation", () => {
       },
       refreshMessages: [message("delta-1")],
       refreshSession: session(),
-      refreshPagination: pagination(1),
     });
 
     expect(prepared.mergedMessages.map((item) => item.uuid)).toEqual([

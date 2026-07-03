@@ -1326,6 +1326,7 @@ describe("Sessions metadata route", () => {
           state: { type: "idle", since: new Date("2026-03-10T09:47:00.000Z") },
           provider: "claude",
           supportsDynamicCommands: false,
+          getProviderRuntimeStatus: vi.fn(() => null),
         })),
       } as unknown as SessionsDeps["supervisor"],
       scanner: {

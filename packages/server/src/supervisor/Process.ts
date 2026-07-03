@@ -343,6 +343,14 @@ function buildClaudeApiRetryStatus(
   };
 }
 
+function providerRuntimeStatusesEqual(
+  a: ProviderRuntimeStatus,
+  b: ProviderRuntimeStatus,
+): boolean {
+  if (a === b) return true;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function isProviderRuntimeProgressMessage(message: SDKMessage): boolean {
   return (
     message.type === "assistant" ||
@@ -1198,11 +1206,13 @@ export class Process {
     receivedAt: Date,
   ): void {
     if (isClaudeSdkApiRetryMessage(this.provider, message)) {
-      this.providerRuntimeStatus = buildClaudeApiRetryStatus(
-        this.provider,
-        this.providerRuntimeStatus,
-        message,
-        receivedAt,
+      this.setProviderRuntimeStatus(
+        buildClaudeApiRetryStatus(
+          this.provider,
+          this.providerRuntimeStatus,
+          message,
+          receivedAt,
+        ),
       );
       return;
     }
@@ -1212,8 +1222,16 @@ export class Process {
     }
   }
 
+  private setProviderRuntimeStatus(status: ProviderRuntimeStatus): void {
+    if (providerRuntimeStatusesEqual(this.providerRuntimeStatus, status)) {
+      return;
+    }
+    this.providerRuntimeStatus = status;
+    this.emit({ type: "provider-runtime-status-change", status });
+  }
+
   private clearProviderRuntimeStatus(): void {
-    this.providerRuntimeStatus = null;
+    this.setProviderRuntimeStatus(null);
   }
 
   private toLivenessState(): LivenessProcessState {
@@ -1655,6 +1673,10 @@ export class Process {
         }
       }, timeoutMs);
     });
+  }
+
+  getProviderRuntimeStatus(): ProviderRuntimeStatus {
+    return this.providerRuntimeStatus;
   }
 
   getInfo(): ProcessInfo {

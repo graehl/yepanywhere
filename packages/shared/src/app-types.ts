@@ -514,6 +514,7 @@ export interface SessionMetadataResponse {
   session: SessionMetadataPayload;
   ownership: SessionOwnership;
   processState: AgentActivity | null;
+  providerRuntimeStatus?: ProviderRuntimeStatus;
   pendingInputRequest?: InputRequest | null;
   slashCommands?: SlashCommand[] | null;
   deferredMessages?: SessionQueuedMessageSummary[];

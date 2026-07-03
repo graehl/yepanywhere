@@ -223,6 +223,21 @@ vi.mock("../../hooks/useProviders", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({
+    settings: {
+      clientDefaults: {
+        compactAtContextPercent: {},
+      },
+    },
+    isLoading: false,
+    error: null,
+    updateSettings: vi.fn(),
+    updateSetting: vi.fn(async () => undefined),
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => remoteBasePathState.basePath,
 }));
@@ -520,6 +535,9 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     toolbarPositionAgeAria: "Transcript position age",
     toolbarLastActivityAria: "Session last activity",
     toolbarLastActivityAge: `Last activity ${params?.age ?? ""}`,
+    toolbarProviderRuntimeAria: `Provider runtime status: ${
+      params?.summary ?? ""
+    }`,
   };
   return translations[key] ?? key;
 }) as MessageInputToolbarViewProps["t"];
@@ -2344,6 +2362,62 @@ describe("MessageInput", () => {
     expect(screen.queryByText("now")).toBeNull();
     expect(screen.getByText("at 10m ago")).toBeTruthy();
     expect(screen.getByText("6m ago")).toBeTruthy();
+  });
+
+  it("shows provider runtime status in the compact status float", () => {
+    const nowMs = new Date("2026-04-26T12:06:00.000Z").getTime();
+    const { container } = render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={toolbarVisibility}
+        isCompactStatusMode={true}
+        attachmentControl={{ attachmentCount: 0 }}
+        statusControl={{
+          showToolbarStatus: true,
+          showLivenessChip: false,
+          livenessDisplay: null,
+          livenessSummary: null,
+          providerRuntimeDisplay: {
+            label: "Claude rate limited",
+            summary: "Claude rate limited - retry at 5:20 PM",
+            retryAtMs: nowMs + 60_000,
+            tone: "warn",
+            title: "Claude rate limited",
+          },
+          nowMs,
+          showLastActivityChip: false,
+          showLastActivityPrefix: false,
+          lastActivityMs: null,
+          lastActivityIsPast: false,
+          positionTimestampMs: null,
+          showPositionTimestamp: false,
+          hasPositionAge: false,
+          hasLastActivityAge: false,
+        }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    expect(
+      screen.getByText("Claude rate limited - retry at 5:20 PM"),
+    ).toBeTruthy();
+    expect(
+      container.querySelector(".composer-provider-runtime-status"),
+    ).toBeTruthy();
+    expect(container.querySelector(".composer-liveness-status")).toBeNull();
   });
 
   it("never shows a current position age, even without a freshness label", () => {

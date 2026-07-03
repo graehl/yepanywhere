@@ -2572,6 +2572,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Get pending input request from active process
     const pendingInputRequest =
       process?.state.type === "waiting-input" ? process.state.request : null;
+    const providerRuntimeStatus =
+      process?.getProviderRuntimeStatus() ?? null;
 
     // Read minimal session info from disk (just for title/timestamps, no messages)
     const metadataProvider =
@@ -2682,6 +2684,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       },
       ownership,
       processState: process?.state.type ?? null,
+      providerRuntimeStatus,
       pendingInputRequest,
       slashCommands,
       ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
@@ -3001,6 +3004,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // This ensures clients get pending requests immediately without waiting for SSE
     const pendingInputRequest =
       process?.state.type === "waiting-input" ? process.state.request : null;
+    const providerRuntimeStatus =
+      process?.getProviderRuntimeStatus() ?? null;
 
     // Get available slash commands (for "/" button and typed slash menu)
     // The init message that normally carries these gets discarded from the SSE buffer
@@ -3085,6 +3090,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           },
           messages: visibleProcessMessages,
           ownership,
+          providerRuntimeStatus,
           pendingInputRequest,
           slashCommands,
           ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
@@ -3274,6 +3280,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       },
       messages: session.messages,
       ownership,
+      providerRuntimeStatus,
       pendingInputRequest,
       slashCommands,
       ...(paginationInfo && { pagination: paginationInfo }),

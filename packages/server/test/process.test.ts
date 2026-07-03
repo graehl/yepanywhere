@@ -819,6 +819,56 @@ describe("Process", () => {
       controller.finish();
     });
 
+    it("emits provider runtime status changes", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+      });
+
+      await waitFor(() => {
+        expect(
+          events.some(
+            (event) =>
+              event.type === "provider-runtime-status-change" &&
+              event.status?.kind === "retrying",
+          ),
+        ).toBe(true);
+      });
+
+      controller.push({
+        type: "assistant",
+        message: { role: "assistant", content: "Recovered" },
+      });
+
+      await waitFor(() => {
+        expect(
+          events.some(
+            (event) =>
+              event.type === "provider-runtime-status-change" &&
+              event.status === null,
+          ),
+        ).toBe(true);
+      });
+
+      controller.finish();
+    });
+
     it("updates Claude api_retry status without resetting the incident start", async () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {

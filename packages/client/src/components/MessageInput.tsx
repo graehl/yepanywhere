@@ -64,7 +64,11 @@ import {
 import { getSlashCommandMenuParts } from "../lib/slashCommands";
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
-import type { ContextUsage, PermissionMode } from "../types";
+import type {
+  ContextUsage,
+  PermissionMode,
+  ProviderRuntimeStatus,
+} from "../types";
 import { AttachmentChip } from "./AttachmentChip";
 import { MessageInputToolbar } from "./MessageInputToolbar";
 import {
@@ -337,6 +341,8 @@ interface Props {
   positionTimestampMs?: number | null;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
+  /** Provider-owned retry/failure status for the active turn. */
+  providerRuntimeStatus?: ProviderRuntimeStatus;
   /** Project ID for uploads (required to enable attach button) */
   projectId?: string;
   /** Session ID for uploads (required to enable attach button) */
@@ -444,6 +450,7 @@ export function MessageInput({
   lastActivityAt,
   positionTimestampMs,
   sessionLiveness,
+  providerRuntimeStatus,
   projectId,
   sessionId,
   attachments = [],
@@ -2268,6 +2275,7 @@ export function MessageInput({
             lastActivityAt={lastActivityAt}
             positionTimestampMs={positionTimestampMs}
             sessionLiveness={sessionLiveness}
+            providerRuntimeStatus={providerRuntimeStatus}
             showSteerNowMode={supportsSteerNow && hasActiveDualActions}
             steerNowEnabled={steerNowEnabled}
             onToggleSteerNow={() => setSteerNowOverride(!steerNowEnabled)}

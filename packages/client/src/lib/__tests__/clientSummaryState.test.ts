@@ -2,6 +2,7 @@ import type {
   ProjectQueueItemSummary,
   ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
+  ProviderRuntimeStatus,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
@@ -17,6 +18,8 @@ import {
   applyProjectQueueCollectionChanged,
   applyProjectQueueCollectionSnapshot,
   applyProjectQueueGlobalCollectionSnapshot,
+  applyProviderRuntimeStatusChanged,
+  applyProviderRuntimeStatusFromSessionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
@@ -40,6 +43,7 @@ import {
   selectProjectQueueProjectStatusesByProject,
   selectProjectQueueRecoveredSessionQueues,
   selectProjectQueueSidebarCount,
+  selectProviderRuntimeStatusForSession,
   selectSessionCollectionQueryRecords,
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
@@ -51,6 +55,18 @@ import { sessionCollectionRecordToGlobalSessionItem } from "../sessionCollection
 const PROJECT_ID = "project-1" as UrlProjectId;
 const NOW = Date.parse("2026-06-27T12:00:00.000Z");
 const RECENT = "2026-06-27T11:00:00.000Z";
+const RUNTIME_STATUS: Exclude<ProviderRuntimeStatus, null> = {
+  kind: "retrying",
+  provider: "claude",
+  reason: "rate_limit",
+  httpStatus: 429,
+  startedAt: "2026-06-27T11:00:00.000Z",
+  lastSeenAt: "2026-06-27T11:00:00.000Z",
+  retryAt: "2026-06-27T12:00:00.000Z",
+  retryDelayMs: 3_600_000,
+  eventCount: 1,
+  source: "claude.system.api_retry",
+};
 
 function globalSession(
   id: string,
@@ -182,6 +198,68 @@ function projectQueueStatus(
 }
 
 describe("clientSummaryState", () => {
+  it("stores and clears provider runtime status by session", () => {
+    let state = createEmptyClientSummaryState();
+
+    state = applyProviderRuntimeStatusFromSessionSnapshot(
+      state,
+      {
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: RUNTIME_STATUS,
+      },
+      100,
+    );
+
+    expect(selectProviderRuntimeStatusForSession(state, "session-1")).toEqual(
+      RUNTIME_STATUS,
+    );
+
+    state = applyProviderRuntimeStatusChanged(
+      state,
+      {
+        type: "provider-runtime-status-changed",
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: null,
+        timestamp: "2026-06-27T11:01:00.000Z",
+      },
+      200,
+    );
+
+    expect(selectProviderRuntimeStatusForSession(state, "session-1")).toBe(
+      null,
+    );
+  });
+
+  it("keeps newer provider runtime events over older snapshots", () => {
+    let state = applyProviderRuntimeStatusChanged(
+      createEmptyClientSummaryState(),
+      {
+        type: "provider-runtime-status-changed",
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: { ...RUNTIME_STATUS, eventCount: 2 },
+        timestamp: "2026-06-27T11:02:00.000Z",
+      },
+      200,
+    );
+
+    state = applyProviderRuntimeStatusFromSessionSnapshot(
+      state,
+      {
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: RUNTIME_STATUS,
+      },
+      100,
+    );
+
+    expect(
+      selectProviderRuntimeStatusForSession(state, "session-1")?.eventCount,
+    ).toBe(2);
+  });
+
   it("keeps an event-created entity when an older snapshot omits it", () => {
     let state = applySessionCollectionCreated(
       createEmptyClientSummaryState(),

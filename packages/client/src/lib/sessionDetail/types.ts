@@ -97,6 +97,12 @@ export type SessionDetailAction =
       pagination?: PaginationInfo;
     }
   | {
+      type: "replaceTailWindow";
+      messages: Message[];
+      session: SessionMetadata;
+      pagination: PaginationInfo;
+    }
+  | {
       type: "prependOlderMessages";
       messages: Message[];
       pagination?: PaginationInfo;

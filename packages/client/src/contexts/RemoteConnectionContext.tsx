@@ -335,6 +335,10 @@ export function RemoteConnectionProvider({ children }: Props) {
     connectionManager.handleError(error);
   }, []);
 
+  const handleAuthenticated = useCallback(() => {
+    connectionManager.markConnected();
+  }, []);
+
   const connect = useCallback(
     async (
       wsUrl: string,
@@ -363,6 +367,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           password,
           rememberMe ? handleSessionEstablished : undefined,
           handleDisconnect,
+          handleAuthenticated,
         );
 
         // Test the connection by making a simple request
@@ -383,7 +388,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished, handleDisconnect],
+    [handleSessionEstablished, handleDisconnect, handleAuthenticated],
   );
 
   const resumeSession = useCallback(
@@ -405,6 +410,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           password,
           handleSessionEstablished,
           handleDisconnect,
+          handleAuthenticated,
         );
 
         // Test the connection - this will try resume, fall back to SRP if needed
@@ -423,7 +429,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished, handleDisconnect],
+    [handleSessionEstablished, handleDisconnect, handleAuthenticated],
   );
 
   const connectViaRelay = useCallback(
@@ -538,6 +544,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             rememberMe ? handleSessionEstablished : undefined,
             { relayUrl, relayUsername },
             handleDisconnect,
+            handleAuthenticated,
           );
         } else {
           conn = await SecureConnection.connectWithExistingSocket(
@@ -547,6 +554,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             rememberMe ? handleSessionEstablished : undefined,
             { relayUrl, relayUsername },
             handleDisconnect,
+            handleAuthenticated,
           );
         }
 
@@ -566,7 +574,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished, handleDisconnect],
+    [handleSessionEstablished, handleDisconnect, handleAuthenticated],
   );
 
   const disconnect = useCallback(
@@ -710,6 +718,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             handleSessionEstablished,
             { relayUrl, relayUsername },
             handleDisconnect,
+            handleAuthenticated,
           );
         } else {
           setCurrentDirectUrl(currentStored.wsUrl);
@@ -718,6 +727,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             storedSession,
             handleSessionEstablished,
             handleDisconnect,
+            handleAuthenticated,
           );
         }
 
@@ -790,6 +800,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     autoResumeAttempted,
     handleSessionEstablished,
     handleDisconnect,
+    handleAuthenticated,
     setCurrentHostId,
   ]);
 

@@ -1,11 +1,13 @@
 # Remote Activity Bus and Secure Lifecycle
 
-Status: First implementation chunk complete. `ConnectionManager.markConnected()`
-now ignores pre-start calls, and regression coverage verifies that an
-out-of-band recovery cancels pending reconnect backoff before it can tear down a
-recovered transport. Remaining work: add `SecureConnection.onAuthenticated`,
-wire it through `RemoteConnectionContext`, and cover the secure-auth callback
-paths.
+Status: Core lifecycle fix implemented. `ConnectionManager.markConnected()`
+ignores pre-start calls; `SecureConnection.onAuthenticated` now fires on full
+SRP auth and session-resume success; `RemoteConnectionContext` wires that
+callback to `connectionManager.markConnected()` for the app connection. Tests
+cover pre-start marks, out-of-band recovery canceling pending reconnect backoff,
+full SRP callback behavior, resume callback behavior, and resume-invalid
+fallback notification timing. The "Explicitly Deferred" follow-ups remain out of
+scope.
 
 ## Why This Exists
 

@@ -50,6 +50,12 @@ export const OPENCODE_DB_PATH = join(
 );
 const OPENCODE_CLI_TIMEOUT_MS = 10_000;
 const OPENCODE_CLI_MAX_SESSIONS = 200;
+// `opencode session list` output is global (not scoped to the spawn cwd), so
+// one spawn can serve every project's reader. Index validations for several
+// legacy (pre-1.16, no-DB) projects land in one burst; without sharing, each
+// scope paid its own 1-2s subprocess. TTL only bounds staleness between
+// bursts — the periodic index revalidation re-runs it anyway.
+const OPENCODE_CLI_LIST_CACHE_TTL_MS = 10_000;
 
 /**
  * OpenCode storage directory structure:
@@ -110,6 +116,15 @@ interface OpenCodeCliListSession {
   projectId?: unknown;
   projectID?: unknown;
 }
+
+// Shared across reader instances (one per project): the CLI list output is
+// global, so any project's spawn serves them all. Keyed by the opencode
+// binary path; holds the in-flight promise so concurrent validations
+// coalesce onto one subprocess.
+const cliSessionListCache = new Map<
+  string,
+  { atMs: number; promise: Promise<OpenCodeCliListSession[]> }
+>();
 
 interface OpenCodeExportSessionInfo {
   id?: unknown;
@@ -325,6 +340,13 @@ export class OpenCodeSessionReader implements ISessionReader {
       cachedMtime,
       cachedSize,
     );
+    if (dbChanged === "unchanged") {
+      // The session exists in the DB and its row matches the cache. Without
+      // this terminal, an unchanged DB session fell through to the file-tree
+      // check (no json file for DB sessions) and then a per-session CLI
+      // spawn — on every index validation.
+      return null;
+    }
     if (dbChanged) {
       return dbChanged;
     }
@@ -339,7 +361,19 @@ export class OpenCodeSessionReader implements ISessionReader {
       return fileChanged;
     }
 
-    const summary = await this.getCliSessionSummary(sessionId, projectId);
+    // Legacy CLI sessions: probe freshness from the (shared, cached) session
+    // list rather than a per-session `opencode export` spawn — the list row's
+    // updated-time is the same signal at 1/Nth the subprocesses. The stored
+    // summary matches what listCliSessions builds from the same row.
+    const cliSessions = await this.loadCliSessionList();
+    const cliRow = cliSessions.find(
+      (session) =>
+        this.stringField(session.id) === sessionId &&
+        this.cliListSessionBelongsToProject(session),
+    );
+    if (!cliRow) return null;
+
+    const summary = this.summaryFromCliListSession(cliRow, projectId);
     if (!summary) return null;
 
     const mtime = Date.parse(summary.updatedAt);
@@ -358,8 +392,14 @@ export class OpenCodeSessionReader implements ISessionReader {
   async listSessionFiles(
     _sessionDir: string,
     options?: { activeAfterMs?: number },
-  ): Promise<{ sessionId: string; filePath: string }[]> {
-    const out: { sessionId: string; filePath: string }[] = [];
+  ): Promise<
+    { sessionId: string; filePath: string; sharedFilePath?: boolean }[]
+  > {
+    const out: {
+      sessionId: string;
+      filePath: string;
+      sharedFilePath?: boolean;
+    }[] = [];
     const seen = new Set<string>();
 
     // DB sessions (OpenCode 1.16+) are the primary durable source. Enumerate
@@ -379,7 +419,11 @@ export class OpenCodeSessionReader implements ISessionReader {
         ) {
           continue;
         }
-        out.push({ sessionId: id, filePath: this.databasePath });
+        out.push({
+          sessionId: id,
+          filePath: this.databasePath,
+          sharedFilePath: true,
+        });
         seen.add(id);
       }
     }
@@ -420,7 +464,11 @@ export class OpenCodeSessionReader implements ISessionReader {
             continue;
           }
         }
-        out.push({ sessionId, filePath: this.databasePath });
+        out.push({
+          sessionId,
+          filePath: this.databasePath,
+          sharedFilePath: true,
+        });
         seen.add(sessionId);
       }
     }
@@ -660,24 +708,37 @@ export class OpenCodeSessionReader implements ISessionReader {
    * and message count instead — carried as the index's (mtime, size) pair, the
    * same convention the CLI fallback uses.
    */
+  /**
+   * DB-row change check. Returns "unchanged" as a terminal answer (the
+   * session is in the DB and needs no re-summarize), a changed summary, or
+   * null only when the DB cannot answer for this session at all — only then
+   * may callers fall through to the file-tree / CLI readers.
+   */
   private async getDbSessionSummaryIfChanged(
     sessionId: string,
     projectId: UrlProjectId,
     cachedMtime: number,
     cachedSize: number,
-  ): Promise<{ summary: SessionSummary; mtime: number; size: number } | null> {
+  ): Promise<
+    { summary: SessionSummary; mtime: number; size: number } | "unchanged" | null
+  > {
     const projectIdHash = await this.dbReader.getProjectId(this.projectPath);
     if (!projectIdHash) return null;
 
     const meta = await this.dbReader.getSessionMeta(sessionId, projectIdHash);
-    if (!meta || meta.messageCount === 0) return null;
+    if (!meta) return null;
+    // An empty DB session summarizes to nothing; treat it as unchanged
+    // rather than "not in the DB" so it never triggers the CLI fallback.
+    if (meta.messageCount === 0) return "unchanged";
 
     if (meta.timeUpdated === cachedMtime && meta.messageCount === cachedSize) {
-      return null;
+      return "unchanged";
     }
 
     const summary = await this.getDbSessionSummary(sessionId, projectId);
-    if (!summary) return null;
+    // The row exists but yielded no summary (e.g. deleted mid-read): the DB
+    // is still authoritative for this session, so stay terminal.
+    if (!summary) return "unchanged";
 
     return { summary, mtime: meta.timeUpdated, size: meta.messageCount };
   }
@@ -767,6 +828,19 @@ export class OpenCodeSessionReader implements ISessionReader {
   }
 
   private async loadCliSessionList(): Promise<OpenCodeCliListSession[]> {
+    const cached = cliSessionListCache.get(this.opencodePath);
+    if (cached && Date.now() - cached.atMs < OPENCODE_CLI_LIST_CACHE_TTL_MS) {
+      return cached.promise;
+    }
+    const promise = this.spawnCliSessionList();
+    cliSessionListCache.set(this.opencodePath, {
+      atMs: Date.now(),
+      promise,
+    });
+    return promise;
+  }
+
+  private async spawnCliSessionList(): Promise<OpenCodeCliListSession[]> {
     const output = await this.runOpenCodeCli([
       "session",
       "list",

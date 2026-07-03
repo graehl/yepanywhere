@@ -449,6 +449,92 @@ describe("SessionIndexService", () => {
     });
   });
 
+  describe("shared-file validation", () => {
+    it("validates shared-container sessions via the reader, not file stats", async () => {
+      // Models an OpenCode-style reader: every session anchors to one shared
+      // database file, and change detection is a cheap row-level check.
+      const rows = new Map<string, { mtime: number; size: number; title: string }>([
+        ["ses-shared", { mtime: 1000, size: 2, title: "row v1" }],
+      ]);
+      const summaryFor = (
+        id: string,
+        row: { mtime: number; size: number; title: string },
+      ): SessionSummary => ({
+        id,
+        projectId: projectId as UrlProjectId,
+        title: row.title,
+        fullTitle: row.title,
+        createdAt: new Date(row.mtime).toISOString(),
+        updatedAt: new Date(row.mtime).toISOString(),
+        messageCount: row.size,
+        ownership: { owner: "none" },
+        provider: "opencode",
+      });
+      const getSessionSummary = vi.fn();
+      const getSessionSummaryIfChanged = vi.fn(
+        async (
+          id: string,
+          _projectId: string,
+          cachedMtime: number,
+          cachedSize: number,
+        ) => {
+          const row = rows.get(id);
+          if (!row) return null;
+          if (row.mtime === cachedMtime && row.size === cachedSize) {
+            return null;
+          }
+          return { summary: summaryFor(id, row), mtime: row.mtime, size: row.size };
+        },
+      );
+      const sharedReader = {
+        listSessionFiles: async () =>
+          Array.from(rows.keys()).map((sessionId) => ({
+            sessionId,
+            filePath: "/nonexistent/opencode.db",
+            sharedFilePath: true,
+          })),
+        getSessionSummary,
+        getSessionSummaryIfChanged,
+        getAgentMappings: async () => [],
+        getAgentSession: async () => null,
+        getIndexScopeKey: () => "shared-file-test",
+      } as unknown as ISessionReader;
+
+      const first = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        sharedReader,
+      );
+      expect(first.map((s) => s.title)).toEqual(["row v1"]);
+
+      // Unchanged rows: the next full validation must be pure cache hits —
+      // no summary parses, and no stat of the shared container file.
+      const second = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        sharedReader,
+      );
+      expect(second.map((s) => s.title)).toEqual(["row v1"]);
+      expect(getSessionSummaryIfChanged).toHaveBeenLastCalledWith(
+        "ses-shared",
+        projectId,
+        1000,
+        2,
+      );
+      expect(getSessionSummary).not.toHaveBeenCalled();
+
+      // A changed row re-summarizes through the same cheap check.
+      rows.set("ses-shared", { mtime: 2000, size: 3, title: "row v2" });
+      const third = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        sharedReader,
+      );
+      expect(third.map((s) => s.title)).toEqual(["row v2"]);
+      expect(getSessionSummary).not.toHaveBeenCalled();
+    });
+  });
+
   describe("fast path", () => {
     it("serves cached summaries between validations and refreshes on invalidation", async () => {
       const fastService = new SessionIndexService({

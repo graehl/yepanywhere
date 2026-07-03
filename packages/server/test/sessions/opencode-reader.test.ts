@@ -223,8 +223,46 @@ describe("OpenCodeSessionReader", () => {
     });
 
     await expect(reader.listSessionFiles("/unused")).resolves.toEqual([
-      { sessionId: "ses_cli", filePath: databasePath },
+      { sessionId: "ses_cli", filePath: databasePath, sharedFilePath: true },
     ]);
+  });
+
+  it("probes CLI-session freshness from one cached session list, never export", async () => {
+    const { OpenCodeSessionReader } = await import(
+      "../../src/sessions/opencode-reader.js"
+    );
+    const reader = new OpenCodeSessionReader({
+      storageDir: join(testDir, "missing-storage"),
+      databasePath,
+      opencodePath: "/fake/opencode",
+      projectPath,
+    });
+
+    const changed = await reader.getSessionSummaryIfChanged(
+      "ses_cli",
+      projectId,
+      -1,
+      -1,
+    );
+    // Summary comes from the list row (updated: 4000), not an export.
+    expect(changed?.summary.id).toBe("ses_cli");
+    expect(changed?.mtime).toBe(4000);
+
+    await expect(
+      reader.getSessionSummaryIfChanged(
+        "ses_cli",
+        projectId,
+        changed?.mtime ?? 0,
+        changed?.size ?? 0,
+      ),
+    ).resolves.toBeNull();
+
+    const spawnedArgs = spawnMock.mock.calls.map(
+      (call) => (call[1] as string[])[0],
+    );
+    // One `session list` spawn serves both probes (shared TTL cache); the
+    // per-session `export` spawn must not run during validation.
+    expect(spawnedArgs).toEqual(["session"]);
   });
 
   it("does not load an exported session from a different project", async () => {

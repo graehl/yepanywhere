@@ -307,11 +307,46 @@ describe.skipIf(!DatabaseSync)(
 
       const reader = await makeReader();
       await expect(reader.listSessionFiles("/unused")).resolves.toEqual([
-        { sessionId: "ses_db", filePath: databasePath },
+        // sharedFilePath: the db file's stat cannot validate a single session,
+        // so the index must validate via getSessionSummaryIfChanged.
+        { sessionId: "ses_db", filePath: databasePath, sharedFilePath: true },
       ]);
 
       const summaries = await reader.listSessions(projectId);
       expect(summaries.map((s) => s.id)).toEqual(["ses_db"]);
+      expect(spawnMock).not.toHaveBeenCalled();
+    });
+
+    it("answers unchanged-DB-session checks terminally, with no CLI spawn", async () => {
+      buildDb(databasePath, {
+        worktree: projectPath,
+        sessionId: "ses_db",
+        title: "Yep Anywhere Session",
+        model: { id: "claude-opus-4.8", providerID: "github-copilot" },
+        messages: richMessages,
+      });
+
+      const reader = await makeReader();
+      // Cold check (sentinel cache values): produces the summary + row keys.
+      const changed = await reader.getSessionSummaryIfChanged(
+        "ses_db",
+        projectId,
+        -1,
+        -1,
+      );
+      expect(changed?.summary.id).toBe("ses_db");
+
+      // Re-check with the row-derived keys: unchanged must terminate at the
+      // DB answer — previously it fell through to a per-session CLI spawn on
+      // every index validation.
+      await expect(
+        reader.getSessionSummaryIfChanged(
+          "ses_db",
+          projectId,
+          changed?.mtime ?? 0,
+          changed?.size ?? 0,
+        ),
+      ).resolves.toBeNull();
       expect(spawnMock).not.toHaveBeenCalled();
     });
 

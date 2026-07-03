@@ -341,6 +341,9 @@ the existing `asOpenCodeMessage` / `asOpenCodeStoredPart` validators):
 - Change detection: `getSessionSummaryIfChanged` should compare the session
   row's `time_updated` (and a message-count) rather than only the db-file
   mtime, since every session shares one db file (coarse mtime over-triggers).
+  The index side of this contract (the `sharedFilePath` enumeration flag and
+  the terminal "unchanged" rule that keeps validation off the CLI) lives in
+  [`session-index-validation.md`](session-index-validation.md).
 - Enumeration: `listSessions` / `listSessionFiles` should prefer DB rows
   (`SELECT id, time_updated FROM session WHERE project_id = ?`) over the CLI
   `session list`, keeping the CLI only as the legacy fallback.

@@ -111,11 +111,18 @@ export interface ISessionReader {
    *
    * When not implemented, the index service falls back to JSONL
    * filename-based enumeration.
+   *
+   * `sharedFilePath: true` marks an entry whose filePath is a container
+   * shared by many sessions (e.g. a provider database). Its stat mtime/size
+   * say nothing about this session, so the index must validate it through
+   * getSessionSummaryIfChanged instead of comparing file stats.
    */
   listSessionFiles?(
     sessionDir: string,
     options?: { activeAfterMs?: number },
-  ): Promise<{ sessionId: string; filePath: string }[]>;
+  ): Promise<
+    { sessionId: string; filePath: string; sharedFilePath?: boolean }[]
+  >;
 
   /**
    * Return a stable cache/index scope key for this reader.

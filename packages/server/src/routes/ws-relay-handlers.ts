@@ -1168,8 +1168,15 @@ export async function handleMessage(
 
   const routeClientMessage = async (msg: RemoteClientMessage): Promise<void> =>
     routeClientMessageSafely(msg, send, {
-      onRequest: async (requestMsg) =>
-        handleRequest(requestMsg, send, app, baseUrl, connState),
+      onRequest: async (requestMsg) => {
+        // Tunneled HTTP requests are independent: each carries its own id and
+        // handleRequest always answers (it never throws). Do not await here —
+        // the per-connection message queue must keep decrypt/auth/route order,
+        // but a slow request (e.g. a session index revalidation behind
+        // /api/sessions) must not head-of-line block later tunneled requests
+        // the way it never would over plain HTTP.
+        void handleRequest(requestMsg, send, app, baseUrl, connState);
+      },
       onSubscribe: async (subscribeMsg) =>
         handleSubscribe(
           subscriptions,

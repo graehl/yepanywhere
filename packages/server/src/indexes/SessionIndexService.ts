@@ -1330,7 +1330,11 @@ export class SessionIndexService implements ISessionIndexService {
       // Enumerate session files — delegate to reader if it supports custom
       // enumeration (e.g., Gemini JSON where session ID is inside the file),
       // otherwise use default JSONL filename-based discovery.
-      let sessionFiles: { sessionId: string; filePath: string }[];
+      let sessionFiles: {
+        sessionId: string;
+        filePath: string;
+        sharedFilePath?: boolean;
+      }[];
       if (reader.listSessionFiles) {
         sessionFiles = await reader.listSessionFiles(sessionDir, options);
       } else {
@@ -1351,11 +1355,14 @@ export class SessionIndexService implements ISessionIndexService {
       for (let b = 0; b < sessionFiles.length; b += STAT_BATCH) {
         const end = Math.min(b + STAT_BATCH, sessionFiles.length);
         const batch = await Promise.all(
-          sessionFiles
-            .slice(b, end)
-            .map((f) => fs.stat(f.filePath).catch(() => null)),
+          sessionFiles.slice(b, end).map((f) => {
+            // A shared container file (e.g. a provider database) is not
+            // statted: its mtime/size cannot validate individual sessions.
+            if (f.sharedFilePath) return Promise.resolve(null);
+            statCalls += 1;
+            return fs.stat(f.filePath).catch(() => null);
+          }),
         );
-        statCalls += batch.length;
         for (let j = 0; j < batch.length; j++) {
           allStats[b + j] = batch[j] ?? null;
         }
@@ -1373,6 +1380,56 @@ export class SessionIndexService implements ISessionIndexService {
         if (!entry) continue;
         const sessionId = entry.sessionId;
         seenSessionIds.add(sessionId);
+
+        if (entry.sharedFilePath) {
+          // Validate through the reader's own cheap change check (e.g. a DB
+          // row's updated-time + message count). Stat-based comparison can
+          // never hit for these entries — the container's mtime moves on any
+          // write while the cached mtime/size are row-derived — which made
+          // every full validation re-summarize every DB session.
+          const cachedShared = index.sessions[sessionId];
+          const changed = await reader.getSessionSummaryIfChanged(
+            sessionId,
+            projectId,
+            cachedShared?.fileMtime ?? -1,
+            cachedShared?.indexedBytes ?? -1,
+          );
+          if (changed) {
+            parseCalls += 1;
+            index.sessions[sessionId] = this.toCachedSummary(
+              changed.summary,
+              changed.mtime,
+              changed.size,
+            );
+            indexChanged = true;
+            if (
+              options?.activeAfterMs === undefined ||
+              Date.parse(changed.summary.updatedAt) >= options.activeAfterMs
+            ) {
+              summaries.push(changed.summary);
+            }
+            continue;
+          }
+          if (cachedShared) {
+            cacheHits += 1;
+            if (cachedShared.isEmpty) continue;
+            if (
+              options?.activeAfterMs !== undefined &&
+              Date.parse(cachedShared.updatedAt) < options.activeAfterMs
+            ) {
+              continue;
+            }
+            summaries.push(
+              this.toSessionSummary(sessionId, cachedShared, projectId),
+            );
+            continue;
+          }
+          // Unknown session that yields no summary (e.g. still empty): cache
+          // the emptiness so later validations stay row-level cheap.
+          index.sessions[sessionId] = this.toEmptyCachedSummary(-1, -1);
+          indexChanged = true;
+          continue;
+        }
 
         const stats = allStats[i];
         if (!stats) continue;

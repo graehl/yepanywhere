@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetDeveloperModeForTest } from "../../../hooks/useDeveloperMode";
+import { UI_KEYS } from "../../../lib/storageKeys";
 import { DevelopmentSettings } from "../DevelopmentSettings";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
@@ -49,6 +50,21 @@ vi.mock("../../../i18n", () => ({
           developmentDiagnosticsDescription: "Capture browser logs",
           developmentServiceWorkerTitle: "Service Worker",
           developmentServiceWorkerDescription: "Enable service worker",
+          developmentSessionCursorTitle: "Session Cursor Behavior",
+          developmentSessionCursorControlTitle: "Restore mode",
+          developmentSessionCursorDescription: "Debug restore mode",
+          developmentSessionCursorModeLiveTail: "Live tail (default)",
+          developmentSessionCursorModeLiveTailDescription:
+            "Reopen at latest output",
+          developmentSessionCursorModeRememberPlace: "Remember place",
+          developmentSessionCursorModeRememberPlaceDescription:
+            "Reopen at last viewed row",
+          developmentSessionCursorModeManualFollow: "Manual follow",
+          developmentSessionCursorModeManualFollowDescription:
+            "Manual follow experiment",
+          developmentSessionCursorModeNoMemory: "No memory",
+          developmentSessionCursorModeNoMemoryDescription:
+            "Do not retain scroll snapshots",
           developmentRestartTitle: "Restart Server",
           developmentRestartDescription: "Restart the backend server",
           developmentRestart: "Restart Server",
@@ -83,6 +99,22 @@ describe("DevelopmentSettings", () => {
     expect(screen.getByText("Schema Validation")).toBeTruthy();
     expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
     expect(screen.getByText("Service Worker")).toBeTruthy();
+    expect(screen.getByText("Session Cursor Behavior")).toBeTruthy();
     expect(screen.queryByText("Store-Backed Session Detail")).toBeNull();
+  });
+
+  it("exposes the session cursor behavior debug setting", () => {
+    render(<DevelopmentSettings />);
+
+    const select = screen.getByLabelText("Restore mode") as HTMLSelectElement;
+    expect(select.value).toBe("live-tail");
+
+    fireEvent.change(select, { target: { value: "remember-place" } });
+
+    expect(select.value).toBe("remember-place");
+    expect(localStorage.getItem(UI_KEYS.sessionScrollBehavior)).toBe(
+      "remember-place",
+    );
+    expect(screen.getByText("Reopen at last viewed row")).toBeTruthy();
   });
 });

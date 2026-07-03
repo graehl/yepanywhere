@@ -4,9 +4,46 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useSchemaValidation } from "../../hooks/useSchemaValidation";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useSessionPerformanceSettings } from "../../hooks/useSessionPerformanceSettings";
 import { useI18n } from "../../i18n";
+import {
+  SESSION_SCROLL_BEHAVIOR_MODES,
+  type SessionScrollBehaviorMode,
+} from "../../lib/sessionScrollBehavior";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
+
+type SessionCursorModeDescriptionKey =
+  | "developmentSessionCursorModeLiveTailDescription"
+  | "developmentSessionCursorModeRememberPlaceDescription"
+  | "developmentSessionCursorModeManualFollowDescription"
+  | "developmentSessionCursorModeNoMemoryDescription";
+
+type SessionCursorModeLabelKey =
+  | "developmentSessionCursorModeLiveTail"
+  | "developmentSessionCursorModeRememberPlace"
+  | "developmentSessionCursorModeManualFollow"
+  | "developmentSessionCursorModeNoMemory";
+
+const sessionCursorModeDescriptionKeys: Record<
+  SessionScrollBehaviorMode,
+  SessionCursorModeDescriptionKey
+> = {
+  "live-tail": "developmentSessionCursorModeLiveTailDescription",
+  "remember-place": "developmentSessionCursorModeRememberPlaceDescription",
+  "manual-follow": "developmentSessionCursorModeManualFollowDescription",
+  "no-memory": "developmentSessionCursorModeNoMemoryDescription",
+};
+
+const sessionCursorModeLabelKeys: Record<
+  SessionScrollBehaviorMode,
+  SessionCursorModeLabelKey
+> = {
+  "live-tail": "developmentSessionCursorModeLiveTail",
+  "remember-place": "developmentSessionCursorModeRememberPlace",
+  "manual-follow": "developmentSessionCursorModeManualFollow",
+  "no-memory": "developmentSessionCursorModeNoMemory",
+};
 
 export function DevelopmentSettings() {
   const { t } = useI18n();
@@ -25,6 +62,10 @@ export function DevelopmentSettings() {
     remoteLogCollectionEnabled,
     setRemoteLogCollectionEnabled,
   } = useDeveloperMode();
+  const {
+    sessionScrollBehaviorMode,
+    setSessionScrollBehaviorMode,
+  } = useSessionPerformanceSettings();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const { settings: serverSettings, updateSetting: updateServerSetting } =
     useServerSettings();
@@ -35,15 +76,22 @@ export function DevelopmentSettings() {
         ? {
             validationEnabled: validationSettings.enabled,
             remoteLogCollectionEnabled,
+            sessionScrollBehaviorMode,
             serviceWorkerEnabled: serverSettings.serviceWorkerEnabled ?? true,
           }
         : null,
-    [validationSettings.enabled, remoteLogCollectionEnabled, serverSettings],
+    [
+      validationSettings.enabled,
+      remoteLogCollectionEnabled,
+      serverSettings,
+      sessionScrollBehaviorMode,
+    ],
   );
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
+      setSessionScrollBehaviorMode(snapshot.sessionScrollBehaviorMode);
       void updateServerSetting(
         "serviceWorkerEnabled",
         snapshot.serviceWorkerEnabled,
@@ -52,6 +100,7 @@ export function DevelopmentSettings() {
     [
       setValidationEnabled,
       setRemoteLogCollectionEnabled,
+      setSessionScrollBehaviorMode,
       updateServerSetting,
     ],
   );
@@ -144,6 +193,41 @@ export function DevelopmentSettings() {
             <span className="toggle-slider" />
           </label>
         </div>
+      </div>
+
+      <div className="settings-group">
+        <details>
+          <summary className="settings-hint">
+            <strong>{t("developmentSessionCursorTitle")}</strong>
+          </summary>
+          <div className="settings-item settings-item--wide-control">
+            <div className="settings-item-info">
+              <strong>{t("developmentSessionCursorControlTitle")}</strong>
+              <p>{t("developmentSessionCursorDescription")}</p>
+              <p>
+                {t(sessionCursorModeDescriptionKeys[sessionScrollBehaviorMode])}
+              </p>
+            </div>
+            <div className="settings-item-actions">
+              <select
+                className="settings-select"
+                value={sessionScrollBehaviorMode}
+                onChange={(event) =>
+                  setSessionScrollBehaviorMode(
+                    event.target.value as SessionScrollBehaviorMode,
+                  )
+                }
+                aria-label={t("developmentSessionCursorControlTitle")}
+              >
+                {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {t(sessionCursorModeLabelKeys[mode])}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="settings-group">

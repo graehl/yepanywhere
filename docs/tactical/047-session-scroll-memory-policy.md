@@ -33,6 +33,9 @@ provider-like behavior.
   load at the current bottom and keep following.
 - New/non-default modes may be hidden or advanced settings first. The policy
   surface should exist before all modes are exposed in the settings UI.
+- The first UI exposure is a collapsed Development-settings debug control, not
+  a polished user preference. Its purpose is to make scroll bug reports
+  explicit about the active restore expectation.
 
 ## Policy Modes
 
@@ -68,10 +71,13 @@ provider-like behavior.
   fallback order.
 - [x] Suppress scroll snapshot writes while progressive hydration is active and
   publish one settled snapshot after the reveal completes.
+- [x] Expose the policy as a collapsed Development-settings debug control so
+  maintainers can ask which restore mode was active during scroll reports.
 
 ## Follow-Up Work
 
-- Expose the policy in settings after the mode names and copy are settled.
+- Promote or redesign the policy as a normal user-facing preference only after
+  the behavior names and defaults are settled.
 - Add diagnostics for non-exact scroll restores so anchor misses can be counted
   by reason instead of inferred from user reports.
 - Tighten fast-stream bottom-follow tests around large bursts and async row

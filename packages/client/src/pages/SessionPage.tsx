@@ -158,6 +158,7 @@ import {
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
 import type { Message, Project } from "../types";
+import { truncateSessionTitle } from "@yep-anywhere/shared";
 import { getSessionDisplayTitle } from "../utils";
 
 const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
@@ -4358,8 +4359,17 @@ function SessionPageContent({
   // 3. Initial title from navigation state (optimistic, before server responds)
   // 4. "Untitled" as final fallback
   const sessionTitle = getSessionDisplayTitle(session);
+  // The indexed auto-title is hard-capped at 120 chars for list surfaces,
+  // which starves the wide header row. With no custom title, prefer the full
+  // first message (sanitized, capped far beyond what any viewport renders)
+  // and let the CSS ellipsis truncate to the actual available width.
+  const headerAutoTitle =
+    !session?.customTitle && session?.fullTitle
+      ? truncateSessionTitle(session.fullTitle, 600)
+      : null;
   const displayTitle =
     localCustomTitle ??
+    headerAutoTitle ??
     (sessionTitle !== "Untitled" ? sessionTitle : null) ??
     initialTitle ??
     t("sessionUntitled");

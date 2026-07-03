@@ -3,7 +3,10 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
-import { estimateSessionDetailStateBytes } from "./transcriptCharge";
+import {
+  estimateSessionDetailStateBytes,
+  type EstimateStateBytesOptions,
+} from "./transcriptCharge";
 import {
   createInitialSessionDetailState,
   reduceSessionDetailState,
@@ -64,13 +67,7 @@ interface SelectorSubscription {
   value: unknown;
 }
 
-interface SessionDetailStoreEntry {
-  key: string;
-  sourceKey: ClientSummarySourceKey;
-  projectId: string;
-  sessionId: string;
-  tailTurns?: number;
-  tailFrom?: string;
+interface SessionDetailEntryRecord {
   state: SessionDetailState;
   retainCount: number;
   createdAt: number;
@@ -210,9 +207,227 @@ function stateToRouteSnapshot(
   };
 }
 
+class SessionDetailEntry {
+  private record: SessionDetailEntryRecord | null = null;
+  private subscriptions = new Set<SelectorSubscription>();
+
+  constructor(
+    readonly key: string,
+    readonly input: SessionDetailEntryKeyInput,
+  ) {}
+
+  get hasRecord(): boolean {
+    return this.record !== null;
+  }
+
+  get hasSubscriptions(): boolean {
+    return this.subscriptions.size > 0;
+  }
+
+  get state(): SessionDetailState | undefined {
+    return this.record?.state;
+  }
+
+  get retainCount(): number {
+    return this.record?.retainCount ?? 0;
+  }
+
+  get approxBytes(): number {
+    return this.record?.approxBytes ?? 0;
+  }
+
+  get lastAccessedAt(): number {
+    return this.record?.lastAccessedAt ?? 0;
+  }
+
+  markAccessed(at: number): void {
+    if (this.record) {
+      this.record.lastAccessedAt = at;
+    }
+  }
+
+  ensureRecord(
+    at: number,
+    options: SessionDetailRetentionOptions,
+  ): SessionDetailEntryRecord {
+    if (!this.record) {
+      this.record = {
+        state: createInitialSessionDetailState(),
+        retainCount: 0,
+        createdAt: at,
+        updatedAt: at,
+        lastAccessedAt: at,
+        expiresAt: at + ttlMs(options),
+        approxBytes: 0,
+      };
+    }
+    return this.record;
+  }
+
+  replaceState(
+    state: SessionDetailState,
+    at: number,
+    options: SessionDetailRetentionOptions,
+    approxBytes: number,
+  ): void {
+    const existing = this.record;
+    this.record = {
+      state,
+      retainCount: existing?.retainCount ?? 0,
+      createdAt: existing?.createdAt ?? at,
+      updatedAt: at,
+      lastAccessedAt: at,
+      expiresAt: at + ttlMs(options),
+      approxBytes,
+    };
+    this.notify();
+  }
+
+  applyState(
+    state: SessionDetailState,
+    at: number,
+    options: SessionDetailRetentionOptions,
+    approxBytes: number,
+  ): void {
+    const record = this.ensureRecord(at, options);
+    record.state = state;
+    record.updatedAt = at;
+    record.lastAccessedAt = at;
+    record.expiresAt = at + ttlMs(options);
+    record.approxBytes = approxBytes;
+    this.notify();
+  }
+
+  patchScrollSnapshot(
+    scrollSnapshot: SessionRouteScrollSnapshot,
+    at: number,
+    notify: boolean,
+  ): void {
+    if (!this.record) {
+      return;
+    }
+    this.record.state = {
+      ...this.record.state,
+      scrollSnapshot: cloneScrollSnapshot(scrollSnapshot),
+    };
+    this.record.updatedAt = at;
+    this.record.lastAccessedAt = at;
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  resetState(
+    at: number,
+    options: Pick<SessionDetailRetentionOptions, "ttlMs">,
+  ): void {
+    if (!this.record) {
+      return;
+    }
+    this.record.state = createInitialSessionDetailState();
+    this.record.updatedAt = at;
+    this.record.lastAccessedAt = at;
+    this.record.expiresAt = at + ttlMs(options);
+    this.record.approxBytes = 0;
+    this.notify();
+  }
+
+  incrementRetain(at: number, options: SessionDetailRetentionOptions): void {
+    const record = this.ensureRecord(at, options);
+    record.retainCount += 1;
+    record.lastAccessedAt = at;
+  }
+
+  release(at: number, options: SessionDetailRetentionOptions): void {
+    if (!this.record) {
+      return;
+    }
+    this.record.retainCount = Math.max(0, this.record.retainCount - 1);
+    this.record.lastAccessedAt = at;
+    this.record.expiresAt = at + ttlMs(options);
+  }
+
+  deleteRecord(): boolean {
+    if (!this.record) {
+      return false;
+    }
+    this.record = null;
+    this.notify();
+    return true;
+  }
+
+  deleteIfExpired(at: number): boolean {
+    if (
+      !this.record ||
+      this.record.retainCount > 0 ||
+      this.record.expiresAt > at
+    ) {
+      return false;
+    }
+    return this.deleteRecord();
+  }
+
+  subscribe<T>(
+    selector: Selector<T>,
+    listener: () => void,
+    equality: Equality<T>,
+  ): () => void {
+    const subscription: SelectorSubscription = {
+      selector: selector as Selector<unknown>,
+      listener,
+      equality: equality as Equality<unknown>,
+      value: selector(this.state),
+    };
+    this.subscriptions.add(subscription);
+    return () => {
+      this.subscriptions.delete(subscription);
+    };
+  }
+
+  toStats(): SessionDetailStoreEntryStats {
+    if (!this.record) {
+      throw new Error("Cannot build stats for an empty session detail entry");
+    }
+    return {
+      key: this.key,
+      sourceKey: this.input.sourceKey,
+      projectId: this.input.projectId,
+      sessionId: this.input.sessionId,
+      tailTurns: this.input.tailTurns,
+      tailFrom: this.input.tailFrom,
+      messageCount: this.record.state.messages.length,
+      agentEntryCount: Object.keys(this.record.state.agentContent).length,
+      approxBytes: this.record.approxBytes,
+      retainCount: this.record.retainCount,
+      createdAt: this.record.createdAt,
+      updatedAt: this.record.updatedAt,
+      lastAccessedAt: this.record.lastAccessedAt,
+      expiresAt: this.record.expiresAt,
+      hasScrollSnapshot: this.record.state.scrollSnapshot !== undefined,
+    };
+  }
+
+  estimateBytes(options: EstimateStateBytesOptions): number {
+    return this.record
+      ? estimateSessionDetailStateBytes(this.record.state, options)
+      : 0;
+  }
+
+  private notify(): void {
+    const state = this.state;
+    for (const subscription of Array.from(this.subscriptions)) {
+      const nextValue = subscription.selector(state);
+      if (subscription.equality(subscription.value, nextValue)) {
+        continue;
+      }
+      subscription.value = nextValue;
+      subscription.listener();
+    }
+  }
+}
+
 export class SessionDetailStore {
-  private entries = new Map<string, SessionDetailStoreEntry>();
-  private listeners = new Map<string, Set<SelectorSubscription>>();
+  private entries = new Map<string, SessionDetailEntry>();
 
   read(
     input: SessionDetailEntryKeyInput,
@@ -227,7 +442,7 @@ export class SessionDetailStore {
     if (this.deleteIfExpired(entry, at)) {
       return undefined;
     }
-    entry.lastAccessedAt = at;
+    entry.markAccessed(at);
     return entry.state;
   }
 
@@ -260,29 +475,12 @@ export class SessionDetailStore {
     const state = routeSnapshotToState(snapshot);
     const approxBytes = estimateStateBytes(state);
     if (approxBytes > maxBytes(options)) {
-      if (this.entries.delete(key)) {
-        this.notifyKey(key);
-      }
+      this.deleteRecordByKey(key);
       return false;
     }
 
-    const existing = this.entries.get(key);
-    this.entries.set(key, {
-      key,
-      sourceKey: input.sourceKey,
-      projectId: input.projectId,
-      sessionId: input.sessionId,
-      tailTurns: input.tailTurns,
-      tailFrom: input.tailFrom,
-      state,
-      retainCount: existing?.retainCount ?? 0,
-      createdAt: existing?.createdAt ?? at,
-      updatedAt: at,
-      lastAccessedAt: at,
-      expiresAt: at + ttlMs(options),
-      approxBytes,
-    });
-    this.notifyKey(key);
+    const entry = this.getOrCreateEntry(input);
+    entry.replaceState(state, at, options, approxBytes);
     this.evictLeastRecentlyUsed(options);
     return true;
   }
@@ -299,7 +497,7 @@ export class SessionDetailStore {
     // truncated transcript as canonical after eviction, so those actions
     // require the owner (a mounted hook holding retain()) to exist first.
     const existing = this.entries.get(key);
-    if (!existing && !isEntryCreatingAction(action)) {
+    if (!existing?.hasRecord && !isEntryCreatingAction(action)) {
       if (import.meta.env.DEV) {
         console.warn(
           "[SessionDetailStore] dropped action for missing entry",
@@ -308,29 +506,30 @@ export class SessionDetailStore {
       }
       return undefined;
     }
-    const entry = existing ?? this.ensureEntry(input, at, options);
-    const nextState = reduceSessionDetailState(entry.state, action);
-    if (nextState === entry.state) {
-      entry.lastAccessedAt = at;
-      return entry.state;
+    const entry = existing?.hasRecord
+      ? existing
+      : this.ensureEntry(input, at, options);
+    const currentState = entry.state;
+    if (!currentState) {
+      return undefined;
+    }
+    const nextState = reduceSessionDetailState(currentState, action);
+    if (nextState === currentState) {
+      entry.markAccessed(at);
+      return currentState;
     }
 
-    entry.state = nextState;
-    entry.updatedAt = at;
-    entry.lastAccessedAt = at;
-    entry.expiresAt = at + ttlMs(options);
-    entry.approxBytes = estimateStateBytes(
+    const approxBytes = estimateStateBytes(
       nextState,
       isEntryCreatingAction(action),
     );
+    entry.applyState(nextState, at, options, approxBytes);
 
     if (entry.approxBytes > maxBytes(options) && entry.retainCount === 0) {
-      this.entries.delete(key);
-      this.notifyKey(key);
+      this.deleteRecordByKey(key);
       return undefined;
     }
 
-    this.notifyKey(key);
     this.evictLeastRecentlyUsed(options);
     return nextState;
   }
@@ -348,15 +547,7 @@ export class SessionDetailStore {
     if (!entry || this.deleteIfExpired(entry, at)) {
       return;
     }
-    entry.state = {
-      ...entry.state,
-      scrollSnapshot: cloneScrollSnapshot(scrollSnapshot),
-    };
-    entry.updatedAt = at;
-    entry.lastAccessedAt = at;
-    if (options.notify === true) {
-      this.notifyKey(key);
-    }
+    entry.patchScrollSnapshot(scrollSnapshot, at, options.notify === true);
   }
 
   subscribe<T>(
@@ -365,24 +556,11 @@ export class SessionDetailStore {
     listener: () => void,
     equality: Equality<T> = Object.is,
   ): () => void {
-    const key = getSessionDetailEntryKey(input);
-    const subscription: SelectorSubscription = {
-      selector: selector as Selector<unknown>,
-      listener,
-      equality: equality as Equality<unknown>,
-      value: selector(this.entries.get(key)?.state),
-    };
-    let subscriptions = this.listeners.get(key);
-    if (!subscriptions) {
-      subscriptions = new Set();
-      this.listeners.set(key, subscriptions);
-    }
-    subscriptions.add(subscription);
+    const entry = this.getOrCreateEntry(input);
+    const unsubscribe = entry.subscribe(selector, listener, equality);
     return () => {
-      subscriptions?.delete(subscription);
-      if (subscriptions?.size === 0) {
-        this.listeners.delete(key);
-      }
+      unsubscribe();
+      this.deleteEntryIfIdle(entry);
     };
   }
 
@@ -392,8 +570,7 @@ export class SessionDetailStore {
   ): () => void {
     const at = now(options);
     const entry = this.ensureEntry(input, at, options);
-    entry.retainCount += 1;
-    entry.lastAccessedAt = at;
+    entry.incrementRetain(at, options);
     let released = false;
     return () => {
       if (released) {
@@ -413,9 +590,8 @@ export class SessionDetailStore {
     if (!entry) {
       return;
     }
-    entry.retainCount = Math.max(0, entry.retainCount - 1);
-    entry.lastAccessedAt = at;
-    entry.expiresAt = at + ttlMs(options);
+    entry.release(at, options);
+    this.deleteEntryIfIdle(entry);
   }
 
   evictExpired(
@@ -432,20 +608,15 @@ export class SessionDetailStore {
   }
 
   clear(): void {
-    const keys = new Set([...this.entries.keys(), ...this.listeners.keys()]);
-    this.entries.clear();
-    for (const key of keys) {
-      this.notifyKey(key);
+    for (const entry of Array.from(this.entries.values())) {
+      entry.deleteRecord();
+      this.deleteEntryIfIdle(entry);
     }
   }
 
   deleteEntry(input: SessionDetailEntryKeyInput): boolean {
     const key = getSessionDetailEntryKey(input);
-    const deleted = this.entries.delete(key);
-    if (deleted) {
-      this.notifyKey(key);
-    }
-    return deleted;
+    return this.deleteRecordByKey(key);
   }
 
   /**
@@ -463,35 +634,15 @@ export class SessionDetailStore {
     if (!entry) {
       return;
     }
-    if (entry.state.session === null && entry.state.messages.length === 0) {
+    const state = entry.state;
+    if (!state || (state.session === null && state.messages.length === 0)) {
       return;
     }
-    entry.state = createInitialSessionDetailState();
-    entry.updatedAt = at;
-    entry.lastAccessedAt = at;
-    entry.expiresAt = at + ttlMs(options);
-    entry.approxBytes = 0;
-    this.notifyKey(key);
+    entry.resetState(at, options);
   }
 
   getStats(): SessionDetailStoreStats {
-    const entries = Array.from(this.entries.values()).map((entry) => ({
-      key: entry.key,
-      sourceKey: entry.sourceKey,
-      projectId: entry.projectId,
-      sessionId: entry.sessionId,
-      tailTurns: entry.tailTurns,
-      tailFrom: entry.tailFrom,
-      messageCount: entry.state.messages.length,
-      agentEntryCount: Object.keys(entry.state.agentContent).length,
-      approxBytes: entry.approxBytes,
-      retainCount: entry.retainCount,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
-      lastAccessedAt: entry.lastAccessedAt,
-      expiresAt: entry.expiresAt,
-      hasScrollSnapshot: entry.state.scrollSnapshot !== undefined,
-    }));
+    const entries = this.recordEntries().map((entry) => entry.toStats());
     return {
       entryCount: entries.length,
       retainedEntryCount: entries.filter((entry) => entry.retainCount > 0)
@@ -509,41 +660,21 @@ export class SessionDetailStore {
     input: SessionDetailEntryKeyInput,
     at: number,
     options: SessionDetailRetentionOptions,
-  ): SessionDetailStoreEntry {
-    const key = getSessionDetailEntryKey(input);
-    const existing = this.entries.get(key);
-    if (existing) {
-      return existing;
-    }
-    const entry: SessionDetailStoreEntry = {
-      key,
-      sourceKey: input.sourceKey,
-      projectId: input.projectId,
-      sessionId: input.sessionId,
-      tailTurns: input.tailTurns,
-      tailFrom: input.tailFrom,
-      state: createInitialSessionDetailState(),
-      retainCount: 0,
-      createdAt: at,
-      updatedAt: at,
-      lastAccessedAt: at,
-      expiresAt: at + ttlMs(options),
-      approxBytes: 0,
-    };
-    this.entries.set(key, entry);
+  ): SessionDetailEntry {
+    const entry = this.getOrCreateEntry(input);
+    entry.ensureRecord(at, options);
     return entry;
   }
 
   private deleteIfExpired(
-    entry: SessionDetailStoreEntry,
+    entry: SessionDetailEntry,
     at: number,
   ): boolean {
-    if (entry.retainCount > 0 || entry.expiresAt > at) {
-      return false;
+    const deleted = entry.deleteIfExpired(at);
+    if (deleted) {
+      this.deleteEntryIfIdle(entry);
     }
-    this.entries.delete(entry.key);
-    this.notifyKey(entry.key);
-    return true;
+    return deleted;
   }
 
   private evictLeastRecentlyUsed(
@@ -552,23 +683,23 @@ export class SessionDetailStore {
     const maxEntryCount = maxEntries(options);
     const maxByteCount = maxBytes(options);
     const candidates = () =>
-      Array.from(this.entries.values())
+      this.recordEntries()
         .filter((entry) => entry.retainCount === 0)
         .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt);
 
-    while (this.entries.size > maxEntryCount) {
+    while (this.recordEntries().length > maxEntryCount) {
       const victim = candidates()[0];
       if (!victim) {
         break;
       }
-      this.entries.delete(victim.key);
-      this.notifyKey(victim.key);
+      victim.deleteRecord();
+      this.deleteEntryIfIdle(victim);
     }
 
     // The naive per-entry sum is an upper bound on deduped usage, so an
     // under-budget fast path avoids walking rows on ordinary dispatches.
     let naiveTotal = 0;
-    for (const entry of this.entries.values()) {
+    for (const entry of this.recordEntries()) {
       naiveTotal += entry.approxBytes;
     }
     if (naiveTotal <= maxByteCount) {
@@ -580,8 +711,8 @@ export class SessionDetailStore {
       if (!victim) {
         break;
       }
-      this.entries.delete(victim.key);
-      this.notifyKey(victim.key);
+      victim.deleteRecord();
+      this.deleteEntryIfIdle(victim);
     }
   }
 
@@ -589,8 +720,8 @@ export class SessionDetailStore {
   private dedupedApproxBytes(): number {
     const seen = new Set<object>();
     let total = 0;
-    for (const entry of this.entries.values()) {
-      total += estimateSessionDetailStateBytes(entry.state, {
+    for (const entry of this.recordEntries()) {
+      total += entry.estimateBytes({
         measureUncached: false,
         seen,
       });
@@ -598,20 +729,34 @@ export class SessionDetailStore {
     return total;
   }
 
-  private notifyKey(key: string): void {
-    const subscriptions = this.listeners.get(key);
-    if (!subscriptions) {
-      return;
+  private getOrCreateEntry(input: SessionDetailEntryKeyInput): SessionDetailEntry {
+    const key = getSessionDetailEntryKey(input);
+    let entry = this.entries.get(key);
+    if (!entry) {
+      entry = new SessionDetailEntry(key, input);
+      this.entries.set(key, entry);
     }
-    const state = this.entries.get(key)?.state;
-    for (const subscription of Array.from(subscriptions)) {
-      const nextValue = subscription.selector(state);
-      if (subscription.equality(subscription.value, nextValue)) {
-        continue;
-      }
-      subscription.value = nextValue;
-      subscription.listener();
+    return entry;
+  }
+
+  private deleteRecordByKey(key: string): boolean {
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return false;
     }
+    const deleted = entry.deleteRecord();
+    this.deleteEntryIfIdle(entry);
+    return deleted;
+  }
+
+  private deleteEntryIfIdle(entry: SessionDetailEntry): void {
+    if (!entry.hasRecord && !entry.hasSubscriptions) {
+      this.entries.delete(entry.key);
+    }
+  }
+
+  private recordEntries(): SessionDetailEntry[] {
+    return Array.from(this.entries.values()).filter((entry) => entry.hasRecord);
   }
 }
 

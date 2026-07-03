@@ -126,6 +126,50 @@ describe("SessionDetailStore", () => {
     expect(notifications).toBe(2);
   });
 
+  it("keeps subscription-only entries out of stats", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+    const source = snapshot("session-a", ["msg-1"]);
+    const streamMessage = source.messages[0];
+    if (!streamMessage) throw new Error("expected fixture message");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let notifications = 0;
+
+    const unsubscribe = store.subscribe(
+      storeKey,
+      (state) => state?.messages.length ?? 0,
+      () => {
+        notifications += 1;
+      },
+    );
+
+    try {
+      expect(store.getStats().entryCount).toBe(0);
+      expect(
+        store.dispatch(storeKey, {
+          type: "applyStreamMessage",
+          message: streamMessage,
+        }),
+      ).toBeUndefined();
+      expect(store.getStats().entryCount).toBe(0);
+      expect(notifications).toBe(0);
+      expect(warn).toHaveBeenCalledWith(
+        "[SessionDetailStore] dropped action for missing entry",
+        {
+          key: "host%3Aa:project-a:session-a",
+          actionType: "applyStreamMessage",
+        },
+      );
+
+      store.writeRouteSnapshot(storeKey, source);
+      expect(store.getStats().entryCount).toBe(1);
+      expect(notifications).toBe(1);
+    } finally {
+      unsubscribe();
+      warn.mockRestore();
+    }
+  });
+
   it("reads selected state without exposing the whole entry", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");

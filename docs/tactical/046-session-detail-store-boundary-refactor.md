@@ -154,7 +154,7 @@ Implementation note:
 
 ## Phase 2: Extract Per-Entry Object
 
-Status: Pending.
+Status: Implemented.
 
 Intent:
 
@@ -171,6 +171,16 @@ Acceptance:
 - Direct store tests still pass.
 - Metadata-only store updates still do not rerender returned transcript data.
 - Missing-entry incremental actions are still dropped.
+
+Implementation note:
+
+- Added a private `SessionDetailEntry` object that owns one entry's
+  `SessionDetailState`, selected subscriptions, notification equality, dispatch
+  state replacement, scroll patching, reset, and stats projection.
+- Preserved subscription-before-load behavior by allowing subscription-only
+  entry slots that do not count as retained/cached records.
+- Kept retention, eviction, aggregate byte accounting, and public singleton APIs
+  on the outer `SessionDetailStore`; those remain Phase 3 cache-manager work.
 
 ## Phase 3: Extract Cache Manager Responsibilities
 

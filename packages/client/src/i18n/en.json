@@ -1432,7 +1432,7 @@
   "developmentServiceWorkerDescription": "Enable service worker for push notifications. Disabling can help with page reload issues during development. Requires restart.",
   "developmentSessionCursorTitle": "Session Cursor Behavior",
   "developmentSessionCursorControlTitle": "Restore mode",
-  "developmentSessionCursorDescription": "Debug-only browser-local setting for how reopened session transcripts restore scroll position. Include this mode in scroll bug reports.",
+  "developmentSessionCursorDescription": "Browser-local debug setting for how reopened session transcripts restore scroll position. Include the selected mode in scroll bug reports.",
   "developmentSessionCursorModeLiveTail": "Live tail (default)",
   "developmentSessionCursorModeLiveTailDescription": "Bottom snapshots reopen at the newest output and keep following. Scrolled-back snapshots restore their remembered row.",
   "developmentSessionCursorModeRememberPlace": "Remember place",

@@ -204,9 +204,16 @@ export function DevelopmentSettings() {
             <div className="settings-item-info">
               <strong>{t("developmentSessionCursorControlTitle")}</strong>
               <p>{t("developmentSessionCursorDescription")}</p>
-              <p>
-                {t(sessionCursorModeDescriptionKeys[sessionScrollBehaviorMode])}
-              </p>
+              <ul className="settings-option-description-list">
+                {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
+                  <li key={mode}>
+                    <strong>{t(sessionCursorModeLabelKeys[mode])}</strong>
+                    <span>
+                      {t(sessionCursorModeDescriptionKeys[mode])}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
             <div className="settings-item-actions">
               <select

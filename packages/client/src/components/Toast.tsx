@@ -17,7 +17,7 @@ export function ToastContainer({ toasts, onDismiss }: Props) {
           className={`toast toast-${toast.type}`}
           style={
             {
-              "--toast-fade-duration": toast.action ? "7s" : "3s",
+              "--toast-fade-duration": toast.action ? "7s" : "4.5s",
             } as CSSProperties
           }
           onClick={() => onDismiss(toast.id)}

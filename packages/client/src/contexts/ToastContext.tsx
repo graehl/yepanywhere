@@ -24,7 +24,9 @@ interface ToastProviderProps {
   children: ReactNode;
 }
 
-const TOAST_TIMEOUT_MS = 3000;
+// Keep in sync with the --toast-fade-duration values in Toast.tsx and the
+// .toast animation fallback in styles/index.css.
+const TOAST_TIMEOUT_MS = 4500;
 const ACTION_TOAST_TIMEOUT_MS = 7000;
 
 export function ToastProvider({ children }: ToastProviderProps) {

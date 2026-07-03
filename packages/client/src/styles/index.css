@@ -9025,7 +9025,7 @@ a.sidebar-nav-item {
   max-width: 400px;
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  animation: toast-cosine-fade-out var(--toast-fade-duration, 3s) linear
+  animation: toast-cosine-fade-out var(--toast-fade-duration, 4.5s) linear
     forwards;
 }
 

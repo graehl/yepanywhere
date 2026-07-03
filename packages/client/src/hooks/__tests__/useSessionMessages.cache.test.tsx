@@ -112,14 +112,6 @@ function readStoreToolUseToAgent(projectId = "proj-1", sessionId = "sess-1") {
   return entries ? new Map(entries) : undefined;
 }
 
-function returnedDataWarningCalls(warn: {
-  mock: { calls: Array<readonly unknown[]> };
-}) {
-  return warn.mock.calls.filter(
-    ([label]) => label === "[SessionDetailReturnedData]",
-  );
-}
-
 function reactCrossUpdateErrorCalls(error: {
   mock: { calls: Array<readonly unknown[]> };
 }) {
@@ -592,9 +584,8 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("keeps returned store-backed data invariant quiet across message and subagent transitions", async () => {
+  it("keeps returned store-backed data coherent across message and subagent transitions", async () => {
     enableStoreBackedMessages();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -628,7 +619,6 @@ describe("useSessionMessages cache", () => {
     );
 
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
 
     act(() => {
       rendered.result.current.handleStreamingUpdate({
@@ -646,7 +636,6 @@ describe("useSessionMessages cache", () => {
       ).toEqual(["msg-1", "streaming-1"]),
     );
     expect(readStoreMessageIds()).toEqual(["msg-1", "streaming-1"]);
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
 
     act(() => {
       rendered.result.current.clearStreamingPlaceholders();
@@ -658,7 +647,6 @@ describe("useSessionMessages cache", () => {
       ).toEqual(["msg-1"]),
     );
     expect(readStoreMessageIds()).toEqual(["msg-1"]);
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
 
     const subagentStreamMessage: Message = {
       uuid: "agent-stream-1",
@@ -684,7 +672,6 @@ describe("useSessionMessages cache", () => {
       messages: [subagentStreamMessage],
       status: "running",
     });
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
 
     const loadedSubagentMessage: Message = {
       uuid: "agent-loaded-1",
@@ -710,7 +697,6 @@ describe("useSessionMessages cache", () => {
       messages: [loadedSubagentMessage, subagentStreamMessage],
       status: "running",
     });
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
 
     act(() => {
       rendered.result.current.registerToolUseAgent("toolu_1", "task-1");
@@ -721,7 +707,6 @@ describe("useSessionMessages cache", () => {
         "task-1",
       ),
     );
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
   });
 
   it("does not return store-only agent content when the debug setting is disabled", async () => {
@@ -1839,7 +1824,6 @@ describe("useSessionMessages cache", () => {
   it("keeps store-backed warm full-window data coherent when refresh returns a compacted tail", async () => {
     enableSessionTranscriptCache();
     enableStoreBackedMessages();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -1955,7 +1939,6 @@ describe("useSessionMessages cache", () => {
     expect(
       second.result.current.pagination?.truncatedBeforeMessageId,
     ).toBeUndefined();
-    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
   });
 
   it("uses selector-backed pagination when loading older messages", async () => {

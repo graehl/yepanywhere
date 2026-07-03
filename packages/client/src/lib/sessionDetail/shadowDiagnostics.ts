@@ -51,16 +51,6 @@ interface CompactSessionDetail {
   scrollSnapshot?: CompactScrollSnapshot;
 }
 
-interface CompactReturnedData {
-  messageCount: number;
-  messageHash: string;
-  firstMessages: CompactMessage[];
-  lastMessages: CompactMessage[];
-  agentKeys: string[];
-  agents: Record<string, CompactAgent>;
-  toolUseToAgentEntries: Array<[string, string]>;
-}
-
 export interface SessionDetailRuntimeStateInput {
   messages: SessionDetailRuntimeSnapshot["messages"];
   session: SessionMetadata | null;
@@ -79,21 +69,6 @@ export interface SessionDetailStoreDivergenceInput {
   provider?: string;
   live: SessionDetailRuntimeStateInput;
   store: SessionDetailRuntimeSnapshot;
-}
-
-export interface SessionDetailReturnedDataSnapshot {
-  messages: SessionDetailRuntimeSnapshot["messages"];
-  agentContent: SessionDetailRuntimeSnapshot["agentContent"];
-  toolUseToAgentEntries?: SessionDetailRuntimeSnapshot["toolUseToAgentEntries"];
-}
-
-export interface SessionDetailReturnedDataDivergenceInput {
-  boundary: string;
-  projectId: string;
-  sessionId: string;
-  provider?: string;
-  returned: SessionDetailReturnedDataSnapshot;
-  store: SessionDetailReturnedDataSnapshot;
 }
 
 declare global {
@@ -234,32 +209,6 @@ function compactSessionDetail(
   };
 }
 
-function compactReturnedData(
-  input: SessionDetailReturnedDataSnapshot,
-): CompactReturnedData {
-  const messages = compactMessages(input.messages);
-  const agentKeys = Object.keys(input.agentContent).sort();
-  const agents = Object.fromEntries(
-    agentKeys.flatMap((agentId) => {
-      const agentContent = input.agentContent[agentId];
-      return agentContent ? [[agentId, compactAgent(agentContent)]] : [];
-    }),
-  );
-  const toolUseToAgentEntries = [...(input.toolUseToAgentEntries ?? [])].sort(
-    ([left], [right]) => left.localeCompare(right),
-  );
-
-  return {
-    messageCount: messages.length,
-    messageHash: hashString(JSON.stringify(messages)),
-    firstMessages: messages.slice(0, MESSAGE_SAMPLE_SIZE),
-    lastMessages: messages.slice(-MESSAGE_SAMPLE_SIZE),
-    agentKeys,
-    agents,
-    toolUseToAgentEntries,
-  };
-}
-
 function comparableCompact(input: CompactSessionDetail): string {
   return JSON.stringify({
     sessionId: input.sessionId,
@@ -276,16 +225,6 @@ function comparableCompact(input: CompactSessionDetail): string {
   });
 }
 
-function comparableReturnedData(input: CompactReturnedData): string {
-  return JSON.stringify({
-    messageCount: input.messageCount,
-    messageHash: input.messageHash,
-    agentKeys: input.agentKeys,
-    agents: input.agents,
-    toolUseToAgentEntries: input.toolUseToAgentEntries,
-  });
-}
-
 function findFirstMessageDiff(
   liveMessages: readonly Message[],
   storeMessages: readonly Message[],
@@ -298,34 +237,6 @@ function findFirstMessageDiff(
       return { index, live, store };
     }
   }
-  return null;
-}
-
-function findFirstAgentDiff(
-  returnedAgentContent: SessionDetailReturnedDataSnapshot["agentContent"],
-  storeAgentContent: SessionDetailReturnedDataSnapshot["agentContent"],
-): { agentId: string; returned?: CompactAgent; store?: CompactAgent } | null {
-  const agentIds = Array.from(
-    new Set([
-      ...Object.keys(returnedAgentContent),
-      ...Object.keys(storeAgentContent),
-    ]),
-  ).sort();
-
-  for (const agentId of agentIds) {
-    const returned = returnedAgentContent[agentId];
-    const store = storeAgentContent[agentId];
-    const compactReturned = returned ? compactAgent(returned) : undefined;
-    const compactStore = store ? compactAgent(store) : undefined;
-    if (JSON.stringify(compactReturned) !== JSON.stringify(compactStore)) {
-      return {
-        agentId,
-        returned: compactReturned,
-        store: compactStore,
-      };
-    }
-  }
-
   return null;
 }
 
@@ -368,53 +279,6 @@ export function reportSessionDetailStoreDivergence(
       input.store.messages,
     ),
     live,
-    store,
-  });
-}
-
-export function reportSessionDetailReturnedDataDivergence(
-  input: SessionDetailReturnedDataDivergenceInput,
-): void {
-  if (!import.meta.env.DEV) {
-    return;
-  }
-
-  const returned = compactReturnedData(input.returned);
-  const store = compactReturnedData(input.store);
-  const returnedKey = comparableReturnedData(returned);
-  const storeKey = comparableReturnedData(store);
-  if (returnedKey === storeKey) {
-    return;
-  }
-
-  const divergenceKey = [
-    "returned",
-    input.boundary,
-    input.projectId,
-    input.sessionId,
-    hashString(returnedKey),
-    hashString(storeKey),
-  ].join(":");
-  if (loggedDivergenceKeys.has(divergenceKey)) {
-    return;
-  }
-  loggedDivergenceKeys.add(divergenceKey);
-
-  console.warn("[SessionDetailReturnedData]", {
-    event: "session-detail-returned-data-divergence",
-    boundary: input.boundary,
-    projectId: input.projectId,
-    sessionId: input.sessionId,
-    provider: input.provider,
-    firstMessageDiff: findFirstMessageDiff(
-      input.returned.messages,
-      input.store.messages,
-    ),
-    firstAgentDiff: findFirstAgentDiff(
-      input.returned.agentContent,
-      input.store.agentContent,
-    ),
-    returned,
     store,
   });
 }

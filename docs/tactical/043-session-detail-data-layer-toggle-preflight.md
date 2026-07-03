@@ -20,17 +20,21 @@ surfaces that have selector-backed mirrors:
   `state.toolUseToAgentEntries` together.
 - Fallback: local `messages`/`agentContent` state if the store entry is
   missing or the hook has not reached the reveal point.
-- Still maintain local mirrors for diagnostics, fallback, and rollback.
-- Confidence signal: when the default store-backed path is active, hydration is
-  complete, and the store entry exists, a dev-only returned-data invariant
-  diagnostic warns if returned `messages`/`agentContent` differ from the store
-  snapshot.
+- Still maintain local mirrors where they support loading reveal, fallback, and
+  the Development settings rollback.
+- Confidence signal: reducer fixtures, focused hook tests, and browser
+  dogfooding. The earlier returned-data invariant diagnostic was removed
+  because it compared the returned store-selected data to the same store
+  snapshot that produced it.
 - Do not include render selectors, scroll ownership, or `/btw` in this toggle.
 
 Turning the switch off does not disable the reducer/store feed. It only returns
 the legacy hook-local mirrors instead of the broad store-selected snapshot;
 selector-backed adapter reads, diagnostics, cache ownership, and store
-retention still run.
+retention still run. On normal mounted paths, those mirrors are increasingly
+copies of store-selected output, so the switch mainly protects reveal timing,
+subscription behavior, object identity, and remaining locally owned refs rather
+than providing a fully independent data-semantics rollback.
 
 One important guard remains: warm snapshot restore writes the store before it
 reveals local `messages`/`agentContent`, because the hook intentionally yields
@@ -47,11 +51,11 @@ warm-reveal behavior.
 | Warm catch-up before hydration | Merges REST delta into warm snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Warm catch-up after hydration | Merges REST delta into revealed snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Cold persisted load | Sets tagged/reconciled REST snapshot | `loadPersistedTranscript` | Reducer and hook/store coverage exist |
-| Ordinary stream/replay | Merges stream row with replay suppression | `applyStreamMessage` | Store-backed return parity asserted |
-| Main streaming placeholder upsert | Copies selector-backed store result | `upsertStreamingPlaceholder` | Selector-backed |
-| Main streaming placeholder cleanup | Copies selector-backed store result | `clearStreamingPlaceholders` | Selector-backed |
-| Incremental persisted catch-up | Merges new REST rows and updates cursor | `applyCatchupMessages` | Store-backed return parity asserted |
-| Older-page prepend | Prepends older REST rows and updates cursor | `prependOlderMessages` | Store-backed return parity asserted |
+| Ordinary stream/replay | Copies selector-backed store result | `applyStreamMessage` | Store-selected after dispatch |
+| Main streaming placeholder upsert | Copies selector-backed store result | `upsertStreamingPlaceholder` | Store-selected after dispatch |
+| Main streaming placeholder cleanup | Copies selector-backed store result | `clearStreamingPlaceholders` | Store-selected after dispatch |
+| Incremental persisted catch-up | Copies selector-backed store result and updates cursor | `applyCatchupMessages` | Store-selected after dispatch |
+| Older-page prepend | Copies selector-backed store result and updates cursor | `prependOlderMessages` | Store-selected after dispatch |
 
 ## Remaining Risks
 
@@ -67,8 +71,8 @@ warm-reveal behavior.
   falls back to a compacted tail response, the merged message set keeps
   coherent pagination for the broader window.
 - Stream/replay parity depends on provider-specific approximate dedupe. Reducer
-  fixtures cover the important Codex shapes, but the hook still computes local
-  state independently after dispatch.
+  fixtures cover the important Codex shapes, and ordinary stream/replay no
+  longer computes local state independently after dispatch.
 - Cursor and persisted timestamp watermark side effects stay outside the
   selector read. The store can own the returned array before it owns those refs,
   but tests must keep covering both.
@@ -79,15 +83,16 @@ warm-reveal behavior.
 - Browser dogfood should capture console diagnostics from real navigation:
   keep Store-Backed Session Detail enabled (the default), enable session-detail
   shadow diagnostics, drive `/inbox` to several session detail pages, and record
-  `[SessionDetailReturnedData]`, `[SessionDetailStore]`,
-  `[SessionDetailShadow]`, React errors, request failures, and scroll bottom
-  deltas. Treat returned-data warnings as blockers; treat shadow/store
-  warnings as fixture candidates unless they are scroll-only noise.
+  `[SessionDetailStore]`, `[SessionDetailShadow]`, React errors, request
+  failures, and scroll bottom deltas. Treat store/shadow warnings as fixture
+  candidates unless they are scroll-only noise. Treat
+  `session-detail-selector-missing-after-dispatch` as an adapter/retention bug.
 
 ## Readiness Call
 
 The store-backed returned detail path is now the default, with the Development
-settings switch retained as rollback. The next implementation chunks should
-keep capturing any returned-data divergence as a compact reducer or hook
-fixture, then decide when the legacy local mirrors can be deleted rather than
-maintained as fallback. Scroll ownership and `/btw` remain out of scope.
+settings switch retained as a narrower rollback. The next implementation chunks
+should keep deleting local mirrors and fallback recomputation one boundary at a
+time, capturing any visible regression or meaningful non-scroll store/local
+divergence as a compact reducer or hook fixture. Scroll ownership and `/btw`
+remain out of scope.

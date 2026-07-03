@@ -4,7 +4,6 @@ import { UI_KEYS } from "../../storageKeys";
 import {
   __resetSessionDetailShadowDiagnosticsForTest,
   isSessionDetailShadowDiagnosticsEnabled,
-  reportSessionDetailReturnedDataDivergence,
   reportSessionDetailStoreDivergence,
 } from "../shadowDiagnostics";
 
@@ -129,72 +128,4 @@ describe("session detail shadow diagnostics", () => {
     });
   });
 
-  it("logs returned-data invariant divergence without transcript text", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const returnedMessage = userMessage("returned-user-1", "secret returned");
-    const storeMessage = userMessage("store-user-1", "secret store");
-    const returnedAgentMessage = userMessage(
-      "returned-agent-1",
-      "secret returned agent",
-    );
-    const storeAgentMessage = userMessage(
-      "store-agent-1",
-      "secret store agent",
-    );
-
-    reportSessionDetailReturnedDataDivergence({
-      boundary: "returned-detail",
-      projectId: "project-1",
-      sessionId: "session-1",
-      provider: "codex",
-      returned: {
-        messages: [returnedMessage],
-        agentContent: {
-          "agent-1": {
-            messages: [returnedAgentMessage],
-            status: "running",
-          },
-        },
-        toolUseToAgentEntries: [["toolu_returned", "agent-returned"]],
-      },
-      store: {
-        messages: [storeMessage],
-        agentContent: {
-          "agent-1": {
-            messages: [storeAgentMessage],
-            status: "running",
-          },
-        },
-        toolUseToAgentEntries: [["toolu_store", "agent-store"]],
-      },
-    });
-
-    expect(warn).toHaveBeenCalledTimes(1);
-    const payload = warn.mock.calls[0]?.[1] as unknown;
-    expect(JSON.stringify(payload)).not.toContain("secret");
-    expect(payload).toMatchObject({
-      event: "session-detail-returned-data-divergence",
-      boundary: "returned-detail",
-      firstMessageDiff: {
-        index: 0,
-        live: { id: "returned-user-1" },
-        store: { id: "store-user-1" },
-      },
-      firstAgentDiff: {
-        agentId: "agent-1",
-        returned: {
-          first: { id: "returned-agent-1" },
-        },
-        store: {
-          first: { id: "store-agent-1" },
-        },
-      },
-      returned: {
-        toolUseToAgentEntries: [["toolu_returned", "agent-returned"]],
-      },
-      store: {
-        toolUseToAgentEntries: [["toolu_store", "agent-store"]],
-      },
-    });
-  });
 });

@@ -67,8 +67,7 @@ interface SelectorSubscription {
   value: unknown;
 }
 
-interface SessionDetailEntryRecord {
-  state: SessionDetailState;
+interface SessionDetailEntryMetadata {
   retainCount: number;
   createdAt: number;
   updatedAt: number;
@@ -207,164 +206,62 @@ function stateToRouteSnapshot(
   };
 }
 
-class SessionDetailEntry {
-  private record: SessionDetailEntryRecord | null = null;
+class SessionDetailEntryStore {
+  private stateValue: SessionDetailState | undefined;
   private subscriptions = new Set<SelectorSubscription>();
-
-  constructor(
-    readonly key: string,
-    readonly input: SessionDetailEntryKeyInput,
-  ) {}
-
-  get hasRecord(): boolean {
-    return this.record !== null;
-  }
 
   get hasSubscriptions(): boolean {
     return this.subscriptions.size > 0;
   }
 
   get state(): SessionDetailState | undefined {
-    return this.record?.state;
+    return this.stateValue;
   }
 
-  get retainCount(): number {
-    return this.record?.retainCount ?? 0;
-  }
-
-  get approxBytes(): number {
-    return this.record?.approxBytes ?? 0;
-  }
-
-  get lastAccessedAt(): number {
-    return this.record?.lastAccessedAt ?? 0;
-  }
-
-  markAccessed(at: number): void {
-    if (this.record) {
-      this.record.lastAccessedAt = at;
+  initialize(state: SessionDetailState): void {
+    if (!this.stateValue) {
+      this.stateValue = state;
     }
   }
 
-  ensureRecord(
-    at: number,
-    options: SessionDetailRetentionOptions,
-  ): SessionDetailEntryRecord {
-    if (!this.record) {
-      this.record = {
-        state: createInitialSessionDetailState(),
-        retainCount: 0,
-        createdAt: at,
-        updatedAt: at,
-        lastAccessedAt: at,
-        expiresAt: at + ttlMs(options),
-        approxBytes: 0,
-      };
-    }
-    return this.record;
-  }
-
-  replaceState(
-    state: SessionDetailState,
-    at: number,
-    options: SessionDetailRetentionOptions,
-    approxBytes: number,
-  ): void {
-    const existing = this.record;
-    this.record = {
-      state,
-      retainCount: existing?.retainCount ?? 0,
-      createdAt: existing?.createdAt ?? at,
-      updatedAt: at,
-      lastAccessedAt: at,
-      expiresAt: at + ttlMs(options),
-      approxBytes,
-    };
-    this.notify();
-  }
-
-  applyState(
-    state: SessionDetailState,
-    at: number,
-    options: SessionDetailRetentionOptions,
-    approxBytes: number,
-  ): void {
-    const record = this.ensureRecord(at, options);
-    record.state = state;
-    record.updatedAt = at;
-    record.lastAccessedAt = at;
-    record.expiresAt = at + ttlMs(options);
-    record.approxBytes = approxBytes;
+  replaceState(state: SessionDetailState): void {
+    this.stateValue = state;
     this.notify();
   }
 
   patchScrollSnapshot(
     scrollSnapshot: SessionRouteScrollSnapshot,
-    at: number,
     notify: boolean,
-  ): void {
-    if (!this.record) {
-      return;
+  ): boolean {
+    if (!this.stateValue) {
+      return false;
     }
-    this.record.state = {
-      ...this.record.state,
+    this.stateValue = {
+      ...this.stateValue,
       scrollSnapshot: cloneScrollSnapshot(scrollSnapshot),
     };
-    this.record.updatedAt = at;
-    this.record.lastAccessedAt = at;
     if (notify) {
       this.notify();
     }
+    return true;
   }
 
-  resetState(
-    at: number,
-    options: Pick<SessionDetailRetentionOptions, "ttlMs">,
-  ): void {
-    if (!this.record) {
-      return;
-    }
-    this.record.state = createInitialSessionDetailState();
-    this.record.updatedAt = at;
-    this.record.lastAccessedAt = at;
-    this.record.expiresAt = at + ttlMs(options);
-    this.record.approxBytes = 0;
-    this.notify();
-  }
-
-  incrementRetain(at: number, options: SessionDetailRetentionOptions): void {
-    const record = this.ensureRecord(at, options);
-    record.retainCount += 1;
-    record.lastAccessedAt = at;
-  }
-
-  release(at: number, options: SessionDetailRetentionOptions): void {
-    if (!this.record) {
-      return;
-    }
-    this.record.retainCount = Math.max(0, this.record.retainCount - 1);
-    this.record.lastAccessedAt = at;
-    this.record.expiresAt = at + ttlMs(options);
-  }
-
-  deleteRecord(): boolean {
-    if (!this.record) {
+  resetState(): boolean {
+    if (!this.stateValue) {
       return false;
     }
-    this.record = null;
+    this.stateValue = createInitialSessionDetailState();
     this.notify();
     return true;
   }
 
-  deleteIfExpired(at: number): boolean {
-    if (
-      !this.record ||
-      this.record.retainCount > 0 ||
-      this.record.expiresAt > at
-    ) {
+  clear(): boolean {
+    if (!this.stateValue) {
       return false;
     }
-    return this.deleteRecord();
+    this.stateValue = undefined;
+    this.notify();
+    return true;
   }
 
   subscribe<T>(
@@ -384,39 +281,9 @@ class SessionDetailEntry {
     };
   }
 
-  toStats(): SessionDetailStoreEntryStats {
-    if (!this.record) {
-      throw new Error("Cannot build stats for an empty session detail entry");
-    }
-    return {
-      key: this.key,
-      sourceKey: this.input.sourceKey,
-      projectId: this.input.projectId,
-      sessionId: this.input.sessionId,
-      tailTurns: this.input.tailTurns,
-      tailFrom: this.input.tailFrom,
-      messageCount: this.record.state.messages.length,
-      agentEntryCount: Object.keys(this.record.state.agentContent).length,
-      approxBytes: this.record.approxBytes,
-      retainCount: this.record.retainCount,
-      createdAt: this.record.createdAt,
-      updatedAt: this.record.updatedAt,
-      lastAccessedAt: this.record.lastAccessedAt,
-      expiresAt: this.record.expiresAt,
-      hasScrollSnapshot: this.record.state.scrollSnapshot !== undefined,
-    };
-  }
-
-  estimateBytes(options: EstimateStateBytesOptions): number {
-    return this.record
-      ? estimateSessionDetailStateBytes(this.record.state, options)
-      : 0;
-  }
-
   private notify(): void {
-    const state = this.state;
     for (const subscription of Array.from(this.subscriptions)) {
-      const nextValue = subscription.selector(state);
+      const nextValue = subscription.selector(this.stateValue);
       if (subscription.equality(subscription.value, nextValue)) {
         continue;
       }
@@ -426,7 +293,197 @@ class SessionDetailEntry {
   }
 }
 
-export class SessionDetailStore {
+class SessionDetailEntry {
+  private metadata: SessionDetailEntryMetadata | null = null;
+  private readonly store = new SessionDetailEntryStore();
+
+  constructor(
+    readonly key: string,
+    readonly input: SessionDetailEntryKeyInput,
+  ) {}
+
+  get hasRecord(): boolean {
+    return this.metadata !== null;
+  }
+
+  get hasSubscriptions(): boolean {
+    return this.store.hasSubscriptions;
+  }
+
+  get state(): SessionDetailState | undefined {
+    return this.metadata ? this.store.state : undefined;
+  }
+
+  get retainCount(): number {
+    return this.metadata?.retainCount ?? 0;
+  }
+
+  get approxBytes(): number {
+    return this.metadata?.approxBytes ?? 0;
+  }
+
+  get lastAccessedAt(): number {
+    return this.metadata?.lastAccessedAt ?? 0;
+  }
+
+  markAccessed(at: number): void {
+    if (this.metadata) {
+      this.metadata.lastAccessedAt = at;
+    }
+  }
+
+  ensureRecord(
+    at: number,
+    options: SessionDetailRetentionOptions,
+  ): SessionDetailEntryMetadata {
+    if (!this.metadata) {
+      this.metadata = {
+        retainCount: 0,
+        createdAt: at,
+        updatedAt: at,
+        lastAccessedAt: at,
+        expiresAt: at + ttlMs(options),
+        approxBytes: 0,
+      };
+      this.store.initialize(createInitialSessionDetailState());
+    }
+    return this.metadata;
+  }
+
+  replaceState(
+    state: SessionDetailState,
+    at: number,
+    options: SessionDetailRetentionOptions,
+    approxBytes: number,
+  ): void {
+    const existing = this.metadata;
+    this.metadata = {
+      retainCount: existing?.retainCount ?? 0,
+      createdAt: existing?.createdAt ?? at,
+      updatedAt: at,
+      lastAccessedAt: at,
+      expiresAt: at + ttlMs(options),
+      approxBytes,
+    };
+    this.store.replaceState(state);
+  }
+
+  applyState(
+    state: SessionDetailState,
+    at: number,
+    options: SessionDetailRetentionOptions,
+    approxBytes: number,
+  ): void {
+    const metadata = this.ensureRecord(at, options);
+    metadata.updatedAt = at;
+    metadata.lastAccessedAt = at;
+    metadata.expiresAt = at + ttlMs(options);
+    metadata.approxBytes = approxBytes;
+    this.store.replaceState(state);
+  }
+
+  patchScrollSnapshot(
+    scrollSnapshot: SessionRouteScrollSnapshot,
+    at: number,
+    notify: boolean,
+  ): void {
+    if (!this.metadata) {
+      return;
+    }
+    if (!this.store.patchScrollSnapshot(scrollSnapshot, notify)) {
+      return;
+    }
+    this.metadata.updatedAt = at;
+    this.metadata.lastAccessedAt = at;
+  }
+
+  resetState(
+    at: number,
+    options: Pick<SessionDetailRetentionOptions, "ttlMs">,
+  ): void {
+    if (!this.metadata || !this.store.resetState()) {
+      return;
+    }
+    this.metadata.updatedAt = at;
+    this.metadata.lastAccessedAt = at;
+    this.metadata.expiresAt = at + ttlMs(options);
+    this.metadata.approxBytes = 0;
+  }
+
+  incrementRetain(at: number, options: SessionDetailRetentionOptions): void {
+    const metadata = this.ensureRecord(at, options);
+    metadata.retainCount += 1;
+    metadata.lastAccessedAt = at;
+  }
+
+  release(at: number, options: SessionDetailRetentionOptions): void {
+    if (!this.metadata) {
+      return;
+    }
+    this.metadata.retainCount = Math.max(0, this.metadata.retainCount - 1);
+    this.metadata.lastAccessedAt = at;
+    this.metadata.expiresAt = at + ttlMs(options);
+  }
+
+  deleteRecord(): boolean {
+    if (!this.metadata) {
+      return false;
+    }
+    this.metadata = null;
+    this.store.clear();
+    return true;
+  }
+
+  deleteIfExpired(at: number): boolean {
+    if (
+      !this.metadata ||
+      this.metadata.retainCount > 0 ||
+      this.metadata.expiresAt > at
+    ) {
+      return false;
+    }
+    return this.deleteRecord();
+  }
+
+  subscribe<T>(
+    selector: Selector<T>,
+    listener: () => void,
+    equality: Equality<T>,
+  ): () => void {
+    return this.store.subscribe(selector, listener, equality);
+  }
+
+  toStats(): SessionDetailStoreEntryStats {
+    const state = this.state;
+    if (!this.metadata || !state) {
+      throw new Error("Cannot build stats for an empty session detail entry");
+    }
+    return {
+      key: this.key,
+      sourceKey: this.input.sourceKey,
+      projectId: this.input.projectId,
+      sessionId: this.input.sessionId,
+      tailTurns: this.input.tailTurns,
+      tailFrom: this.input.tailFrom,
+      messageCount: state.messages.length,
+      agentEntryCount: Object.keys(state.agentContent).length,
+      approxBytes: this.metadata.approxBytes,
+      retainCount: this.metadata.retainCount,
+      createdAt: this.metadata.createdAt,
+      updatedAt: this.metadata.updatedAt,
+      lastAccessedAt: this.metadata.lastAccessedAt,
+      expiresAt: this.metadata.expiresAt,
+      hasScrollSnapshot: state.scrollSnapshot !== undefined,
+    };
+  }
+
+  estimateBytes(options: EstimateStateBytesOptions): number {
+    const state = this.state;
+    return state ? estimateSessionDetailStateBytes(state, options) : 0;
+  }
+}
+
+class SessionDetailCache {
   private entries = new Map<string, SessionDetailEntry>();
 
   read(
@@ -757,6 +814,106 @@ export class SessionDetailStore {
 
   private recordEntries(): SessionDetailEntry[] {
     return Array.from(this.entries.values()).filter((entry) => entry.hasRecord);
+  }
+}
+
+export class SessionDetailStore {
+  private readonly cache = new SessionDetailCache();
+
+  read(
+    input: SessionDetailEntryKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): SessionDetailState | undefined {
+    return this.cache.read(input, options);
+  }
+
+  readRouteSnapshot(
+    input: SessionDetailEntryKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): SessionRouteSnapshot | undefined {
+    return this.cache.readRouteSnapshot(input, options);
+  }
+
+  readSelected<T>(
+    input: SessionDetailEntryKeyInput,
+    selector: (state: SessionDetailState) => T,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): T | undefined {
+    return this.cache.readSelected(input, selector, options);
+  }
+
+  writeRouteSnapshot(
+    input: SessionDetailEntryKeyInput,
+    snapshot: SessionRouteSnapshot,
+    options: SessionDetailRetentionOptions = {},
+  ): boolean {
+    return this.cache.writeRouteSnapshot(input, snapshot, options);
+  }
+
+  dispatch(
+    input: SessionDetailEntryKeyInput,
+    action: SessionDetailAction,
+    options: SessionDetailRetentionOptions = {},
+  ): SessionDetailState | undefined {
+    return this.cache.dispatch(input, action, options);
+  }
+
+  patchScrollSnapshot(
+    input: SessionDetailEntryKeyInput,
+    scrollSnapshot: SessionRouteScrollSnapshot,
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> & {
+      notify?: boolean;
+    } = {},
+  ): void {
+    this.cache.patchScrollSnapshot(input, scrollSnapshot, options);
+  }
+
+  subscribe<T>(
+    input: SessionDetailEntryKeyInput,
+    selector: Selector<T>,
+    listener: () => void,
+    equality: Equality<T> = Object.is,
+  ): () => void {
+    return this.cache.subscribe(input, selector, listener, equality);
+  }
+
+  retain(
+    input: SessionDetailEntryKeyInput,
+    options: SessionDetailRetentionOptions = {},
+  ): () => void {
+    return this.cache.retain(input, options);
+  }
+
+  release(
+    input: SessionDetailEntryKeyInput,
+    options: SessionDetailRetentionOptions = {},
+  ): void {
+    this.cache.release(input, options);
+  }
+
+  evictExpired(
+    options: Pick<SessionDetailRetentionOptions, "nowMs"> = {},
+  ): number {
+    return this.cache.evictExpired(options);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  deleteEntry(input: SessionDetailEntryKeyInput): boolean {
+    return this.cache.deleteEntry(input);
+  }
+
+  resetEntryState(
+    input: SessionDetailEntryKeyInput,
+    options: Pick<SessionDetailRetentionOptions, "nowMs" | "ttlMs"> = {},
+  ): void {
+    this.cache.resetEntryState(input, options);
+  }
+
+  getStats(): SessionDetailStoreStats {
+    return this.cache.getStats();
   }
 }
 

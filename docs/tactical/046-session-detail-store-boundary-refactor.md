@@ -184,7 +184,7 @@ Implementation note:
 
 ## Phase 3: Extract Cache Manager Responsibilities
 
-Status: Pending.
+Status: Implemented.
 
 Intent:
 
@@ -201,6 +201,16 @@ Acceptance:
 - Cache-enabled unmount releases but preserves a cacheable snapshot.
 - Budget-zero settings still clear retained snapshots.
 - `getStats()` remains useful for diagnostics and tests.
+
+Implementation note:
+
+- Added a private `SessionDetailCache` manager that owns entry lookup, creation,
+  delete, retain/release, TTL eviction, LRU/byte eviction, and aggregate stats.
+- Kept exported `SessionDetailStore` as the stable compatibility facade over
+  that cache, so hook and route snapshot callers did not move in this phase.
+- Split per-entry data into `SessionDetailEntry` metadata plus
+  `SessionDetailEntryStore` reducer/subscription state. This leaves each entry
+  with one session-window store while the cache owns lifecycle and diagnostics.
 
 ## Phase 4: Compatibility Facade Cleanup
 

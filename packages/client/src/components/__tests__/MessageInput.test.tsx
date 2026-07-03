@@ -2292,6 +2292,77 @@ describe("MessageInput", () => {
     expect(container.querySelector(".composer-liveness-status")).toBeNull();
   });
 
+  it("keeps the liveness chip out of the float even when it would show inline", () => {
+    // Compact + sessionStatus on: the parent still asks for the liveness
+    // chip, but the float carries only the two ages — floated, the liveness
+    // time degrades to a context-free "now" pill over the composer.
+    const nowMs = new Date("2026-04-26T12:06:00.000Z").getTime();
+    const { container } = render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={toolbarVisibility}
+        isCompactStatusMode={true}
+        attachmentControl={{ attachmentCount: 0 }}
+        statusControl={{
+          showToolbarStatus: true,
+          showLivenessChip: true,
+          livenessDisplay: {
+            prefix: "Verified progress",
+            timestampMs: nowMs - 30_000,
+            tone: "ok",
+            title: "status: verified-progressing",
+          },
+          livenessSummary: "Verified progress now",
+          nowMs,
+          showLastActivityChip: true,
+          showLastActivityPrefix: false,
+          lastActivityMs: nowMs - 6 * 60 * 1000,
+          lastActivityIsPast: true,
+          positionTimestampMs: nowMs - 10 * 60 * 1000,
+          showPositionTimestamp: true,
+          hasPositionAge: true,
+          hasLastActivityAge: true,
+        }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    expect(container.querySelector(".composer-liveness-status")).toBeNull();
+    expect(screen.queryByText("now")).toBeNull();
+    expect(screen.getByText("at 10m ago")).toBeTruthy();
+    expect(screen.getByText("6m ago")).toBeTruthy();
+  });
+
+  it("never shows a current position age, even without a freshness label", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:06:00.000Z"));
+
+    renderMessageInput(
+      vi.fn(() => true),
+      {
+        // No lastActivityAt: the duplicate-label guard alone would let a
+        // current position through; "now" must count as duplicating the
+        // (hidden-as-current) freshness.
+        positionTimestampMs: Date.now() - 30_000,
+      },
+    );
+
+    expect(screen.queryByText("at now")).toBeNull();
+  });
+
   it("keeps a send affordance visible when the composer is collapsed", () => {
     const onSend = vi.fn();
     const textarea = renderMessageInput(

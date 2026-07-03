@@ -5121,21 +5121,6 @@ a.sidebar-nav-item {
   opacity: 0.96;
 }
 
-.message-input-toolbar.status-floats .composer-liveness-status.is-ok {
-  border-color: color-mix(in srgb, var(--success-color) 26%, transparent);
-  color: color-mix(in srgb, var(--success-color) 82%, var(--text-primary));
-}
-
-.message-input-toolbar.status-floats .composer-liveness-status.is-danger {
-  border-color: color-mix(in srgb, var(--error-color) 30%, transparent);
-  color: color-mix(in srgb, var(--error-color) 82%, var(--text-primary));
-}
-
-.message-input-toolbar.status-floats .composer-liveness-status.is-muted {
-  border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
-  color: var(--text-muted);
-}
-
 .message-input-toolbar.status-floats .composer-activity-age--compact {
   border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
   background: color-mix(in srgb, var(--bg-surface) 98%, transparent);

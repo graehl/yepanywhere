@@ -101,7 +101,10 @@ liveness chip:
 - **Floated over the composer when there is not room** (the same measured
   `requiredWidth > clientWidth` "compact" signal that drives control overflow,
   or a mobile viewport — not a hardcoded breakpoint). The float carries only
-  the two ages, never the liveness chip.
+  the two ages, never the liveness chip: floated, the liveness time degrades
+  to a context-free "now"/"5m" pill over the composer, styled unlike the
+  inline row it came from (observed 2026-07-03 as a mystery "now" pill during
+  streaming). The view enforces this — the liveness chip is inline-only.
 - **The float is decoupled from the `sessionStatus` toggle** so that
   width-constrained clients still get the ages. This matters because
   `sessionStatus` defaults *off* on mobile (the inline row would crowd the
@@ -123,7 +126,10 @@ liveness chip:
 - **"at N ago" is follow-mode-safe.** `positionTimestampMs` is null at the
   scroll bottom (`MessageList`), so the position age never shows in follow
   mode (composing at the bottom); only the freshness can. A secondary guard
-  drops it when its label would duplicate the freshness label. The edge that
+  drops it when its label would duplicate the freshness label; a current
+  position ("now") always counts as duplicating — the freshness chip hides
+  itself when current, and that hidden freshness is still "the same time" —
+  so "at now" never renders. The edge that
   survives: at the bottom while hovering a turn-rail marker,
   `hoveredMarkerTimestampMs` re-supplies a position age (an explicit inspect
   gesture, not passive follow).
@@ -139,6 +145,22 @@ independent) OR'd with the inline sessionStatus-gated flags. To keep the
 compact-mode fit measurement stable (the ResizeObserver sums the measured
 status element's width), the same element carries the ages in both inline and
 float presentations rather than swapping to a separate probe.
+
+The compact signal measures **content demand, never rendered size, and exits
+with slack**. Two latch/oscillation traps live here:
+
+- `.message-input-left` is `flex: 1`, so measuring rendered sizes
+  (`scrollWidth`) feeds growth back into the decision: once the status
+  floats out of the row, the left section absorbs the freed room, keeping
+  `requiredWidth > clientWidth` at any window width — compact latched
+  forever, and near-equality plus integer rounding could also flip it
+  spuriously on wide windows. `sectionDemand` instead sums each section's
+  in-flow children (stretchy `flex-grow` fillers such as the speech waveform
+  count as their flex basis).
+- Exiting compact requires `COMPACT_STATUS_EXIT_SLACK_PX` of headroom beyond
+  fitting, because the float omits the liveness chip and restyles the ages:
+  demand measured while floating understates the inline row it would return
+  to, and an exact threshold would oscillate at the boundary.
 
 ## Priority Notes
 

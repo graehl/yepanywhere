@@ -449,6 +449,10 @@ function isBtwPressed(mode: BtwToolbarMode): boolean {
 const LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS = 30 * 60 * 1000;
 const COMPACT_STATUS_QUERY = "(max-width: 600px)";
 
+// Widening headroom required before measured-compact status mode releases;
+// see updateCompactStatusMode for why exiting needs more than merely fitting.
+const COMPACT_STATUS_EXIT_SLACK_PX = 72;
+
 function getCompactStatusMatchMedia() {
   if (
     typeof window === "undefined" ||
@@ -1086,14 +1090,11 @@ export function MessageInputToolbarView({
   // The status ages float whenever the inline expanded row is unavailable:
   // compact viewport, mobile layout, or the sessionStatus toggle off.
   const statusFloats = isCompactStatusMode || !visibility.sessionStatus;
-  const hasFloatAges =
-    statusFloats &&
-    !!statusControl &&
-    (statusControl.hasPositionAge || statusControl.hasLastActivityAge);
-  const showToolbarStatus =
-    (visibility.sessionStatus && (statusControl?.showToolbarStatus ?? false)) ||
-    hasFloatAges;
-  const showLivenessChip = statusControl?.showLivenessChip ?? false;
+  // The float carries only the two ages. The liveness chip is inline-only:
+  // floated it degrades to a bare "now"/"5m" pill with none of the liveness
+  // framing the inline row gives it.
+  const showLivenessChip =
+    !statusFloats && (statusControl?.showLivenessChip ?? false);
   const livenessDisplay = statusControl?.livenessDisplay ?? null;
   const showPositionChip =
     (statusControl?.showPositionTimestamp ?? false) ||
@@ -1101,6 +1102,8 @@ export function MessageInputToolbarView({
   const showLastActivityChip =
     (statusControl?.showLastActivityChip ?? false) ||
     (statusFloats && (statusControl?.hasLastActivityAge ?? false));
+  const showToolbarStatus =
+    showLivenessChip || showPositionChip || showLastActivityChip;
   // The floating presentation needs `.status-floats` so the ages anchor over
   // the composer; wide+enabled keeps the inline row's positioning context.
   const applyStatusFloats =
@@ -2435,10 +2438,14 @@ export function MessageInputToolbar({
   // sessionStatus toggle gates only the inline row + liveness chip.
   // "at N ago" stays follow-mode-safe: positionTimestampMs is null at the
   // scroll bottom (MessageList), so hasPositionAge is false in follow mode.
+  // A current position ("now") always counts as duplicating the session
+  // freshness, even when the freshness label is missing or suppressed as
+  // current, so it never earns a chip.
   const hasPositionAge =
     positionTimestampMs !== null &&
     positionTimestampMs !== undefined &&
     positionAgeLabel !== null &&
+    positionAgeLabel !== "now" &&
     positionAgeLabel !== lastActivityAgeLabel;
   const showPositionTimestamp =
     toolbarVisibility.sessionStatus && hasPositionAge;
@@ -2644,6 +2651,39 @@ export function MessageInputToolbar({
       return Number.isFinite(parsed) ? parsed : 0;
     };
 
+    // Content demand of a toolbar section, immune to flex stretching. A
+    // stretched section reports its grown size through scrollWidth:
+    // .message-input-left is flex: 1, so once the status floats (leaving the
+    // row) the left section absorbs the freed room, and measuring rendered
+    // sizes feeds that growth back into requiredWidth — compact mode then
+    // stays latched at any window width. Children that are themselves
+    // stretchy fillers (flex-grow, e.g. the speech waveform) count as their
+    // flex basis.
+    const sectionDemand = (section: HTMLElement) => {
+      const styles = getComputedStyle(section);
+      const gap = pxOrZero(styles.columnGap || styles.gap);
+      let width = 0;
+      let inFlow = 0;
+      for (const child of Array.from(section.children)) {
+        if (!(child instanceof HTMLElement)) {
+          continue;
+        }
+        const childStyles = getComputedStyle(child);
+        if (
+          childStyles.display === "none" ||
+          childStyles.position === "absolute"
+        ) {
+          continue;
+        }
+        inFlow += 1;
+        width +=
+          pxOrZero(childStyles.flexGrow) > 0
+            ? pxOrZero(childStyles.flexBasis)
+            : child.getBoundingClientRect().width;
+      }
+      return width + gap * Math.max(0, inFlow - 1);
+    };
+
     const updateCompactStatusMode = () => {
       const status = toolbarStatusRef.current;
       const viewportCompact = compactStatusQuery?.matches ?? false;
@@ -2656,13 +2696,27 @@ export function MessageInputToolbar({
       const toolbarStyles = getComputedStyle(toolbar);
       const gap = pxOrZero(toolbarStyles.columnGap || toolbarStyles.gap);
       const requiredWidth =
-        left.scrollWidth + status.scrollWidth + actions.scrollWidth + gap * 2;
-      const nextCompact =
-        viewportCompact || requiredWidth > toolbar.clientWidth + 1;
+        sectionDemand(left) +
+        sectionDemand(status) +
+        sectionDemand(actions) +
+        gap * 2;
 
-      setIsCompactStatusMode((current) =>
-        current === nextCompact ? current : nextCompact,
-      );
+      setIsCompactStatusMode((current) => {
+        if (viewportCompact || requiredWidth > toolbar.clientWidth + 1) {
+          return true;
+        }
+        if (!current) {
+          return false;
+        }
+        // Exiting compact needs slack beyond merely fitting: the float omits
+        // the liveness chip and restyles the ages, so demand measured while
+        // floating understates the inline row it would return to. Without
+        // the slack the mode can oscillate at the boundary.
+        return requiredWidth + COMPACT_STATUS_EXIT_SLACK_PX >
+          toolbar.clientWidth
+          ? current
+          : false;
+      });
     };
 
     const scheduleCompactStatusUpdate = () => {

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   __resetDeveloperModeForTest,
-  getSessionDetailStoreMessagesEnabled,
+  getRemoteLogCollectionEnabled,
   useDeveloperMode,
 } from "../useDeveloperMode";
 
@@ -21,28 +21,28 @@ describe("useDeveloperMode", () => {
     __resetDeveloperModeForTest();
   });
 
-  it("defaults store-backed session messages to enabled", () => {
+  it("defaults remote log collection to disabled", () => {
     const { result } = renderHook(() => useDeveloperMode());
 
-    expect(result.current.sessionDetailStoreMessagesEnabled).toBe(true);
-    expect(getSessionDetailStoreMessagesEnabled()).toBe(true);
+    expect(result.current.remoteLogCollectionEnabled).toBe(false);
+    expect(getRemoteLogCollectionEnabled()).toBe(false);
   });
 
-  it("persists and publishes store-backed session message updates", () => {
+  it("persists and publishes remote log collection updates", () => {
     const { result: first } = renderHook(() => useDeveloperMode());
     const { result: second } = renderHook(() => useDeveloperMode());
 
     act(() => {
-      first.current.setSessionDetailStoreMessagesEnabled(false);
+      first.current.setRemoteLogCollectionEnabled(true);
     });
 
-    expect(first.current.sessionDetailStoreMessagesEnabled).toBe(false);
-    expect(second.current.sessionDetailStoreMessagesEnabled).toBe(false);
-    expect(getSessionDetailStoreMessagesEnabled()).toBe(false);
+    expect(first.current.remoteLogCollectionEnabled).toBe(true);
+    expect(second.current.remoteLogCollectionEnabled).toBe(true);
+    expect(getRemoteLogCollectionEnabled()).toBe(true);
     expect(
       JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
     ).toMatchObject({
-      sessionDetailStoreMessagesEnabled: false,
+      remoteLogCollectionEnabled: true,
     });
   });
 });

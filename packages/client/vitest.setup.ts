@@ -23,26 +23,9 @@ function createTestStorage(): Storage {
   };
 }
 
-function getUsableWindowStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const storage = window.localStorage;
-    return storage &&
-      typeof storage.getItem === "function" &&
-      typeof storage.setItem === "function" &&
-      typeof storage.removeItem === "function" &&
-      typeof storage.clear === "function"
-      ? storage
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-if (typeof window !== "undefined" && getUsableWindowStorage() === null) {
+// Do not probe window.localStorage first: Node 25's webstorage getter warns
+// unless --localstorage-file has a valid path.
+if (typeof window !== "undefined") {
   const storage = createTestStorage();
 
   Object.defineProperty(window, "localStorage", {

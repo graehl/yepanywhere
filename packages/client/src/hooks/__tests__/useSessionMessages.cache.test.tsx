@@ -12,10 +12,7 @@ import {
   __resetSessionLoadCacheForTest,
   useSessionMessages,
 } from "../useSessionMessages";
-import {
-  __resetDeveloperModeForTest,
-  setSessionDetailStoreMessagesEnabledValue,
-} from "../useDeveloperMode";
+import { __resetDeveloperModeForTest } from "../useDeveloperMode";
 import {
   createClientSummaryHostSourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -48,14 +45,6 @@ import { getStreamingEnabled } from "../useStreamingEnabled";
 
 function enableSessionTranscriptCache() {
   window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
-}
-
-function enableStoreBackedMessages() {
-  setSessionDetailStoreMessagesEnabledValue(true);
-}
-
-function disableStoreBackedMessages() {
-  setSessionDetailStoreMessagesEnabledValue(false);
 }
 
 function scrollSnapshot(): SessionRouteScrollSnapshot {
@@ -237,9 +226,8 @@ describe("useSessionMessages cache", () => {
     expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
   });
 
-  it("keeps opted-in store-backed warm messages gated until hydration", async () => {
+  it("keeps store-backed warm messages gated until hydration", async () => {
     enableSessionTranscriptCache();
-    enableStoreBackedMessages();
 
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -310,6 +298,68 @@ describe("useSessionMessages cache", () => {
       });
       await apiMocks.getSession.mock.results[1]?.value;
     });
+  });
+
+  it("hides stale fallback mirrors across route changes before reveal", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "sess-1-msg",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "first" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    let rejectSecondLoad!: (error: Error) => void;
+    const secondLoad = new Promise<never>((_, reject) => {
+      rejectSecondLoad = reject;
+    });
+    apiMocks.getSession.mockReturnValueOnce(secondLoad);
+
+    const rendered = renderHook(
+      ({ sessionId }) =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId,
+        }),
+      {
+        initialProps: { sessionId: "sess-1" },
+      },
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["sess-1-msg"]);
+
+    act(() => {
+      rendered.rerender({ sessionId: "sess-2" });
+    });
+
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    expect(rendered.result.current.messages).toEqual([]);
+
+    await act(async () => {
+      rejectSecondLoad(new Error("load failed"));
+      await secondLoad.catch(() => undefined);
+    });
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(rendered.result.current.messages).toEqual([]);
   });
 
   it("mirrors active loads into the session detail store without retaining when cache is disabled", async () => {
@@ -410,9 +460,7 @@ describe("useSessionMessages cache", () => {
     expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(0);
   });
 
-  it("can return store-selected messages when the debug setting is enabled", async () => {
-    enableStoreBackedMessages();
-
+  it("returns store-selected messages", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -472,9 +520,71 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("can return store-selected agent content when the debug setting is enabled", async () => {
-    enableStoreBackedMessages();
+  it("returns empty transcript surfaces when store data is missing after reveal", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1"]);
+
+    act(() => {
+      defaultSessionDetailStore.deleteEntry({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      });
+    });
+
+    await waitFor(() => expect(rendered.result.current.messages).toEqual([]));
+    expect(rendered.result.current.agentContent).toEqual({});
+    expect(rendered.result.current.toolUseToAgent.size).toBe(0);
+    expect(
+      warn.mock.calls.some(
+        ([label, payload]) =>
+          label === "[SessionDetailStore]" &&
+          typeof payload === "object" &&
+          payload !== null &&
+          "event" in payload &&
+          payload.event === "session-detail-store-missing-after-reveal",
+      ),
+    ).toBe(true);
+
+    warn.mockRestore();
+  });
+
+  it("returns store-selected agent content", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "codex",
@@ -533,9 +643,7 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("can return store-selected tool-use mappings when the debug setting is enabled", async () => {
-    enableStoreBackedMessages();
-
+  it("returns store-selected tool-use mappings", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "codex",
@@ -585,8 +693,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("keeps returned store-backed data coherent across message and subagent transitions", async () => {
-    enableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -709,115 +815,6 @@ describe("useSessionMessages cache", () => {
     );
   });
 
-  it("does not return store-only agent content when the debug setting is disabled", async () => {
-    disableStoreBackedMessages();
-
-    apiMocks.getSession.mockResolvedValueOnce({
-      session: {
-        provider: "codex",
-        updatedAt: "2026-05-04T00:00:00.000Z",
-      },
-      messages: [],
-      ownership: { owner: "self" },
-      pendingInputRequest: null,
-      slashCommands: null,
-      pagination: {
-        hasOlderMessages: false,
-        totalMessageCount: 0,
-        returnedMessageCount: 0,
-        totalCompactions: 0,
-      },
-    });
-
-    const rendered = renderHook(() =>
-      useSessionMessages({
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      }),
-    );
-
-    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
-
-    const storeOnlyMessage: Message = {
-      uuid: "agent-store-only-1",
-      type: "assistant",
-      message: { role: "assistant", content: "store only" },
-    };
-
-    act(() => {
-      defaultSessionDetailStore.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
-        {
-          type: "mergeLoadedAgentContent",
-          agentId: "task-store",
-          content: {
-            messages: [storeOnlyMessage],
-            status: "completed",
-          },
-        },
-      );
-    });
-
-    expect(rendered.result.current.agentContent).toEqual({});
-    expect(readStoreAgentContent()?.["task-store"]).toEqual({
-      messages: [storeOnlyMessage],
-      status: "completed",
-    });
-  });
-
-  it("does not return store-only tool-use mappings when the debug setting is disabled", async () => {
-    disableStoreBackedMessages();
-
-    apiMocks.getSession.mockResolvedValueOnce({
-      session: {
-        provider: "codex",
-        updatedAt: "2026-05-04T00:00:00.000Z",
-      },
-      messages: [],
-      ownership: { owner: "self" },
-      pendingInputRequest: null,
-      slashCommands: null,
-      pagination: {
-        hasOlderMessages: false,
-        totalMessageCount: 0,
-        returnedMessageCount: 0,
-        totalCompactions: 0,
-      },
-    });
-
-    const rendered = renderHook(() =>
-      useSessionMessages({
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      }),
-    );
-
-    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
-
-    act(() => {
-      defaultSessionDetailStore.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
-        {
-          type: "registerToolUseAgent",
-          toolUseId: "toolu_store",
-          agentId: "agent-store",
-        },
-      );
-    });
-
-    expect(
-      rendered.result.current.toolUseToAgent.get("toolu_store"),
-    ).toBeUndefined();
-  });
-
   it("mirrors tool-use mappings from the session detail store after registration", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -873,9 +870,8 @@ describe("useSessionMessages cache", () => {
     ]);
   });
 
-  it("keeps opted-in store-backed warm agent content gated until hydration", async () => {
+  it("keeps store-backed warm agent content gated until hydration", async () => {
     enableSessionTranscriptCache();
-    enableStoreBackedMessages();
 
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -964,8 +960,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("keeps store-selected messages authoritative across stream events", async () => {
-    enableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -1045,8 +1039,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("mirrors main stream messages from the session detail store after stream events", async () => {
-    disableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -1098,9 +1090,11 @@ describe("useSessionMessages cache", () => {
         },
       );
     });
-    expect(
-      rendered.result.current.messages.map((message) => message.uuid),
-    ).toEqual(["msg-1"]);
+    await waitFor(() =>
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1", "store-only-msg"]),
+    );
 
     act(() => {
       rendered.result.current.handleStreamMessageEvent({
@@ -1122,7 +1116,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("keeps store-selected messages authoritative across catch-up", async () => {
-    enableStoreBackedMessages();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     apiMocks.getSession.mockResolvedValueOnce({
@@ -1221,8 +1214,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("keeps store-selected messages authoritative across older-page prepend", async () => {
-    enableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -1823,7 +1814,6 @@ describe("useSessionMessages cache", () => {
 
   it("keeps store-backed warm full-window data coherent when refresh returns a compacted tail", async () => {
     enableSessionTranscriptCache();
-    enableStoreBackedMessages();
 
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -1942,8 +1932,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("uses selector-backed pagination when loading older messages", async () => {
-    disableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -2037,9 +2025,11 @@ describe("useSessionMessages cache", () => {
         },
       );
     });
-    expect(
-      rendered.result.current.messages.map((message) => message.uuid),
-    ).toEqual(["msg-1"]);
+    await waitFor(() =>
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1", "store-only-msg"]),
+    );
 
     await act(async () => {
       await rendered.result.current.loadOlderMessages();
@@ -2068,8 +2058,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("mirrors incremental catch-up messages into the session detail store", async () => {
-    disableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -2121,9 +2109,12 @@ describe("useSessionMessages cache", () => {
         },
       );
     });
-    expect(result.current.messages.map((message) => message.uuid)).toEqual([
-      "msg-1",
-    ]);
+    await waitFor(() =>
+      expect(result.current.messages.map((message) => message.uuid)).toEqual([
+        "msg-1",
+        "store-only-msg",
+      ]),
+    );
 
     apiMocks.getSession.mockClear();
     apiMocks.getSession.mockResolvedValueOnce({
@@ -2580,8 +2571,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("clears main streaming placeholders through the session detail store", async () => {
-    disableStoreBackedMessages();
-
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "codex",

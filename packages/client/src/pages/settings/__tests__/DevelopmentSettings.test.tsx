@@ -47,9 +47,6 @@ vi.mock("../../../i18n", () => ({
           developmentSchemaDescription: "Validate tool results",
           developmentDiagnosticsTitle: "Browser Diagnostics",
           developmentDiagnosticsDescription: "Capture browser logs",
-          developmentStoreMessagesTitle: "Store-Backed Session Detail",
-          developmentStoreMessagesDescription:
-            "Use the session detail store for all supported returned detail surfaces. Turn off to return legacy hook-local mirrors while the store still runs for diagnostics and adapter paths.",
           developmentServiceWorkerTitle: "Service Worker",
           developmentServiceWorkerDescription: "Enable service worker",
           developmentRestartTitle: "Restart Server",
@@ -80,14 +77,12 @@ describe("DevelopmentSettings", () => {
     __resetDeveloperModeForTest();
   });
 
-  it("shows the store-backed session detail debug setting", () => {
+  it("shows the remaining development settings", () => {
     render(<DevelopmentSettings />);
 
-    expect(screen.getByText("Store-Backed Session Detail")).toBeTruthy();
-    expect(
-      screen.getByText(
-        "Use the session detail store for all supported returned detail surfaces. Turn off to return legacy hook-local mirrors while the store still runs for diagnostics and adapter paths.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Schema Validation")).toBeTruthy();
+    expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
+    expect(screen.getByText("Service Worker")).toBeTruthy();
+    expect(screen.queryByText("Store-Backed Session Detail")).toBeNull();
   });
 });

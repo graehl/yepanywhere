@@ -1,5 +1,5 @@
 import { toUrlProjectId } from "@yep-anywhere/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   asClientSummarySourceKey,
   type ClientSummarySourceKey,
@@ -297,14 +297,26 @@ describe("SessionDetailStore", () => {
     const source = snapshot("session-a", ["msg-1"]);
     const streamMessage = source.messages[0];
     if (!streamMessage) throw new Error("expected fixture message");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    expect(
-      store.dispatch(storeKey, {
-        type: "applyStreamMessage",
-        message: streamMessage,
-      }),
-    ).toBeUndefined();
-    expect(store.getStats().entryCount).toBe(0);
+    try {
+      expect(
+        store.dispatch(storeKey, {
+          type: "applyStreamMessage",
+          message: streamMessage,
+        }),
+      ).toBeUndefined();
+      expect(store.getStats().entryCount).toBe(0);
+      expect(warn).toHaveBeenCalledWith(
+        "[SessionDetailStore] dropped action for missing entry",
+        {
+          key: "host%3Aa:project-a:session-a",
+          actionType: "applyStreamMessage",
+        },
+      );
+    } finally {
+      warn.mockRestore();
+    }
 
     expect(
       store.dispatch(storeKey, {
@@ -322,19 +334,31 @@ describe("SessionDetailStore", () => {
     const source = snapshot("session-a", ["msg-1", "msg-2"]);
     const streamMessage = source.messages[0];
     if (!streamMessage) throw new Error("expected fixture message");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     store.writeRouteSnapshot(storeKey, source, { ttlMs: 10, nowMs: 0 });
     // Unretained entry expires; the read deletes it.
     expect(store.readRouteSnapshot(storeKey, { nowMs: 20 })).toBeUndefined();
 
-    expect(
-      store.dispatch(
-        storeKey,
-        { type: "applyStreamMessage", message: streamMessage },
-        { nowMs: 21 },
-      ),
-    ).toBeUndefined();
-    expect(store.getStats().entryCount).toBe(0);
+    try {
+      expect(
+        store.dispatch(
+          storeKey,
+          { type: "applyStreamMessage", message: streamMessage },
+          { nowMs: 21 },
+        ),
+      ).toBeUndefined();
+      expect(store.getStats().entryCount).toBe(0);
+      expect(warn).toHaveBeenCalledWith(
+        "[SessionDetailStore] dropped action for missing entry",
+        {
+          key: "host%3Aa:project-a:session-a",
+          actionType: "applyStreamMessage",
+        },
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("resets entry state in place without dropping retention", () => {

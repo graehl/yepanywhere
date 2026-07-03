@@ -1,4 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { toUrlProjectId } from "@yep-anywhere/shared";
+import type { ReactNode } from "react";
 import {
   type Mock,
   afterEach,
@@ -14,24 +16,35 @@ import {
 } from "../useSessionMessages";
 import { __resetDeveloperModeForTest } from "../useDeveloperMode";
 import {
+  asClientSummarySourceKey,
   createClientSummaryHostSourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
+import { SourceRuntimeProvider } from "../../contexts/SourceRuntimeContext";
 import {
   selectSessionDetailAgentContent,
   selectSessionDetailMessages,
   selectSessionDetailToolUseToAgentEntries,
 } from "../../lib/sessionDetail/selectors";
-import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
+import {
+  configureSessionDetailRetention,
+  createSessionDetailStore,
+  defaultSessionDetailStore,
+  getSessionDetailRetentionDefaults,
+} from "../../lib/sessionDetail/sessionDetailStore";
+import type { GetSessionResult, YaSourceRuntime } from "../../lib/sourceRuntime";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
 import type { Message, SessionMetadata } from "../../types";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  getSessionMetadata: vi.fn(),
 }));
+
+const DEFAULT_SESSION_DETAIL_RETENTION = getSessionDetailRetentionDefaults();
 
 vi.mock("../../api/client", () => ({
   api: apiMocks,
@@ -61,6 +74,61 @@ function scrollSnapshot(): SessionRouteScrollSnapshot {
   };
 }
 
+function sessionResponse(messageId: string): GetSessionResult {
+  const ownership = { owner: "self" as const, processId: "pid-test" };
+  return {
+    session: {
+      id: "sess-1",
+      projectId: toUrlProjectId("/projects/proj-1"),
+      title: null,
+      fullTitle: null,
+      createdAt: "2026-05-04T00:00:00.000Z",
+      provider: "claude",
+      messageCount: 1,
+      ownership,
+      updatedAt: "2026-05-04T00:00:00.000Z",
+    },
+    messages: [
+      {
+        uuid: messageId,
+        type: "assistant",
+        timestamp: "2026-05-04T00:00:00.000Z",
+        message: { role: "assistant", content: messageId },
+      },
+    ],
+    ownership,
+    pendingInputRequest: null,
+    slashCommands: null,
+    pagination: {
+      hasOlderMessages: false,
+      totalMessageCount: 1,
+      returnedMessageCount: 1,
+      totalCompactions: 0,
+    },
+  };
+}
+
+function fakeRuntime(sourceKey: string, messageId: string): YaSourceRuntime {
+  return {
+    sourceKey: asClientSummarySourceKey(sourceKey),
+    api: {
+      getSession: vi.fn(async () => sessionResponse(messageId)),
+      getSessionMetadata: vi.fn(),
+    },
+    sessionDetails: {
+      cache: createSessionDetailStore(),
+    },
+  };
+}
+
+function runtimeWrapper(runtime: YaSourceRuntime) {
+  return function RuntimeWrapper({ children }: { children: ReactNode }) {
+    return (
+      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+    );
+  };
+}
+
 function readStoreMessageIds(
   projectId = "proj-1",
   sessionId = "sess-1",
@@ -69,6 +137,24 @@ function readStoreMessageIds(
     .readSelected(
       {
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId,
+        sessionId,
+      },
+      selectSessionDetailMessages,
+    )
+    ?.map((message) => message.uuid)
+    .filter((uuid): uuid is string => typeof uuid === "string");
+}
+
+function readRuntimeMessageIds(
+  runtime: YaSourceRuntime,
+  projectId = "proj-1",
+  sessionId = "sess-1",
+): string[] | undefined {
+  return runtime.sessionDetails.cache
+    .readSelected(
+      {
+        sourceKey: runtime.sourceKey,
         projectId,
         sessionId,
       },
@@ -115,6 +201,7 @@ describe("useSessionMessages cache", () => {
   beforeEach(() => {
     window.localStorage.clear();
     __resetDeveloperModeForTest();
+    configureSessionDetailRetention(DEFAULT_SESSION_DETAIL_RETENTION);
     resetClientSummaryStoreForTests();
     __resetSessionLoadCacheForTest();
     (getStreamingEnabled as Mock).mockReturnValue(true);
@@ -130,6 +217,7 @@ describe("useSessionMessages cache", () => {
     vi.unstubAllEnvs();
     window.localStorage.clear();
     __resetDeveloperModeForTest();
+    configureSessionDetailRetention(DEFAULT_SESSION_DETAIL_RETENTION);
     __resetSessionLoadCacheForTest();
     resetClientSummaryStoreForTests();
   });
@@ -224,6 +312,133 @@ describe("useSessionMessages cache", () => {
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "msg-2"]);
     expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
+  });
+
+  it("isolates session detail API calls and caches by runtime", async () => {
+    const firstRuntime = fakeRuntime("host:first", "msg-first");
+    const secondRuntime = fakeRuntime("host:second", "msg-second");
+
+    const first = renderHook(
+      () =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        }),
+      { wrapper: runtimeWrapper(firstRuntime) },
+    );
+    const second = renderHook(
+      () =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        }),
+      { wrapper: runtimeWrapper(secondRuntime) },
+    );
+
+    await waitFor(() => {
+      expect(first.result.current.loading).toBe(false);
+      expect(second.result.current.loading).toBe(false);
+    });
+
+    expect(firstRuntime.api.getSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        tailCompactions: 2,
+      }),
+    );
+    expect(secondRuntime.api.getSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        tailCompactions: 2,
+      }),
+    );
+    expect(first.result.current.messages.map((message) => message.uuid)).toEqual(
+      ["msg-first"],
+    );
+    expect(
+      second.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-second"]);
+    expect(readRuntimeMessageIds(firstRuntime)).toEqual(["msg-first"]);
+    expect(readRuntimeMessageIds(secondRuntime)).toEqual(["msg-second"]);
+    expect(
+      firstRuntime.sessionDetails.cache.readSelected(
+        {
+          sourceKey: secondRuntime.sourceKey,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        selectSessionDetailMessages,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps initial messages visible when cache admission rejects an over-budget reveal", async () => {
+    enableSessionTranscriptCache();
+    configureSessionDetailRetention({
+      ...DEFAULT_SESSION_DETAIL_RETENTION,
+      maxBytes: 1,
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    try {
+      const rendered = renderHook(() =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        }),
+      );
+
+      await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1"]);
+      expect(readStoreMessageIds()).toEqual(["msg-1"]);
+      expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(1);
+      expect(
+        warn.mock.calls.some(([label, payload]) => {
+          if (label !== "[SessionDetailStore]") return false;
+          if (
+            typeof payload !== "object" ||
+            payload === null ||
+            !("event" in payload)
+          ) {
+            return false;
+          }
+          return (
+            (payload as Record<string, unknown>).event ===
+            "session-detail-store-missing-after-reveal"
+          );
+        }),
+      ).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("keeps store-backed warm messages gated until hydration", async () => {

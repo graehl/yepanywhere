@@ -27,6 +27,7 @@ import { ensureSelfSignedCertificate } from "./https/self-signed.js";
 import { SessionIndexService } from "./indexes/index.js";
 import {
   getLogFilePath,
+  getLogger,
   initLogger,
   interceptConsole,
 } from "./logging/index.js";
@@ -216,6 +217,18 @@ if (config.desktopRuntime) {
 if (config.codexCliPath) {
   console.log(`[Config] Codex CLI path: ${config.codexCliPath}`);
 }
+getLogger().info(
+  {
+    event: "summary_parser_worker_config",
+    claudeSummaryParserWorkerMode: config.claudeSummaryParserWorkerMode,
+    codexSummaryParserWorkerMode: config.codexSummaryParserWorkerMode,
+    claudeSummaryParserWorkerEnv:
+      process.env.CLAUDE_SUMMARY_PARSER_WORKER ?? null,
+    codexSummaryParserWorkerEnv:
+      process.env.CODEX_SUMMARY_PARSER_WORKER ?? null,
+  },
+  "SUMMARY_PARSER_WORKER: evaluated config",
+);
 
 // Check for Claude CLI (optional - warn if not found)
 const cliInfo = detectClaudeCli();

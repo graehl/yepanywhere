@@ -12,6 +12,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import { InboxProvider } from "./contexts/InboxContext";
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
+import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useActivityBusConnection } from "./hooks/useActivityBusConnection";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
@@ -112,15 +113,17 @@ export function App({ children }: Props) {
       <ToastProvider>
         <AuthProvider>
           <ClientSummarySourceBinding />
-          <InboxProvider>
-            <SchemaValidationProvider>
-              <AppContent>{children}</AppContent>
-              {!isLoading && showWizard && (
-                <OnboardingWizard onComplete={completeOnboarding} />
-              )}
-              {!isLoading && !showWizard && <CodexUpdatePrompt />}
-            </SchemaValidationProvider>
-          </InboxProvider>
+          <CurrentSourceRuntimeProvider>
+            <InboxProvider>
+              <SchemaValidationProvider>
+                <AppContent>{children}</AppContent>
+                {!isLoading && showWizard && (
+                  <OnboardingWizard onComplete={completeOnboarding} />
+                )}
+                {!isLoading && !showWizard && <CodexUpdatePrompt />}
+              </SchemaValidationProvider>
+            </InboxProvider>
+          </CurrentSourceRuntimeProvider>
         </AuthProvider>
       </ToastProvider>
     </I18nProvider>

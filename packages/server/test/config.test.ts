@@ -68,7 +68,7 @@ describe("loadConfig codex paths", () => {
     expect(config.codexSummaryParserWorkerMode).toBe("off");
   });
 
-  it("parses summary parser worker opt-ins", async () => {
+  it("parses summary parser worker overrides", async () => {
     vi.stubEnv("CLAUDE_SUMMARY_PARSER_WORKER", "required");
     vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "on");
 

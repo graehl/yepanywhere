@@ -14,6 +14,7 @@ import {
   getLastSessionTranscriptBytes,
   getSessionScrollBehaviorMode,
   getSessionDomLingerEnabled,
+  getSessionTranscriptMemoryStats,
   getSessionTranscriptCacheBudgetMb,
   getSessionTranscriptCacheEnabled,
   getSessionTranscriptCacheTtlHours,
@@ -173,6 +174,31 @@ describe("useSessionPerformanceSettings", () => {
     expect(getLastSessionTranscriptBytes()).toBe(1_500_000);
     recordLastSessionTranscriptBytes(0);
     expect(getLastSessionTranscriptBytes()).toBe(1_500_000);
+  });
+
+  it("reports live retained and warm transcript memory separately", () => {
+    const warmKey = {
+      sourceKey: SOURCE,
+      projectId: PROJECT_ID,
+      sessionId: "session-a",
+    };
+    const liveKey = {
+      ...warmKey,
+      tailFrom: "msg-1",
+    };
+
+    defaultSessionDetailStore.writeRouteSnapshot(warmKey, snapshot());
+    defaultSessionDetailStore.writeRouteSnapshot(liveKey, snapshot());
+    const release = defaultSessionDetailStore.retain(liveKey);
+
+    const stats = getSessionTranscriptMemoryStats();
+    expect(stats.totalBytes).toBeGreaterThan(0);
+    expect(stats.liveRetainedEntryCount).toBe(1);
+    expect(stats.liveRetainedBytes).toBeGreaterThan(0);
+    expect(stats.warmCacheEntryCount).toBe(1);
+    expect(stats.warmCacheBytes).toBeGreaterThan(0);
+
+    release();
   });
 
   it("persists scroll behavior mode and clears only scroll memory when disabled", () => {

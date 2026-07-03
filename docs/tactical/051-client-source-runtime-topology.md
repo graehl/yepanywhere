@@ -1,0 +1,506 @@
+# Client Source Runtime Topology
+
+Topic: client-source-runtime-topology
+
+Status: Draft tactical plan. This follows the architectural vision in
+[`topics/client-source-runtime-topology.md`](../../topics/client-source-runtime-topology.md)
+and builds on the completed session-detail boundary work in
+[`046-session-detail-store-boundary-refactor.md`](046-session-detail-store-boundary-refactor.md).
+
+## Goal
+
+Move the client toward explicit source runtimes and session-detail
+coordinators without changing ordinary single-source behavior.
+
+The target shape is:
+
+```text
+SourceRuntimeRegistry
+  YaSourceRuntime
+    SourceApiClient
+    SourceActivityStream
+    client summary/query stores
+    SessionDetailRuntime
+      SessionDetailMemoryCache
+      SessionDetailCoordinator
+        SessionDetailEntryStore
+```
+
+The first implementation should make the architecture true enough that two
+`YaSourceRuntime` instances could coexist in one React app, even if the product
+UI still exposes one current source at a time.
+
+## Current Constraints
+
+This plan starts from the current post-refactor state:
+
+- `defaultSessionDetailStore` is a module singleton facade over an explicit
+  `SessionDetailCache`.
+- `SessionDetailCache` owns source/project/session/window keyed entries,
+  retain/release, TTL, byte budget, LRU eviction, and stats.
+- `SessionDetailEntryStore` owns per-entry reducer state and selected
+  subscriptions.
+- `useSessionMessages` still coordinates initial load, warm reveal, stream
+  buffering, incremental catch-up, older-page loads, cache write/delete, and
+  load progress.
+- `clientSummaryStore` has per-source stores, but it also has one ambient
+  current source and one activity-bus subscription source.
+- `api.fetchJSON` routes through a global remote connection when remote mode is
+  active.
+- The global remote connection is consumed by more than `api.fetchJSON`:
+  uploads, `useSessionStream` / `useSessionWatchStream`, remote media loading
+  (`useRemoteImage`, `LocalMediaModal`), the emulator stream, and
+  `useConnection` all read it directly. The narrow `SourceApiClient` in the
+  phases below does not cover these; they are the known remaining
+  global-connection consumers.
+- Reconnect, backoff, and readiness are process-wide singletons
+  (`connectionManager`, `whenConnectionReady`, `isRemoteMode`), shared between
+  the remote connection context and the activity bus.
+- `clearClientSummarySource` currently has no callers. Switching hosts swaps
+  the current source key and abandons the previous source's stores in memory.
+  Source disposal is new behavior to build, not existing behavior to relocate.
+- Source keys are connection-route identities (`host:<savedHostId>`,
+  `direct:<normalizedWsUrl>`); the same server reached via direct and relay
+  yields two keys. See the source-identity section of the vision topic. The
+  seam for server-scoped identity exists (`lib/sourceIdentity.ts`,
+  `SavedHost.serverInstanceId` resolving to `server:<instanceId>`), but no
+  flow populates it yet — new interfaces must treat keys as opaque either
+  way.
+- `useSessionMessages` also reports provider runtime status keyed by the
+  ambient source key (`reportProviderRuntimeStatusSnapshot`).
+
+Those constraints are acceptable today. The refactor should first make source
+and runtime dependencies explicit, then gradually move coordination logic out
+of React hooks.
+
+## Working Terms
+
+- **Source runtime:** one YA server/source as seen by the client.
+- **Source API client:** source-bound API methods. It never consults a global
+  "current connection".
+- **Source activity stream:** source-bound event subscription/fan-in.
+- **Session detail runtime:** source-bound owner of session detail cache,
+  coordinators, and optional persistence.
+- **Session detail coordinator:** normal-code state machine for one mounted
+  source/project/session/window.
+- **Session detail memory cache:** synchronous, source-scoped warm-return
+  cache.
+- **Session detail entry:** cache-side wrapper owning retain counts, TTL, byte
+  accounting, and the scroll snapshot for one key; it holds the entry store.
+- **Session detail entry store:** reducer/selectors/subscriptions for one
+  source/project/session/window.
+
+## Implementer Notes
+
+For whoever picks this up first:
+
+- **First slice:** Phase 1 and Phase 2 together are one reviewable unit —
+  introduce the interfaces and inject the runtime into `useSessionMessages`.
+  Do not start Phase 3 (coordinator extraction) until that lands green.
+- **Plumbing:** provide the current-source runtime through React context,
+  alongside the existing `ClientSummarySourceBinding` — the hook already
+  derives its source key from context, so this is the least-surprising path.
+  A module-level getter mirroring `defaultSessionDetailStore` is acceptable
+  as an interim, but there must be exactly one construction path either way.
+- **Treat `sourceKey` as opaque** in every new interface. The
+  source-identity question (route vs. logical server) is undecided; new code
+  must not parse, compare prefixes of, or derive transport facts from the key.
+- **Verification:** `pnpm lint`, `pnpm typecheck`, `pnpm test`, plus the
+  focused tests listed under "Tests To Preserve Or Add". Phase 2's acceptance
+  includes a new two-fake-runtimes isolation test — write it in the same
+  slice, not later.
+- **Phase 3 slicing:** move one concern at a time out of the hook (stream
+  buffer and initial-load flag first; reveal gating and load progress last —
+  they have the subtlest timing). Keep the hook's behavior tests passing
+  between each slice.
+
+## Phase 0: Document And Name The Boundary
+
+Status: Drafted by this document.
+
+Intent:
+
+- Make `client-source-runtime-topology` the high-level topic.
+- Keep `session-detail-data-layer` as the lower transcript/reducer/render doc.
+- Name the difference between source runtime, coordinator, memory cache, and
+  entry store.
+- Record that multi-host UI is a later product feature, not the first coding
+  milestone.
+
+Acceptance:
+
+- `ARCHITECTURE.md` points to the new topic.
+- The glossary includes the topic.
+- The session-detail topic points upward to the source runtime topology.
+
+## Phase 1: Introduce Source Runtime Interfaces
+
+Status: Implemented for the session-detail-consuming subset. Activity stream
+ownership and coordinator factories remain in their later phases.
+
+Intent:
+
+- Add small interfaces/types before moving behavior:
+
+```ts
+interface YaSourceRuntime {
+  sourceKey: ClientSummarySourceKey;
+  api: SourceApiClient;
+  activity: SourceActivityStream;
+  sessionDetails: SessionDetailRuntime;
+}
+
+interface SourceApiClient {
+  getSession(input: GetSessionInput): Promise<GetSessionResult>;
+  getSessionMetadata(
+    input: GetSessionMetadataInput,
+  ): Promise<GetSessionMetadataResult>;
+  // expand with only methods needed by the first consumer
+}
+
+interface SessionDetailRuntime {
+  cache: SessionDetailMemoryCache;
+  getCoordinator(input: SessionDetailCoordinatorInput): SessionDetailCoordinator;
+}
+```
+
+- Provide a current-source runtime adapter that wraps existing global behavior.
+- Do not make the whole client use the new runtime yet.
+
+Acceptance:
+
+- Existing routes and tests behave the same.
+- There is one construction path for the current source runtime.
+- The new interfaces can be implemented by local/direct/relay sources without
+  encoding transport details in session-detail code.
+
+Notes:
+
+- Keep the initial `SourceApiClient` surface narrow. Start with the methods
+  needed by session detail.
+- Avoid renaming all existing `api` callers in this phase.
+- Decide the source-identity question from the vision topic before freezing
+  `sourceKey` in these interfaces. Route-scoped keys are acceptable for the
+  first pass only if no new interface treats them as server identities.
+
+Implementation note:
+
+- Added a `YaSourceRuntime` contract with source-bound session-detail API and
+  cache access, plus a current-source adapter that wraps the existing global
+  API transport and `defaultSessionDetailStore`.
+- Added `CurrentSourceRuntimeProvider` next to `ClientSummarySourceBinding` so
+  app shells construct the current runtime from the existing route-derived
+  source key. The adapter keeps route-scoped keys opaque and does not parse
+  transport facts from them.
+- Left `SourceActivityStream` and `SessionDetailCoordinator` out of the first
+  runtime surface because no Phase 1/2 consumer uses them yet; Phase 3 and
+  Phase 6 still own those moves.
+
+## Phase 2: Pass Runtime Into Session Messages
+
+Status: Implemented.
+
+Intent:
+
+- Let `useSessionMessages` receive or derive a `YaSourceRuntime`.
+- Replace direct reads of `useClientSummarySourceKey()` inside the session
+  detail path with `runtime.sourceKey`.
+- Replace direct `defaultSessionDetailStore` access in the hook with
+  `runtime.sessionDetails.cache`, while preserving the existing singleton as
+  the current-source runtime's cache.
+- Replace direct `api.getSession` / `api.getSessionMetadata` calls in the hook
+  with `runtime.api`.
+- Route `reportProviderRuntimeStatusSnapshot` through `runtime.sourceKey`
+  rather than the ambient hook.
+
+Acceptance:
+
+- Warm route restore behavior is unchanged.
+- Source-scoped cache tests still pass.
+- Remote/direct/local behavior is unchanged.
+- A focused test can instantiate two fake runtimes and verify session-detail
+  keys/API calls do not cross sources.
+
+Non-goal:
+
+- Do not extract the coordinator in the same patch unless the diff stays small.
+  The first win is explicit dependency injection.
+- The live session stream (`useSessionStream` / `useSessionWatchStream`) still
+  reads the global connection in this phase; the hook keeps handing stream
+  messages to session detail. Moving stream subscriptions under the runtime is
+  Phase 6 scope. Until then, "session detail no longer depends on the global
+  connection" is true of REST and cache access, not of streaming.
+
+Implementation note:
+
+- `useSessionMessages` now derives `sourceKey`, REST session reads, and the
+  session-detail cache from `useCurrentSourceRuntime()`.
+- The current-source adapter preserves existing `api.getSession` call shapes
+  so direct/local/remote behavior and existing tests remain unchanged.
+- Added focused coverage proving two fake source runtimes can load the same
+  project/session ids without crossing API calls or cache entries.
+
+## Phase 3: Extract SessionDetailCoordinator Skeleton
+
+Intent:
+
+- Move the non-React session lifecycle logic out of `useSessionMessages` into a
+  coordinator object.
+- Start with a thin object that owns:
+  - entry key;
+  - runtime API/cache references;
+  - stream buffer;
+  - initial-load-complete flag;
+  - current load/progress state;
+  - reveal key/state;
+  - in-flight incremental refresh promise.
+- Keep the hook as the owner of React subscription binding and effect
+  start/stop.
+
+Possible shape:
+
+```ts
+interface SessionDetailCoordinator {
+  getSnapshot(): UseSessionMessagesResultLike;
+  subscribe(listener: () => void): () => void;
+  start(): void;
+  stop(): void;
+  handleStreamMessage(message: Message): void;
+  handleStreamingUpdate(message: Message, agentId?: string): void;
+  fetchNewMessages(): Promise<void>;
+  loadOlderMessages(): Promise<void>;
+  updateScrollSnapshot(snapshot: SessionRouteScrollSnapshot): void;
+}
+```
+
+Acceptance:
+
+- The hook is visibly smaller and mostly performs:
+  - runtime lookup;
+  - coordinator lookup/construction;
+  - `useSyncExternalStore`;
+  - `useEffect` start/stop;
+  - return of selected view/actions.
+- Coordinator unit tests can cover warm/cold load paths with fake API/cache.
+- Existing hook/cache tests still pass.
+
+Risk:
+
+- `useSessionMessages` currently has subtle reveal gating and progress timing.
+  Move this in small slices, preserving tests around warm hydration before and
+  after REST data arrival.
+
+## Phase 4: Rename Public Cache Facade
+
+Intent:
+
+- Make the cache/store distinction visible in public names once call sites are
+  less tangled.
+- Prefer names like:
+  - `SessionDetailMemoryCache`
+  - `defaultSessionDetailMemoryCache`
+  - `SessionDetailEntryStore`
+  - `SessionDetailCoordinator`
+
+Acceptance:
+
+- Compatibility exports remain for staged migration.
+- `sessionRouteSnapshots.ts` (`packages/client/src/lib/sessionRouteSnapshots.ts`)
+  becomes DTO/conversion compatibility only, or its runtime helper functions
+  are retired.
+- Stats and clear APIs read as cache-manager operations, not entry-store
+  operations.
+
+Non-goal:
+
+- Do not rename every internal file solely for cosmetics if the facade already
+  makes ownership clear.
+
+## Phase 5: Source Runtime Registry
+
+Intent:
+
+- Introduce a registry that can return runtimes by source key.
+- Make current-source routing a consumer of the registry.
+- Prepare activity and summary ownership to become per-runtime instead of
+  ambient singleton state.
+
+Possible shape:
+
+```ts
+interface SourceRuntimeRegistry {
+  getOrCreateSourceRuntime(sourceKey: ClientSummarySourceKey): YaSourceRuntime;
+  getCurrentSourceRuntime(): YaSourceRuntime;
+  setCurrentSourceKey(sourceKey: ClientSummarySourceKey): void;
+  disposeSource(sourceKey: ClientSummarySourceKey): void;
+}
+```
+
+Acceptance:
+
+- Single-source route behavior is unchanged.
+- Existing per-source summary stores are still reused.
+- Current-source helpers still exist for current UI code.
+- New code can ask for a runtime by explicit source key.
+
+Risk:
+
+- Activity subscriptions currently behave as one source at a time. Avoid
+  widening them to multi-source subscriptions until a consumer needs it.
+- Reconnect/readiness state (`connectionManager`, `whenConnectionReady`,
+  `isRemoteMode`) is a process-wide singleton shared by the remote connection
+  context and the activity bus. Two coexisting remote runtimes cannot share one
+  backoff state machine; this phase (or a dedicated follow-on) must make those
+  services runtime-scoped, or facades over per-runtime instances. This is
+  likely the hardest hidden chunk of making `SourceApiClient` real for remote
+  sources.
+
+## Phase 6: Per-Source Activity And Query Ownership
+
+Intent:
+
+- Move activity-bus retain/release and draft-decoration subscriptions under
+  source runtimes.
+- Give the runtime a per-session stream surface so `useSessionStream` /
+  `useSessionWatchStream` stop reading the global connection directly.
+- Ensure retained query and route-retention state is naturally source-owned,
+  even where the implementation remains module-level maps keyed by source.
+
+Acceptance:
+
+- One source runtime can retain its activity subscription without switching the
+  app's current source.
+- Clearing/disconnecting one source does not clear unrelated source state.
+- Existing activity update tests still pass.
+
+Non-goal:
+
+- Do not build a merged multi-source sidebar yet.
+
+## Phase 7: Optional Snapshot Persistence Adapter
+
+Intent:
+
+- After the coordinator/cache boundary is clear, define an async persistence
+  adapter for source-scoped `SessionRouteSnapshot` records.
+- Keep memory cache as the sync hot path.
+
+Possible shape:
+
+```ts
+interface SessionDetailSnapshotPersistence {
+  readSnapshot(
+    key: SessionDetailEntryKeyInput,
+  ): Promise<PersistedSnapshot | undefined>;
+  writeSnapshot(
+    key: SessionDetailEntryKeyInput,
+    snapshot: PersistedSnapshot,
+  ): Promise<void>;
+  deleteSnapshot(key: SessionDetailEntryKeyInput): Promise<void>;
+  clearSource(sourceKey: ClientSummarySourceKey): Promise<void>;
+}
+```
+
+Acceptance:
+
+- Persistence is optional and default-off unless a later product decision says
+  otherwise.
+- Persisted snapshots are versioned and source/auth scoped.
+- Restored persisted snapshots are always revalidated through `SourceApiClient`.
+
+## Phase 8: Prove Coexistence Against Real Servers
+
+The fake-runtime tests in earlier phases prove key isolation, not capability.
+If the architecture claims two runtimes can coexist, that claim must be
+exercised against real servers before it is recorded as supported — otherwise
+the code is organized as if it has a capability it has never run. This phase
+is also where the caveats planning cannot foresee are expected to surface:
+shared singletons the earlier phases missed, relay behavior under concurrent
+connections, auth interactions.
+
+Intent:
+
+- Run two YA servers locally (`PORT`/`YEP_PROFILE` already support this) and
+  connect one client to both through the registry — behind a dev-only flag or
+  an E2E test, not a product surface.
+- Exercise, at minimum: independent activity subscriptions; independent
+  session-detail loads for identical project/session ids; disposal of one
+  source while the other stays live; auth failure on one source without an
+  app-wide login redirect.
+
+Acceptance:
+
+- An E2E/integration test or a documented dev surface instantiates two real
+  runtimes against two real servers and passes the isolation checks.
+- Anything that only works with fakes is recorded as a known gap in this
+  document, not claimed as supported.
+
+## Multi-Host UI Follow-On
+
+Once source runtimes are explicit, product UI can choose among:
+
+- current single-source routing, unchanged;
+- tabbed source sidebar;
+- merged inbox with source badges;
+- merged global sessions/projects with explicit source identity.
+
+The topology refactor should not pick that UI contract. It should only avoid
+blocking it.
+
+## Tests To Preserve Or Add
+
+Preserve existing focused coverage:
+
+- `packages/client/src/lib/sessionDetail/__tests__/sessionDetailStore.test.ts`
+- `packages/client/src/hooks/__tests__/useSessionMessages.cache.test.tsx`
+- `packages/client/src/hooks/__tests__/useSessionPerformanceSettings.test.ts`
+- `packages/client/src/lib/sessionDetail/__tests__/transcriptReducer.test.ts`
+- `packages/client/src/components/__tests__/MessageList.test.tsx`
+- existing client summary/source tests
+- connection readiness and remote connection tests where API routing changes
+
+Add focused tests as slices land:
+
+- two fake source runtimes can host same project/session ids without cache/API
+  collision;
+- a coordinator can cold-load through a fake API and reveal from a fake memory
+  cache;
+- a coordinator can warm-reveal before and after REST data arrival;
+- source runtime disposal clears only that source's session-detail cache;
+- current-source helpers remain compatibility wrappers over the registry.
+
+## Open Questions
+
+- Should `SessionDetailCoordinator` be one object per mounted consumer, or can a
+  runtime share a coordinator for identical source/project/session/window keys?
+  Sharing may reduce duplicate fetches, but mounted routes also carry scroll
+  and reveal timing that may be consumer-specific. Current leaning: share one
+  coordinator per key (the cache already retain-counts entries per key) and
+  keep scroll/reveal timing in per-consumer state outside the coordinator.
+  Note the Phase 3 sketch (`updateScrollSnapshot` on the coordinator) implies
+  the opposite; revisit when Phase 3 lands.
+- Should memory-cache retention live entirely under `SessionDetailRuntime`, or
+  should the first pass keep a process-wide singleton cache with explicit
+  source keys? The runtime-owned shape is cleaner, but compatibility may favor
+  staged movement.
+- Should route retention and session detail persistence share one source-level
+  storage adapter, or remain separate adapters with shared key conventions?
+- How much of load progress belongs in the coordinator versus the hook? Progress
+  is user-visible state, but it follows the async protocol more than React
+  rendering.
+
+## Definition Of Done For The First Pass
+
+The first useful implementation series is complete when:
+
+- session detail no longer directly depends on ambient current source or the
+  global API singleton;
+- a current-source `YaSourceRuntime` exists and backs existing behavior;
+- the hook is reduced to runtime/coordinator binding for the initial-load path;
+- tests prove two fake runtimes do not cross cache or API calls;
+- no multi-host UI has been introduced by accident.
+
+Until Phase 8 runs, coexistence is a typed-but-unexercised claim. Documents
+and code comments describing this architecture must not state multi-source
+coexistence as an existing capability before two real runtimes have been
+exercised against two real servers.

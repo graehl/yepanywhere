@@ -3,6 +3,7 @@ import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
 import {
   getLastSessionTranscriptBytes,
+  getSessionTranscriptMemoryStats,
   TRANSCRIPT_CACHE_BUDGET_MB_STOPS,
   TRANSCRIPT_CACHE_TTL_HOUR_STOPS,
   TYPICAL_SESSION_TRANSCRIPT_BYTES,
@@ -25,6 +26,11 @@ function nearestStopIndex(stops: readonly number[], value: number): number {
     }
   });
   return bestIndex;
+}
+
+function formatMemoryMb(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb < 10 ? mb.toFixed(1) : String(Math.round(mb));
 }
 
 export function PerformanceSettings() {
@@ -91,6 +97,14 @@ export function PerformanceSettings() {
       { count, size },
     );
   }, [budgetMb, t]);
+  const transcriptMemoryStats = getSessionTranscriptMemoryStats();
+  const cacheMemoryUsage =
+    transcriptMemoryStats.totalBytes > 0
+      ? t("performanceTranscriptCacheCurrentUsage", {
+          warmSize: formatMemoryMb(transcriptMemoryStats.warmCacheBytes),
+          liveSize: formatMemoryMb(transcriptMemoryStats.liveRetainedBytes),
+        })
+      : null;
 
   const commitBudget = useCallback(
     (index: number) => {
@@ -215,6 +229,7 @@ export function PerformanceSettings() {
             <strong>{t("performanceTranscriptCacheTitle")}</strong>
             <p>{t("performanceTranscriptCacheDescription")}</p>
             {budgetEquivalent ? <p>{budgetEquivalent}</p> : null}
+            {cacheMemoryUsage ? <p>{cacheMemoryUsage}</p> : null}
           </div>
           <div className="settings-item-actions">
             <CommittedRangeInput

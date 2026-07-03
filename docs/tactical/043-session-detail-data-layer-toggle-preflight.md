@@ -109,7 +109,7 @@ after dispatch, it applies empty transcript surfaces and skips caching that
 empty result. The returned transcript subscription now listens only to
 `messages`, `agentContent`, and tool-use mapping entries, so metadata,
 pagination, and scroll-only store updates no longer notify it. Warm-refresh
-merge and pagination preparation now lives in a tested helper, so the next
-implementation chunk should keep reducing reveal/progress/pagination
-bookkeeping inside `useSessionMessages`. Scroll ownership and `/btw` remain out
-of scope.
+merge/pagination preparation and reveal snapshot construction now live in tested
+helpers, so the next implementation chunk should keep reducing
+reveal/progress/cache/flush sequencing inside `useSessionMessages`. Scroll
+ownership and `/btw` remain out of scope.

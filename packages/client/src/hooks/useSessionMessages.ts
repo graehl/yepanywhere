@@ -22,6 +22,11 @@ import {
   prepareWarmRefreshAfterHydration,
   prepareWarmRefreshBeforeHydration,
 } from "../lib/sessionDetail/warmRefresh";
+import {
+  buildSessionDetailRevealSnapshot,
+  type SessionDetailRevealSnapshotFallback,
+  type SessionDetailRevealSnapshotResult,
+} from "../lib/sessionDetail/revealSnapshot";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   getSessionTranscriptCacheEnabled,
@@ -179,18 +184,6 @@ export interface UseSessionMessagesResult {
 
 const EMPTY_RETURNED_MESSAGES: Message[] = [];
 const EMPTY_RETURNED_AGENT_CONTENT: AgentContentMap = {};
-
-interface RevealSnapshotFallback {
-  session: SessionMetadata;
-  pagination?: PaginationInfo;
-  lastMessageId?: string;
-  scrollSnapshot?: SessionRouteScrollSnapshot;
-}
-
-interface RevealSnapshotResult {
-  snapshot: SessionRouteSnapshot;
-  storeBacked: boolean;
-}
 
 interface ReturnedDetailStoreState {
   messages: Message[];
@@ -824,47 +817,23 @@ export function useSessionMessages(
 
     const readRevealSnapshotAfterStoreUpdate = (
       boundary: string,
-      fallback: RevealSnapshotFallback,
-    ): RevealSnapshotResult => {
-      const selectorBackedSnapshot = readSelectorBackedRuntimeSnapshot();
-      if (!selectorBackedSnapshot?.session) {
-        warnMissingSelectorAfterDispatch(boundary, "runtimeSnapshot");
-        return {
-          storeBacked: false,
-          snapshot: {
-            messages: EMPTY_RETURNED_MESSAGES,
-            session: fallback.session,
-            pagination: fallback.pagination,
-            agentContent: EMPTY_RETURNED_AGENT_CONTENT,
-            toolUseToAgentEntries: [],
-            lastMessageId: fallback.lastMessageId,
-            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-            scrollSnapshot: fallback.scrollSnapshot ?? scrollSnapshotRef.current,
-          },
-        };
-      }
-
-      const selectedMessages = [...selectorBackedSnapshot.messages];
-      return {
-        storeBacked: true,
-        snapshot: {
-          messages: selectedMessages,
-          session: selectorBackedSnapshot.session,
-          pagination: selectorBackedSnapshot.pagination,
-          agentContent: selectorBackedSnapshot.agentContent,
-          toolUseToAgentEntries: Array.from(
-            selectorBackedSnapshot.toolUseToAgentEntries,
-            ([toolUseId, agentId]) => [toolUseId, agentId] as [string, string],
-          ),
-          lastMessageId:
-            selectorBackedSnapshot.lastMessageId ??
-            findLastJsonlMessageId(selectedMessages),
-          maxPersistedTimestampMs:
-            selectorBackedSnapshot.maxPersistedTimestampMs,
-          scrollSnapshot:
-            selectorBackedSnapshot.scrollSnapshot ?? scrollSnapshotRef.current,
+      fallback: Omit<
+        SessionDetailRevealSnapshotFallback,
+        "maxPersistedTimestampMs"
+      >,
+    ): SessionDetailRevealSnapshotResult => {
+      const reveal = buildSessionDetailRevealSnapshot({
+        selected: readSelectorBackedRuntimeSnapshot(),
+        fallback: {
+          ...fallback,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+          scrollSnapshot: fallback.scrollSnapshot ?? scrollSnapshotRef.current,
         },
-      };
+      });
+      if (!reveal.storeBacked) {
+        warnMissingSelectorAfterDispatch(boundary, "runtimeSnapshot");
+      }
+      return reveal;
     };
 
     const applyRevealSnapshot = (snapshot: SessionRouteSnapshot) => {
@@ -885,7 +854,7 @@ export function useSessionMessages(
       sourceMessageCount: number;
       provider?: string;
       diagnosticBoundary: string;
-    }): RevealSnapshotResult => {
+    }): SessionDetailRevealSnapshotResult => {
       const lastJsonlId = findLastJsonlMessageId(options.loadedMessages);
       if (lastJsonlId) {
         lastMessageIdRef.current = lastJsonlId;

@@ -116,6 +116,16 @@ Codex behavior. If `references/codex` is not present, run `pnpm
 clone-references` (shallow, idempotent), then grep it directly. The Claude SDK
 is not open source, so it is not included.
 
+## Zero-Warning Commits
+
+Before committing, the checks you run must be warning-free, not merely
+passing: `pnpm lint` reports zero warnings, and test runs covering the
+touched areas emit no runtime warnings (React "cannot update while
+rendering", "not wrapped in act(...)", and similar). Fix the cause rather
+than suppressing the report; a warning that must stand needs an inline
+justification. DEVELOPMENT.md carries the contributor-facing statement of
+the same policy.
+
 ## Commit Lock Protocol
 
 Before staging or committing, acquire `.git/yepanywhere-commit.lock`. The

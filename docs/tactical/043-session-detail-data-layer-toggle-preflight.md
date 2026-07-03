@@ -115,5 +115,6 @@ helper. Session-load progress detail construction now also lives in a tested
 helper, though the hook still owns progress timing. Initial reveal cache writes
 now use the reveal cacheability helper, preserving the rule that fallback
 empty-transcript snapshots are not cached. The next implementation chunk should
-keep reducing cache/flush sequencing inside `useSessionMessages`. Scroll
-ownership and `/btw` remain out of scope.
+keep reducing cache/flush sequencing inside `useSessionMessages`; stream-buffer
+item/drain mechanics already live in a tested helper, but the hook still owns
+the readiness gate. Scroll ownership and `/btw` remain out of scope.

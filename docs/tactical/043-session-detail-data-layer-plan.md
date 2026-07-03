@@ -62,6 +62,9 @@ What is already in place:
 - Initial reveal route-cache writes now share a reveal-snapshot cacheability
   helper: only store-backed reveal snapshots are eligible, so missing-selector
   fallback snapshots still cannot be written back to the route cache.
+- The stream buffer item shape, append helpers, reset, and drain operation now
+  live in a tested `sessionDetail/streamBuffer` helper. The hook still owns the
+  initial-load readiness gate and dispatches drained events in order.
 - Session-load progress window details now use a tested
   `sessionDetail/loadProgress` helper, so repeated message-count/pagination
   projection is no longer hand-built at each load stage. The hook still owns
@@ -132,6 +135,8 @@ What is already in place:
 - Focused helper coverage verifies session-load progress construction, including
   injectable timestamps, pagination projection, and the fact that callers choose
   the message count rather than implicitly using `returnedMessageCount`.
+- Focused helper coverage verifies stream-buffer ordering, drain-clears
+  behavior, and reset behavior for queued main/subagent stream events.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -215,8 +220,10 @@ Ownership is intentionally still split while we migrate:
 
 - `useSession` owns session status, liveness, stream/watch subscriptions, and
   page-level actions.
-- `useSessionMessages` owns initial REST load, stream buffering, local message
-  mirrors, local agent-content mirrors, pagination, and snapshot lifecycle.
+- `useSessionMessages` owns initial REST load, stream-buffer readiness timing,
+  pagination/metadata/scroll bookkeeping, and snapshot lifecycle. Returned
+  transcript data is store-selected after reveal, not kept in local transcript
+  mirrors.
 - `defaultSessionDetailStore` owns the reducer-fed canonical mirror and retained
   same-tab cache entries.
 - `MessageList` still owns display policy, progressive rendering, scroll
@@ -291,9 +298,10 @@ Next likely slice:
 - Move the next implementation chunk back to `useSessionMessages`: keep shaving
   down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation,
   reveal snapshot construction/cacheability, and progress detail construction
-  are now pure/tested; initial reveal completion is centralized, the reveal path
-  no longer owns transcript fallback data, and the returned transcript
-  subscription is selector-specific.
+  are now pure/tested; initial reveal completion is centralized; stream-buffer
+  item/drain mechanics are helper-owned; the reveal path no longer owns
+  transcript fallback data; and the returned transcript subscription is
+  selector-specific.
 
 Then:
 
@@ -335,7 +343,8 @@ Store-backed return path:
   from one selected store snapshot; warm refresh merge/pagination preparation,
   reveal snapshot construction/cacheability, and progress detail construction
   are pure; and initial reveal completion is centralized, but the hook still
-  owns progress timing, cache writes, and stream-buffer flushing.
+  owns progress timing, cache writes, and the readiness timing for stream-buffer
+  flushing.
 - Transcript fallback refs are gone, so a missing retained store entry after
   reveal intentionally empties returned transcript surfaces and logs a dev
   diagnostic. Treat that as a retention/adapter failure, not a recoverable

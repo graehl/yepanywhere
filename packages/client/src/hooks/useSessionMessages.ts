@@ -34,6 +34,14 @@ import {
   type SessionLoadProgress,
   type SessionLoadProgressStage,
 } from "../lib/sessionDetail/loadProgress";
+import {
+  bufferSessionDetailStreamMessage,
+  bufferSessionDetailStreamSubagentMessage,
+  createSessionDetailStreamBuffer,
+  drainSessionDetailStreamBuffer,
+  resetSessionDetailStreamBuffer,
+  type SessionDetailStreamBuffer,
+} from "../lib/sessionDetail/streamBuffer";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   getSessionTranscriptCacheEnabled,
@@ -672,12 +680,9 @@ export function useSessionMessages(
   ]);
 
   // Buffering: queue stream messages until initial load completes
-  const streamBufferRef = useRef<
-    Array<
-      | { type: "message"; msg: Message }
-      | { type: "subagent"; msg: Message; agentId: string }
-    >
-  >([]);
+  const streamBufferRef = useRef<SessionDetailStreamBuffer>(
+    createSessionDetailStreamBuffer(),
+  );
   const initialLoadCompleteRef = useRef(false);
 
   const updatePersistedTimestampWatermark = useCallback(
@@ -755,13 +760,12 @@ export function useSessionMessages(
 
   // Flush buffered stream messages after initial load
   const flushBuffer = useCallback(() => {
-    const buffer = streamBufferRef.current;
-    streamBufferRef.current = [];
+    const buffer = drainSessionDetailStreamBuffer(streamBufferRef.current);
     for (const item of buffer) {
       if (item.type === "message") {
-        processStreamMessage(item.msg, true);
+        processStreamMessage(item.message, true);
       } else {
-        processStreamSubagentMessage(item.msg, item.agentId);
+        processStreamSubagentMessage(item.message, item.agentId);
       }
     }
   }, [processStreamMessage, processStreamSubagentMessage]);
@@ -1021,7 +1025,7 @@ export function useSessionMessages(
       restoredFromSnapshot: Boolean(warmLoad),
     });
     initialLoadCompleteRef.current = false;
-    streamBufferRef.current = [];
+    resetSessionDetailStreamBuffer(streamBufferRef.current);
     scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
     setRevealedSnapshotKey(null);
     if (warmLoad) {
@@ -1238,7 +1242,7 @@ export function useSessionMessages(
   const handleStreamMessageEvent = useCallback(
     (incoming: Message) => {
       if (!initialLoadCompleteRef.current) {
-        streamBufferRef.current.push({ type: "message", msg: incoming });
+        bufferSessionDetailStreamMessage(streamBufferRef.current, incoming);
         return;
       }
       processStreamMessage(incoming);
@@ -1250,11 +1254,11 @@ export function useSessionMessages(
   const handleStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
       if (!initialLoadCompleteRef.current) {
-        streamBufferRef.current.push({
-          type: "subagent",
-          msg: incoming,
+        bufferSessionDetailStreamSubagentMessage(
+          streamBufferRef.current,
+          incoming,
           agentId,
-        });
+        );
         return;
       }
       processStreamSubagentMessage(incoming, agentId);

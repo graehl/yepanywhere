@@ -102,7 +102,9 @@ has been removed: ordinary post-dispatch store-selected paths skip local React
 state writes, reveal follows the same rule for returned store-backed surfaces,
 reset/loading uses an explicit returned-detail gate instead of clearing
 transcript state, no-signal store/local diagnostics have been removed from
-store-selected adapter paths, and route-cache persistence reads directly from
-the store. The next implementation chunk should simplify the remaining
-warm/initial hydration bridge and missing-selector fallback plumbing. Scroll
-ownership and `/btw` remain out of scope.
+store-selected adapter paths, route-cache persistence reads directly from the
+store, and the warm/initial reveal helper no longer carries full transcript
+fallback payloads. If a warm/initial reveal cannot read the runtime snapshot
+after dispatch, it applies empty transcript surfaces and skips caching that
+empty result. The next implementation chunk should narrow the broad store
+subscription. Scroll ownership and `/btw` remain out of scope.

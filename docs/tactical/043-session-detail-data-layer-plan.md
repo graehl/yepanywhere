@@ -18,7 +18,8 @@ The migration is in the adapter/store cutdown phase. We have a tested
 snapshot is now the returned data source for the main transcript, subagent maps,
 and tool-use mapping after hydration/reveal. Transcript local mirrors and
 post-reveal transcript fallback refs have been removed; the remaining work is to
-simplify the initial/warm hydration bridge and narrow broad subscriptions.
+narrow broad subscriptions and continue shaving down hydration/pagination
+bookkeeping.
 
 What is already in place:
 
@@ -152,12 +153,12 @@ Current diagnostic stance:
 The key remaining truth is simple: the reducer/store is now the default source
 for returned `messages`, `agentContent`, and tool-use mappings after hydration.
 The Development settings switch was removed once it stopped providing an
-independent data-semantics rollback. The remaining hook-local transcript
-scaffolding is refs-only fallback/reveal plumbing. The render-selector preflight
-is complete enough for cutover planning: `MessageList` still owns stateful UI,
-callbacks, scroll, DOM
-behavior, and JSX, but broad transcript/view shape derivation is no longer
-hidden inside the component.
+independent data-semantics rollback. Hook-local transcript fallback ownership is
+gone, including the warm/initial reveal helper's former full-transcript fallback
+payloads. The render-selector preflight is complete enough for cutover planning:
+`MessageList` still owns stateful UI, callbacks, scroll, DOM behavior, and JSX,
+but broad transcript/view shape derivation is no longer hidden inside the
+component.
 
 ## Why This Exists
 
@@ -243,10 +244,10 @@ Next likely slice:
   it compares two genuinely independent sources.
 - Treat legacy local transcript mirror ownership as removed. Ordinary stream,
   placeholder, mapping, catch-up, and older-page recompute fallbacks are gone;
-  warm/initial reveal reads one selected runtime snapshot; route-cache
-  persistence reads back from the store; reset/loading uses a separate
-  returned-detail reveal gate; and no-signal store/local diagnostics have been
-  narrowed out.
+  warm/initial reveal reads one selected runtime snapshot and no longer carries
+  full transcript fallback payloads; route-cache persistence reads back from the
+  store; reset/loading uses a separate returned-detail reveal gate; and
+  no-signal store/local diagnostics have been narrowed out.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -254,10 +255,10 @@ Next likely slice:
   actions may expand that window. A store-authoritative return path must not
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
-- Move the next implementation chunks back to `useSessionMessages`: simplify the
-  warm/initial hydration bridge now that transcript fallback refs no longer
-  exist, then narrow the broad store subscription before calling the data-layer
-  cutover done.
+- Move the next implementation chunk back to `useSessionMessages`: narrow the
+  broad store subscription before calling the data-layer cutover done. The
+  warm/initial bridge still computes merge candidates for pagination, but its
+  reveal path no longer owns transcript fallback data.
 
 Then:
 
@@ -273,6 +274,11 @@ Store-backed return path:
   entry returns empty transcript surfaces and logs
   `session-detail-store-missing-after-reveal` in dev. This is an
   adapter/retention bug, not an alternate data path.
+- Missing-selector behavior: if warm/initial reveal cannot read a runtime
+  snapshot after a store dispatch, it logs
+  `session-detail-selector-missing-after-dispatch`, applies metadata/cursor
+  bookkeeping with empty transcript surfaces, and skips writing that empty result
+  back to the route cache.
 - Keep local refs only where they still support diagnostics or imperative side
   effects for independently owned fields such as cursor, timestamp watermark,
   pagination, metadata, and scroll.
@@ -292,8 +298,7 @@ Store-backed return path:
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot, but the hook still computes warm merge
-  candidates for pagination reconciliation and missing-selector fallback inside
-  the reveal helper.
+  candidates for pagination reconciliation before dispatch.
 - Transcript fallback refs are gone, so a missing retained store entry after
   reveal intentionally empties returned transcript surfaces and logs a dev
   diagnostic. Treat that as a retention/adapter failure, not a recoverable

@@ -174,6 +174,18 @@ export interface UseSessionMessagesResult {
 const EMPTY_RETURNED_MESSAGES: Message[] = [];
 const EMPTY_RETURNED_AGENT_CONTENT: AgentContentMap = {};
 
+interface RevealSnapshotFallback {
+  session: SessionMetadata;
+  pagination?: PaginationInfo;
+  lastMessageId?: string;
+  scrollSnapshot?: SessionRouteScrollSnapshot;
+}
+
+interface RevealSnapshotResult {
+  snapshot: SessionRouteSnapshot;
+  storeBacked: boolean;
+}
+
 function readSessionLoadCache(
   sourceKey: ClientSummarySourceKey,
   projectId: string,
@@ -868,38 +880,46 @@ export function useSessionMessages(
 
     const readRevealSnapshotAfterStoreUpdate = (
       boundary: string,
-      fallback: Omit<SessionRouteSnapshot, "maxPersistedTimestampMs">,
-    ): SessionRouteSnapshot => {
+      fallback: RevealSnapshotFallback,
+    ): RevealSnapshotResult => {
       const selectorBackedSnapshot = readSelectorBackedRuntimeSnapshot();
       if (!selectorBackedSnapshot?.session) {
         warnMissingSelectorAfterDispatch(boundary, "runtimeSnapshot");
-        const fallbackLastMessageId =
-          fallback.lastMessageId ?? findLastJsonlMessageId(fallback.messages);
         return {
-          ...fallback,
-          lastMessageId: fallbackLastMessageId,
-          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-          scrollSnapshot: scrollSnapshotRef.current,
+          storeBacked: false,
+          snapshot: {
+            messages: EMPTY_RETURNED_MESSAGES,
+            session: fallback.session,
+            pagination: fallback.pagination,
+            agentContent: EMPTY_RETURNED_AGENT_CONTENT,
+            toolUseToAgentEntries: [],
+            lastMessageId: fallback.lastMessageId,
+            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            scrollSnapshot: fallback.scrollSnapshot ?? scrollSnapshotRef.current,
+          },
         };
       }
 
       const selectedMessages = [...selectorBackedSnapshot.messages];
       return {
-        messages: selectedMessages,
-        session: selectorBackedSnapshot.session,
-        pagination: selectorBackedSnapshot.pagination,
-        agentContent: selectorBackedSnapshot.agentContent,
-        toolUseToAgentEntries: Array.from(
-          selectorBackedSnapshot.toolUseToAgentEntries,
-          ([toolUseId, agentId]) => [toolUseId, agentId] as [string, string],
-        ),
-        lastMessageId:
-          selectorBackedSnapshot.lastMessageId ??
-          findLastJsonlMessageId(selectedMessages),
-        maxPersistedTimestampMs:
-          selectorBackedSnapshot.maxPersistedTimestampMs,
-        scrollSnapshot:
-          selectorBackedSnapshot.scrollSnapshot ?? scrollSnapshotRef.current,
+        storeBacked: true,
+        snapshot: {
+          messages: selectedMessages,
+          session: selectorBackedSnapshot.session,
+          pagination: selectorBackedSnapshot.pagination,
+          agentContent: selectorBackedSnapshot.agentContent,
+          toolUseToAgentEntries: Array.from(
+            selectorBackedSnapshot.toolUseToAgentEntries,
+            ([toolUseId, agentId]) => [toolUseId, agentId] as [string, string],
+          ),
+          lastMessageId:
+            selectorBackedSnapshot.lastMessageId ??
+            findLastJsonlMessageId(selectedMessages),
+          maxPersistedTimestampMs:
+            selectorBackedSnapshot.maxPersistedTimestampMs,
+          scrollSnapshot:
+            selectorBackedSnapshot.scrollSnapshot ?? scrollSnapshotRef.current,
+        },
       };
     };
 
@@ -921,27 +941,25 @@ export function useSessionMessages(
       sourceMessageCount: number;
       provider?: string;
       diagnosticBoundary: string;
-    }): SessionRouteSnapshot => {
+    }): RevealSnapshotResult => {
       const lastJsonlId = findLastJsonlMessageId(options.loadedMessages);
       if (lastJsonlId) {
         lastMessageIdRef.current = lastJsonlId;
       }
-      const revealedSnapshot = readRevealSnapshotAfterStoreUpdate(
+      const reveal = readRevealSnapshotAfterStoreUpdate(
         options.diagnosticBoundary,
         {
-          messages: options.loadedMessages,
           session: options.loadedSession,
           pagination: options.loadedPagination,
-          agentContent: warmLoad?.agentContent ?? {},
-          toolUseToAgentEntries: warmLoad?.toolUseToAgentEntries ?? [],
           lastMessageId: lastJsonlId,
           scrollSnapshot: scrollSnapshotRef.current,
         },
       );
-      applyRevealSnapshot(revealedSnapshot);
+      const { snapshot } = reveal;
+      applyRevealSnapshot(snapshot);
       markReloadPerfPhase("session_initial_messages_state_queued", {
         messages: options.sourceMessageCount,
-        totalMessages: revealedSnapshot.messages.length,
+        totalMessages: snapshot.messages.length,
         provider: options.provider,
         restoredFromSnapshot: true,
       });
@@ -952,16 +970,16 @@ export function useSessionMessages(
       setLoading(false);
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
-          messageCount: revealedSnapshot.messages.length,
-          totalMessageCount: revealedSnapshot.pagination?.totalMessageCount,
-          hasOlderMessages: revealedSnapshot.pagination?.hasOlderMessages,
+          messageCount: snapshot.messages.length,
+          totalMessageCount: snapshot.pagination?.totalMessageCount,
+          hasOlderMessages: snapshot.pagination?.hasOlderMessages,
         }),
       );
       markReloadPerfPhase("session_initial_load_complete", {
         messages: options.sourceMessageCount,
         restoredFromSnapshot: true,
       });
-      return revealedSnapshot;
+      return reveal;
     };
 
     const applyWarmDataBeforeHydration = (
@@ -1022,7 +1040,7 @@ export function useSessionMessages(
           hasOlderMessages: nextPagination?.hasOlderMessages,
         }),
       );
-      const revealedSnapshot = finishWarmHydration({
+      const reveal = finishWarmHydration({
         loadedMessages,
         loadedSession: data.session,
         loadedPagination: nextPagination,
@@ -1030,14 +1048,16 @@ export function useSessionMessages(
         provider: data.session.provider,
         diagnosticBoundary: "warm-catchup-before-hydration",
       });
-      writeSessionLoadCache(
-        sourceKey,
-        projectId,
-        sessionId,
-        revealedSnapshot,
-        tailTurns,
-        tailFrom,
-      );
+      if (reveal.storeBacked) {
+        writeSessionLoadCache(
+          sourceKey,
+          projectId,
+          sessionId,
+          reveal.snapshot,
+          tailTurns,
+          tailFrom,
+        );
+      }
       notifyLoadComplete(data);
     };
 
@@ -1077,25 +1097,22 @@ export function useSessionMessages(
         messages: data.messages,
         pagination: nextPagination,
       });
-      const fallbackSnapshot = latestSnapshot ?? warmLoad;
-      const revealedSnapshot = readRevealSnapshotAfterStoreUpdate(
+      const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
         {
-          messages: loadedMessages,
           session: data.session,
           pagination: nextPagination,
-          agentContent: fallbackSnapshot.agentContent,
-          toolUseToAgentEntries: fallbackSnapshot.toolUseToAgentEntries,
           lastMessageId: findLastJsonlMessageId(loadedMessages),
           scrollSnapshot: scrollSnapshotRef.current,
         },
       );
-      applyRevealSnapshot(revealedSnapshot);
+      const { snapshot } = reveal;
+      applyRevealSnapshot(snapshot);
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
-          messageCount: revealedSnapshot.pagination?.returnedMessageCount,
-          totalMessageCount: revealedSnapshot.pagination?.totalMessageCount,
-          hasOlderMessages: revealedSnapshot.pagination?.hasOlderMessages,
+          messageCount: snapshot.pagination?.returnedMessageCount,
+          totalMessageCount: snapshot.pagination?.totalMessageCount,
+          hasOlderMessages: snapshot.pagination?.hasOlderMessages,
         }),
       );
       notifyLoadComplete(data);
@@ -1238,23 +1255,21 @@ export function useSessionMessages(
           session: data.session,
           pagination: nextPagination,
         });
-        const revealedSnapshot = readRevealSnapshotAfterStoreUpdate(
+        const reveal = readRevealSnapshotAfterStoreUpdate(
           "initial-load",
           {
-            messages: loadedMessages,
             session: data.session,
             pagination: nextPagination,
-            agentContent: {},
-            toolUseToAgentEntries: [],
             lastMessageId: lastJsonlId,
             scrollSnapshot: scrollSnapshotRef.current,
           },
         );
+        const { snapshot } = reveal;
         const revealInitialTranscript = () => {
-          applyRevealSnapshot(revealedSnapshot);
+          applyRevealSnapshot(snapshot);
           markReloadPerfPhase("session_initial_messages_state_queued", {
             messages: taggedMessages.length,
-            totalMessages: revealedSnapshot.messages.length,
+            totalMessages: snapshot.messages.length,
             provider: data.session.provider,
           });
 
@@ -1266,9 +1281,9 @@ export function useSessionMessages(
           setLoading(false);
           setSessionLoadProgress(
             createSessionLoadProgress("complete", {
-              messageCount: revealedSnapshot.messages.length,
-              totalMessageCount: revealedSnapshot.pagination?.totalMessageCount,
-              hasOlderMessages: revealedSnapshot.pagination?.hasOlderMessages,
+              messageCount: snapshot.messages.length,
+              totalMessageCount: snapshot.pagination?.totalMessageCount,
+              hasOlderMessages: snapshot.pagination?.hasOlderMessages,
             }),
           );
           markReloadPerfPhase("session_initial_load_complete", {
@@ -1278,14 +1293,16 @@ export function useSessionMessages(
 
         revealInitialTranscript();
 
-        writeSessionLoadCache(
-          sourceKey,
-          projectId,
-          sessionId,
-          revealedSnapshot,
-          tailTurns,
-          tailFrom,
-        );
+        if (reveal.storeBacked) {
+          writeSessionLoadCache(
+            sourceKey,
+            projectId,
+            sessionId,
+            snapshot,
+            tailTurns,
+            tailFrom,
+          );
+        }
 
         // Notify parent
         onLoadComplete?.({

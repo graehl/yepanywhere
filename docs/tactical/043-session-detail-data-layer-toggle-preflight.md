@@ -1,4 +1,4 @@
-# Store-Backed Messages Toggle Preflight
+# Store-Backed Session Detail Switch Preflight
 
 Topic: session-detail-data-layer
 
@@ -6,10 +6,10 @@ This note supports the tactical plan in
 [`043-session-detail-data-layer-plan.md`](043-session-detail-data-layer-plan.md).
 It records the `useSessionMessages` main-transcript writes that were checked
 before the store-backed returned detail path became the default. The Store-
-Backed Session Messages switch remains in the Development settings page as a
+Backed Session Detail switch remains in the Development settings page as a
 rollback path to compare against the legacy hook-local mirror.
 
-## Toggle Shape
+## Switch Shape
 
 The path started as a narrow toggle and now covers the returned hook data
 surfaces that have selector-backed mirrors:
@@ -21,10 +21,16 @@ surfaces that have selector-backed mirrors:
 - Fallback: local `messages`/`agentContent` state if the store entry is
   missing or the hook has not reached the reveal point.
 - Still maintain local mirrors for diagnostics, fallback, and rollback.
-- Confidence signal: when the toggle is active, hydration is complete, and the
-  store entry exists, a dev-only returned-data invariant diagnostic warns if
-  returned `messages`/`agentContent` differ from the store snapshot.
+- Confidence signal: when the default store-backed path is active, hydration is
+  complete, and the store entry exists, a dev-only returned-data invariant
+  diagnostic warns if returned `messages`/`agentContent` differ from the store
+  snapshot.
 - Do not include render selectors, scroll ownership, or `/btw` in this toggle.
+
+Turning the switch off does not disable the reducer/store feed. It only returns
+the legacy hook-local mirrors instead of the broad store-selected snapshot;
+selector-backed adapter reads, diagnostics, cache ownership, and store
+retention still run.
 
 One important guard remains: warm snapshot restore writes the store before it
 reveals local `messages`/`agentContent`, because the hook intentionally yields
@@ -37,7 +43,7 @@ warm-reveal behavior.
 | Boundary | Local mirror write | Store path | Preflight status |
 | --- | --- | --- | --- |
 | No warm snapshot reset | Clears local state while REST starts | Deletes the store entry | Ready with fallback to local empty state |
-| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Needs hydration gating before broad toggle |
+| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated before broad returned snapshot |
 | Warm catch-up before hydration | Merges REST delta into warm snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Warm catch-up after hydration | Merges REST delta into revealed snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Cold persisted load | Sets tagged/reconciled REST snapshot | `loadPersistedTranscript` | Reducer and hook/store coverage exist |
@@ -71,8 +77,8 @@ warm-reveal behavior.
   does not make streamed and persisted subagent transcripts semantically
   equivalent.
 - Browser dogfood should capture console diagnostics from real navigation:
-  keep Store-Backed Session Messages enabled, enable session-detail shadow
-  diagnostics, drive `/inbox` to several session detail pages, and record
+  keep Store-Backed Session Detail enabled (the default), enable session-detail
+  shadow diagnostics, drive `/inbox` to several session detail pages, and record
   `[SessionDetailReturnedData]`, `[SessionDetailStore]`,
   `[SessionDetailShadow]`, React errors, request failures, and scroll bottom
   deltas. Treat returned-data warnings as blockers; treat shadow/store

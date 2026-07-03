@@ -85,22 +85,23 @@ What is already in place:
   modules behind the `renderSelectors` barrel. The full covered-output list is
   in
   [`043-session-detail-render-selector-preflight.md`](043-session-detail-render-selector-preflight.md).
+
 Current diagnostic stance:
 
 - Treat `scroll-snapshot` store divergence logs as known noisy signal
   from the older snapshot path. Do not spend migration time chasing those until
   returned `messages`/`agentContent` and render-selector parity are otherwise
   boring enough for a cleaner cutover audit.
-- Keep dogfooding the Developer toggle and turn non-scroll data divergences
-  into compact fixtures. Fresh browser checks with the toggle enabled did not
-  show catastrophic failures or fresh store divergence. The returned
-  data invariant is now the primary signal for the actual UI-consumed data when
-  the toggle is enabled.
+- Keep dogfooding the default store-backed returned-detail path and turn
+  non-scroll data divergences into compact fixtures. Fresh browser checks with
+  the path enabled did not show catastrophic failures or fresh store
+  divergence. The returned-data invariant is now the primary signal for the
+  actual UI-consumed data while the Development setting remains enabled.
 - Browser mismatch checks should use the real inbox-to-session path, not only
   unit fixtures. A useful read-only pass is: launch Playwright against
   `https://127.0.0.1:3400`, ignore local HTTPS errors, block service workers
-  if possible, set `yep-anywhere-developer-mode` with
-  `sessionDetailStoreMessagesEnabled: true`, set
+  if possible, confirm `yep-anywhere-developer-mode` has
+  `sessionDetailStoreMessagesEnabled: true` (the default), set
   `yep-anywhere-session-detail-shadow-diagnostics-enabled` to `true`, click a
   few visible `/inbox` session links, and capture console/page/request
   failures plus `[SessionDetailShadow]`, `[SessionDetailStore]`, and
@@ -117,9 +118,10 @@ Current diagnostic stance:
   reconciliation; the warning case is covered by the catch-up hook fixture and
   fixed by keeping metadata store dispatch out of the legacy state updater.
 
-The key remaining truth is simple: the reducer/store is now a real parallel
-data layer, but store-authoritative returned `messages` and `agentContent` are
-still dev-only and default-off. The render-selector preflight is complete
+The key remaining truth is simple: the reducer/store is now the default source
+for returned `messages`, `agentContent`, and tool-use mappings after hydration,
+while the legacy hook-local mirrors still run for fallback, diagnostics, and
+the Development settings rollback. The render-selector preflight is complete
 enough for cutover planning: `MessageList` still owns stateful UI, callbacks,
 scroll, DOM behavior, and JSX, but broad transcript/view shape derivation is no
 longer hidden inside the component.
@@ -174,8 +176,9 @@ next meaningful migration work is in the hook/store adapter.
 - Preserve user-visible behavior unless a fixture exposes a clear bug.
 - Prefer explicit actions and selectors over a broad global rerender source.
 - Keep the coarse client summary store separate from session detail state.
-- Default user-facing behavior must stay provider-like. Experimental runtime
-  changes should be default-off and placed in Developer settings first.
+- Default user-facing behavior must stay provider-like. New experimental
+  runtime changes should start default-off in Developer settings before they
+  graduate to default-on with rollback.
 
 ## Migration Shape
 
@@ -184,8 +187,8 @@ The strategy remains shadow-first and adapter-first:
 1. Keep the reducer/store fed from existing hook boundaries.
 2. Add compact fixtures when diagnostics expose a divergence.
 3. Replace one local derivation at a time with a store selector plus fallback.
-4. Only after enough parity, offer an experimental store-authoritative mode for
-   a larger surface such as returned `messages`.
+4. Only after enough parity, promote a store-authoritative mode for larger
+   returned surfaces, while keeping a rollback switch during dogfooding.
 5. Keep `MessageList` and DOM-local scroll/progressive rendering out of the
    data-layer cutover until the data model is boring.
 
@@ -200,10 +203,10 @@ Next likely slice:
 - Treat the render-selector preflight as complete enough. Do not keep
   extracting every remaining branch from `MessageList` unless it directly
   unlocks store cutover or fixes a fixture-backed bug.
-- Continue dogfooding the Developer settings store-authoritative returned
-  `messages`/`agentContent` toggle and turn any non-scroll divergence into a
-  compact reducer or hook fixture. Treat returned-data invariant warnings as
-  higher signal than legacy local-vs-store diagnostics.
+- Continue dogfooding the default store-authoritative returned
+  `messages`/`agentContent`/tool-use mapping path and turn any non-scroll
+  divergence into a compact reducer or hook fixture. Treat returned-data
+  invariant warnings as higher signal than legacy local-vs-store diagnostics.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -212,9 +215,9 @@ Next likely slice:
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
 - Move the next implementation chunks back to `useSessionMessages`: reduce
-  independent local mirror ownership, make store-selected returned detail the
-  normal test path behind the Developer toggle, and identify one legacy mirror
-  path at a time that can become fallback-only.
+  independent local mirror ownership, keep store-selected returned detail as
+  the normal test path with a Development rollback, and identify one legacy
+  mirror path at a time that can become fallback-only.
 
 Then:
 
@@ -223,14 +226,17 @@ Then:
 - Do not broaden to scroll ownership or `/btw` until returned `messages` and
   `agentContent` are boring.
 
-Dogfood toggle:
+Dogfood switch:
 
-- Name: Store-Backed Session Messages in the Development settings page.
-- Current default scope: returned `messages`, `agentContent`, and tool-use
+- Name: Store-Backed Session Detail in the Development settings page.
+- Current default-on scope: returned `messages`, `agentContent`, and tool-use
   mappings.
 - Behavior today: read store-selected `messages`, `agentContent`, and tool-use
   mappings from one coherent store-state snapshot after hydration, with the
   local mirrors as fallback.
+- Off behavior: return the legacy hook-local mirrors, but keep the
+  reducer/store feed, selector-backed adapter reads, diagnostics, and cache
+  ownership running. Turning the switch off is not a store no-op.
 - Keep local mirrors running for comparison, diagnostics, fallback, and the
   Development settings rollback.
 - Do not include render selectors or `/btw` in this toggle.
@@ -324,6 +330,8 @@ as a failing reducer/selector test before changing UI code.
 - Keep dev diagnostics available during dogfooding.
 - Store stats should answer which sessions are retained, why, approximate bytes,
   and expiry time.
-- Experimental toggles should be default-off and easy to disable.
+- New experimental toggles should be default-off and easy to disable. This
+  store-backed returned-detail switch has graduated to default-on, with rollback
+  retained while local mirrors still exist.
 - A successful dogfood period should leave behind fixtures for any divergence
   that was found and fixed.

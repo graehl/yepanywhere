@@ -37,6 +37,10 @@ vi.mock("../../i18n", () => ({
         sessionLoading: "Loading session...",
         sessionProgressiveRenderingAriaLabel: "Transcript rendering progress",
         sessionProgressiveRenderingStatus: "Rendering transcript {percent}%",
+        sessionFollow: "Follow",
+        sessionFollowLatestOutput: "Follow latest session output",
+        sessionNewOutputBelow: "New output below",
+        sessionNewOutputBelowTitle: "Jump to latest session output",
         projectQueueAttachmentOnly: "Attachment-only message",
         projectQueueInlineStatusQueued: "Project Queue (#{position})",
         projectQueueInlineStatusDispatching:
@@ -1844,6 +1848,107 @@ describe("MessageList", () => {
     }
 
     expect(scrollContainer.scrollTop).toBe(200);
+  });
+
+  it("waits for a remember-place anchor to mount during progressive restore", () => {
+    vi.useFakeTimers();
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    const messages = Array.from({ length: 150 }, (_, index) => {
+      const turn = index + 1;
+      return [
+        userMessage(`user-${turn}`, `request ${turn}`),
+        assistantMessage(`assistant-${turn}`, `response ${turn}`),
+      ];
+    }).flat();
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1600,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 360,
+        width: 360,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getRect(this: HTMLElement) {
+        if (this === scrollContainer) {
+          return rectFor(0, 500);
+        }
+        if (this.dataset.renderId === "user-1") {
+          return rectFor(240, 40);
+        }
+        return rectFor(900, 80);
+      });
+
+    try {
+      render(
+        <MessageList
+          messages={messages}
+          progressiveRenderEnabled
+          progressiveRenderKey="remember-place-progressive"
+          initialScrollSnapshot={{
+            atBottom: true,
+            scrollTop: 100,
+            scrollHeight: 1000,
+            clientHeight: 500,
+            anchor: { id: "user-1", topOffset: 20 },
+            updatedAtMs: Date.now(),
+          }}
+          scrollBehaviorMode="remember-place"
+        />,
+        { container: scrollContainer },
+      );
+
+      expect(
+        scrollContainer.querySelector('[data-render-id="user-1"]'),
+      ).toBeNull();
+      expect(scrollContainer.scrollTop).toBe(0);
+
+      for (let index = 0; index < 6; index += 1) {
+        act(() => {
+          vi.advanceTimersByTime(40);
+        });
+      }
+      act(() => {
+        vi.advanceTimersByTime(220);
+      });
+
+      expect(
+        scrollContainer.querySelector('[data-render-id="user-1"]'),
+      ).toBeTruthy();
+      expect(scrollContainer.scrollTop).toBe(220);
+      expect(screen.getByText("New output below")).toBeTruthy();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Jump to latest session output",
+        }),
+      );
+
+      expect(scrollContainer.scrollTop).toBe(1100);
+      expect(screen.queryByText("New output below")).toBeNull();
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 
   it("keeps following the tail when progressive restore reveals rows", () => {

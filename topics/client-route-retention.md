@@ -317,17 +317,19 @@ content.
   miss reason. This converts the scroll-reset investigation from anecdotes to
   data.
 
-**Slice 2 — restore side.**
+**Slice 2 — restore side (partially landed 2026-07-03).**
 
 - Make the restore pending rather than one-shot: hold the snapshot until (a)
   the anchor row mounts, then anchor with `topOffset`; or (b) progressive
-  hydration completes without it, then resolve by nearest surviving neighbor —
-  bisect current rows by the recorded timestamp / neighbor ids and anchor to
-  the closest survivor. Raw pixel `scrollTop` remains only as the final
-  fallback for a transcript with no surviving reference points, and always
-  fires the slice-1 diagnostic.
-- While a pending anchored restore exists, suppress the initial tail-follow
-  effect so the two never compete for the viewport.
+  hydration completes without it. The pending-anchor wait landed for
+  `remember-place` on 2026-07-03, including suppression of the competing
+  initial tail-follow effect while the anchor is still mounting. The
+  neighbor/timestamp fallback remains open: after hydration completes without
+  the anchor, resolve by nearest surviving neighbor — bisect current rows by
+  the recorded timestamp / neighbor ids and anchor to the closest survivor.
+  Raw pixel `scrollTop` should remain only as the final fallback for a
+  transcript with no surviving reference points, and should fire the slice-1
+  diagnostic.
 
 **Slice 3 — truth reconciliation.**
 

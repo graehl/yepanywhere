@@ -869,6 +869,7 @@ export const MessageList = memo(function MessageList({
     number | null
   >(null);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
+  const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const [userTurnSearch, setUserTurnSearch] = useState<UserTurnSearchSession>({
     active: false,
     scope: "user",
@@ -1010,6 +1011,7 @@ export const MessageList = memo(function MessageList({
       lastHeightRef.current = container.scrollHeight;
       setIsScrolledToBottom(true);
       setScrollPositionTimestampMs(null);
+      setNewOutputBelowVisible(false);
 
       // Clear programmatic flag after scroll events have fired
       const releaseProgrammaticScroll = () => {
@@ -2087,6 +2089,7 @@ export const MessageList = memo(function MessageList({
   );
 
   const scrollToCurrent = useCallback(() => {
+    setNewOutputBelowVisible(false);
     forceScrollToCurrent(FOLLOW_CATCH_UP_DELAYS_MS, {
       allowThinkingDeltas: true,
     });
@@ -2349,6 +2352,9 @@ export const MessageList = memo(function MessageList({
     const atBottom = isAtScrollBottom(container, content);
     shouldAutoScrollRef.current = atBottom;
     thinkingDeltaFollowAllowedRef.current = atBottom;
+    if (atBottom) {
+      setNewOutputBelowVisible(false);
+    }
     if (!atBottom) {
       clearForcedCurrentScrollTimers();
     }
@@ -2610,20 +2616,25 @@ export const MessageList = memo(function MessageList({
 
   // Restore same-tab route scroll before the default first-load follow behavior
   // moves the viewport to the tail.
+  const initialScrollRestoreDecision = decideSessionScrollRestore({
+    mode: scrollBehaviorMode,
+    snapshot: initialScrollSnapshot,
+    topTolerancePx: FOLLOW_BOTTOM_TOLERANCE_PX,
+  });
+  const mountedTimelineRowCount = timelineEntryRows.length;
+  const shouldWaitForInitialAnchorRestore =
+    initialScrollRestoreDecision === "restore-position" &&
+    initialScrollSnapshot?.anchor !== undefined &&
+    progressiveRevealActive;
   useEffect(() => {
     if (
       !isInitialLoadRef.current ||
       !initialScrollSnapshot ||
-      displayRenderItems.length === 0
+      mountedTimelineRowCount === 0
     ) {
       return;
     }
-    const restoreDecision = decideSessionScrollRestore({
-      mode: scrollBehaviorMode,
-      snapshot: initialScrollSnapshot,
-      topTolerancePx: FOLLOW_BOTTOM_TOLERANCE_PX,
-    });
-    if (restoreDecision === "skip") {
+    if (initialScrollRestoreDecision === "skip") {
       return;
     }
     const content = containerRef.current;
@@ -2631,10 +2642,11 @@ export const MessageList = memo(function MessageList({
     if (!content || !container) return;
 
     isProgrammaticScrollRef.current = true;
-    if (restoreDecision === "follow-bottom") {
+    if (initialScrollRestoreDecision === "follow-bottom") {
       scrollToBottom(container);
       shouldAutoScrollRef.current = true;
       setIsScrolledToBottom(true);
+      setNewOutputBelowVisible(false);
     } else {
       let restored = false;
       const anchor = initialScrollSnapshot.anchor;
@@ -2651,6 +2663,9 @@ export const MessageList = memo(function MessageList({
               anchor.topOffset,
           );
           restored = true;
+        } else if (progressiveRevealActive) {
+          isProgrammaticScrollRef.current = false;
+          return;
         }
       }
       if (!restored) {
@@ -2666,6 +2681,12 @@ export const MessageList = memo(function MessageList({
       shouldAutoScrollRef.current = false;
       setIsScrolledToBottom(false);
       updateScrollPositionTimestamp({ atBottom: false });
+      setNewOutputBelowVisible(
+        initialScrollSnapshot.atBottom &&
+          container.scrollHeight >
+            initialScrollSnapshot.scrollHeight + FOLLOW_BOTTOM_TOLERANCE_PX &&
+          !isAtScrollBottom(container, content),
+      );
     }
     lastHeightRef.current = container.scrollHeight;
     isInitialLoadRef.current = false;
@@ -2674,24 +2695,32 @@ export const MessageList = memo(function MessageList({
       publishScrollSnapshot();
     });
   }, [
-    displayRenderItems.length,
     initialScrollSnapshot,
+    initialScrollRestoreDecision,
+    mountedTimelineRowCount,
     publishScrollSnapshot,
+    progressiveRevealActive,
     scrollToBottom,
-    scrollBehaviorMode,
     updateScrollPositionTimestamp,
   ]);
 
   // Initial scroll to bottom on first render
   useEffect(() => {
     if (isInitialLoadRef.current && displayRenderItems.length > 0) {
+      if (shouldWaitForInitialAnchorRestore) {
+        return;
+      }
       const container = containerRef.current?.parentElement;
       if (container) {
         scrollToBottom(container);
       }
       isInitialLoadRef.current = false;
     }
-  }, [displayRenderItems.length, scrollToBottom]);
+  }, [
+    displayRenderItems.length,
+    scrollToBottom,
+    shouldWaitForInitialAnchorRestore,
+  ]);
 
   const searchPanelTarget =
     userTurnSearch.active && typeof document !== "undefined"
@@ -2757,13 +2786,21 @@ export const MessageList = memo(function MessageList({
       </div>
     </div>
   ) : null;
+  const followButtonLabel = newOutputBelowVisible
+    ? t("sessionNewOutputBelow")
+    : t("sessionFollow");
+  const followButtonTitle = newOutputBelowVisible
+    ? t("sessionNewOutputBelowTitle")
+    : t("sessionFollowLatestOutput");
   const followButton = !isScrolledToBottom ? (
     <button
       type="button"
-      className="message-follow-toggle"
+      className={`message-follow-toggle${
+        newOutputBelowVisible ? " is-new-output" : ""
+      }`}
       onClick={scrollToCurrent}
-      aria-label="Follow latest session output"
-      title="Follow latest session output"
+      aria-label={followButtonTitle}
+      title={followButtonTitle}
     >
       <svg
         width="14"
@@ -2779,7 +2816,7 @@ export const MessageList = memo(function MessageList({
         <path d="M12 5v14" />
         <path d="m19 12-7 7-7-7" />
       </svg>
-      <span>Follow</span>
+      <span>{followButtonLabel}</span>
     </button>
   ) : null;
   return (

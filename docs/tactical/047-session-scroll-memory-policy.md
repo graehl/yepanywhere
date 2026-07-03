@@ -59,14 +59,14 @@ provider-like behavior.
   geometry.
 - [x] Add focused tests for policy parsing, cache-owned scroll memory, and
   remember-place restore.
+- [x] Retry anchored `remember-place` restore while progressive hydration is
+  still mounting older rows.
+- [x] Show a "new output below" follow affordance when `remember-place`
+  restores a previously-bottom viewport above newer output.
 
 ## Follow-Up Work
 
 - Expose the policy in settings after the mode names and copy are settled.
-- Add a new-output divider/affordance for `remember-place` returns where output
-  arrived below the restored anchor.
-- Retry anchor restore after progressive hydration when the anchor row is not
-  mounted yet.
 - Enrich captured anchors with neighbor/timestamp context and use raw
   `scrollTop` only as the final fallback.
 - Tighten fast-stream bottom-follow tests around large bursts and async row

@@ -4443,6 +4443,13 @@ a.sidebar-nav-item {
   flex-shrink: 0;
 }
 
+.message-follow-toggle.is-new-output {
+  max-width: min(220px, calc(100vw - 32px));
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  white-space: nowrap;
+}
+
 /* Message input */
 .message-input {
   display: flex;

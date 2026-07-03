@@ -86,6 +86,30 @@ of React hooks.
 - **Session detail entry store:** reducer/selectors/subscriptions for one
   source/project/session/window.
 
+## Implementer Notes
+
+For whoever picks this up first:
+
+- **First slice:** Phase 1 and Phase 2 together are one reviewable unit —
+  introduce the interfaces and inject the runtime into `useSessionMessages`.
+  Do not start Phase 3 (coordinator extraction) until that lands green.
+- **Plumbing:** provide the current-source runtime through React context,
+  alongside the existing `ClientSummarySourceBinding` — the hook already
+  derives its source key from context, so this is the least-surprising path.
+  A module-level getter mirroring `defaultSessionDetailStore` is acceptable
+  as an interim, but there must be exactly one construction path either way.
+- **Treat `sourceKey` as opaque** in every new interface. The
+  source-identity question (route vs. logical server) is undecided; new code
+  must not parse, compare prefixes of, or derive transport facts from the key.
+- **Verification:** `pnpm lint`, `pnpm typecheck`, `pnpm test`, plus the
+  focused tests listed under "Tests To Preserve Or Add". Phase 2's acceptance
+  includes a new two-fake-runtimes isolation test — write it in the same
+  slice, not later.
+- **Phase 3 slicing:** move one concern at a time out of the hook (stream
+  buffer and initial-load flag first; reveal gating and load progress last —
+  they have the subtlest timing). Keep the hook's behavior tests passing
+  between each slice.
+
 ## Phase 0: Document And Name The Boundary
 
 Status: Drafted by this document.

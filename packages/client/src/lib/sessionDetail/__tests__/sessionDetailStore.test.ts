@@ -358,6 +358,36 @@ describe("SessionDetailStore", () => {
     expect(store.readScrollSnapshot(storeKey)?.scrollTop).toBe(100);
   });
 
+  it("returns an identity-stable scroll snapshot between patches", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]));
+    store.patchScrollSnapshot(storeKey, {
+      atBottom: false,
+      scrollTop: 42,
+      scrollHeight: 400,
+      clientHeight: 200,
+      updatedAtMs: 10,
+    });
+
+    const first = store.readScrollSnapshot(storeKey);
+    expect(first?.scrollTop).toBe(42);
+    expect(store.readScrollSnapshot(storeKey)).toBe(first);
+
+    store.patchScrollSnapshot(storeKey, {
+      atBottom: false,
+      scrollTop: 50,
+      scrollHeight: 400,
+      clientHeight: 200,
+      updatedAtMs: 20,
+    });
+
+    const second = store.readScrollSnapshot(storeKey);
+    expect(second).not.toBe(first);
+    expect(second?.scrollTop).toBe(50);
+  });
+
   it("retains entries through expiry until released", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");

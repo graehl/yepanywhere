@@ -75,10 +75,13 @@ export class SessionDetailEntry {
     return this.metadata?.approxBytes ?? 0;
   }
 
+  /**
+   * Stored snapshots are cloned on the way in and treated as immutable, so
+   * reads return the same reference until the next write — render-path
+   * consumers rely on that identity stability (MessageList memo).
+   */
   get scrollSnapshot(): SessionRouteScrollSnapshot | undefined {
-    return this.scrollSnapshotValue
-      ? cloneScrollSnapshot(this.scrollSnapshotValue)
-      : undefined;
+    return this.scrollSnapshotValue;
   }
 
   get lastAccessedAt(): number {

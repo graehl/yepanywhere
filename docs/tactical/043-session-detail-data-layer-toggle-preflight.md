@@ -18,10 +18,12 @@ surfaces that have selector-backed mirrors:
 - Source: one stable `defaultSessionDetailStore` state snapshot, using
   `state.messages`, `state.agentContent`, and
   `state.toolUseToAgentEntries` together.
-- Fallback: local `messages`/`agentContent` state if the store entry is
-  missing or the hook has not reached the reveal point.
-- Still maintain local mirrors where they support loading reset, fallback, and
-  the Development settings rollback.
+- Fallback: local `messages`/`agentContent` state only after the current route
+  has reached the reveal point and the store entry is unexpectedly missing.
+- Before reveal: explicit empty returned transcript surfaces, keyed by the
+  current route snapshot key, rather than cleared local mirrors.
+- Still maintain local mirrors where they support fallback and the Development
+  settings rollback.
 - Confidence signal: reducer fixtures, focused hook tests, and browser
   dogfooding. The earlier returned-data invariant diagnostic was removed
   because it compared the returned store-selected data to the same store
@@ -40,16 +42,17 @@ One important guard remains: warm snapshot restore writes the store before it
 reveals `messages`/`agentContent`, because the hook intentionally yields
 through the loading path. With the switch enabled, reveal updates refs plus
 local session/pagination state but skips React state writes for returned
-store-backed surfaces. The store-backed returned path is still gated until
-`loading` is false so the default source change does not bypass the deferred
-warm-reveal behavior.
+store-backed surfaces. The returned transcript path is gated on the current
+route's reveal key and `loading === false`, so the default source change does
+not bypass the deferred warm-reveal behavior or expose stale rollback mirrors
+on route changes.
 
 ## Main Transcript Transition Audit
 
 | Boundary | Local mirror write | Store path | Preflight status |
 | --- | --- | --- | --- |
-| No warm snapshot reset | Clears local state while REST starts | Deletes the store entry | Ready with fallback to local empty state |
-| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated, then selected runtime snapshot reveals without local state writes while enabled |
+| No warm snapshot reset | Leaves transcript mirrors intact while reveal gate returns empty | Deletes the store entry | Ready with explicit empty returned state |
+| Warm snapshot start | Leaves transcript mirrors intact before deferred reveal | Restores route snapshot immediately | Gated, then selected runtime snapshot reveals without local state writes while enabled |
 | Warm catch-up before hydration | Ref-only mirror while enabled after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
 | Warm catch-up after hydration | Ref-only mirror while enabled after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
 | Cold persisted load | Ref-only mirror while enabled after REST load | `loadPersistedTranscript` | Store-selected reveal after gate |
@@ -62,8 +65,8 @@ warm-reveal behavior.
 ## Remaining Risks
 
 - Warm snapshot timing is the main behavioral risk. The store has messages
-  earlier than the returned local mirror during deferred loading, and the hook
-  intentionally preserves that reveal gate.
+  earlier than the returned transcript surfaces during deferred loading, and the
+  hook intentionally preserves that reveal gate.
 - Compaction-tail views need an explicit contract during cutover. Cold
   `loadPersistedTranscript` state is the REST-returned window, even when
   `pagination.totalMessageCount` is larger than the returned row count; older
@@ -95,10 +98,11 @@ warm-reveal behavior.
 
 The store-backed returned detail path is now the default, with the Development
 settings switch retained as a narrower rollback. The next implementation chunks
-should keep narrowing the remaining local mirror state itself: reset/loading
-scaffolding and rollback behavior. Ordinary post-dispatch store-selected paths
+should keep narrowing the remaining local mirror state itself: fallback
+ownership and rollback behavior. Ordinary post-dispatch store-selected paths
 now skip local React state writes while the switch is enabled, reveal follows
-the same rule for returned store-backed surfaces, no-signal store/local
-diagnostics have been removed from store-selected adapter paths, and
-route-cache persistence reads directly from the store. Scroll ownership and
+the same rule for returned store-backed surfaces, reset/loading uses an
+explicit returned-detail gate instead of clearing transcript mirrors, no-signal
+store/local diagnostics have been removed from store-selected adapter paths,
+and route-cache persistence reads directly from the store. Scroll ownership and
 `/btw` remain out of scope.

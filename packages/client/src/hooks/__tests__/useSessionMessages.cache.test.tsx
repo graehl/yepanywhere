@@ -312,6 +312,70 @@ describe("useSessionMessages cache", () => {
     });
   });
 
+  it("hides stale rollback mirrors across route changes before reveal", async () => {
+    disableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "sess-1-msg",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "first" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    let rejectSecondLoad!: (error: Error) => void;
+    const secondLoad = new Promise<never>((_, reject) => {
+      rejectSecondLoad = reject;
+    });
+    apiMocks.getSession.mockReturnValueOnce(secondLoad);
+
+    const rendered = renderHook(
+      ({ sessionId }) =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId,
+        }),
+      {
+        initialProps: { sessionId: "sess-1" },
+      },
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["sess-1-msg"]);
+
+    act(() => {
+      rendered.rerender({ sessionId: "sess-2" });
+    });
+
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    expect(rendered.result.current.messages).toEqual([]);
+
+    await act(async () => {
+      rejectSecondLoad(new Error("load failed"));
+      await secondLoad.catch(() => undefined);
+    });
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(rendered.result.current.messages).toEqual([]);
+  });
+
   it("mirrors active loads into the session detail store without retaining when cache is disabled", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

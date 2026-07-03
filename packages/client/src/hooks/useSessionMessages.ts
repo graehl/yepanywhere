@@ -172,6 +172,9 @@ export interface UseSessionMessagesResult {
   restoredFromSnapshot: boolean;
 }
 
+const EMPTY_RETURNED_MESSAGES: Message[] = [];
+const EMPTY_RETURNED_AGENT_CONTENT: AgentContentMap = {};
+
 function readSessionLoadCache(
   sourceKey: ClientSummarySourceKey,
   projectId: string,
@@ -391,6 +394,9 @@ export function useSessionMessages(
     () => new Map(),
   );
   const [loading, setLoading] = useState(true);
+  const [revealedSnapshotKey, setRevealedSnapshotKey] = useState<string | null>(
+    null,
+  );
   const [sessionLoadProgress, setSessionLoadProgress] =
     useState<SessionLoadProgress>(() => createSessionLoadProgress("idle"));
   const [session, setSession] = useState<SessionMetadata | null>(null);
@@ -403,26 +409,15 @@ export function useSessionMessages(
 
   // State updaters must stay pure (React may replay them mid-render), so
   // store dispatches and divergence reports cannot live inside setState
-  // callbacks. The refs track the latest mirror values for event-time work;
-  // apply* writes refs and React state, while mirrorStoreSelected* can skip
-  // React state when the returned data already comes from the store.
+  // callbacks. The refs track the latest mirror values for event-time work.
+  // Session/pagination still write local state directly; store-selected
+  // transcript mirrors can skip React state when returned data comes from the
+  // store.
   const messagesRef = useRef<Message[]>([]);
   const agentContentRef = useRef<AgentContentMap>({});
   const toolUseToAgentRef = useRef<Map<string, string>>(new Map());
   const sessionRef = useRef<SessionMetadata | null>(null);
   const paginationRef = useRef<PaginationInfo | undefined>(undefined);
-  const applyMessages = useCallback((next: Message[]) => {
-    messagesRef.current = next;
-    setMessages(next);
-  }, []);
-  const applyAgentContent = useCallback((next: AgentContentMap) => {
-    agentContentRef.current = next;
-    setAgentContent(next);
-  }, []);
-  const applyToolUseToAgent = useCallback((next: Map<string, string>) => {
-    toolUseToAgentRef.current = next;
-    setToolUseToAgent(next);
-  }, []);
   const applySession = useCallback((next: SessionMetadata | null) => {
     sessionRef.current = next;
     setSession(next);
@@ -704,7 +699,10 @@ export function useSessionMessages(
     [readSelectorBackedToolUseToAgent, warnMissingSelectorAfterDispatch],
   );
 
-  const canReadStoreBackedDetail = storeBackedMessagesEnabled && !loading;
+  const canRevealReturnedDetail =
+    revealedSnapshotKey === snapshotKeyString && !loading;
+  const canReadStoreBackedDetail =
+    storeBackedMessagesEnabled && canRevealReturnedDetail;
   const storeBackedDetailState = useSyncExternalStore(
     useCallback(
       (listener) => {
@@ -746,15 +744,35 @@ export function useSessionMessages(
     ),
     () => undefined,
   );
-  const returnedMessages = storeBackedDetailState?.messages ?? messages;
-  const returnedAgentContent =
-    storeBackedDetailState?.agentContent ?? agentContent;
+  const fallbackMessages = storeBackedMessagesEnabled
+    ? messagesRef.current
+    : messages;
+  const fallbackAgentContent = storeBackedMessagesEnabled
+    ? agentContentRef.current
+    : agentContent;
+  const returnedMessages = canRevealReturnedDetail
+    ? (storeBackedDetailState?.messages ?? fallbackMessages)
+    : EMPTY_RETURNED_MESSAGES;
+  const returnedAgentContent = canRevealReturnedDetail
+    ? (storeBackedDetailState?.agentContent ?? fallbackAgentContent)
+    : EMPTY_RETURNED_AGENT_CONTENT;
   const returnedToolUseToAgent = useMemo(
-    () =>
-      storeBackedDetailState
+    () => {
+      if (!canRevealReturnedDetail) {
+        return new Map<string, string>();
+      }
+      return storeBackedDetailState
         ? new Map(storeBackedDetailState.toolUseToAgentEntries)
-        : toolUseToAgent,
-    [storeBackedDetailState, toolUseToAgent],
+        : storeBackedMessagesEnabled
+          ? new Map(toolUseToAgentRef.current)
+          : toolUseToAgent;
+    },
+    [
+      canRevealReturnedDetail,
+      storeBackedDetailState,
+      storeBackedMessagesEnabled,
+      toolUseToAgent,
+    ],
   );
   const previousStoreBackedMessagesEnabledRef = useRef(
     storeBackedMessagesEnabled,
@@ -963,6 +981,7 @@ export function useSessionMessages(
       applySession(snapshot.session);
       mirrorStoreSelectedMessages(snapshot.messages);
       applyPagination(snapshot.pagination);
+      setRevealedSnapshotKey(snapshotKeyString);
     };
 
     const finishWarmHydration = (options: {
@@ -1163,6 +1182,7 @@ export function useSessionMessages(
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
     scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
+    setRevealedSnapshotKey(null);
     if (warmLoad) {
       resetSessionDetailState(warmLoad);
       setSessionLoadProgress(
@@ -1176,9 +1196,6 @@ export function useSessionMessages(
       providerRef.current = warmLoad.session.provider;
       lastMessageIdRef.current = warmLoad.lastMessageId;
       setLoading(true);
-      applyMessages([]);
-      applyAgentContent({});
-      applyToolUseToAgent(new Map());
       applySession(null);
       applyPagination(undefined);
       void (async () => {
@@ -1215,8 +1232,6 @@ export function useSessionMessages(
       providerRef.current = undefined;
       lastMessageIdRef.current = undefined;
       setLoading(true);
-      applyAgentContent({});
-      applyToolUseToAgent(new Map());
       applySession(null);
       applyPagination(undefined);
     }
@@ -1389,16 +1404,14 @@ export function useSessionMessages(
     updatePersistedTimestampWatermark,
     resetSessionDetailState,
     dispatchSessionDetailAction,
-    applyAgentContent,
-    applyMessages,
     applyPagination,
     applySession,
-    applyToolUseToAgent,
     mirrorStoreSelectedAgentContent,
     mirrorStoreSelectedMessages,
     mirrorStoreSelectedToolUseToAgent,
     readCurrentStoreRouteSnapshot,
     readSelectorBackedRuntimeSnapshot,
+    snapshotKeyString,
     warnMissingSelectorAfterDispatch,
   ]);
 

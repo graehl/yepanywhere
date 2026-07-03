@@ -77,8 +77,9 @@ What is already in place:
 - Selected runtime-snapshot reveal now uses the same conditional mirror helpers:
   with Store-Backed Session Detail enabled, reveal updates refs plus local
   session/pagination state but does not write local `messages`, `agentContent`,
-  or tool-use state. Reset-to-loading still writes empty local mirrors to keep
-  warm store data gated while `loading` is true.
+  or tool-use state. Reset-to-loading now uses an explicit current-route reveal
+  gate instead of clearing local transcript mirrors, so warm store data and
+  stale rollback mirrors stay hidden until the route snapshot is revealed.
 - No-signal store/local diagnostics have been removed from store-selected
   stream, placeholder, subagent, tool-use, and reveal paths. Remaining
   `[SessionDetailStore]` logs cover metadata, catch-up/older
@@ -98,6 +99,9 @@ What is already in place:
 - Focused hook coverage now verifies that store-authoritative returned
   tool-use mappings can expose selector-only entries when the toggle is on and
   stay local-only when it is off during ordinary registration.
+- Focused hook coverage also verifies that same-hook route changes keep stale
+  rollback mirrors hidden before the next route has revealed, including an
+  initial-load error path.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -251,9 +255,10 @@ Next likely slice:
   cache persistence now reads back from the store. Store-selected adapter paths
   now avoid redundant React state writes while the default store-backed return
   path is enabled, reveal writes are also ref-only for the returned store-backed
-  surfaces, and no-signal store/local diagnostics have been narrowed out. The
-  next slices should target the remaining local mirror state itself:
-  reset/loading scaffolding and rollback behavior.
+  surfaces, reset/loading uses a separate returned-detail reveal gate instead
+  of clearing transcript mirrors, and no-signal store/local diagnostics have
+  been narrowed out. The next slices should target the remaining local mirror
+  state itself: fallback ownership and rollback behavior.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -285,14 +290,14 @@ Dogfood switch:
   reducer/store feed, selector-backed adapter reads, diagnostics, and cache
   ownership running. Turning the switch off is not a store no-op and no longer
   provides an independent data-semantics rollback on normal mounted paths.
-- Keep local mirrors only where they still support loading reset, fallback,
-  diagnostics for independently owned fields, or the Development settings
-  rollback.
+- Keep local mirrors only where they still support fallback, diagnostics for
+  independently owned fields, or the Development settings rollback.
 - With the switch enabled, ordinary post-dispatch store-selected paths update
   refs but do not set local mirror state. If the switch is flipped off during a
   mounted session, the hook hydrates local mirror state from those refs.
-- Reveal follows the same rule for returned store-backed surfaces. Reset still
-  clears local mirror state while loading to preserve warm-hydration gating.
+- Reveal follows the same rule for returned store-backed surfaces. Reset starts
+  an explicit returned-detail reveal gate instead of clearing transcript mirror
+  state to preserve warm-hydration gating.
 - Store/local diagnostics no longer run on paths where the live payload is just
   the selected store result; remaining logs are for independently owned refs,
   metadata, scroll, or missing selector cases.
@@ -305,11 +310,11 @@ Dogfood switch:
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot, but the hook still computes warm merge
   candidates for pagination reconciliation and fallback diagnostics.
-- The local mirror states still exist for reset/loading fallback and rollback
-  mode. With store-backed return enabled, ordinary post-dispatch and reveal
-  paths keep refs current without local setState, but the state variables
-  remain a structural cost until rollback semantics are retired or further
-  narrowed.
+- The local mirror states still exist for fallback and rollback mode. With
+  store-backed return enabled, ordinary post-dispatch and reveal paths keep refs
+  current without local setState, and reset/loading no longer clears transcript
+  mirrors. The state variables remain a structural cost until rollback semantics
+  are retired or further narrowed.
 - The rollback switch mainly protects reveal timing, subscription behavior,
   object identity, and remaining locally owned refs. It should not be treated
   as an independent rollback for reducer data semantics on normal mounted

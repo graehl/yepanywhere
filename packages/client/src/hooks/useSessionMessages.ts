@@ -847,6 +847,40 @@ export function useSessionMessages(
       setRevealedSnapshotKey(snapshotKeyString);
     };
 
+    const completeInitialReveal = (options: {
+      snapshot: SessionRouteSnapshot;
+      sourceMessageCount: number;
+      provider?: string;
+      restoredFromSnapshot?: boolean;
+    }) => {
+      const { snapshot } = options;
+      applyRevealSnapshot(snapshot);
+      markReloadPerfPhase("session_initial_messages_state_queued", {
+        messages: options.sourceMessageCount,
+        totalMessages: snapshot.messages.length,
+        provider: options.provider,
+        ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
+      });
+
+      // Mark ready and flush buffered stream events after the reveal snapshot
+      // has been queued so buffered events merge on top of loaded transcript.
+      initialLoadCompleteRef.current = true;
+      flushBuffer();
+
+      setLoading(false);
+      setSessionLoadProgress(
+        createSessionLoadProgress("complete", {
+          messageCount: snapshot.messages.length,
+          totalMessageCount: snapshot.pagination?.totalMessageCount,
+          hasOlderMessages: snapshot.pagination?.hasOlderMessages,
+        }),
+      );
+      markReloadPerfPhase("session_initial_load_complete", {
+        messages: options.sourceMessageCount,
+        ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
+      });
+    };
+
     const finishWarmHydration = (options: {
       loadedMessages: Message[];
       loadedSession: SessionMetadata;
@@ -869,27 +903,10 @@ export function useSessionMessages(
         },
       );
       const { snapshot } = reveal;
-      applyRevealSnapshot(snapshot);
-      markReloadPerfPhase("session_initial_messages_state_queued", {
-        messages: options.sourceMessageCount,
-        totalMessages: snapshot.messages.length,
+      completeInitialReveal({
+        snapshot,
+        sourceMessageCount: options.sourceMessageCount,
         provider: options.provider,
-        restoredFromSnapshot: true,
-      });
-
-      initialLoadCompleteRef.current = true;
-      flushBuffer();
-
-      setLoading(false);
-      setSessionLoadProgress(
-        createSessionLoadProgress("complete", {
-          messageCount: snapshot.messages.length,
-          totalMessageCount: snapshot.pagination?.totalMessageCount,
-          hasOlderMessages: snapshot.pagination?.hasOlderMessages,
-        }),
-      );
-      markReloadPerfPhase("session_initial_load_complete", {
-        messages: options.sourceMessageCount,
         restoredFromSnapshot: true,
       });
       return reveal;
@@ -1156,33 +1173,11 @@ export function useSessionMessages(
           },
         );
         const { snapshot } = reveal;
-        const revealInitialTranscript = () => {
-          applyRevealSnapshot(snapshot);
-          markReloadPerfPhase("session_initial_messages_state_queued", {
-            messages: taggedMessages.length,
-            totalMessages: snapshot.messages.length,
-            provider: data.session.provider,
-          });
-
-          // Mark ready and flush buffer after the REST snapshot has been queued
-          // so buffered stream events merge on top of the loaded transcript.
-          initialLoadCompleteRef.current = true;
-          flushBuffer();
-
-          setLoading(false);
-          setSessionLoadProgress(
-            createSessionLoadProgress("complete", {
-              messageCount: snapshot.messages.length,
-              totalMessageCount: snapshot.pagination?.totalMessageCount,
-              hasOlderMessages: snapshot.pagination?.hasOlderMessages,
-            }),
-          );
-          markReloadPerfPhase("session_initial_load_complete", {
-            messages: taggedMessages.length,
-          });
-        };
-
-        revealInitialTranscript();
+        completeInitialReveal({
+          snapshot,
+          sourceMessageCount: taggedMessages.length,
+          provider: data.session.provider,
+        });
 
         if (reveal.storeBacked) {
           writeSessionLoadCache(
@@ -1195,14 +1190,7 @@ export function useSessionMessages(
           );
         }
 
-        // Notify parent
-        onLoadComplete?.({
-          session: data.session,
-          status: data.ownership,
-          pendingInputRequest: data.pendingInputRequest,
-          slashCommands: data.slashCommands,
-          deferredMessages: data.deferredMessages,
-        });
+        notifyLoadComplete(data);
       })
       .catch((err) => {
         if (cancelled) return;

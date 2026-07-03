@@ -110,6 +110,7 @@ empty result. The returned transcript subscription now listens only to
 `messages`, `agentContent`, and tool-use mapping entries, so metadata,
 pagination, and scroll-only store updates no longer notify it. Warm-refresh
 merge/pagination preparation and reveal snapshot construction now live in tested
-helpers, so the next implementation chunk should keep reducing
-reveal/progress/cache/flush sequencing inside `useSessionMessages`. Scroll
-ownership and `/btw` remain out of scope.
+helpers, and warm/cold initial reveal completion is centralized in one hook
+helper. The next implementation chunk should keep reducing
+progress/cache/flush sequencing inside `useSessionMessages`. Scroll ownership
+and `/btw` remain out of scope.

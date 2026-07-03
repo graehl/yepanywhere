@@ -56,6 +56,9 @@ What is already in place:
   update local session/pagination/cursor/scroll bookkeeping while preserving the
   existing loading gate. The store-vs-fallback reveal snapshot shape now lives
   in a tested `sessionDetail/revealSnapshot` helper.
+- Warm and cold initial reveal completion now share one hook-local completion
+  helper for applying the reveal snapshot, marking reload phases, flushing the
+  buffered stream queue, clearing loading, and writing final progress.
 - Route-cache refresh on unmount now reads the current route snapshot directly
   from `defaultSessionDetailStore` instead of rebuilding it from returned hook
   data. The old `latestSnapshotRef` mirror has been removed; diagnostics that
@@ -276,9 +279,9 @@ Next likely slice:
   unless the user actually loaded that broader window.
 - Move the next implementation chunk back to `useSessionMessages`: keep shaving
   down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation
-  and reveal snapshot construction are now pure/tested, the reveal path no
-  longer owns transcript fallback data, and the returned transcript subscription
-  is selector-specific.
+  and reveal snapshot construction are now pure/tested, initial reveal
+  completion is centralized, the reveal path no longer owns transcript fallback
+  data, and the returned transcript subscription is selector-specific.
 
 Then:
 
@@ -318,8 +321,9 @@ Store-backed return path:
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot; warm refresh merge/pagination preparation
-  and reveal snapshot construction are pure, but the hook still owns progress
-  timing, reveal, cache writes, and stream-buffer flushing.
+  and reveal snapshot construction are pure, and initial reveal completion is
+  centralized, but the hook still owns progress timing, cache writes, and
+  stream-buffer flushing.
 - Transcript fallback refs are gone, so a missing retained store entry after
   reveal intentionally empties returned transcript surfaces and logs a dev
   diagnostic. Treat that as a retention/adapter failure, not a recoverable

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -56,6 +57,13 @@ function renderSpeechControlMenu(
   );
 }
 
+// Opening the menu kicks off the async mic-device enumeration; settle it
+// inside act so its setState lands before the test proceeds.
+async function openSpeechMenu() {
+  fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+  await act(async () => {});
+}
+
 describe("SpeechControlMenu", () => {
   afterEach(() => {
     cleanup();
@@ -93,7 +101,7 @@ describe("SpeechControlMenu", () => {
       onMethodChange: vi.fn(),
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
     const select = await screen.findByRole("combobox", {
       name: "Microphone",
     });
@@ -135,7 +143,7 @@ describe("SpeechControlMenu", () => {
     expect(prewarm).toHaveBeenCalledTimes(2);
   });
 
-  it("stops active capture before opening speech options", () => {
+  it("stops active capture before opening speech options", async () => {
     installMediaDevices([]);
     const onBeforeOpen = vi.fn();
 
@@ -148,12 +156,12 @@ describe("SpeechControlMenu", () => {
       onBeforeOpen,
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
 
     expect(onBeforeOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("stops active capture before changing speech backend", () => {
+  it("stops active capture before changing speech backend", async () => {
     installMediaDevices([]);
     const onBeforeCaptureChange = vi.fn();
     const onMethodChange = vi.fn();
@@ -174,7 +182,7 @@ describe("SpeechControlMenu", () => {
       onBeforeCaptureChange,
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
     const grokDirect = screen.getByRole("radio", { name: "Grok direct" });
     const descriptionId = grokDirect.getAttribute("aria-describedby");
     expect(descriptionId).toBeTruthy();
@@ -187,7 +195,7 @@ describe("SpeechControlMenu", () => {
     expect(onMethodChange).toHaveBeenCalledWith(["xai-grok-direct-streaming"]);
   });
 
-  it("does not expose browser xAI key editing in the mic options", () => {
+  it("does not expose browser xAI key editing in the mic options", async () => {
     installMediaDevices([]);
 
     renderSpeechControlMenu({
@@ -198,7 +206,7 @@ describe("SpeechControlMenu", () => {
       onMethodChange: vi.fn(),
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
 
     expect(screen.queryByLabelText("Browser xAI STT Key")).toBeNull();
   });
@@ -206,7 +214,7 @@ describe("SpeechControlMenu", () => {
   it.each([
     "ya-parakeet",
     "ya-nemo",
-  ] as const)("shows preset and free-text Parakeet model controls for %s", (selectedMethod) => {
+  ] as const)("shows preset and free-text Parakeet model controls for %s", async (selectedMethod) => {
     installMediaDevices([]);
     const onBeforeCaptureChange = vi.fn();
 
@@ -219,7 +227,7 @@ describe("SpeechControlMenu", () => {
       onBeforeCaptureChange,
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
     const preset = screen.getByLabelText("Parakeet model preset");
     expect(screen.getByText("CTC 1.1B English lowercase")).toBeDefined();
     fireEvent.change(preset, {
@@ -244,7 +252,7 @@ describe("SpeechControlMenu", () => {
     );
   });
 
-  it("hides Parakeet presets that no enabled backend can run", () => {
+  it("hides Parakeet presets that no enabled backend can run", async () => {
     installMediaDevices([]);
 
     renderSpeechControlMenu({
@@ -255,13 +263,13 @@ describe("SpeechControlMenu", () => {
       onMethodChange: vi.fn(),
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
 
     expect(screen.getByText("CTC 1.1B English lowercase")).toBeDefined();
     expect(screen.queryByText("RNNT 1.1B English lowercase")).toBeNull();
   });
 
-  it("lists only the selected backend's own models, keeping backends separate", () => {
+  it("lists only the selected backend's own models, keeping backends separate", async () => {
     installMediaDevices([]);
 
     renderSpeechControlMenu({
@@ -275,7 +283,7 @@ describe("SpeechControlMenu", () => {
       onMethodChange: vi.fn(),
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
 
     // ya-parakeet runs TDT + CTC but not the NeMo-only RNNT, even though
     // ya-nemo is enabled — no cross-backend auto-switch from this dropdown.
@@ -284,7 +292,7 @@ describe("SpeechControlMenu", () => {
     expect(screen.queryByText("RNNT 1.1B English lowercase")).toBeNull();
   });
 
-  it("lists all three models for the ya-nemo backend", () => {
+  it("lists all three models for the ya-nemo backend", async () => {
     installMediaDevices([]);
 
     renderSpeechControlMenu({
@@ -298,14 +306,14 @@ describe("SpeechControlMenu", () => {
       onMethodChange: vi.fn(),
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
 
     expect(screen.getByText("TDT 0.6B v3 multilingual")).toBeDefined();
     expect(screen.getByText("CTC 1.1B English lowercase")).toBeDefined();
     expect(screen.getByText("RNNT 1.1B English lowercase")).toBeDefined();
   });
 
-  it("prewarms a custom Parakeet model on free-text commit", () => {
+  it("prewarms a custom Parakeet model on free-text commit", async () => {
     installMediaDevices([]);
     modelSettings.parakeetSpeechModel = "nvidia/custom-parakeet";
 
@@ -317,7 +325,7 @@ describe("SpeechControlMenu", () => {
       onMethodChange: vi.fn(),
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
     fireEvent.blur(screen.getByLabelText("Parakeet model id"));
 
     expect(prewarmYaServerSpeechBackend).toHaveBeenCalledWith(
@@ -326,7 +334,7 @@ describe("SpeechControlMenu", () => {
     );
   });
 
-  it("prewarms the current Parakeet model when switching to a Parakeet backend", () => {
+  it("prewarms the current Parakeet model when switching to a Parakeet backend", async () => {
     installMediaDevices([]);
     const onMethodChange = vi.fn();
 
@@ -341,7 +349,7 @@ describe("SpeechControlMenu", () => {
       onMethodChange,
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
     fireEvent.click(screen.getByRole("radio", { name: "NeMo Parakeet" }));
 
     expect(onMethodChange).toHaveBeenCalledWith(["ya-nemo"]);
@@ -351,7 +359,7 @@ describe("SpeechControlMenu", () => {
     );
   });
 
-  it("normalizes an incompatible preset when switching to a Parakeet backend", () => {
+  it("normalizes an incompatible preset when switching to a Parakeet backend", async () => {
     installMediaDevices([]);
     modelSettings.parakeetSpeechModel = "nvidia/parakeet-rnnt-1.1b";
     const onMethodChange = vi.fn();
@@ -367,7 +375,7 @@ describe("SpeechControlMenu", () => {
       onMethodChange,
     });
 
-    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    await openSpeechMenu();
     fireEvent.click(screen.getByRole("radio", { name: "Parakeet" }));
 
     expect(onMethodChange).toHaveBeenCalledWith(["ya-parakeet"]);

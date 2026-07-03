@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -174,7 +175,10 @@ describe("MessageDeliverySettings", () => {
     );
     await waitFor(() => expect(holder.registration?.canUndo).toBe(true));
 
-    await holder.registration?.undo();
+    // The undo callback sets component state; invoke it inside act.
+    await act(async () => {
+      await holder.registration?.undo();
+    });
     expect(mockUpdateSettings).toHaveBeenLastCalledWith({
       deferredJoinWindowSeconds: 20,
       projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,

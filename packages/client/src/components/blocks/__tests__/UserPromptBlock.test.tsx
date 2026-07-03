@@ -74,7 +74,7 @@ describe("UserPromptBlock", () => {
     ).toBeDefined();
   });
 
-  it("uses file_path name for Codex input_image attachments", () => {
+  it("uses file_path name for Codex input_image attachments", async () => {
     const content: ContentBlock[] = [
       {
         type: "text",
@@ -90,6 +90,12 @@ describe("UserPromptBlock", () => {
       <I18nProvider>
         <UserPromptBlock content={content} />
       </I18nProvider>,
+    );
+
+    // Let the chip's attachment-cache load settle (it rejects in jsdom)
+    // before the test ends, so its setState lands inside act.
+    await waitFor(() =>
+      expect(screen.queryByText("Loading...")).toBeNull(),
     );
 
     expect(screen.getByText(/Annotated image:/)).toBeDefined();

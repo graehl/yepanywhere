@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import {
   type Mock,
   afterEach,
@@ -108,6 +108,11 @@ describe("useSessionMessages cache", () => {
   });
 
   afterEach(() => {
+    // Unmount before resetting shared stores: this afterEach runs before
+    // testing-library's auto-cleanup (vitest afterEach hooks are LIFO), and
+    // resetting a store a still-mounted hook subscribes to is a state update
+    // outside act().
+    cleanup();
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     window.localStorage.clear();

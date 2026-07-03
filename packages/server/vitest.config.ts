@@ -12,5 +12,19 @@ export default defineConfig({
     passWithNoTests: true,
     maxWorkers: 4,
     minWorkers: 1,
+    poolOptions: {
+      // node:sqlite (opencode-db-reader, a deliberate zero-native-dependency
+      // choice with guarded fallbacks) makes Node print an ExperimentalWarning
+      // per worker. Silence it in test output only, so real warnings stay
+      // visible; production server logs still show Node's notice. The flag
+      // needs Node >= 20.13, comfortably inside the >=20 engines floor's
+      // maintained range.
+      threads: {
+        execArgv: ["--disable-warning=ExperimentalWarning"],
+      },
+      forks: {
+        execArgv: ["--disable-warning=ExperimentalWarning"],
+      },
+    },
   },
 });

@@ -12,17 +12,19 @@ after the off path stopped providing an independent data-semantics rollback.
 ## Cutover Shape
 
 The path started as a narrow toggle and now unconditionally covers the returned
-hook data surfaces that have selector-backed mirrors:
+hook data surfaces that have selector-backed store reads:
 
 - Scope: returned `messages`, `agentContent`, and tool-use mappings.
 - Source: one stable `defaultSessionDetailStore` state snapshot, using
   `state.messages`, `state.agentContent`, and
   `state.toolUseToAgentEntries` together.
-- Fallback: local `messages`/`agentContent` refs only after the current route
-  has reached the reveal point and the store entry is unexpectedly missing.
+- Fallback: none for returned transcript data after reveal. If the retained
+  store entry is unexpectedly missing, the hook returns empty transcript
+  surfaces and logs `session-detail-store-missing-after-reveal` in dev.
 - Before reveal: explicit empty returned transcript surfaces, keyed by the
   current route snapshot key, rather than cleared local mirrors.
-- Still maintain refs where they support temporary fallback.
+- Still maintain local refs only for independently owned session/pagination,
+  cursor, timestamp watermark, and scroll bookkeeping.
 - Confidence signal: reducer fixtures, focused hook tests, and browser
   dogfooding. The earlier returned-data invariant diagnostic was removed
   because it compared the returned store-selected data to the same store
@@ -38,26 +40,26 @@ than providing a fully independent data-semantics rollback.
 
 One important guard remains: warm snapshot restore writes the store before it
 reveals `messages`/`agentContent`, because the hook intentionally yields
-through the loading path. Reveal updates refs plus local session/pagination
-state but skips React state writes for returned store-backed surfaces. The
+through the loading path. Reveal updates local session/pagination/cursor/scroll
+bookkeeping but skips React state writes for returned store-backed surfaces. The
 returned transcript path is gated on the current route's reveal key and
 `loading === false`, so the store-backed return path does not bypass the
-deferred warm-reveal behavior or expose stale fallback refs on route changes.
+deferred warm-reveal behavior or expose stale route detail on route changes.
 
 ## Main Transcript Transition Audit
 
-| Boundary | Local mirror write | Store path | Preflight status |
+| Boundary | Hook-local transcript write | Store path | Preflight status |
 | --- | --- | --- | --- |
-| No warm snapshot reset | Leaves transcript mirrors intact while reveal gate returns empty | Deletes the store entry | Ready with explicit empty returned state |
-| Warm snapshot start | Leaves transcript mirrors intact before deferred reveal | Restores route snapshot immediately | Gated, then selected runtime snapshot reveals without local state writes while enabled |
-| Warm catch-up before hydration | Ref-only mirror while enabled after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
-| Warm catch-up after hydration | Ref-only mirror while enabled after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
-| Cold persisted load | Ref-only mirror while enabled after REST load | `loadPersistedTranscript` | Store-selected reveal after gate |
-| Ordinary stream/replay | Copies selector-backed store result | `applyStreamMessage` | Store-selected after dispatch |
-| Main streaming placeholder upsert | Copies selector-backed store result | `upsertStreamingPlaceholder` | Store-selected after dispatch |
-| Main streaming placeholder cleanup | Copies selector-backed store result | `clearStreamingPlaceholders` | Store-selected after dispatch |
-| Incremental persisted catch-up | Copies selector-backed store result and updates cursor | `applyCatchupMessages` | Store-selected after dispatch |
-| Older-page prepend | Copies selector-backed store result and updates cursor | `prependOlderMessages` | Store-selected after dispatch |
+| No warm snapshot reset | None; reveal gate returns empty | Deletes the store entry | Ready with explicit empty returned state |
+| Warm snapshot start | None before deferred reveal | Restores route snapshot immediately | Gated, then selected runtime snapshot reveals without local transcript writes |
+| Warm catch-up before hydration | None | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
+| Warm catch-up after hydration | None | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
+| Cold persisted load | None | `loadPersistedTranscript` | Store-selected reveal after gate |
+| Ordinary stream/replay | None | `applyStreamMessage` | Store-selected after dispatch |
+| Main streaming placeholder upsert | None | `upsertStreamingPlaceholder` | Store-selected after dispatch |
+| Main streaming placeholder cleanup | None | `clearStreamingPlaceholders` | Store-selected after dispatch |
+| Incremental persisted catch-up | None; cursor ref still updates from selected result | `applyCatchupMessages` | Store-selected after dispatch |
+| Older-page prepend | None; cursor ref still updates from selected result | `prependOlderMessages` | Store-selected after dispatch |
 
 ## Remaining Risks
 
@@ -89,16 +91,18 @@ deferred warm-reveal behavior or expose stale fallback refs on route changes.
   `[SessionDetailStore]`, `[SessionDetailShadow]`, React errors, request
   failures, and scroll bottom deltas. Treat store/shadow warnings as fixture
   candidates unless they are scroll-only noise. Treat
-  `session-detail-selector-missing-after-dispatch` as an adapter/retention bug.
+  `session-detail-selector-missing-after-dispatch` and
+  `session-detail-store-missing-after-reveal` as adapter/retention bugs.
 
 ## Readiness Call
 
 The store-backed returned detail path is now the only path for returned
-`messages`, `agentContent`, and tool-use mappings. The next implementation
-chunks should keep narrowing the remaining local mirror/ref state itself:
-fallback ownership first. Ordinary post-dispatch store-selected paths now skip
-local React state writes, reveal follows the same rule for returned store-backed
-surfaces, reset/loading uses an explicit returned-detail gate instead of
-clearing transcript mirrors, no-signal store/local diagnostics have been
-removed from store-selected adapter paths, and route-cache persistence reads
-directly from the store. Scroll ownership and `/btw` remain out of scope.
+`messages`, `agentContent`, and tool-use mappings. Transcript fallback ownership
+has been removed: ordinary post-dispatch store-selected paths skip local React
+state writes, reveal follows the same rule for returned store-backed surfaces,
+reset/loading uses an explicit returned-detail gate instead of clearing
+transcript state, no-signal store/local diagnostics have been removed from
+store-selected adapter paths, and route-cache persistence reads directly from
+the store. The next implementation chunk should simplify the remaining
+warm/initial hydration bridge and missing-selector fallback plumbing. Scroll
+ownership and `/btw` remain out of scope.

@@ -520,6 +520,70 @@ describe("useSessionMessages cache", () => {
     );
   });
 
+  it("returns empty transcript surfaces when store data is missing after reveal", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1"]);
+
+    act(() => {
+      defaultSessionDetailStore.deleteEntry({
+        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      });
+    });
+
+    await waitFor(() => expect(rendered.result.current.messages).toEqual([]));
+    expect(rendered.result.current.agentContent).toEqual({});
+    expect(rendered.result.current.toolUseToAgent.size).toBe(0);
+    expect(
+      warn.mock.calls.some(
+        ([label, payload]) =>
+          label === "[SessionDetailStore]" &&
+          typeof payload === "object" &&
+          payload !== null &&
+          "event" in payload &&
+          payload.event === "session-detail-store-missing-after-reveal",
+      ),
+    ).toBe(true);
+
+    warn.mockRestore();
+  });
+
   it("returns store-selected agent content", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

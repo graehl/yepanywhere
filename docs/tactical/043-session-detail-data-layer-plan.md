@@ -15,9 +15,10 @@ The render-selector preflight lives in
 
 The migration is in the adapter/store cutdown phase. We have a tested
 `SessionDetailState` reducer and a small keyed external store, and the store
-snapshot is already the normal returned data source for the main transcript,
-subagent maps, and tool-use mapping after hydration. The remaining work is to
-delete legacy local mirrors and fallback recomputation one boundary at a time.
+snapshot is now the returned data source for the main transcript, subagent maps,
+and tool-use mapping after hydration/reveal. Transcript local mirrors and
+post-reveal transcript fallback refs have been removed; the remaining work is to
+simplify the initial/warm hydration bridge and narrow broad subscriptions.
 
 What is already in place:
 
@@ -47,38 +48,34 @@ What is already in place:
 - Public raw setter escape hatches have been removed for tool-use mappings,
   session metadata, agent content, and messages.
 - Narrow selectors are already used for retained scroll, pagination,
-  older-page cursor selection, main stream-message fallback mirroring,
-  persisted catch-up fallback mirroring, older-page fallback mirroring, and
-  main streaming placeholder message upsert/cleanup.
+  older-page cursor selection, transcript post-dispatch validation, and main
+  streaming placeholder message upsert/cleanup.
 - Initial load, warm-route restore, warm catch-up before hydration, and warm
   catch-up after hydration now share one selected-runtime-snapshot reveal path:
-  after the store restore/load/catch-up action, the hook copies that snapshot
-  into the local fallback mirrors while preserving the existing loading gate.
+  after the store restore/load/catch-up action, the hook reads that snapshot to
+  update local session/pagination/cursor/scroll bookkeeping while preserving the
+  existing loading gate.
 - Route-cache refresh on unmount now reads the current route snapshot directly
   from `defaultSessionDetailStore` instead of rebuilding it from returned hook
   data. The old `latestSnapshotRef` mirror has been removed; diagnostics that
-  need a local fallback read the hook refs directly.
-- `toolUseToAgent` registration now has a selector-backed mirror: after the
-  reducer/store dispatch, the local fallback `Map` copies the store-selected
-  mapping entries instead of independently rebuilding from its previous value.
-- `agentContent` has selector-backed mirrors for ordinary subagent stream
-  events, loaded subagent content, context-usage updates, and subagent
-  streaming placeholder upsert/cleanup; those paths copy the store-selected
-  map back into the local hook mirror after reducer/store dispatch.
+  need local context read the hook refs directly.
+- `toolUseToAgent` registration now dispatches through the reducer/store and
+  validates the selector-backed mapping read after dispatch instead of keeping a
+  hook-local returned-data `Map`.
+- `agentContent` ordinary subagent stream events, loaded subagent content,
+  context-usage updates, and subagent streaming placeholder upsert/cleanup now
+  dispatch through the reducer/store and validate the selector-backed map read
+  after dispatch instead of copying it back into a hook-local mirror.
 - Ordinary stream, streaming-placeholder, subagent, tool-use mapping,
   persisted catch-up, and older-page adapter paths no longer independently
-  recompute legacy fallback data after dispatch. They read the store-selected
-  result and only fall back to the current local mirror if the retained store
-  entry is unexpectedly missing.
-- Those store-selected adapter paths now keep hook refs current but skip the
-  redundant React state writes because the returned transcript data now comes
-  from the store.
-- Selected runtime-snapshot reveal now uses the same conditional mirror helpers:
-  reveal updates refs plus local session/pagination state but does not write
-  local `messages`, `agentContent`, or tool-use state. Reset-to-loading now uses
-  an explicit current-route reveal gate instead of clearing local transcript
-  mirrors, so warm store data and stale fallback refs stay hidden until the
-  route snapshot is revealed.
+  recompute or retain legacy fallback transcript data after dispatch. They read
+  the store-selected result only where cursor/bookkeeping or missing-selector
+  diagnostics need it.
+- Selected runtime-snapshot reveal updates local session/pagination/cursor/scroll
+  bookkeeping but does not write local `messages`, `agentContent`, or
+  tool-use state. Reset-to-loading uses an explicit current-route reveal gate
+  instead of clearing local transcript state, so warm store data and stale
+  route detail stay hidden until the route snapshot is revealed.
 - No-signal store/local diagnostics have been removed from store-selected
   stream, placeholder, subagent, tool-use, and reveal paths. Remaining
   `[SessionDetailStore]` logs cover metadata, catch-up/older
@@ -86,7 +83,9 @@ What is already in place:
   missing selectors.
 - Store-selected `messages`, `agentContent`, and tool-use mappings are now the
   only returned hook data after initial hydration has reached the reveal point.
-  The Development settings rollback switch has been removed.
+  The Development settings rollback switch has been removed. If the store entry
+  is unexpectedly missing after reveal, the hook returns empty transcript
+  surfaces and logs `session-detail-store-missing-after-reveal` in dev.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -96,8 +95,9 @@ What is already in place:
 - Focused hook coverage now verifies that store-authoritative returned
   tool-use mappings can expose selector-only entries after reveal.
 - Focused hook coverage also verifies that same-hook route changes keep stale
-  fallback refs hidden before the next route has revealed, including an
-  initial-load error path.
+  route detail hidden before the next route has revealed, including an
+  initial-load error path, and that a missing store entry after reveal returns
+  empty transcript surfaces with an explicit dev diagnostic.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -241,17 +241,12 @@ Next likely slice:
   regression or meaningful non-scroll store/local divergence into a compact
   reducer or hook fixture. Do not reintroduce a returned-data invariant unless
   it compares two genuinely independent sources.
-- Delete legacy local mirror ownership aggressively, one boundary at a time.
-  Ordinary stream, placeholder, mapping, catch-up, and older-page recompute
-  fallbacks have already been cut down to store-selected reads, and
-  warm/initial reveal now shares one selected-runtime-snapshot helper. Route
-  cache persistence now reads back from the store. Store-selected adapter paths
-  now avoid redundant React state writes while the default store-backed return
-  path is enabled, reveal writes are also ref-only for the returned store-backed
-  surfaces, reset/loading uses a separate returned-detail reveal gate instead
-  of clearing transcript mirrors, and no-signal store/local diagnostics have
-  been narrowed out. The next slices should target the remaining local mirror
-  state itself: fallback ownership.
+- Treat legacy local transcript mirror ownership as removed. Ordinary stream,
+  placeholder, mapping, catch-up, and older-page recompute fallbacks are gone;
+  warm/initial reveal reads one selected runtime snapshot; route-cache
+  persistence reads back from the store; reset/loading uses a separate
+  returned-detail reveal gate; and no-signal store/local diagnostics have been
+  narrowed out.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -259,9 +254,10 @@ Next likely slice:
   actions may expand that window. A store-authoritative return path must not
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
-- Move the next implementation chunks back to `useSessionMessages`: keep
-  store-selected returned detail as the only test path and identify one
-  remaining mirror/ref path at a time that can become store-only or disappear.
+- Move the next implementation chunks back to `useSessionMessages`: simplify the
+  warm/initial hydration bridge now that transcript fallback refs no longer
+  exist, then narrow the broad store subscription before calling the data-layer
+  cutover done.
 
 Then:
 
@@ -272,15 +268,18 @@ Store-backed return path:
 
 - Scope: returned `messages`, `agentContent`, and tool-use mappings.
 - Behavior today: read store-selected `messages`, `agentContent`, and tool-use
-  mappings from one coherent store-state snapshot after hydration/reveal, with
-  refs as temporary fallback if the retained store entry is unexpectedly
-  missing.
-- Keep local refs only where they still support fallback or diagnostics for
-  independently owned fields.
-- Ordinary post-dispatch store-selected paths update refs but do not set local
-  mirror state.
+  mappings from one coherent store-state snapshot after hydration/reveal.
+- Missing-store behavior: after reveal, an unexpectedly missing retained store
+  entry returns empty transcript surfaces and logs
+  `session-detail-store-missing-after-reveal` in dev. This is an
+  adapter/retention bug, not an alternate data path.
+- Keep local refs only where they still support diagnostics or imperative side
+  effects for independently owned fields such as cursor, timestamp watermark,
+  pagination, metadata, and scroll.
+- Ordinary post-dispatch store-selected paths no longer update local transcript
+  refs or local mirror state.
 - Reveal follows the same rule for returned store-backed surfaces. Reset starts
-  an explicit returned-detail reveal gate instead of clearing transcript refs to
+  an explicit returned-detail reveal gate instead of clearing transcript state to
   preserve warm-hydration gating.
 - Store/local diagnostics no longer run on paths where the live payload is just
   the selected store result; remaining logs are for independently owned refs,
@@ -293,11 +292,12 @@ Store-backed return path:
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot, but the hook still computes warm merge
-  candidates for pagination reconciliation and fallback diagnostics.
-- The local transcript refs still exist for fallback. Ordinary post-dispatch and
-  reveal paths keep refs current without local setState, and reset/loading no
-  longer clears transcript mirrors. The refs remain a structural cost until
-  fallback semantics are retired or further narrowed.
+  candidates for pagination reconciliation and missing-selector fallback inside
+  the reveal helper.
+- Transcript fallback refs are gone, so a missing retained store entry after
+  reveal intentionally empties returned transcript surfaces and logs a dev
+  diagnostic. Treat that as a retention/adapter failure, not a recoverable
+  rollback mode.
 - Compaction-tail and full-history states are easy to confuse because the
   default route has no explicit `tailTurns`/`tailFrom` URL parameter even
   though the client requests `tailCompactions: 2`. Treat message-count

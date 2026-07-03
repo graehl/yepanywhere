@@ -27,7 +27,7 @@ import {
 import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
-import type { Message } from "../../types";
+import type { Message, SessionMetadata } from "../../types";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -518,6 +518,77 @@ describe("useSessionMessages cache", () => {
         rendered.result.current.messages.map((message) => message.uuid),
       ).toEqual(["msg-1", "store-only-msg"]),
     );
+  });
+
+  it("does not rerender returned transcript data for metadata-only store changes", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        title: "Before",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    let renderCount = 0;
+    const rendered = renderHook(() => {
+      renderCount += 1;
+      return useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      });
+    });
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    const settledRenderCount = renderCount;
+    const returnedMessages = rendered.result.current.messages;
+    const returnedAgentContent = rendered.result.current.agentContent;
+    const returnedToolUseToAgent = rendered.result.current.toolUseToAgent;
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "setSessionMetadata",
+          session: {
+            id: "sess-1",
+            projectId: "proj-1" as SessionMetadata["projectId"],
+            provider: "claude",
+            title: "After",
+            fullTitle: "After",
+            createdAt: "2026-05-04T00:00:00.000Z",
+            updatedAt: "2026-05-04T00:01:00.000Z",
+            messageCount: 1,
+            ownership: { owner: "self", processId: "pid-1" },
+          },
+        },
+      );
+    });
+
+    expect(renderCount).toBe(settledRenderCount);
+    expect(rendered.result.current.messages).toBe(returnedMessages);
+    expect(rendered.result.current.agentContent).toBe(returnedAgentContent);
+    expect(rendered.result.current.toolUseToAgent).toBe(returnedToolUseToAgent);
   });
 
   it("returns empty transcript surfaces when store data is missing after reveal", async () => {

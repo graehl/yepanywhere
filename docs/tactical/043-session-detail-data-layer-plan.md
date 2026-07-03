@@ -18,8 +18,7 @@ The migration is in the adapter/store cutdown phase. We have a tested
 snapshot is now the returned data source for the main transcript, subagent maps,
 and tool-use mapping after hydration/reveal. Transcript local mirrors and
 post-reveal transcript fallback refs have been removed; the remaining work is to
-narrow broad subscriptions and continue shaving down hydration/pagination
-bookkeeping.
+continue shaving down hydration/pagination bookkeeping.
 
 What is already in place:
 
@@ -87,6 +86,10 @@ What is already in place:
   The Development settings rollback switch has been removed. If the store entry
   is unexpectedly missing after reveal, the hook returns empty transcript
   surfaces and logs `session-detail-store-missing-after-reveal` in dev.
+- The returned-detail subscription now selects only `messages`, `agentContent`,
+  and tool-use mapping entries. Metadata, pagination, scroll, and other
+  non-transcript store updates no longer notify that returned transcript
+  subscription.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -99,6 +102,9 @@ What is already in place:
   route detail hidden before the next route has revealed, including an
   initial-load error path, and that a missing store entry after reveal returns
   empty transcript surfaces with an explicit dev diagnostic.
+- Focused hook coverage now verifies that metadata-only store updates do not
+  rerender the returned transcript subscription or replace returned transcript
+  references.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -255,10 +261,10 @@ Next likely slice:
   actions may expand that window. A store-authoritative return path must not
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
-- Move the next implementation chunk back to `useSessionMessages`: narrow the
-  broad store subscription before calling the data-layer cutover done. The
-  warm/initial bridge still computes merge candidates for pagination, but its
-  reveal path no longer owns transcript fallback data.
+- Move the next implementation chunk back to `useSessionMessages`: keep shaving
+  down hydration/pagination bookkeeping. The warm/initial bridge still computes
+  merge candidates for pagination, but its reveal path no longer owns transcript
+  fallback data and the returned transcript subscription is selector-specific.
 
 Then:
 
@@ -313,9 +319,9 @@ Store-backed return path:
   selector read after dispatch ever logs
   `session-detail-selector-missing-after-dispatch`, treat that as an
   adapter/retention bug and add a fixture.
-- Store subscribers can currently be notified on broad state-object changes.
-  That is acceptable during cutdown but should become keyed/selector-specific
-  before calling the data-layer cutover done.
+- Returned transcript data no longer subscribes to the broad state object, but
+  other hook-local bookkeeping still reads broader runtime snapshots for reveal
+  and diagnostics. Keep the next cleanup focused there before expanding scope.
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.

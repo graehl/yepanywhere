@@ -43,6 +43,7 @@ import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailSto
 import type {
   AgentContextUsage,
   SessionDetailAction,
+  SessionDetailState,
 } from "../lib/sessionDetail/types";
 import {
   getSessionRouteSnapshotKey,
@@ -184,6 +185,12 @@ interface RevealSnapshotFallback {
 interface RevealSnapshotResult {
   snapshot: SessionRouteSnapshot;
   storeBacked: boolean;
+}
+
+interface ReturnedDetailStoreState {
+  messages: Message[];
+  agentContent: AgentContentMap;
+  toolUseToAgentEntries: Array<[string, string]>;
 }
 
 function readSessionLoadCache(
@@ -689,12 +696,36 @@ export function useSessionMessages(
 
   const canRevealReturnedDetail =
     revealedSnapshotKey === snapshotKeyString && !loading;
-  const storeBackedDetailState = useSyncExternalStore(
+  const selectReturnedDetailStoreState = useMemo(() => {
+    let previous: ReturnedDetailStoreState | undefined;
+    return (
+      state: SessionDetailState | undefined,
+    ): ReturnedDetailStoreState | undefined => {
+      if (!canRevealReturnedDetail || !state) {
+        return undefined;
+      }
+      if (
+        previous &&
+        previous.messages === state.messages &&
+        previous.agentContent === state.agentContent &&
+        previous.toolUseToAgentEntries === state.toolUseToAgentEntries
+      ) {
+        return previous;
+      }
+      previous = {
+        messages: state.messages,
+        agentContent: state.agentContent,
+        toolUseToAgentEntries: state.toolUseToAgentEntries,
+      };
+      return previous;
+    };
+  }, [canRevealReturnedDetail]);
+  const storeBackedReturnedDetail = useSyncExternalStore(
     useCallback(
       (listener) => {
         return defaultSessionDetailStore.subscribe(
           { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-          (state) => (canRevealReturnedDetail && state ? state : undefined),
+          selectReturnedDetailStoreState,
           listener,
         );
       },
@@ -704,53 +735,51 @@ export function useSessionMessages(
         sessionId,
         tailTurns,
         tailFrom,
-        canRevealReturnedDetail,
+        selectReturnedDetailStoreState,
       ],
     ),
     useCallback(
       () =>
-        canRevealReturnedDetail
-          ? defaultSessionDetailStore.readSelected(
-              { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-              (state) => state,
-            )
-          : undefined,
+        defaultSessionDetailStore.readSelected(
+          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          selectReturnedDetailStoreState,
+        ),
       [
         sourceKey,
         projectId,
         sessionId,
         tailTurns,
         tailFrom,
-        canRevealReturnedDetail,
+        selectReturnedDetailStoreState,
       ],
     ),
     () => undefined,
   );
   const returnedMessages = canRevealReturnedDetail
-    ? (storeBackedDetailState?.messages ?? EMPTY_RETURNED_MESSAGES)
+    ? (storeBackedReturnedDetail?.messages ?? EMPTY_RETURNED_MESSAGES)
     : EMPTY_RETURNED_MESSAGES;
   const returnedAgentContent = canRevealReturnedDetail
-    ? (storeBackedDetailState?.agentContent ?? EMPTY_RETURNED_AGENT_CONTENT)
+    ? (storeBackedReturnedDetail?.agentContent ?? EMPTY_RETURNED_AGENT_CONTENT)
     : EMPTY_RETURNED_AGENT_CONTENT;
   const returnedToolUseToAgent = useMemo(
     () => {
       if (!canRevealReturnedDetail) {
         return new Map<string, string>();
       }
-      return storeBackedDetailState
-        ? new Map(storeBackedDetailState.toolUseToAgentEntries)
+      return storeBackedReturnedDetail
+        ? new Map(storeBackedReturnedDetail.toolUseToAgentEntries)
         : new Map<string, string>();
     },
-    [canRevealReturnedDetail, storeBackedDetailState],
+    [canRevealReturnedDetail, storeBackedReturnedDetail],
   );
   useEffect(() => {
-    if (!canRevealReturnedDetail || storeBackedDetailState) {
+    if (!canRevealReturnedDetail || storeBackedReturnedDetail) {
       return;
     }
     warnMissingStoreBackedDetailAfterReveal();
   }, [
     canRevealReturnedDetail,
-    storeBackedDetailState,
+    storeBackedReturnedDetail,
     warnMissingStoreBackedDetailAfterReveal,
   ]);
 

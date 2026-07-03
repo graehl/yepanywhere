@@ -106,5 +106,8 @@ store-selected adapter paths, route-cache persistence reads directly from the
 store, and the warm/initial reveal helper no longer carries full transcript
 fallback payloads. If a warm/initial reveal cannot read the runtime snapshot
 after dispatch, it applies empty transcript surfaces and skips caching that
-empty result. The next implementation chunk should narrow the broad store
-subscription. Scroll ownership and `/btw` remain out of scope.
+empty result. The returned transcript subscription now listens only to
+`messages`, `agentContent`, and tool-use mapping entries, so metadata,
+pagination, and scroll-only store updates no longer notify it. The next
+implementation chunk should keep reducing hydration/pagination bookkeeping.
+Scroll ownership and `/btw` remain out of scope.

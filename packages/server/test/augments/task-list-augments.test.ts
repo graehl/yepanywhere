@@ -44,7 +44,7 @@ function firstToolInput(message: Message): Record<string, unknown> {
     throw new Error("Expected content blocks");
   }
   const block = content[0];
-  if (!block || block.type !== "tool_use" || !block.input) {
+  if (block?.type !== "tool_use" || !block.input) {
     throw new Error("Expected tool_use block");
   }
   return block.input as Record<string, unknown>;

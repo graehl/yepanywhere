@@ -677,7 +677,7 @@ function recoveredPatientUserMessage(
 ): UserMessage {
   const mode = item.message.mode ?? item.mode;
   const metadata: UserMessageMetadata = {
-    ...(item.message.metadata ?? {}),
+    ...item.message.metadata,
     deliveryIntent: "patient" satisfies UserMessageDeliveryIntent,
   };
   return {
@@ -977,7 +977,7 @@ function messageTextContent(message: Message): string | undefined {
   }
   const textBlocks = content
     .map((block) =>
-      !!block &&
+      block &&
       typeof block === "object" &&
       (block as ContentBlock).type === "text" &&
       typeof (block as { text?: unknown }).text === "string"

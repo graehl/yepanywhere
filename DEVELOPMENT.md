@@ -30,6 +30,11 @@ pnpm test:e2e         # E2E tests
 pnpm clone-references # Clone upstream source into ./references for local reading
 ```
 
+Commits should be warning-free: `pnpm lint` reports zero warnings, and test
+runs emit no runtime warnings (e.g. React "cannot update while rendering" or
+`act(...)` notices). Fix the cause rather than suppressing the report; a
+warning that must stand needs an inline justification.
+
 ## Reference Source
 
 `pnpm clone-references` shallow-clones upstream source into `references/` for

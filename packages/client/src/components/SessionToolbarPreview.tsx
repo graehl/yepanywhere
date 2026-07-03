@@ -286,35 +286,47 @@ export function ToolbarControlPreview({
     onActivate();
   };
 
+  const previewContent = (
+    <div ref={inertRef} className="session-toolbar-preview-content">
+      <MessageInputToolbarView
+        t={t}
+        visibility={visibilityForOnly(controlKey)}
+        modeControl={controls.modeControl}
+        attachmentControl={controls.attachmentControl}
+        slashControl={controls.slashControl}
+        thinkingControl={controls.thinkingControl}
+        renderModeControl={controls.renderModeControl}
+        nudgeControl={controls.nudgeControl}
+        speechControl={controls.speechControl}
+        speechWaveformActive={controlKey === "waveform"}
+        statusControl={controls.statusControl}
+        shortcutsControl={controls.shortcutsControl}
+        actionsControl={actionsControl}
+      />
+    </div>
+  );
+
+  if (!onActivate) {
+    return (
+      <div
+        className="toolbar-control-preview session-toolbar-preview"
+        aria-hidden={true}
+      >
+        {previewContent}
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`toolbar-control-preview session-toolbar-preview${
-        onActivate ? " is-interactive" : ""
-      }`}
-      aria-hidden={onActivate ? undefined : true}
+      className="toolbar-control-preview session-toolbar-preview is-interactive"
       aria-label={activationLabel}
       onClick={onActivate}
       onKeyDown={handlePreviewKeyDown}
-      role={onActivate ? "button" : undefined}
-      tabIndex={onActivate ? 0 : undefined}
+      role="button"
+      tabIndex={0}
     >
-      <div ref={inertRef} className="session-toolbar-preview-content">
-        <MessageInputToolbarView
-          t={t}
-          visibility={visibilityForOnly(controlKey)}
-          modeControl={controls.modeControl}
-          attachmentControl={controls.attachmentControl}
-          slashControl={controls.slashControl}
-          thinkingControl={controls.thinkingControl}
-          renderModeControl={controls.renderModeControl}
-          nudgeControl={controls.nudgeControl}
-          speechControl={controls.speechControl}
-          speechWaveformActive={controlKey === "waveform"}
-          statusControl={controls.statusControl}
-          shortcutsControl={controls.shortcutsControl}
-          actionsControl={actionsControl}
-        />
-      </div>
+      {previewContent}
     </div>
   );
 }

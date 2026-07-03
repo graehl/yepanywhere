@@ -50,10 +50,10 @@ What is already in place:
   older-page cursor selection, main stream-message fallback mirroring,
   persisted catch-up fallback mirroring, older-page fallback mirroring, and
   main streaming placeholder message upsert/cleanup.
-- Initial load, warm-route restore, and warm delta reveal now copy the
-  store-selected runtime snapshot into the local fallback mirrors after the
-  store restore/load/catch-up action, while preserving the existing loading
-  gate.
+- Initial load, warm-route restore, warm catch-up before hydration, and warm
+  catch-up after hydration now share one selected-runtime-snapshot reveal path:
+  after the store restore/load/catch-up action, the hook copies that snapshot
+  into the local fallback mirrors while preserving the existing loading gate.
 - `toolUseToAgent` registration now has a selector-backed mirror: after the
   reducer/store dispatch, the local fallback `Map` copies the store-selected
   mapping entries instead of independently rebuilding from its previous value.
@@ -228,9 +228,10 @@ Next likely slice:
   it compares two genuinely independent sources.
 - Delete legacy local mirror ownership aggressively, one boundary at a time.
   Ordinary stream, placeholder, mapping, catch-up, and older-page recompute
-  fallbacks have already been cut down to store-selected reads; the next slices
-  should target the remaining warm-hydration and initial-reveal dual-sourcing
-  once dogfooding stays quiet.
+  fallbacks have already been cut down to store-selected reads, and
+  warm/initial reveal now shares one selected-runtime-snapshot helper. The next
+  slices should target `latestSnapshotRef`, route-cache writes, and redundant
+  local mirror state updates that now duplicate the store snapshot.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -240,8 +241,8 @@ Next likely slice:
   unless the user actually loaded that broader window.
 - Move the next implementation chunks back to `useSessionMessages`: keep
   store-selected returned detail as the normal test path with a Development
-  rollback, and identify one remaining mirror path at a time that can become a
-  simple revealed-state copy or disappear.
+  rollback, and identify one remaining mirror/cache path at a time that can
+  read directly from the store or disappear.
 
 Then:
 
@@ -271,8 +272,9 @@ Dogfood switch:
 
 - Initial load and warm hydration still contain the most sequencing logic
   because they coordinate loading progress, warm-cache reveal, cache writes,
-  and stream-buffer flushing inside the hook, but their revealed fallback data
-  now comes from the store-selected snapshot.
+  and stream-buffer flushing inside the hook. Their visible reveal now comes
+  from one selected store snapshot, but the hook still computes warm merge
+  candidates for pagination reconciliation and fallback diagnostics.
 - The rollback switch mainly protects reveal timing, subscription behavior,
   object identity, and remaining locally owned refs. It should not be treated
   as an independent rollback for reducer data semantics on normal mounted

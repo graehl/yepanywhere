@@ -47,10 +47,10 @@ warm-reveal behavior.
 | Boundary | Local mirror write | Store path | Preflight status |
 | --- | --- | --- | --- |
 | No warm snapshot reset | Clears local state while REST starts | Deletes the store entry | Ready with fallback to local empty state |
-| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated before broad returned snapshot |
-| Warm catch-up before hydration | Merges REST delta into warm snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
-| Warm catch-up after hydration | Merges REST delta into revealed snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
-| Cold persisted load | Sets tagged/reconciled REST snapshot | `loadPersistedTranscript` | Reducer and hook/store coverage exist |
+| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated, then copied from selected runtime snapshot |
+| Warm catch-up before hydration | Copies selected runtime snapshot after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
+| Warm catch-up after hydration | Copies selected runtime snapshot after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
+| Cold persisted load | Copies selected runtime snapshot after REST load | `loadPersistedTranscript` | Store-selected reveal after gate |
 | Ordinary stream/replay | Copies selector-backed store result | `applyStreamMessage` | Store-selected after dispatch |
 | Main streaming placeholder upsert | Copies selector-backed store result | `upsertStreamingPlaceholder` | Store-selected after dispatch |
 | Main streaming placeholder cleanup | Copies selector-backed store result | `clearStreamingPlaceholders` | Store-selected after dispatch |
@@ -60,7 +60,8 @@ warm-reveal behavior.
 ## Remaining Risks
 
 - Warm snapshot timing is the main behavioral risk. The store has messages
-  earlier than the returned local mirror during deferred loading.
+  earlier than the returned local mirror during deferred loading, and the hook
+  intentionally preserves that reveal gate.
 - Compaction-tail views need an explicit contract during cutover. Cold
   `loadPersistedTranscript` state is the REST-returned window, even when
   `pagination.totalMessageCount` is larger than the returned row count; older
@@ -92,7 +93,8 @@ warm-reveal behavior.
 
 The store-backed returned detail path is now the default, with the Development
 settings switch retained as a narrower rollback. The next implementation chunks
-should keep deleting local mirrors and fallback recomputation one boundary at a
-time, capturing any visible regression or meaningful non-scroll store/local
+should move `latestSnapshotRef`/route-cache ownership toward direct store reads
+and keep deleting redundant local mirror updates one boundary at a time,
+capturing any visible regression or meaningful non-scroll store/local
 divergence as a compact reducer or hook fixture. Scroll ownership and `/btw`
 remain out of scope.

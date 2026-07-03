@@ -17,6 +17,10 @@ See also:
 - [`compact-and-handoff.md`](compact-and-handoff.md) /
   [`resume-compaction.md`](resume-compaction.md) — the resume-at-message-id
   prefix-resume fallback for persisted synthetic error tails.
+- [`../docs/tactical/049-provider-runtime-retry-status.md`](../docs/tactical/049-provider-runtime-retry-status.md)
+  — plan and first slice surfacing live `api_retry` status in process info
+  (`Topic: provider-runtime-status`); builds on this doc's finding that
+  `api_retry` rows are live-stream-only.
 
 Topic: claude-api-failures-and-retries
 

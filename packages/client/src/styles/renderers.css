@@ -4942,6 +4942,37 @@ pre.code-highlighter-plain code {
   text-decoration: none;
 }
 
+/* Faint copy-path affordance after pathnames (tool headers, path displays).
+   Deliberately small and low-contrast until hovered; copied state flashes
+   the check via CopyTextButton's .copied class. */
+.file-path-copy {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  padding: 0 0.1rem;
+  margin-left: 0.15rem;
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: opacity 0.15s;
+}
+
+.file-path-copy:hover {
+  opacity: 1;
+}
+
+.file-path-copy.copied {
+  opacity: 1;
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.file-path-copy svg {
+  width: 11px;
+  height: 11px;
+}
+
 /* Server-rendered file links (from markdown augments) */
 .file-link {
   color: var(--vscode-textLink-foreground, #3794ff);

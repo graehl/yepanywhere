@@ -19,6 +19,25 @@ import {
   type FileViewerSource,
 } from "./FileViewer";
 import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource";
+import { CopyTextButton } from "./ui/CopyTextButton";
+
+/**
+ * Faint copy-to-clipboard affordance rendered after a pathname. Copies the
+ * raw path (no line suffix) so it pastes cleanly into shells/editors —
+ * drag-selecting the text of a clickable link is fiddly. Click must not
+ * bubble: path links live inside tool rows whose row click toggles expansion.
+ */
+export function FilePathCopyButton({ filePath }: { filePath: string }) {
+  return (
+    <CopyTextButton
+      text={filePath}
+      label="Copy path"
+      copiedLabel="Copied path"
+      className="file-path-copy"
+      onClick={(event) => event.stopPropagation()}
+    />
+  );
+}
 
 interface FilePathLinkProps {
   /** The file path to display and link to */
@@ -39,6 +58,8 @@ interface FilePathLinkProps {
   showFullPath?: boolean;
   /** Viewer mode. The range mode shows only the requested line range. */
   viewMode?: FileViewerMode;
+  /** Whether to render the faint copy-path button after the link */
+  showCopyButton?: boolean;
 }
 
 function getProjectFileViewUrl(
@@ -113,6 +134,7 @@ export const FilePathLink = memo(function FilePathLink({
   showLineSuffix = true,
   showFullPath = false,
   viewMode = "full",
+  showCopyButton = true,
 }: FilePathLinkProps) {
   const publicShareContext = usePublicShareContext();
   const basePath = useRemoteBasePath();
@@ -196,6 +218,7 @@ export const FilePathLink = memo(function FilePathLink({
           <span className="file-path-link-line">{visibleSuffix}</span>
         )}
       </a>
+      {showCopyButton && <FilePathCopyButton filePath={filePath} />}
       {showModal && (
         <FileViewerModal
           projectId={projectId}

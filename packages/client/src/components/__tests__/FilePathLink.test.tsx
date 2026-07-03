@@ -1,6 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublicShareProvider } from "../../contexts/PublicShareContext";
 import { FilePathLink } from "../FilePathLink";
 
@@ -119,6 +119,45 @@ describe("FilePathLink", () => {
     expect(link.getAttribute("href")).toBe(
       `/projects/${projectId}/file?path=D%3A%5Cscratch%5Coutside.md&line=4`,
     );
+  });
+
+  it("renders a copy-path button that copies the raw path without bubbling", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const containerClick = vi.fn();
+
+    render(
+      // biome-ignore lint/a11y/noStaticElementInteractions: asserts non-bubbling
+      // biome-ignore lint/a11y/useKeyWithClickEvents: test-only wrapper
+      <div onClick={containerClick}>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          lineNumber={12}
+          displayText="guide.md"
+        />
+      </div>,
+    );
+
+    const copyButton = screen.getByRole("button", { name: "Copy path" });
+    fireEvent.click(copyButton);
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith("docs/guide.md");
+    expect(containerClick).not.toHaveBeenCalled();
+  });
+
+  it("omits the copy button when showCopyButton is false", () => {
+    render(
+      <FilePathLink
+        projectId="project-id"
+        filePath="docs/guide.md"
+        displayText="guide.md"
+        showCopyButton={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
   });
 
   it("uses share-scoped file routes when rendered in a public share", () => {

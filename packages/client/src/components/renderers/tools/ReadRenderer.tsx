@@ -178,6 +178,7 @@ function ReadRangeLink({
       lineNumber={lineNumber}
       showLineSuffix={false}
       viewMode="range"
+      showCopyButton={false}
     />
   );
 }

@@ -179,7 +179,7 @@ export interface AppOptions {
   sessionIndexService?: SessionIndexService;
   /** Claude summary parser child-process mode. Default off. */
   claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
-  /** Codex summary parser child-process mode. Default on. */
+  /** Codex summary parser child-process mode. Default off. */
   codexSummaryParserWorkerMode?: SummaryParserWorkerMode;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
   projectScanCacheTtlMs?: number;

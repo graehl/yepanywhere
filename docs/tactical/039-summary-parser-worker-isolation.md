@@ -1,13 +1,14 @@
 # Summary Parser Worker Isolation
 
-Status: implementation chunk 4 completed locally. Claude summary parsing can
-route through the child-process worker behind a default-off gate. Codex summary
-parsing is now default-on for the child-process worker, with the same explicit
-`off|on|required` override and parent-side recycle behavior for clearly
-heap-contaminating parses or timeout/crash paths.
+Status: implementation chunk 4 completed locally. Claude and Codex summary
+parsing can route through the child-process worker behind separate default-off
+gates, and the parent now recycles parser children after clearly
+heap-contaminating parses or timeout/crash paths. Startup now logs the
+evaluated summary parser worker modes so rollout evidence includes the actual
+active config, not only an operator's intended environment.
 
 - `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required` (default `off`)
-- `CODEX_SUMMARY_PARSER_WORKER=off|on|required` (default `on`)
+- `CODEX_SUMMARY_PARSER_WORKER=off|on|required` (default `off`)
 
 Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
 especially "Chunk 5: Summary Parser Worker Isolation".
@@ -586,7 +587,7 @@ Not implemented in this chunk:
   promotion is tracked below; Claude remains pending provider-specific
   reliability and memory evidence.
 
-## Promotion Update
+## Promotion Attempt
 
 On 2026-07-03, `CODEX_SUMMARY_PARSER_WORKER` was promoted to default `on`.
 The product decision is scoped to Codex summary-index parsing: explicit
@@ -597,6 +598,11 @@ failures. A local `server.log` scan over the available log file found no
 the live dev server environment at inspection time did not include
 `CODEX_SUMMARY_PARSER_WORKER`, so those logs do not prove the worker path was
 currently exercised.
+
+That promotion was reverted before further rollout. The next promotion attempt
+should first capture `summary_parser_worker_config` at startup and
+`summary_parser_worker_result` events during a deliberate required-mode run, so
+the evidence proves the evaluated config and the worker path both ran.
 
 ## Open Design Questions
 

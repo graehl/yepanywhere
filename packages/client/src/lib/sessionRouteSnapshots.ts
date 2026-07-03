@@ -8,6 +8,11 @@ import {
   type SessionDetailRetentionOptions,
 } from "./sessionDetail/sessionDetailStore";
 
+/**
+ * Session route snapshots are the serializable transcript-window DTO used for
+ * warm route reveals. Runtime ownership now lives in `SessionDetailStore`;
+ * the functions in this module remain as a legacy compatibility surface.
+ */
 export interface SessionRouteScrollSnapshot {
   atBottom: boolean;
   scrollTop: number;

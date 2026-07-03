@@ -50,7 +50,6 @@ import {
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
-import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
   reportSessionDetailStoreDivergence,
@@ -64,21 +63,19 @@ import {
   selectSessionDetailScrollSnapshot,
   selectSessionDetailToolUseToAgentEntries,
 } from "../lib/sessionDetail/selectors";
-import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
+import {
+  defaultSessionDetailStore,
+  getSessionDetailEntryKey,
+  type SessionDetailEntryKeyInput,
+} from "../lib/sessionDetail/sessionDetailStore";
 import type {
   AgentContextUsage,
   SessionDetailAction,
   SessionDetailState,
 } from "../lib/sessionDetail/types";
-import {
-  getSessionRouteSnapshotKey,
-  patchSessionRouteScrollSnapshot,
-  readSessionRouteSnapshot,
-  resetSessionRouteSnapshotsForTests,
-  writeSessionRouteSnapshot,
-  type SessionRouteScrollSnapshot,
-  type SessionRouteSnapshot,
-  type SessionRouteSnapshotKeyInput,
+import type {
+  SessionRouteScrollSnapshot,
+  SessionRouteSnapshot,
 } from "../lib/sessionRouteSnapshots";
 
 /** Content from a subagent (Task tool) */
@@ -192,43 +189,26 @@ interface ReturnedDetailStoreState {
 }
 
 function readSessionLoadCache(
-  sourceKey: ClientSummarySourceKey,
-  projectId: string,
-  sessionId: string,
-  tailTurns?: number,
-  tailFrom?: string,
+  input: SessionDetailEntryKeyInput,
 ): SessionRouteSnapshot | undefined {
-  if (!getSessionTranscriptCacheEnabled()) {
+  if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
     return undefined;
   }
-  return readSessionRouteSnapshot({
-    sourceKey,
-    projectId,
-    sessionId,
-    tailTurns,
-    tailFrom,
-  });
+  return defaultSessionDetailStore.readRouteSnapshot(input);
 }
 
 function writeSessionLoadCache(
-  sourceKey: ClientSummarySourceKey,
-  projectId: string,
-  sessionId: string,
+  input: SessionDetailEntryKeyInput,
   entry: SessionRouteSnapshot,
-  tailTurns?: number,
-  tailFrom?: string,
 ): boolean {
-  if (!getSessionTranscriptCacheEnabled()) {
+  if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
     return false;
   }
-  return writeSessionRouteSnapshot(
-    { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-    entry,
-  );
+  return defaultSessionDetailStore.writeRouteSnapshot(input, entry);
 }
 
 export function __resetSessionLoadCacheForTest(): void {
-  resetSessionRouteSnapshotsForTests();
+  defaultSessionDetailStore.clear();
 }
 
 function isDurableRecapOverlay(message: Message): boolean {
@@ -271,7 +251,7 @@ export function useSessionMessages(
     onLoadError,
   } = options;
   const sourceKey = useClientSummarySourceKey();
-  const snapshotKey: SessionRouteSnapshotKeyInput = useMemo(
+  const snapshotKey: SessionDetailEntryKeyInput = useMemo(
     () => ({
       sourceKey,
       projectId,
@@ -281,7 +261,7 @@ export function useSessionMessages(
     }),
     [projectId, sessionId, sourceKey, tailFrom, tailTurns],
   );
-  const snapshotKeyString = getSessionRouteSnapshotKey(snapshotKey);
+  const snapshotKeyString = getSessionDetailEntryKey(snapshotKey);
   const cachedLoadRef = useRef<{
     key: string;
     load: SessionRouteSnapshot | undefined;
@@ -289,13 +269,7 @@ export function useSessionMessages(
   if (cachedLoadRef.current?.key !== snapshotKeyString) {
     cachedLoadRef.current = {
       key: snapshotKeyString,
-      load: readSessionLoadCache(
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-      ),
+      load: readSessionLoadCache(snapshotKey),
     };
   }
   const cachedLoad = cachedLoadRef.current.load;
@@ -334,29 +308,19 @@ export function useSessionMessages(
     (action: SessionDetailAction) => {
       if (action.type === "patchScrollSnapshot") {
         defaultSessionDetailStore.patchScrollSnapshot(
-          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          snapshotKey,
           action.scrollSnapshot,
         );
         return;
       }
-      defaultSessionDetailStore.dispatch(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-        action,
-      );
+      defaultSessionDetailStore.dispatch(snapshotKey, action);
     },
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey],
   );
 
   const readCurrentStoreRouteSnapshot = useCallback(
-    () =>
-      defaultSessionDetailStore.readRouteSnapshot({
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-      }),
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    () => defaultSessionDetailStore.readRouteSnapshot(snapshotKey),
+    [snapshotKey],
   );
 
   const persistCurrentStoreRouteSnapshot = useCallback(() => {
@@ -367,25 +331,11 @@ export function useSessionMessages(
     if (!snapshot) {
       return false;
     }
-    return writeSessionLoadCache(
-      sourceKey,
-      projectId,
-      sessionId,
-      {
-        ...snapshot,
-        scrollSnapshot: scrollSnapshotRef.current,
-      },
-      tailTurns,
-      tailFrom,
-    );
-  }, [
-    readCurrentStoreRouteSnapshot,
-    sourceKey,
-    projectId,
-    sessionId,
-    tailTurns,
-    tailFrom,
-  ]);
+    return writeSessionLoadCache(snapshotKey, {
+      ...snapshot,
+      scrollSnapshot: scrollSnapshotRef.current,
+    });
+  }, [readCurrentStoreRouteSnapshot, snapshotKey]);
   const recordCurrentEntryBytes = useCallback(() => {
     const bytes = defaultSessionDetailStore
       .getStats()
@@ -397,21 +347,12 @@ export function useSessionMessages(
   const resetSessionDetailState = useCallback(
     (snapshot?: SessionRouteSnapshot) => {
       if (snapshot) {
-        defaultSessionDetailStore.writeRouteSnapshot(
-          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-          snapshot,
-        );
+        defaultSessionDetailStore.writeRouteSnapshot(snapshotKey, snapshot);
         return;
       }
-      defaultSessionDetailStore.resetEntryState({
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-      });
+      defaultSessionDetailStore.resetEntryState(snapshotKey);
     },
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey],
   );
 
   // Hold the store entry for the mounted session: retention protects it from
@@ -439,7 +380,7 @@ export function useSessionMessages(
         return;
       }
       const store = defaultSessionDetailStore.readSelected(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        snapshotKey,
         selectSessionDetailRuntimeSnapshot,
       );
       if (!store) {
@@ -469,7 +410,7 @@ export function useSessionMessages(
         store,
       });
     },
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey, projectId, sessionId],
   );
 
   const updateSession = useCallback(
@@ -491,37 +432,37 @@ export function useSessionMessages(
   const readSelectorBackedMessages = useCallback(
     () =>
       defaultSessionDetailStore.readSelected(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        snapshotKey,
         selectSessionDetailMessages,
       ),
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey],
   );
 
   const readSelectorBackedAgentContent = useCallback(
     () =>
       defaultSessionDetailStore.readSelected(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        snapshotKey,
         selectSessionDetailAgentContent,
       ),
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey],
   );
 
   const readSelectorBackedRuntimeSnapshot = useCallback(
     () =>
       defaultSessionDetailStore.readSelected(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        snapshotKey,
         selectSessionDetailRuntimeSnapshot,
       ),
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+    [snapshotKey],
   );
 
   const readSelectorBackedToolUseToAgent = useCallback(() => {
     const entries = defaultSessionDetailStore.readSelected(
-      { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+      snapshotKey,
       selectSessionDetailToolUseToAgentEntries,
     );
     return entries ? new Map(entries) : undefined;
-  }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
+  }, [snapshotKey]);
 
   const warnSessionDetailStore = useCallback(
     (payload: Record<string, unknown>) => {
@@ -620,34 +561,20 @@ export function useSessionMessages(
     useCallback(
       (listener) => {
         return defaultSessionDetailStore.subscribe(
-          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          snapshotKey,
           selectReturnedDetailStoreState,
           listener,
         );
       },
-      [
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-        selectReturnedDetailStoreState,
-      ],
+      [snapshotKey, selectReturnedDetailStoreState],
     ),
     useCallback(
       () =>
         defaultSessionDetailStore.readSelected(
-          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          snapshotKey,
           selectReturnedDetailStoreState,
         ),
-      [
-        sourceKey,
-        projectId,
-        sessionId,
-        tailTurns,
-        tailFrom,
-        selectReturnedDetailStoreState,
-      ],
+      [snapshotKey, selectReturnedDetailStoreState],
     ),
     () => undefined,
   );
@@ -779,13 +706,7 @@ export function useSessionMessages(
     let pendingWarmData: Awaited<ReturnType<typeof api.getSession>> | null =
       null;
     let pendingWarmError: Error | null = null;
-    const warmLoad = readSessionLoadCache(
-      sourceKey,
-      projectId,
-      sessionId,
-      tailTurns,
-      tailFrom,
-    );
+    const warmLoad = readSessionLoadCache(snapshotKey);
 
     const notifyLoadComplete = (
       data: Awaited<ReturnType<typeof api.getSession>>,
@@ -839,14 +760,7 @@ export function useSessionMessages(
       if (!cacheableSnapshot) {
         return false;
       }
-      return writeSessionLoadCache(
-        sourceKey,
-        projectId,
-        sessionId,
-        cacheableSnapshot,
-        tailTurns,
-        tailFrom,
-      );
+      return writeSessionLoadCache(snapshotKey, cacheableSnapshot);
     };
 
     const completeInitialReveal = (options: {
@@ -1194,7 +1108,6 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    sourceKey,
     tailTurns,
     tailFrom,
     detailedLoadingProgress,
@@ -1208,6 +1121,7 @@ export function useSessionMessages(
     applySession,
     readCurrentStoreRouteSnapshot,
     readSelectorBackedRuntimeSnapshot,
+    snapshotKey,
     snapshotKeyString,
     warnMissingSelectorAfterDispatch,
   ]);
@@ -1384,10 +1298,10 @@ export function useSessionMessages(
   const readSelectorBackedPagination = useCallback(
     () =>
       defaultSessionDetailStore.readSelected(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        snapshotKey,
         selectSessionDetailPagination,
       ) ?? pagination,
-    [sourceKey, projectId, sessionId, tailTurns, tailFrom, pagination],
+    [snapshotKey, pagination],
   );
 
   // Load older messages (previous chunk before the current truncation point)
@@ -1417,7 +1331,7 @@ export function useSessionMessages(
       updatePersistedTimestampWatermark(taggedOlder);
       const selectorBackedMessages = readSelectorBackedMessages();
       const selectorBackedPagination = defaultSessionDetailStore.readSelected(
-        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        snapshotKey,
         selectSessionDetailPagination,
       );
       const nextMessages =
@@ -1448,10 +1362,8 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readSelectorBackedMessages,
     readMessagesAfterDispatch,
-    sourceKey,
-    tailTurns,
-    tailFrom,
     reportStoreDivergence,
+    snapshotKey,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
@@ -1461,14 +1373,11 @@ export function useSessionMessages(
         type: "patchScrollSnapshot",
         scrollSnapshot: snapshot,
       });
-      if (getSessionTranscriptCacheEnabled()) {
-        patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
-      }
       reportStoreDivergence("scroll-snapshot", {
         scrollSnapshot: snapshot,
       });
     },
-    [snapshotKey, dispatchSessionDetailAction, reportStoreDivergence],
+    [dispatchSessionDetailAction, reportStoreDivergence],
   );
 
   // Fetch session metadata only

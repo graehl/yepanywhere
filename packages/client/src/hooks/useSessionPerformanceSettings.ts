@@ -3,7 +3,6 @@ import {
   configureSessionDetailRetention,
   defaultSessionDetailStore,
 } from "../lib/sessionDetail/sessionDetailStore";
-import { clearSessionRouteSnapshots } from "../lib/sessionRouteSnapshots";
 import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
@@ -176,7 +175,7 @@ export function setSessionTranscriptCacheBudgetMbPreference(
   // Keep the legacy boolean coherent for older bundles reading it.
   savePreference(UI_KEYS.sessionTranscriptCache, String(normalized > 0));
   if (normalized <= 0) {
-    clearSessionRouteSnapshots();
+    defaultSessionDetailStore.clear();
   }
   applySessionDetailRetentionPreferences();
   emitChange();

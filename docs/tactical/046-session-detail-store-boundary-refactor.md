@@ -214,7 +214,7 @@ Implementation note:
 
 ## Phase 4: Compatibility Facade Cleanup
 
-Status: Pending.
+Status: Implemented.
 
 Intent:
 
@@ -226,6 +226,18 @@ Acceptance:
 
 - Route snapshot read/write behavior is unchanged.
 - Warm restore, source scoping, and cache-disabled behavior remain covered.
+
+Implementation note:
+
+- Moved active `useSessionMessages` cache reads/writes from
+  `sessionRouteSnapshots` helpers onto `defaultSessionDetailStore` directly,
+  while preserving the transcript-cache enabled check and SSR guard.
+- Removed the duplicate scroll-snapshot patch that existed because the old
+  route-snapshot cache had been merged into the detail store.
+- Updated the budget-zero performance-settings clear path and its test to use
+  `defaultSessionDetailStore.clear()` directly.
+- Kept `sessionRouteSnapshots` as the serializable snapshot DTO module and
+  documented its remaining functions as a legacy compatibility surface.
 
 ## Phase 5: Optional Entry Store Substrate Spike
 

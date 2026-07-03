@@ -4,13 +4,11 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
-import { getSessionDetailRetentionDefaults } from "../../lib/sessionDetail/sessionDetailStore";
 import {
-  readSessionRouteSnapshot,
-  resetSessionRouteSnapshotsForTests,
-  writeSessionRouteSnapshot,
-  type SessionRouteSnapshot,
-} from "../../lib/sessionRouteSnapshots";
+  defaultSessionDetailStore,
+  getSessionDetailRetentionDefaults,
+} from "../../lib/sessionDetail/sessionDetailStore";
+import type { SessionRouteSnapshot } from "../../lib/sessionRouteSnapshots";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   getLastSessionTranscriptBytes,
@@ -68,13 +66,13 @@ describe("useSessionPerformanceSettings", () => {
         storage.clear();
       },
     });
-    resetSessionRouteSnapshotsForTests();
+    defaultSessionDetailStore.clear();
   });
 
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
-    resetSessionRouteSnapshotsForTests();
+    defaultSessionDetailStore.clear();
   });
 
   it("defaults to dom-linger off and transcript cache off with a 1h TTL", () => {
@@ -155,14 +153,14 @@ describe("useSessionPerformanceSettings", () => {
     act(() => {
       result.current.setSessionTranscriptCacheBudgetMb(24);
     });
-    writeSessionRouteSnapshot(key, snapshot());
-    expect(readSessionRouteSnapshot(key)).toBeDefined();
+    defaultSessionDetailStore.writeRouteSnapshot(key, snapshot());
+    expect(defaultSessionDetailStore.readRouteSnapshot(key)).toBeDefined();
 
     act(() => {
       result.current.setSessionTranscriptCacheBudgetMb(0);
     });
 
-    expect(readSessionRouteSnapshot(key)).toBeUndefined();
+    expect(defaultSessionDetailStore.readRouteSnapshot(key)).toBeUndefined();
     expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("false");
   });
 

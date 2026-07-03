@@ -59,6 +59,9 @@ What is already in place:
 - Warm and cold initial reveal completion now share one hook-local completion
   helper for applying the reveal snapshot, marking reload phases, flushing the
   buffered stream queue, clearing loading, and writing final progress.
+- Initial reveal route-cache writes now share a reveal-snapshot cacheability
+  helper: only store-backed reveal snapshots are eligible, so missing-selector
+  fallback snapshots still cannot be written back to the route cache.
 - Session-load progress window details now use a tested
   `sessionDetail/loadProgress` helper, so repeated message-count/pagination
   projection is no longer hand-built at each load stage. The hook still owns
@@ -124,7 +127,8 @@ What is already in place:
 - Focused helper coverage verifies reveal snapshot construction from a selected
   runtime snapshot, including the empty-transcript fallback path for unexpected
   missing store selection, cursor derivation, retained scroll fallback, and
-  cloned message/tool-use arrays.
+  cloned message/tool-use arrays. It also verifies that only store-backed reveal
+  snapshots are exposed for route-cache writes.
 - Focused helper coverage verifies session-load progress construction, including
   injectable timestamps, pagination projection, and the fact that callers choose
   the message count rather than implicitly using `returnedMessageCount`.
@@ -286,10 +290,10 @@ Next likely slice:
   unless the user actually loaded that broader window.
 - Move the next implementation chunk back to `useSessionMessages`: keep shaving
   down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation,
-  reveal snapshot construction, and progress detail construction are now
-  pure/tested; initial reveal completion is centralized, the reveal path no
-  longer owns transcript fallback data, and the returned transcript subscription
-  is selector-specific.
+  reveal snapshot construction/cacheability, and progress detail construction
+  are now pure/tested; initial reveal completion is centralized, the reveal path
+  no longer owns transcript fallback data, and the returned transcript
+  subscription is selector-specific.
 
 Then:
 
@@ -329,9 +333,9 @@ Store-backed return path:
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot; warm refresh merge/pagination preparation,
-  reveal snapshot construction, and progress detail construction are pure; and
-  initial reveal completion is centralized, but the hook still owns progress
-  timing, cache writes, and stream-buffer flushing.
+  reveal snapshot construction/cacheability, and progress detail construction
+  are pure; and initial reveal completion is centralized, but the hook still
+  owns progress timing, cache writes, and stream-buffer flushing.
 - Transcript fallback refs are gone, so a missing retained store entry after
   reveal intentionally empties returned transcript surfaces and logs a dev
   diagnostic. Treat that as a retention/adapter failure, not a recoverable

@@ -24,6 +24,7 @@ import {
 } from "../lib/sessionDetail/warmRefresh";
 import {
   buildSessionDetailRevealSnapshot,
+  getCacheableSessionDetailRevealSnapshot,
   type SessionDetailRevealSnapshotFallback,
   type SessionDetailRevealSnapshotResult,
 } from "../lib/sessionDetail/revealSnapshot";
@@ -208,11 +209,11 @@ function writeSessionLoadCache(
   entry: SessionRouteSnapshot,
   tailTurns?: number,
   tailFrom?: string,
-): void {
+): boolean {
   if (!getSessionTranscriptCacheEnabled()) {
-    return;
+    return false;
   }
-  writeSessionRouteSnapshot(
+  return writeSessionRouteSnapshot(
     { sourceKey, projectId, sessionId, tailTurns, tailFrom },
     entry,
   );
@@ -358,7 +359,7 @@ export function useSessionMessages(
     if (!snapshot) {
       return false;
     }
-    writeSessionLoadCache(
+    return writeSessionLoadCache(
       sourceKey,
       projectId,
       sessionId,
@@ -369,7 +370,6 @@ export function useSessionMessages(
       tailTurns,
       tailFrom,
     );
-    return true;
   }, [
     readCurrentStoreRouteSnapshot,
     sourceKey,
@@ -827,6 +827,24 @@ export function useSessionMessages(
       setRevealedSnapshotKey(snapshotKeyString);
     };
 
+    const writeRevealSnapshotToLoadCache = (
+      reveal: SessionDetailRevealSnapshotResult,
+    ) => {
+      const cacheableSnapshot =
+        getCacheableSessionDetailRevealSnapshot(reveal);
+      if (!cacheableSnapshot) {
+        return false;
+      }
+      return writeSessionLoadCache(
+        sourceKey,
+        projectId,
+        sessionId,
+        cacheableSnapshot,
+        tailTurns,
+        tailFrom,
+      );
+    };
+
     const completeInitialReveal = (options: {
       snapshot: SessionRouteSnapshot;
       sourceMessageCount: number;
@@ -942,16 +960,7 @@ export function useSessionMessages(
         provider: data.session.provider,
         diagnosticBoundary: "warm-catchup-before-hydration",
       });
-      if (reveal.storeBacked) {
-        writeSessionLoadCache(
-          sourceKey,
-          projectId,
-          sessionId,
-          reveal.snapshot,
-          tailTurns,
-          tailFrom,
-        );
-      }
+      writeRevealSnapshotToLoadCache(reveal);
       notifyLoadComplete(data);
     };
 
@@ -1149,16 +1158,7 @@ export function useSessionMessages(
           provider: data.session.provider,
         });
 
-        if (reveal.storeBacked) {
-          writeSessionLoadCache(
-            sourceKey,
-            projectId,
-            sessionId,
-            snapshot,
-            tailTurns,
-            tailFrom,
-          );
-        }
+        writeRevealSnapshotToLoadCache(reveal);
 
         notifyLoadComplete(data);
       })

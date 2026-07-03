@@ -20,6 +20,12 @@ export interface SessionDetailRevealSnapshotResult {
   storeBacked: boolean;
 }
 
+export function getCacheableSessionDetailRevealSnapshot(
+  reveal: SessionDetailRevealSnapshotResult,
+): SessionRouteSnapshot | undefined {
+  return reveal.storeBacked ? reveal.snapshot : undefined;
+}
+
 export function buildSessionDetailRevealSnapshot({
   selected,
   fallback,

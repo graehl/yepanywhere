@@ -6,7 +6,10 @@ import type {
   SessionRouteSnapshot,
 } from "../../sessionRouteSnapshots";
 import type { SessionDetailRuntimeSnapshot } from "../selectors";
-import { buildSessionDetailRevealSnapshot } from "../revealSnapshot";
+import {
+  buildSessionDetailRevealSnapshot,
+  getCacheableSessionDetailRevealSnapshot,
+} from "../revealSnapshot";
 
 function message(uuid: string, source: Message["_source"] = "jsonl"): Message {
   return {
@@ -152,5 +155,23 @@ describe("session detail reveal snapshot", () => {
     expect(result.storeBacked).toBe(true);
     expect(result.snapshot.lastMessageId).toBe("persisted");
     expect(result.snapshot.scrollSnapshot).toBe(fallbackScroll);
+  });
+
+  it("only exposes store-backed reveal snapshots for route-cache writes", () => {
+    const fallbackReveal = buildSessionDetailRevealSnapshot({
+      selected: undefined,
+      fallback: fallbackSnapshot(),
+    });
+    const storeReveal = buildSessionDetailRevealSnapshot({
+      selected: runtimeSnapshot(),
+      fallback: fallbackSnapshot(),
+    });
+
+    expect(getCacheableSessionDetailRevealSnapshot(fallbackReveal)).toBe(
+      undefined,
+    );
+    expect(getCacheableSessionDetailRevealSnapshot(storeReveal)).toBe(
+      storeReveal.snapshot,
+    );
   });
 });

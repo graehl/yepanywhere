@@ -3955,6 +3955,23 @@ a.sidebar-nav-item {
   font-size: var(--font-size-base);
   -webkit-user-select: text;
   user-select: text;
+  transition: opacity 0.35s ease, box-shadow 0.35s ease;
+}
+
+/* Sent but not yet proven in the durable transcript: fainter bubble with a
+   hairline outline and a small check. Both vanish on confirmation, so the
+   confirmed steady state is the ordinary bubble. */
+.message-user-prompt.user-prompt-unconfirmed {
+  opacity: 0.78;
+  box-shadow: 0 0 0 1px var(--border-color);
+}
+
+.user-prompt-delivery-marker {
+  margin-left: 0.4em;
+  font-size: 0.72em;
+  color: var(--text-muted);
+  user-select: none;
+  cursor: default;
 }
 
 .message-user-prompt .text-block {

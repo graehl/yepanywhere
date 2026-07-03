@@ -53,6 +53,54 @@ interrupted to deliver a queued steer is double-displayed."
    contract: the rendered transcript still must not show two adjacent copies of
    the same visible first user turn while startup is settling.
 
+## Claude (busy-path sends)
+
+Claude dedups by id for ordinary traffic — direct sends round-trip YA's queue
+uuid into the durable user row — but **busy-path sends do not**. Verified on a
+real session (af737e0c, 2026-07-03): a steer/queued delivery while the CLI is
+in-turn is persisted as a `queue-operation`/`enqueue` row (**no uuid**, text +
+enqueue timestamp) plus, at delivery, `queued_command` attachment rows and a
+paired `queue-operation`/`remove`. YA's uuid/tempId appear nowhere, so the
+optimistic echo (uuid = YA queue uuid, also replayed from the SSE buckets while
+the process lives) and the reader's normalized row (positional id
+`queue-operation-{index}-{ts}`, `deferredSource: "queue-operation"`) can never
+merge by id. With `needsApproxMessageDedup` deliberately false for Claude,
+every durable merge while the echo was live double-rendered the send — the
+"duplicate sent messages while Claude is busy" report. Deterministic alignment
+is impossible here: the CLI drops the supplied uuid on its queue path.
+
+- **Scoped pairing (landed).** Capability `dedupQueueOperationEchoes`
+  (claude, claude-ollama) enables `reconcileClaudeQueueOperationEchoes`
+  (`linearMessageDedup.ts`): durable `deferredSource: "queue-operation"` user
+  rows pair one-to-one against sdk-source plain user turns with identical
+  normalized text, nearest timestamp first, within 60s. Both sides are stamped
+  at enqueue time on the same machine (observed ms apart; the slack absorbs
+  CLI stdin lag), and the structural scoping — only queue-op rows, only
+  sdk echoes, one-to-one — is what makes the wide window safe where the
+  general backstop must stay at 2s. The merged message keeps the **row's**
+  identity (`queue-operation-…` id, not the echo uuid) so later durable
+  fetches keep deduping by id; echo-only fields (tempId, metadata) survive.
+- **Late-delivered entries vs incremental fetch (landed).** The normalized
+  queue entry keeps its enqueue *position* but only becomes visible at
+  delivery, so a purely positional `afterMessageId` slice can sit past it and
+  never send it. The reader stamps `queueDeliveredAt` (the remove op's
+  timestamp, `claude-messages.ts`), and `sliceAfterMessageIdWithMatch`
+  (`pagination.ts`) additionally returns pre-anchor entries whose delivery
+  postdates the anchor row. Re-sends merge idempotently by id client-side.
+- **Delivery-state feedback (landed, default-on).** The pairing doubles as
+  the send-confirmation signal: a self-sent turn (tempId/messageMetadata on
+  the echo) renders fainter with a small ✓ while sdk-source-only —
+  server-accepted but not yet proven durable, exactly the copy a process kill
+  could lose — and flips to the ordinary bubble when the durable copy merges
+  (`lib/deliveryState.ts`, `UserPromptBlock`). Owned sessions normally skip
+  file-change fetches; while unconfirmed sends exist they fetch incrementally
+  so confirmation lands mid-turn (`useSession.handleFileChange`).
+
+Residual gaps: two identical busy sends >60s apart whose CLI enqueue lagged
+that far (pairing misses; duplicate returns), and pre-delivery steers show
+"sent" until the CLI delivers them (the enqueue row exists but the reader
+only surfaces delivered entries).
+
 ## OpenCode
 
 Verified against `references/opencode` (run `pnpm clone-references` —

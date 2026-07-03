@@ -783,6 +783,7 @@
   "forkBeforeTurnTooltip": "Fork session from before this turn (re-reads context at standard price if the session has been idle past the cache window)",
   "userPromptCopyAction": "Copy message text",
   "userPromptEditAction": "Edit latest message",
+  "userPromptDeliverySent": "Sent — not yet in the transcript",
   "userPromptShowStartingHere": "Show starting here",
   "forkSummaryCancel": "Cancel fork summary",
   "toolbarAttachFiles": "Attach files",

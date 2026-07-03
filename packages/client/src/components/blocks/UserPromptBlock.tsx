@@ -1,6 +1,7 @@
 import { memo, type ReactNode, useState } from "react";
 import { useI18n } from "../../i18n";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
+import type { UserPromptDeliveryState } from "../../lib/deliveryState";
 import {
   type UploadedFileInfo,
   getFilename,
@@ -22,6 +23,12 @@ interface Props {
   /** Fork the session from just before this turn (real prefix fork only). */
   onForkBefore?: () => void;
   extraActions?: ReactNode;
+  /**
+   * "sent" while the turn exists only as the optimistic echo (not yet proven
+   * in the durable transcript); rendered fainter with a ✓ marker. Absent or
+   * "confirmed" renders the normal bubble. See lib/deliveryState.ts.
+   */
+  deliveryState?: UserPromptDeliveryState;
 }
 
 interface InputImageBlock extends ContentBlock {
@@ -441,6 +448,30 @@ function UserPromptActionButtons({
   );
 }
 
+/**
+ * Single small check while the turn is server-accepted but not yet proven in
+ * the durable transcript; disappears entirely on confirmation so the steady
+ * state stays unadorned.
+ */
+function DeliveryStateMarker({
+  deliveryState,
+}: {
+  deliveryState?: UserPromptDeliveryState;
+}) {
+  const { t } = useI18n();
+  if (deliveryState !== "sent") return null;
+  return (
+    <span
+      className="user-prompt-delivery-marker"
+      role="img"
+      title={t("userPromptDeliverySent")}
+      aria-label={t("userPromptDeliverySent")}
+    >
+      ✓
+    </span>
+  );
+}
+
 function UserPromptText({ text }: { text: string }) {
   const correction = parseCorrectionDisplay(text);
   if (!correction) {
@@ -466,7 +497,10 @@ export const UserPromptBlock = memo(function UserPromptBlock({
   onTrimBefore,
   onForkBefore,
   extraActions,
+  deliveryState,
 }: Props) {
+  const unconfirmedClass =
+    deliveryState === "sent" ? " user-prompt-unconfirmed" : "";
   if (typeof content === "string") {
     const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
 
@@ -486,10 +520,11 @@ export const UserPromptBlock = memo(function UserPromptBlock({
         className={`user-prompt-container ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
       >
         <div
-          className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}`}
+          className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
         >
           <div className="message-content">
             <UserPromptText text={text} />
+            <DeliveryStateMarker deliveryState={deliveryState} />
             <UploadedFilesMetadata files={uploadedFiles} />
           </div>
         </div>
@@ -541,10 +576,11 @@ export const UserPromptBlock = memo(function UserPromptBlock({
       className={`user-prompt-container ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
     >
       <div
-        className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}`}
+        className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
       >
         <div className="message-content">
           <UserPromptText text={text} />
+          <DeliveryStateMarker deliveryState={deliveryState} />
           <UploadedFilesMetadata files={allUploadedFiles} />
         </div>
       </div>

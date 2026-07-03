@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
+import { hasUnconfirmedSelfSends } from "../lib/deliveryState";
 import {
   reportProviderRuntimeStatusSnapshot,
   useClientSummarySourceKey,
@@ -995,6 +996,14 @@ export function useSession(
     );
   }, [messages]);
 
+  // Tracks whether any self-sent turn is still awaiting its durable
+  // transcript copy (delivery-state "sent"); read by handleFileChange via ref
+  // so the handler identity stays stable.
+  const hasUnconfirmedSendsRef = useRef(false);
+  useEffect(() => {
+    hasUnconfirmedSendsRef.current = hasUnconfirmedSelfSends(messages);
+  }, [messages]);
+
   // Update local mode (UI selection) and sync to server if process is active
   const setPermissionMode = useCallback(
     async (mode: PermissionMode) => {
@@ -1185,9 +1194,14 @@ export function useSession(
         return;
       }
 
-      // For owned sessions: messages come via stream stream, metadata via session-updated event
-      // No API call needed - skip file change processing entirely
-      if (status.owner === "self") {
+      // For owned sessions: messages come via the stream, metadata via the
+      // session-updated event — skip file-change processing, EXCEPT while a
+      // self-send is still awaiting its durable copy. Then the durable rows
+      // are exactly what confirms the send (flips delivery-state to
+      // "confirmed" via the merge/queue-operation pairing), so fetch them
+      // mid-turn. Self-limiting: once nothing is unconfirmed, owned sessions
+      // go back to skipping.
+      if (status.owner === "self" && !hasUnconfirmedSendsRef.current) {
         return;
       }
 

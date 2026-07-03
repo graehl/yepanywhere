@@ -204,6 +204,11 @@ advance it past never-fetched connector rows.
 
 ## Deferred queue reconciliation note (known desync)
 
+Delivered-turn bubbles now carry this contract's spirit: a self-sent turn
+renders as "sent" (faint + ✓) until its durable transcript copy merges in,
+then confirms. Mechanism and the Claude queue-operation pairing behind it:
+[stream-durable-id-dedup.md](stream-durable-id-dedup.md) §Claude.
+
 Deferred rows should be treated as optimistic until the provider proves delivery.
 For both Claude and Codex, there are observed cases where local queue state drifts:
 

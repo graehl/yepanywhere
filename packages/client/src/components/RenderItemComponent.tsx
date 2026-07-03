@@ -3,6 +3,7 @@ import {
   MESSAGE_STALE_THRESHOLD_MS,
   getLatestMessageTimestampMs,
 } from "../lib/messageAge";
+import { getUserPromptDeliveryState } from "../lib/deliveryState";
 import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import type { CommentAnchor } from "../lib/commentAnchors";
 import type { ContentBlock } from "../types";
@@ -325,6 +326,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             onCorrect={onCorrectUserPrompt}
             onTrimBefore={onTrimBeforeUserPrompt}
             onForkBefore={onForkBeforeUserPrompt}
+            deliveryState={getUserPromptDeliveryState(item.sourceMessages)}
           />
         );
 

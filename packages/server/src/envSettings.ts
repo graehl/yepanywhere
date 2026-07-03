@@ -268,7 +268,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "CODEX_SUMMARY_PARSER_WORKER",
     group: "Sessions & scanning",
     description:
-      "Codex summary parser child-process mode (off|on|required). Default off.",
+      "Codex summary parser child-process mode (off|on|required). Default on.",
   },
   {
     name: "PROJECT_SCAN_CACHE_TTL_MS",

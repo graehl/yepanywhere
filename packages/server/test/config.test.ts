@@ -60,23 +60,23 @@ describe("loadConfig codex paths", () => {
     expect(config.codexCliPath).toBeUndefined();
   });
 
-  it("keeps summary parser workers disabled by default", async () => {
+  it("keeps Claude summary parsing in-process and defaults Codex to the worker", async () => {
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
     expect(config.claudeSummaryParserWorkerMode).toBe("off");
-    expect(config.codexSummaryParserWorkerMode).toBe("off");
+    expect(config.codexSummaryParserWorkerMode).toBe("on");
   });
 
-  it("parses summary parser worker opt-ins", async () => {
+  it("parses summary parser worker overrides", async () => {
     vi.stubEnv("CLAUDE_SUMMARY_PARSER_WORKER", "required");
-    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "on");
+    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "off");
 
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
     expect(config.claudeSummaryParserWorkerMode).toBe("required");
-    expect(config.codexSummaryParserWorkerMode).toBe("on");
+    expect(config.codexSummaryParserWorkerMode).toBe("off");
   });
 
   it("uses the real Windows temp directory for default local-image paths", async () => {

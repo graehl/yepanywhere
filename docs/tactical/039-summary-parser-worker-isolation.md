@@ -1,12 +1,13 @@
 # Summary Parser Worker Isolation
 
-Status: implementation chunk 4 completed locally. Claude and Codex summary
-parsing can route through the child-process worker behind separate default-off
-gates, and the parent now recycles parser children after clearly
+Status: implementation chunk 4 completed locally. Claude summary parsing can
+route through the child-process worker behind a default-off gate. Codex summary
+parsing is now default-on for the child-process worker, with the same explicit
+`off|on|required` override and parent-side recycle behavior for clearly
 heap-contaminating parses or timeout/crash paths.
 
-- `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required`
-- `CODEX_SUMMARY_PARSER_WORKER=off|on|required`
+- `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required` (default `off`)
+- `CODEX_SUMMARY_PARSER_WORKER=off|on|required` (default `on`)
 
 Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
 especially "Chunk 5: Summary Parser Worker Isolation".
@@ -450,21 +451,22 @@ Result:
 
 Not implemented in this chunk:
 
-- The gate is still default-off and has not been run against a real cold
+- The Claude gate is still default-off and has not been run against a real cold
   `/api/inbox` history.
 - Codex summary parsing is still not routed through the worker.
 - Large-line/file/byte recycle budgets remain a later chunk.
 - The child currently relies on shared context-window heuristics rather than a
-  full serialized `ModelInfoService` catalog. Because the worker path is
+  full serialized `ModelInfoService` catalog. Because the Claude worker path is
   default-off, this remains a measured rollout concern rather than a default
-  behavior change.
+  behavior change for Claude.
 
 ## Implementation Chunk 3
 
 Implemented locally on 2026-06-30:
 
 - Added `CODEX_SUMMARY_PARSER_WORKER=off|on|required`, parsed into server
-  config and documented in env settings / CLI help. The default remains `off`.
+  config and documented in env settings / CLI help. The initial default
+  remained `off`.
 - Wired `CodexSessionReader.getSessionSummary()` to use `SummaryParserClient`
   when the gate is `on` or `required`. With the gate off, Codex keeps the
   existing in-process streaming summary parser.
@@ -514,8 +516,8 @@ Result:
 
 Not implemented in this chunk:
 
-- The Codex gate is still default-off and has not been run against a real cold
-  `/api/inbox` history.
+- At the time of chunk 3, the Codex gate was still default-off and had not been
+  run against a real cold `/api/inbox` history.
 - Worker recycle budgets beyond timeout are still not enforced.
 - Crash/timeout/OOM counters are still limited to existing worker events/logs;
   `/api/session-index/status` has not gained worker-specific counters.
@@ -580,15 +582,27 @@ Not implemented in this chunk:
   plus one ready spare, with only one active parse at a time.
 - No `/api/session-index/status` worker counters yet. Recycle/start events are
   currently structured logs plus per-response metrics.
-- No real-history RSS/result measurement yet. The worker gates remain
-  default-off until the cold `/api/inbox` harness proves reliability and memory
-  benefit.
+- No real-history RSS/result measurement was recorded in this chunk. The Codex
+  promotion is tracked below; Claude remains pending provider-specific
+  reliability and memory evidence.
+
+## Promotion Update
+
+On 2026-07-03, `CODEX_SUMMARY_PARSER_WORKER` was promoted to default `on`.
+The product decision is scoped to Codex summary-index parsing: explicit
+operator configuration still wins, `required` remains available to prove worker
+coverage, and `on` keeps the observed in-process fallback for setup/import/IPC
+failures. A local `server.log` scan over the available log file found no
+`summary_parser_worker` fallback, crash, timeout, or recycle events; however,
+the live dev server environment at inspection time did not include
+`CODEX_SUMMARY_PARSER_WORKER`, so those logs do not prove the worker path was
+currently exercised.
 
 ## Open Design Questions
 
 - When should the worker gate graduate from default-off to default-on for
-  Claude/Codex summary-index work? The first implementation should stay
-  default-off until a real cold-history run proves reliability and RSS benefit.
+  Claude summary-index work? The Codex gate has been promoted; Claude should
+  still wait for provider-specific reliability and RSS evidence.
 - Should worker state remain only in structured logs for the Claude rollout, or
   should `/api/session-index/status` include current worker
   pid/generation/recycle counters before the cold-history harness?

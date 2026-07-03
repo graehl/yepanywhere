@@ -129,7 +129,7 @@ ENVIRONMENT VARIABLES:
   CLAUDE_SUMMARY_PARSER_WORKER  Claude summary parser child-process mode:
                                 off, on, or required (default: off)
   CODEX_SUMMARY_PARSER_WORKER   Codex summary parser child-process mode:
-                                off, on, or required (default: off)
+                                off, on, or required (default: on)
   SESSION_INDEX_LOG_PERF
                                 Log session-index performance timings
   CODEX_READER_LOG_PARSE

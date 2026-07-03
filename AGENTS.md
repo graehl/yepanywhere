@@ -31,6 +31,11 @@ translation. For a permissive advisory scan of obvious raw English copy, run
 `pnpm i18n:scan`; use `--include-info` to inspect low-priority labels and
 `--max-warnings <n>` only when intentionally ratcheting the check toward CI.
 
+Add new strings to `en.json` only. Missing keys in the other locale files
+fall back to English at runtime, and non-English locales are batch-updated
+before a release (a maintainer step). Do not hand-translate per-locale
+entries during feature work.
+
 ## Biome Import/Export Ordering
 
 Do not apply Biome's organize-imports/exports assist as a routine cleanup.

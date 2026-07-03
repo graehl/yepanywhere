@@ -1424,8 +1424,6 @@
   "developmentClearIgnored": "Clear Ignored",
   "developmentDiagnosticsTitle": "Browser Diagnostics",
   "developmentDiagnosticsDescription": "Capture browser logs, uncaught errors, and lightweight telemetry for debugging.",
-  "developmentStoreMessagesTitle": "Store-Backed Session Detail",
-  "developmentStoreMessagesDescription": "Use the session detail store for all supported returned detail surfaces. Turn off to return legacy hook-local mirrors while the store still runs for diagnostics and adapter paths.",
   "developmentServiceWorkerTitle": "Service Worker",
   "developmentServiceWorkerDescription": "Enable service worker for push notifications. Disabling can help with page reload issues during development. Requires restart.",
   "developmentPersistRemoteTitle": "Persist Remote Sessions to Disk",

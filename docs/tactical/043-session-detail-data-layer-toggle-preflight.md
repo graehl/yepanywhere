@@ -1,51 +1,48 @@
-# Store-Backed Session Detail Switch Preflight
+# Store-Backed Session Detail Cutover Preflight
 
 Topic: session-detail-data-layer
 
 This note supports the tactical plan in
 [`043-session-detail-data-layer-plan.md`](043-session-detail-data-layer-plan.md).
 It records the `useSessionMessages` main-transcript writes that were checked
-before the store-backed returned detail path became the default. The Store-
-Backed Session Detail switch remains in the Development settings page as a
-rollback path to compare against the legacy hook-local mirror.
+before the store-backed returned detail path became the only returned
+transcript path. The Store-Backed Session Detail Development switch was removed
+after the off path stopped providing an independent data-semantics rollback.
 
-## Switch Shape
+## Cutover Shape
 
-The path started as a narrow toggle and now covers the returned hook data
-surfaces that have selector-backed mirrors:
+The path started as a narrow toggle and now unconditionally covers the returned
+hook data surfaces that have selector-backed mirrors:
 
 - Scope: returned `messages`, `agentContent`, and tool-use mappings.
 - Source: one stable `defaultSessionDetailStore` state snapshot, using
   `state.messages`, `state.agentContent`, and
   `state.toolUseToAgentEntries` together.
-- Fallback: local `messages`/`agentContent` state only after the current route
+- Fallback: local `messages`/`agentContent` refs only after the current route
   has reached the reveal point and the store entry is unexpectedly missing.
 - Before reveal: explicit empty returned transcript surfaces, keyed by the
   current route snapshot key, rather than cleared local mirrors.
-- Still maintain local mirrors where they support fallback and the Development
-  settings rollback.
+- Still maintain refs where they support temporary fallback.
 - Confidence signal: reducer fixtures, focused hook tests, and browser
   dogfooding. The earlier returned-data invariant diagnostic was removed
   because it compared the returned store-selected data to the same store
   snapshot that produced it.
-- Do not include render selectors, scroll ownership, or `/btw` in this toggle.
+- Do not include render selectors, scroll ownership, or `/btw` in this cutover.
 
-Turning the switch off does not disable the reducer/store feed. It only returns
-the legacy hook-local mirrors instead of the broad store-selected snapshot;
-selector-backed adapter reads, diagnostics, cache ownership, and store
-retention still run. On normal mounted paths, those mirrors are increasingly
-copies of store-selected output, so the switch mainly protects reveal timing,
+The removed switch used to return legacy hook-local mirrors while the
+reducer/store feed, selector-backed adapter reads, diagnostics, cache ownership,
+and store retention still ran. On normal mounted paths, those mirrors had become
+copies of store-selected output, so the switch mostly protected reveal timing,
 subscription behavior, object identity, and remaining locally owned refs rather
 than providing a fully independent data-semantics rollback.
 
 One important guard remains: warm snapshot restore writes the store before it
 reveals `messages`/`agentContent`, because the hook intentionally yields
-through the loading path. With the switch enabled, reveal updates refs plus
-local session/pagination state but skips React state writes for returned
-store-backed surfaces. The returned transcript path is gated on the current
-route's reveal key and `loading === false`, so the default source change does
-not bypass the deferred warm-reveal behavior or expose stale rollback mirrors
-on route changes.
+through the loading path. Reveal updates refs plus local session/pagination
+state but skips React state writes for returned store-backed surfaces. The
+returned transcript path is gated on the current route's reveal key and
+`loading === false`, so the store-backed return path does not bypass the
+deferred warm-reveal behavior or expose stale fallback refs on route changes.
 
 ## Main Transcript Transition Audit
 
@@ -83,12 +80,12 @@ on route changes.
   selector read. The store can own the returned array before it owns those refs,
   but tests must keep covering both.
 - Subagent `agentContent` live-vs-durable parity remains broad-shape only. The
-  dogfood toggle can prove store read ownership for the current shape, but it
-  does not make streamed and persisted subagent transcripts semantically
+  store-backed returned path proves store read ownership for the current shape,
+  but it does not make streamed and persisted subagent transcripts semantically
   equivalent.
 - Browser dogfood should capture console diagnostics from real navigation:
-  keep Store-Backed Session Detail enabled (the default), enable session-detail
-  shadow diagnostics, drive `/inbox` to several session detail pages, and record
+  enable session-detail shadow diagnostics, drive `/inbox` to several session
+  detail pages, and record
   `[SessionDetailStore]`, `[SessionDetailShadow]`, React errors, request
   failures, and scroll bottom deltas. Treat store/shadow warnings as fixture
   candidates unless they are scroll-only noise. Treat
@@ -96,13 +93,12 @@ on route changes.
 
 ## Readiness Call
 
-The store-backed returned detail path is now the default, with the Development
-settings switch retained as a narrower rollback. The next implementation chunks
-should keep narrowing the remaining local mirror state itself: fallback
-ownership and rollback behavior. Ordinary post-dispatch store-selected paths
-now skip local React state writes while the switch is enabled, reveal follows
-the same rule for returned store-backed surfaces, reset/loading uses an
-explicit returned-detail gate instead of clearing transcript mirrors, no-signal
-store/local diagnostics have been removed from store-selected adapter paths,
-and route-cache persistence reads directly from the store. Scroll ownership and
-`/btw` remain out of scope.
+The store-backed returned detail path is now the only path for returned
+`messages`, `agentContent`, and tool-use mappings. The next implementation
+chunks should keep narrowing the remaining local mirror/ref state itself:
+fallback ownership first. Ordinary post-dispatch store-selected paths now skip
+local React state writes, reveal follows the same rule for returned store-backed
+surfaces, reset/loading uses an explicit returned-detail gate instead of
+clearing transcript mirrors, no-signal store/local diagnostics have been
+removed from store-selected adapter paths, and route-cache persistence reads
+directly from the store. Scroll ownership and `/btw` remain out of scope.

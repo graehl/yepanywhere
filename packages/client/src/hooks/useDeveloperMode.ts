@@ -6,8 +6,6 @@ interface DeveloperModeSettings {
   relayDebugEnabled: boolean;
   /** Capture connection logs and send to server for debugging */
   remoteLogCollectionEnabled: boolean;
-  /** Return useSessionMessages messages from the session detail store */
-  sessionDetailStoreMessagesEnabled: boolean;
   /** Show connection status bars (green/orange/red) */
   showConnectionBars: boolean;
 }
@@ -15,7 +13,6 @@ interface DeveloperModeSettings {
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
-  sessionDetailStoreMessagesEnabled: true,
   showConnectionBars: false,
 };
 
@@ -30,9 +27,6 @@ function normalizeSettings(raw: unknown): DeveloperModeSettings {
     remoteLogCollectionEnabled:
       parsed.remoteLogCollectionEnabled ??
       DEFAULT_SETTINGS.remoteLogCollectionEnabled,
-    sessionDetailStoreMessagesEnabled:
-      parsed.sessionDetailStoreMessagesEnabled ??
-      DEFAULT_SETTINGS.sessionDetailStoreMessagesEnabled,
     showConnectionBars:
       parsed.showConnectionBars ?? DEFAULT_SETTINGS.showConnectionBars,
   };
@@ -91,15 +85,6 @@ export function setRemoteLogCollectionEnabledValue(enabled: boolean): void {
   updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
 }
 
-export function setSessionDetailStoreMessagesEnabledValue(
-  enabled: boolean,
-): void {
-  updateSettings({
-    ...currentSettings,
-    sessionDetailStoreMessagesEnabled: enabled,
-  });
-}
-
 export function __resetDeveloperModeForTest(): void {
   currentSettings = DEFAULT_SETTINGS;
   if (
@@ -129,11 +114,6 @@ export function useDeveloperMode() {
     [],
   );
 
-  const setSessionDetailStoreMessagesEnabled = useCallback(
-    setSessionDetailStoreMessagesEnabledValue,
-    [],
-  );
-
   const setShowConnectionBars = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, showConnectionBars: enabled });
   }, []);
@@ -143,9 +123,6 @@ export function useDeveloperMode() {
     setRelayDebugEnabled,
     remoteLogCollectionEnabled: settings.remoteLogCollectionEnabled,
     setRemoteLogCollectionEnabled,
-    sessionDetailStoreMessagesEnabled:
-      settings.sessionDetailStoreMessagesEnabled,
-    setSessionDetailStoreMessagesEnabled,
     showConnectionBars: settings.showConnectionBars,
     setShowConnectionBars,
   };
@@ -165,10 +142,6 @@ export function getRelayDebugEnabled(): boolean {
  */
 export function getRemoteLogCollectionEnabled(): boolean {
   return currentSettings.remoteLogCollectionEnabled;
-}
-
-export function getSessionDetailStoreMessagesEnabled(): boolean {
-  return currentSettings.sessionDetailStoreMessagesEnabled;
 }
 
 /**

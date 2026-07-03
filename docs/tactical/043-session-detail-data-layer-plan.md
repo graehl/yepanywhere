@@ -6,7 +6,7 @@ This is the current tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
 Completed-slice detail lives in
 [`043-session-detail-data-layer-history.md`](043-session-detail-data-layer-history.md).
-The dogfood-toggle transition audit lives in
+The store-backed returned-detail cutover audit lives in
 [`043-session-detail-data-layer-toggle-preflight.md`](043-session-detail-data-layer-toggle-preflight.md).
 The render-selector preflight lives in
 [`043-session-detail-render-selector-preflight.md`](043-session-detail-render-selector-preflight.md).
@@ -71,36 +71,32 @@ What is already in place:
   result and only fall back to the current local mirror if the retained store
   entry is unexpectedly missing.
 - Those store-selected adapter paths now keep hook refs current but skip the
-  redundant React state writes while Store-Backed Session Detail is enabled.
-  When the Development switch is off, the same paths still write the local
-  mirrors so rollback mode keeps behaving like the old hook-local return path.
+  redundant React state writes because the returned transcript data now comes
+  from the store.
 - Selected runtime-snapshot reveal now uses the same conditional mirror helpers:
-  with Store-Backed Session Detail enabled, reveal updates refs plus local
-  session/pagination state but does not write local `messages`, `agentContent`,
-  or tool-use state. Reset-to-loading now uses an explicit current-route reveal
-  gate instead of clearing local transcript mirrors, so warm store data and
-  stale rollback mirrors stay hidden until the route snapshot is revealed.
+  reveal updates refs plus local session/pagination state but does not write
+  local `messages`, `agentContent`, or tool-use state. Reset-to-loading now uses
+  an explicit current-route reveal gate instead of clearing local transcript
+  mirrors, so warm store data and stale fallback refs stay hidden until the
+  route snapshot is revealed.
 - No-signal store/local diagnostics have been removed from store-selected
   stream, placeholder, subagent, tool-use, and reveal paths. Remaining
   `[SessionDetailStore]` logs cover metadata, catch-up/older
   cursor-watermark-pagination bookkeeping, scroll snapshots, and unexpected
   missing selectors.
 - Store-selected `messages`, `agentContent`, and tool-use mappings are now the
-  default returned hook data after initial hydration has reached the same reveal
-  point as the local mirror. The Development settings switch remains as a
-  rollback path to compare against the legacy hook-local mirror.
+  only returned hook data after initial hydration has reached the reveal point.
+  The Development settings rollback switch has been removed.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
 - Focused hook coverage also verifies that store-authoritative returned
-  `agentContent` is gated during warm hydration, ignores selector-only entries
-  when the toggle is off, and returns selector-only entries when the toggle is
-  on.
+  `agentContent` is gated during warm hydration and returns selector-only
+  entries after reveal.
 - Focused hook coverage now verifies that store-authoritative returned
-  tool-use mappings can expose selector-only entries when the toggle is on and
-  stay local-only when it is off during ordinary registration.
+  tool-use mappings can expose selector-only entries after reveal.
 - Focused hook coverage also verifies that same-hook route changes keep stale
-  rollback mirrors hidden before the next route has revealed, including an
+  fallback refs hidden before the next route has revealed, including an
   initial-load error path.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
@@ -136,8 +132,7 @@ Current diagnostic stance:
 - Browser mismatch checks should use the real inbox-to-session path, not only
   unit fixtures. A useful read-only pass is: launch Playwright against
   `https://127.0.0.1:3400`, ignore local HTTPS errors, block service workers
-  if possible, confirm `yep-anywhere-developer-mode` has
-  `sessionDetailStoreMessagesEnabled: true` (the default), set
+  if possible, set
   `yep-anywhere-session-detail-shadow-diagnostics-enabled` to `true`, click a
   few visible `/inbox` session links, and capture console/page/request
   failures plus `[SessionDetailShadow]` and `[SessionDetailStore]` logs. Also
@@ -155,14 +150,12 @@ Current diagnostic stance:
   dispatch out of the legacy state updater.
 
 The key remaining truth is simple: the reducer/store is now the default source
-for returned `messages`, `agentContent`, and tool-use mappings after hydration,
-while the legacy hook-local mirrors are progressively shrinking into
-revealed-state copies plus rollback/reveal scaffolding. The Development
-settings switch no longer means "do not use the store"; it means "return the
-store snapshot everywhere it is currently approved" versus "return the safer
-local mirror copies while the store continues to feed, retain, and drive
-selector reads." The render-selector preflight is complete enough for cutover
-planning: `MessageList` still owns stateful UI, callbacks, scroll, DOM
+for returned `messages`, `agentContent`, and tool-use mappings after hydration.
+The Development settings switch was removed once it stopped providing an
+independent data-semantics rollback. The remaining hook-local transcript
+scaffolding is refs-only fallback/reveal plumbing. The render-selector preflight
+is complete enough for cutover planning: `MessageList` still owns stateful UI,
+callbacks, scroll, DOM
 behavior, and JSX, but broad transcript/view shape derivation is no longer
 hidden inside the component.
 
@@ -218,7 +211,7 @@ next meaningful migration work is in the hook/store adapter.
 - Keep the coarse client summary store separate from session detail state.
 - Default user-facing behavior must stay provider-like. New experimental
   runtime changes should start default-off in Developer settings before they
-  graduate to default-on with rollback.
+  graduate into the default path.
 
 ## Migration Shape
 
@@ -227,8 +220,8 @@ The strategy remains shadow-first and adapter-first:
 1. Keep the reducer/store fed from existing hook boundaries.
 2. Add compact fixtures when diagnostics expose a divergence.
 3. Replace one local derivation at a time with a store selector plus fallback.
-4. Only after enough parity, promote a store-authoritative mode for larger
-   returned surfaces, while keeping a rollback switch during dogfooding.
+4. Promote store-authoritative returned surfaces once fixtures and dogfooding
+   show parity.
 5. Keep `MessageList` and DOM-local scroll/progressive rendering out of the
    data-layer cutover until the data model is boring.
 
@@ -258,7 +251,7 @@ Next likely slice:
   surfaces, reset/loading uses a separate returned-detail reveal gate instead
   of clearing transcript mirrors, and no-signal store/local diagnostics have
   been narrowed out. The next slices should target the remaining local mirror
-  state itself: fallback ownership and rollback behavior.
+  state itself: fallback ownership.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -267,41 +260,32 @@ Next likely slice:
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
 - Move the next implementation chunks back to `useSessionMessages`: keep
-  store-selected returned detail as the normal test path with a Development
-  rollback, and identify one remaining mirror path at a time that can become
-  store-only or disappear.
+  store-selected returned detail as the only test path and identify one
+  remaining mirror/ref path at a time that can become store-only or disappear.
 
 Then:
 
-- Keep the Development settings switch available as a dev-only rollback while
-  dogfooding the default store-backed path.
 - Do not broaden to scroll ownership or `/btw` until returned `messages` and
   `agentContent` are boring.
 
-Dogfood switch:
+Store-backed return path:
 
-- Name: Store-Backed Session Detail in the Development settings page.
-- Current default-on scope: returned `messages`, `agentContent`, and tool-use
-  mappings.
+- Scope: returned `messages`, `agentContent`, and tool-use mappings.
 - Behavior today: read store-selected `messages`, `agentContent`, and tool-use
-  mappings from one coherent store-state snapshot after hydration, with the
-  local mirrors as fallback.
-- Off behavior: return the legacy hook-local mirrors, but keep the
-  reducer/store feed, selector-backed adapter reads, diagnostics, and cache
-  ownership running. Turning the switch off is not a store no-op and no longer
-  provides an independent data-semantics rollback on normal mounted paths.
-- Keep local mirrors only where they still support fallback, diagnostics for
-  independently owned fields, or the Development settings rollback.
-- With the switch enabled, ordinary post-dispatch store-selected paths update
-  refs but do not set local mirror state. If the switch is flipped off during a
-  mounted session, the hook hydrates local mirror state from those refs.
+  mappings from one coherent store-state snapshot after hydration/reveal, with
+  refs as temporary fallback if the retained store entry is unexpectedly
+  missing.
+- Keep local refs only where they still support fallback or diagnostics for
+  independently owned fields.
+- Ordinary post-dispatch store-selected paths update refs but do not set local
+  mirror state.
 - Reveal follows the same rule for returned store-backed surfaces. Reset starts
-  an explicit returned-detail reveal gate instead of clearing transcript mirror
-  state to preserve warm-hydration gating.
+  an explicit returned-detail reveal gate instead of clearing transcript refs to
+  preserve warm-hydration gating.
 - Store/local diagnostics no longer run on paths where the live payload is just
   the selected store result; remaining logs are for independently owned refs,
   metadata, scroll, or missing selector cases.
-- Do not include render selectors or `/btw` in this toggle.
+- Do not include render selectors or `/btw` in this cutover.
 
 ## Current Risks
 
@@ -310,15 +294,10 @@ Dogfood switch:
   and stream-buffer flushing inside the hook. Their visible reveal now comes
   from one selected store snapshot, but the hook still computes warm merge
   candidates for pagination reconciliation and fallback diagnostics.
-- The local mirror states still exist for fallback and rollback mode. With
-  store-backed return enabled, ordinary post-dispatch and reveal paths keep refs
-  current without local setState, and reset/loading no longer clears transcript
-  mirrors. The state variables remain a structural cost until rollback semantics
-  are retired or further narrowed.
-- The rollback switch mainly protects reveal timing, subscription behavior,
-  object identity, and remaining locally owned refs. It should not be treated
-  as an independent rollback for reducer data semantics on normal mounted
-  paths.
+- The local transcript refs still exist for fallback. Ordinary post-dispatch and
+  reveal paths keep refs current without local setState, and reset/loading no
+  longer clears transcript mirrors. The refs remain a structural cost until
+  fallback semantics are retired or further narrowed.
 - Compaction-tail and full-history states are easy to confuse because the
   default route has no explicit `tailTurns`/`tailFrom` URL parameter even
   though the client requests `tailCompactions: 2`. Treat message-count
@@ -344,8 +323,8 @@ Dogfood switch:
 - `scroll-snapshot` diagnostics are currently useful as a reminder that final
   cutover needs a cleaner parity signal, but they are not a near-term blocker
   while the rest of the data/render layer is still migrating.
-- A store-authoritative messages toggle may expose reducer gaps quickly; that
-  is useful for dogfooding, but it should remain easy to disable.
+- Store-authoritative returned messages can expose reducer gaps quickly; turn
+  any such signal into a reducer or hook fixture before widening scope.
 
 ## Later Work
 
@@ -406,8 +385,8 @@ as a failing reducer/selector test before changing UI code.
 - Keep dev diagnostics available during dogfooding.
 - Store stats should answer which sessions are retained, why, approximate bytes,
   and expiry time.
-- New experimental toggles should be default-off and easy to disable. This
-  store-backed returned-detail switch has graduated to default-on, with rollback
-  retained while local mirrors still exist.
+- New experimental toggles should be default-off and easy to disable. The
+  store-backed returned-detail switch has graduated into the default path and
+  has been removed.
 - A successful dogfood period should leave behind fixtures for any divergence
   that was found and fixed.

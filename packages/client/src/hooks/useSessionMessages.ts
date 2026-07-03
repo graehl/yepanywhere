@@ -18,7 +18,6 @@ import {
 import { getMessageId, mergeJSONLMessages } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
-import { useDeveloperMode } from "./useDeveloperMode";
 import {
   getSessionTranscriptCacheEnabled,
   recordLastSessionTranscriptBytes,
@@ -356,8 +355,6 @@ export function useSessionMessages(
     onLoadError,
   } = options;
   const sourceKey = useClientSummarySourceKey();
-  const { sessionDetailStoreMessagesEnabled: storeBackedMessagesEnabled } =
-    useDeveloperMode();
   const snapshotKey: SessionRouteSnapshotKeyInput = useMemo(
     () => ({
       sourceKey,
@@ -388,11 +385,6 @@ export function useSessionMessages(
   const cachedLoad = cachedLoadRef.current.load;
 
   // Core state
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [agentContent, setAgentContent] = useState<AgentContentMap>({});
-  const [toolUseToAgent, setToolUseToAgent] = useState<Map<string, string>>(
-    () => new Map(),
-  );
   const [loading, setLoading] = useState(true);
   const [revealedSnapshotKey, setRevealedSnapshotKey] = useState<string | null>(
     null,
@@ -404,15 +396,12 @@ export function useSessionMessages(
     undefined,
   );
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const storeBackedMessagesEnabledRef = useRef(storeBackedMessagesEnabled);
-  storeBackedMessagesEnabledRef.current = storeBackedMessagesEnabled;
 
   // State updaters must stay pure (React may replay them mid-render), so
   // store dispatches and divergence reports cannot live inside setState
   // callbacks. The refs track the latest mirror values for event-time work.
-  // Session/pagination still write local state directly; store-selected
-  // transcript mirrors can skip React state when returned data comes from the
-  // store.
+  // Session/pagination still write local state directly; transcript fallback
+  // scaffolding is refs-only because returned data comes from the store.
   const messagesRef = useRef<Message[]>([]);
   const agentContentRef = useRef<AgentContentMap>({});
   const toolUseToAgentRef = useRef<Map<string, string>>(new Map());
@@ -428,25 +417,16 @@ export function useSessionMessages(
   }, []);
   const mirrorStoreSelectedMessages = useCallback((next: Message[]) => {
     messagesRef.current = next;
-    if (!storeBackedMessagesEnabledRef.current) {
-      setMessages(next);
-    }
   }, []);
   const mirrorStoreSelectedAgentContent = useCallback(
     (next: AgentContentMap) => {
       agentContentRef.current = next;
-      if (!storeBackedMessagesEnabledRef.current) {
-        setAgentContent(next);
-      }
     },
     [],
   );
   const mirrorStoreSelectedToolUseToAgent = useCallback(
     (next: Map<string, string>) => {
       toolUseToAgentRef.current = next;
-      if (!storeBackedMessagesEnabledRef.current) {
-        setToolUseToAgent(next);
-      }
     },
     [],
   );
@@ -701,17 +681,12 @@ export function useSessionMessages(
 
   const canRevealReturnedDetail =
     revealedSnapshotKey === snapshotKeyString && !loading;
-  const canReadStoreBackedDetail =
-    storeBackedMessagesEnabled && canRevealReturnedDetail;
   const storeBackedDetailState = useSyncExternalStore(
     useCallback(
       (listener) => {
-        if (!storeBackedMessagesEnabled) {
-          return () => {};
-        }
         return defaultSessionDetailStore.subscribe(
           { sourceKey, projectId, sessionId, tailTurns, tailFrom },
-          (state) => (canReadStoreBackedDetail && state ? state : undefined),
+          (state) => (canRevealReturnedDetail && state ? state : undefined),
           listener,
         );
       },
@@ -721,13 +696,12 @@ export function useSessionMessages(
         sessionId,
         tailTurns,
         tailFrom,
-        storeBackedMessagesEnabled,
-        canReadStoreBackedDetail,
+        canRevealReturnedDetail,
       ],
     ),
     useCallback(
       () =>
-        canReadStoreBackedDetail
+        canRevealReturnedDetail
           ? defaultSessionDetailStore.readSelected(
               { sourceKey, projectId, sessionId, tailTurns, tailFrom },
               (state) => state,
@@ -739,22 +713,16 @@ export function useSessionMessages(
         sessionId,
         tailTurns,
         tailFrom,
-        canReadStoreBackedDetail,
+        canRevealReturnedDetail,
       ],
     ),
     () => undefined,
   );
-  const fallbackMessages = storeBackedMessagesEnabled
-    ? messagesRef.current
-    : messages;
-  const fallbackAgentContent = storeBackedMessagesEnabled
-    ? agentContentRef.current
-    : agentContent;
   const returnedMessages = canRevealReturnedDetail
-    ? (storeBackedDetailState?.messages ?? fallbackMessages)
+    ? (storeBackedDetailState?.messages ?? messagesRef.current)
     : EMPTY_RETURNED_MESSAGES;
   const returnedAgentContent = canRevealReturnedDetail
-    ? (storeBackedDetailState?.agentContent ?? fallbackAgentContent)
+    ? (storeBackedDetailState?.agentContent ?? agentContentRef.current)
     : EMPTY_RETURNED_AGENT_CONTENT;
   const returnedToolUseToAgent = useMemo(
     () => {
@@ -763,31 +731,10 @@ export function useSessionMessages(
       }
       return storeBackedDetailState
         ? new Map(storeBackedDetailState.toolUseToAgentEntries)
-        : storeBackedMessagesEnabled
-          ? new Map(toolUseToAgentRef.current)
-          : toolUseToAgent;
+        : new Map(toolUseToAgentRef.current);
     },
-    [
-      canRevealReturnedDetail,
-      storeBackedDetailState,
-      storeBackedMessagesEnabled,
-      toolUseToAgent,
-    ],
+    [canRevealReturnedDetail, storeBackedDetailState],
   );
-  const previousStoreBackedMessagesEnabledRef = useRef(
-    storeBackedMessagesEnabled,
-  );
-  useEffect(() => {
-    const wasEnabled = previousStoreBackedMessagesEnabledRef.current;
-    previousStoreBackedMessagesEnabledRef.current =
-      storeBackedMessagesEnabled;
-    if (!wasEnabled || storeBackedMessagesEnabled) {
-      return;
-    }
-    setMessages(messagesRef.current);
-    setAgentContent(agentContentRef.current);
-    setToolUseToAgent(new Map(toolUseToAgentRef.current));
-  }, [storeBackedMessagesEnabled]);
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -814,16 +761,6 @@ export function useSessionMessages(
     },
     [],
   );
-
-  // Update lastMessageIdRef when messages change.
-  // Cursor on the newest JSONL-sourced row, not the array tail (see
-  // findLastJsonlMessageId).
-  useEffect(() => {
-    const lastJsonlId = findLastJsonlMessageId(messages);
-    if (lastJsonlId) {
-      lastMessageIdRef.current = lastJsonlId;
-    }
-  }, [messages]);
 
   useEffect(() => {
     return () => {

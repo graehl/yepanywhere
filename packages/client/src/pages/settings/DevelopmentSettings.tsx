@@ -24,8 +24,6 @@ export function DevelopmentSettings() {
   const {
     remoteLogCollectionEnabled,
     setRemoteLogCollectionEnabled,
-    sessionDetailStoreMessagesEnabled,
-    setSessionDetailStoreMessagesEnabled,
   } = useDeveloperMode();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const { settings: serverSettings, updateSetting: updateServerSetting } =
@@ -37,24 +35,15 @@ export function DevelopmentSettings() {
         ? {
             validationEnabled: validationSettings.enabled,
             remoteLogCollectionEnabled,
-            sessionDetailStoreMessagesEnabled,
             serviceWorkerEnabled: serverSettings.serviceWorkerEnabled ?? true,
           }
         : null,
-    [
-      validationSettings.enabled,
-      remoteLogCollectionEnabled,
-      sessionDetailStoreMessagesEnabled,
-      serverSettings,
-    ],
+    [validationSettings.enabled, remoteLogCollectionEnabled, serverSettings],
   );
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
-      setSessionDetailStoreMessagesEnabled(
-        snapshot.sessionDetailStoreMessagesEnabled,
-      );
       void updateServerSetting(
         "serviceWorkerEnabled",
         snapshot.serviceWorkerEnabled,
@@ -63,7 +52,6 @@ export function DevelopmentSettings() {
     [
       setValidationEnabled,
       setRemoteLogCollectionEnabled,
-      setSessionDetailStoreMessagesEnabled,
       updateServerSetting,
     ],
   );
@@ -136,22 +124,6 @@ export function DevelopmentSettings() {
               type="checkbox"
               checked={remoteLogCollectionEnabled}
               onChange={(e) => setRemoteLogCollectionEnabled(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentStoreMessagesTitle")}</strong>
-            <p>{t("developmentStoreMessagesDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={sessionDetailStoreMessagesEnabled}
-              onChange={(e) =>
-                setSessionDetailStoreMessagesEnabled(e.target.checked)
-              }
             />
             <span className="toggle-slider" />
           </label>

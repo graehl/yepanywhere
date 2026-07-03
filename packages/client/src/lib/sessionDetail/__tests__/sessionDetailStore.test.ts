@@ -341,6 +341,48 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(storeKey, { nowMs: 23 })).toBeUndefined();
   });
 
+  it("rejects over-budget snapshots without deleting retained entries", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
+      nowMs: 0,
+    });
+    const release = store.retain(storeKey, { nowMs: 1 });
+
+    expect(
+      store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-2"]), {
+        maxBytes: 1,
+        nowMs: 2,
+      }),
+    ).toBe(false);
+    expect(
+      store.readRouteSnapshot(storeKey, { nowMs: 3 })?.messages.map(
+        (message) => message.uuid,
+      ),
+    ).toEqual(["msg-1"]);
+    expect(store.getStats().entries[0]?.retainCount).toBe(1);
+
+    release();
+  });
+
+  it("rejects over-budget snapshots and clears unretained cache records", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
+      nowMs: 0,
+    });
+
+    expect(
+      store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-2"]), {
+        maxBytes: 1,
+        nowMs: 1,
+      }),
+    ).toBe(false);
+    expect(store.readRouteSnapshot(storeKey, { nowMs: 2 })).toBeUndefined();
+  });
+
   it("drops incremental actions for a missing entry instead of fabricating state", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");

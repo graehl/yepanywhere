@@ -101,7 +101,10 @@ export class SessionDetailCache {
     const state = routeSnapshotToState(snapshot);
     const approxBytes = estimateStateBytes(state);
     if (approxBytes > getSessionDetailMaxBytes(options)) {
-      this.deleteRecordByKey(key);
+      const existing = this.entries.get(key);
+      if (!existing || existing.retainCount === 0) {
+        this.deleteRecordByKey(key);
+      }
       return false;
     }
 

@@ -24,7 +24,11 @@ import {
   selectSessionDetailMessages,
   selectSessionDetailToolUseToAgentEntries,
 } from "../../lib/sessionDetail/selectors";
-import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
+import {
+  configureSessionDetailRetention,
+  defaultSessionDetailStore,
+  getSessionDetailRetentionDefaults,
+} from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
 import type { Message, SessionMetadata } from "../../types";
@@ -32,6 +36,8 @@ import type { Message, SessionMetadata } from "../../types";
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
 }));
+
+const DEFAULT_SESSION_DETAIL_RETENTION = getSessionDetailRetentionDefaults();
 
 vi.mock("../../api/client", () => ({
   api: apiMocks,
@@ -115,6 +121,7 @@ describe("useSessionMessages cache", () => {
   beforeEach(() => {
     window.localStorage.clear();
     __resetDeveloperModeForTest();
+    configureSessionDetailRetention(DEFAULT_SESSION_DETAIL_RETENTION);
     resetClientSummaryStoreForTests();
     __resetSessionLoadCacheForTest();
     (getStreamingEnabled as Mock).mockReturnValue(true);
@@ -130,6 +137,7 @@ describe("useSessionMessages cache", () => {
     vi.unstubAllEnvs();
     window.localStorage.clear();
     __resetDeveloperModeForTest();
+    configureSessionDetailRetention(DEFAULT_SESSION_DETAIL_RETENTION);
     __resetSessionLoadCacheForTest();
     resetClientSummaryStoreForTests();
   });
@@ -224,6 +232,73 @@ describe("useSessionMessages cache", () => {
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "msg-2"]);
     expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
+  });
+
+  it("keeps initial messages visible when cache admission rejects an over-budget reveal", async () => {
+    enableSessionTranscriptCache();
+    configureSessionDetailRetention({
+      ...DEFAULT_SESSION_DETAIL_RETENTION,
+      maxBytes: 1,
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    try {
+      const rendered = renderHook(() =>
+        useSessionMessages({
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        }),
+      );
+
+      await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1"]);
+      expect(readStoreMessageIds()).toEqual(["msg-1"]);
+      expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(1);
+      expect(
+        warn.mock.calls.some(([label, payload]) => {
+          if (label !== "[SessionDetailStore]") return false;
+          if (
+            typeof payload !== "object" ||
+            payload === null ||
+            !("event" in payload)
+          ) {
+            return false;
+          }
+          return (
+            (payload as Record<string, unknown>).event ===
+            "session-detail-store-missing-after-reveal"
+          );
+        }),
+      ).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("keeps store-backed warm messages gated until hydration", async () => {

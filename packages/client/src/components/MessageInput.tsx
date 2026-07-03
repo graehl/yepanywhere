@@ -15,6 +15,7 @@ import {
   type ClipboardEvent,
   Fragment,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -421,6 +422,8 @@ interface Props {
   };
   /** Composer shortcut for fork-after-summary using current draft as instructions. */
   onForkSummaryShortcut?: (instructions: string) => boolean | undefined;
+  /** Provider/model chip floated on the composer's top-right corner. */
+  modelBadge?: ReactNode;
 }
 
 export function MessageInput({
@@ -477,6 +480,7 @@ export function MessageInput({
   onDismissPromptSuggestion,
   forkSummaryMode,
   onForkSummaryShortcut,
+  modelBadge,
 }: Props) {
   const { t } = useI18n();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
@@ -1828,6 +1832,9 @@ export function MessageInput({
       className="message-input-wrapper"
       onKeyDownCapture={handleComposerKeyDown}
     >
+      {modelBadge && (
+        <div className="composer-model-float">{modelBadge}</div>
+      )}
       {/* Floating toggle button - only show when user can control collapse (not externally collapsed) */}
       {!externalCollapsed && (
         <button

@@ -22,6 +22,12 @@ Related topics: [mic-button-speech-ui](mic-button-speech-ui.md),
   boundary: YA stores the trimmed draft as a source-scoped new-session prefill
   and then navigates to the New Session flow, preserving the current project id
   when the current route carries one.
+- The expanded composer's toolbar carries an informational provider+model
+  chip (`FloatingComposerModelChip`) resolving the same default seeding the
+  New Session form applies (`useDefaultNewSessionModel`). It mounts only
+  while expanded so its providers/settings fetch waits for the `+` click,
+  and it is display-only — changing the model happens on the New Session
+  page this composer submits to.
 - The expanded composer may be used with keyboard typing or the shared mic
   button. Speech insertion, selected-span replacement, pending transcription
   tags, spoken commands, and cancellation follow the same

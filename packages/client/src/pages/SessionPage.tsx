@@ -5936,6 +5936,36 @@ function SessionPageContent({
                 heartbeatEnabled={heartbeatTurnsEnabled}
                 onToggleHeartbeat={handleToggleHeartbeat}
                 onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                modelBadge={
+                  !loading && effectiveProvider ? (
+                    <button
+                      type="button"
+                      className="provider-badge-button composer-model-badge-button"
+                      onClick={() => {
+                        setModelPanelInitialTab("model");
+                        setShowModelSwitchModal(true);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setModelPanelInitialTab("info");
+                        setShowModelSwitchModal(true);
+                      }}
+                      title={
+                        status.owner === "self" && status.processId
+                          ? t("sessionConfigureModel")
+                          : t("sessionViewInfo")
+                      }
+                    >
+                      <ProviderBadge
+                        provider={effectiveProvider}
+                        model={liveBadgeModel}
+                        thinking={liveModelConfig?.thinking}
+                        effort={liveModelConfig?.effort}
+                        isThinking={canStopOwnedProcess}
+                      />
+                    </button>
+                  ) : undefined
+                }
                 promptSuggestion={
                   mainComposerForAside
                     ? undefined

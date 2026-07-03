@@ -63,6 +63,7 @@ import {
   resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
 import {
+  getPreferredModelId,
   getProviderSessionDefaults,
   withProviderSessionDefaults,
 } from "../lib/newSessionDefaults";
@@ -250,20 +251,6 @@ function revokePendingFilePreviewUrls(files: readonly PendingFile[]): void {
       URL.revokeObjectURL(file.previewUrl);
     }
   }
-}
-
-function getPreferredModelId(
-  models: ModelInfo[],
-  preferredModelId?: string | null,
-) {
-  if (preferredModelId) {
-    const matchingPreferredModel = models.find(
-      (m) => m.id === preferredModelId,
-    );
-    if (matchingPreferredModel) return matchingPreferredModel.id;
-  }
-
-  return models[0]?.id ?? null;
 }
 
 function providerSupportsRecapMode(
@@ -2725,6 +2712,23 @@ export function NewSessionForm({
               />
             }
           />
+          {selectedProvider && modelOptions.length > 0 && (
+            <FilterDropdown
+              className="composer-model-chip"
+              label={t("newSessionModelTitle")}
+              options={modelOptions}
+              selected={selectedModel ? [selectedModel] : []}
+              onChange={handleModelSelect}
+              multiSelect={false}
+              triggerContent={
+                <ProviderBadge
+                  provider={selectedProvider}
+                  model={selectedModel ?? undefined}
+                />
+              }
+              triggerTitle={t("composerModelChipTitle")}
+            />
+          )}
         </div>
         <div className="new-session-form-toolbar-actions">
           {toolbarVisibility.projectQueue && showProjectQueueAction && (

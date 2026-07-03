@@ -48,6 +48,8 @@ export interface FilterDropdownProps<T extends string> {
   multiSelect?: boolean; // default true
   placeholder?: string; // shown when nothing selected
   placeholderContent?: ReactNode; // overrides placeholder for custom visual summaries
+  triggerContent?: ReactNode; // replaces the trigger label entirely (e.g. a badge chip)
+  triggerTitle?: string; // title/aria-label override for the trigger button
   align?: "left" | "right"; // dropdown alignment, default left
   className?: string;
 }
@@ -65,6 +67,8 @@ export function FilterDropdown<T extends string>({
   multiSelect = true,
   placeholder,
   placeholderContent,
+  triggerContent,
+  triggerTitle,
   align = "left",
   className = "",
 }: FilterDropdownProps<T>) {
@@ -334,12 +338,14 @@ export function FilterDropdown<T extends string>({
         type="button"
         className={`filter-dropdown-button ${selected.length > 0 ? "has-selection" : ""}`}
         onClick={handleButtonClick}
-        title={t("filterByLabel", { label })}
-        aria-label={t("filterByLabel", { label })}
+        title={triggerTitle ?? t("filterByLabel", { label })}
+        aria-label={triggerTitle ?? t("filterByLabel", { label })}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="filter-dropdown-button-label">{displayContent}</span>
+        <span className="filter-dropdown-button-label">
+          {triggerContent ?? displayContent}
+        </span>
         <svg
           className="filter-dropdown-chevron"
           width="12"

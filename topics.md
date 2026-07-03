@@ -103,3 +103,5 @@
 - thinking-expand-latest-only - Thinking auto-expand policies and the
   thought-toggle right-click gesture (registered retroactively; series
   began at fd47ecb2).
+- composer-model-visibility - Provider/model identity echoed adjacent to
+  every composer (session float, New Session chip, floating composer chip).

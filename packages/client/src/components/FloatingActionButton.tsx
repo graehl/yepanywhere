@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useDefaultNewSessionModel } from "../hooks/useDefaultNewSessionModel";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { createFabDraftKey } from "../hooks/useDrafts";
 import { useFabVisibility } from "../hooks/useFabVisibility";
@@ -39,6 +40,7 @@ import type {
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
+import { ProviderBadge } from "./ProviderBadge";
 import {
   VoiceInputButton,
   type SpeechPendingKind,
@@ -47,6 +49,29 @@ import {
 
 function createSpeechTargetId(): string {
   return `speech-target-${generateUUID()}`;
+}
+
+/**
+ * Informational default-model chip for the expanded floating composer: shows
+ * the provider + model a session started from here will launch with. Mounted
+ * only while expanded so the providers/settings fetch waits for the click.
+ * Changing the model happens on the New Session page this composer submits to.
+ */
+function FloatingComposerModelChip() {
+  const { t } = useI18n();
+  const defaultNewSessionModel = useDefaultNewSessionModel();
+  if (!defaultNewSessionModel) return null;
+  return (
+    <span
+      className="composer-model-chip-static"
+      title={t("floatingComposerModelChipTitle")}
+    >
+      <ProviderBadge
+        provider={defaultNewSessionModel.provider}
+        model={defaultNewSessionModel.modelId ?? undefined}
+      />
+    </span>
+  );
 }
 
 interface PendingSpeechFinal {
@@ -651,6 +676,7 @@ export function FloatingActionButton() {
             )}
           </div>
           <div className="fab-input-toolbar">
+            <FloatingComposerModelChip />
             <VoiceInputButton
               ref={voiceButtonRef}
               onTranscript={handleVoiceTranscript}

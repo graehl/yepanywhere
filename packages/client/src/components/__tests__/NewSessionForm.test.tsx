@@ -719,7 +719,7 @@ describe("NewSessionForm", () => {
     expect(screen.getByRole("button", { name: "Claude" }).className).toContain(
       "selected",
     );
-    expect(screen.getByTestId("filter-selected").textContent).toBe("opus");
+    expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
 
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -739,7 +739,7 @@ describe("NewSessionForm", () => {
       expect(
         screen.getByRole("button", { name: "Codex" }).className,
       ).not.toContain("selected");
-      expect(screen.getByTestId("filter-selected").textContent).toBe("opus");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
     });
   });
 
@@ -760,7 +760,7 @@ describe("NewSessionForm", () => {
       expect(screen.getByRole("button", { name: "Codex" }).className).toContain(
         "selected",
       );
-      expect(screen.getByTestId("filter-selected").textContent).toBe("gpt-5.4");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("gpt-5.4");
     });
   });
 
@@ -794,7 +794,7 @@ describe("NewSessionForm", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("filter-selected").textContent).toBe("opus");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
       expect(screen.getByRole("radio", { name: "Medium" }).className).toContain(
         "active",
       );
@@ -803,7 +803,7 @@ describe("NewSessionForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Codex" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("filter-selected").textContent).toBe(
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe(
         "gpt-5.3-codex",
       );
       expect(
@@ -815,7 +815,7 @@ describe("NewSessionForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("filter-selected").textContent).toBe("opus");
+      expect(screen.getAllByTestId("filter-selected")[0]!.textContent).toBe("opus");
       expect(screen.getByRole("radio", { name: "Medium" }).className).toContain(
         "active",
       );
@@ -913,7 +913,7 @@ describe("NewSessionForm", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
-    fireEvent.click(screen.getByRole("button", { name: "Opus 4.8" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Opus 4.8" })[0]!);
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
       target: { value: "hello" },
     });

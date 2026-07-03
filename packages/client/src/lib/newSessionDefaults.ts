@@ -1,10 +1,25 @@
 import type {
   EffortLevel,
+  ModelInfo,
   NewSessionDefaults,
   ProviderName,
   ProviderSessionDefaults,
   ThinkingMode,
 } from "@yep-anywhere/shared";
+
+export function getPreferredModelId(
+  models: ModelInfo[],
+  preferredModelId?: string | null,
+): string | null {
+  if (preferredModelId) {
+    const matchingPreferredModel = models.find(
+      (m) => m.id === preferredModelId,
+    );
+    if (matchingPreferredModel) return matchingPreferredModel.id;
+  }
+
+  return models[0]?.id ?? null;
+}
 
 export interface ProviderDefaultSeed {
   model?: string | null;

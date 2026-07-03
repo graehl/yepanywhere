@@ -20,7 +20,7 @@ surfaces that have selector-backed mirrors:
   `state.toolUseToAgentEntries` together.
 - Fallback: local `messages`/`agentContent` state if the store entry is
   missing or the hook has not reached the reveal point.
-- Still maintain local mirrors where they support loading reveal, fallback, and
+- Still maintain local mirrors where they support loading reset, fallback, and
   the Development settings rollback.
 - Confidence signal: reducer fixtures, focused hook tests, and browser
   dogfooding. The earlier returned-data invariant diagnostic was removed
@@ -37,8 +37,10 @@ subscription behavior, object identity, and remaining locally owned refs rather
 than providing a fully independent data-semantics rollback.
 
 One important guard remains: warm snapshot restore writes the store before it
-reveals local `messages`/`agentContent`, because the hook intentionally yields
-through the loading path. The store-backed returned path is still gated until
+reveals `messages`/`agentContent`, because the hook intentionally yields
+through the loading path. With the switch enabled, reveal updates refs plus
+local session/pagination state but skips React state writes for returned
+store-backed surfaces. The store-backed returned path is still gated until
 `loading` is false so the default source change does not bypass the deferred
 warm-reveal behavior.
 
@@ -47,10 +49,10 @@ warm-reveal behavior.
 | Boundary | Local mirror write | Store path | Preflight status |
 | --- | --- | --- | --- |
 | No warm snapshot reset | Clears local state while REST starts | Deletes the store entry | Ready with fallback to local empty state |
-| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated, then copied from selected runtime snapshot |
-| Warm catch-up before hydration | Copies selected runtime snapshot after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
-| Warm catch-up after hydration | Copies selected runtime snapshot after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
-| Cold persisted load | Copies selected runtime snapshot after REST load | `loadPersistedTranscript` | Store-selected reveal after gate |
+| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated, then selected runtime snapshot reveals without local state writes while enabled |
+| Warm catch-up before hydration | Ref-only mirror while enabled after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
+| Warm catch-up after hydration | Ref-only mirror while enabled after REST delta | `applyCatchupMessages` over restored snapshot | Store-selected reveal after gate |
+| Cold persisted load | Ref-only mirror while enabled after REST load | `loadPersistedTranscript` | Store-selected reveal after gate |
 | Ordinary stream/replay | Copies selector-backed store result | `applyStreamMessage` | Store-selected after dispatch |
 | Main streaming placeholder upsert | Copies selector-backed store result | `upsertStreamingPlaceholder` | Store-selected after dispatch |
 | Main streaming placeholder cleanup | Copies selector-backed store result | `clearStreamingPlaceholders` | Store-selected after dispatch |
@@ -93,9 +95,10 @@ warm-reveal behavior.
 
 The store-backed returned detail path is now the default, with the Development
 settings switch retained as a narrower rollback. The next implementation chunks
-should keep narrowing the remaining local mirror state itself: reveal/reset
+should keep narrowing the remaining local mirror state itself: reset/loading
 scaffolding and rollback behavior. Ordinary post-dispatch store-selected paths
-now skip local React state writes while the switch is enabled, no-signal
-store/local diagnostics have been removed from store-selected adapter paths,
-and route-cache persistence reads directly from the store. Scroll ownership and
+now skip local React state writes while the switch is enabled, reveal follows
+the same rule for returned store-backed surfaces, no-signal store/local
+diagnostics have been removed from store-selected adapter paths, and
+route-cache persistence reads directly from the store. Scroll ownership and
 `/btw` remain out of scope.

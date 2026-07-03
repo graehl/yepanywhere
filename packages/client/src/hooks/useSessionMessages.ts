@@ -958,10 +958,10 @@ export function useSessionMessages(
       }
       maxPersistedTimestampMsRef.current = snapshot.maxPersistedTimestampMs;
       scrollSnapshotRef.current = snapshot.scrollSnapshot;
-      applyAgentContent(snapshot.agentContent);
-      applyToolUseToAgent(new Map(snapshot.toolUseToAgentEntries));
+      mirrorStoreSelectedAgentContent(snapshot.agentContent);
+      mirrorStoreSelectedToolUseToAgent(new Map(snapshot.toolUseToAgentEntries));
       applySession(snapshot.session);
-      applyMessages(snapshot.messages);
+      mirrorStoreSelectedMessages(snapshot.messages);
       applyPagination(snapshot.pagination);
     };
 
@@ -1394,6 +1394,9 @@ export function useSessionMessages(
     applyPagination,
     applySession,
     applyToolUseToAgent,
+    mirrorStoreSelectedAgentContent,
+    mirrorStoreSelectedMessages,
+    mirrorStoreSelectedToolUseToAgent,
     readCurrentStoreRouteSnapshot,
     readSelectorBackedRuntimeSnapshot,
     warnMissingSelectorAfterDispatch,

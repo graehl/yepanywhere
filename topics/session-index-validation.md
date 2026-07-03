@@ -2,8 +2,9 @@
 
 > How the session index decides a cached summary is still fresh, why
 > shared-container providers (OpenCode's `opencode.db`) must not be
-> stat-validated, and why WS-tunneled requests must not queue behind a slow
-> validation.
+> stat-validated, why the TTL walk revalidates in the background instead of
+> blocking a request, and why WS-tunneled requests must not queue behind a
+> slow validation.
 
 Topic: session-index-validation
 
@@ -23,8 +24,39 @@ See also:
   `getSessionSummaryIfChanged(sessionId, projectId, cachedMtime, cachedSize)`.
 - **Full validation**: on first request per scope and whenever the last full
   validation is older than `SESSION_INDEX_FULL_VALIDATION_MS` (default 30s).
-  Every enumerated session is checked; this is what a fresh browser window
-  pays after the server has been idle.
+  Every enumerated session is checked.
+
+## Stale-while-revalidate
+
+The TTL walk is a consistency backstop for missed watcher events, so a
+request must not pay for it in-line. When full validation is due only
+because the TTL lapsed and the scope has a usable index — validated earlier
+this run, or loaded from the persisted `{dataDir}/indexes/*.json` — the
+request is served from that index immediately (watcher-flagged dirty
+sessions still get their cheap row-level refresh first) and the walk runs
+in the background. Background walks are deduped per (scope, options)
+validation key and serialized across scopes so the per-project walk behind
+`/api/sessions` cannot stampede the filesystem.
+
+Changes the background walk finds are pushed to clients as bus events
+(`session-updated` for changed rows, `session-created` for rows not
+previously indexed — the client summary store upserts by id, so replays
+are safe). Known gaps: deleted sessions have no removal event and
+disappear only on the next refetch, and a directory-dirty scope (watcher
+saw a create/delete) still validates in-line so a list fetch racing the
+client's own created/deleted handling never sees the file missing.
+Blocking full validation remains for first-ever scans (nothing usable to
+serve) and for `SESSION_INDEX_FULL_VALIDATION_MS=0`, which keeps its
+validate-every-request contract.
+
+Measured on the dev corpus (2026-07-03): first `/api/sessions` after 30s
+idle went from 1.2–2.35s (post-`feec8fb6`) to ~6ms via curl and 25–90ms
+inside a fresh browser window's boot burst; that window's sidebar session
+list populated at ~1.45s instead of ~2.7s, with the remainder dominated by
+dev-mode module loading and app boot, not API stalls. Warm-restart first
+requests serve the persisted index the same way instead of blocking
+~2.2s. Because a validated scope now persists its index even when empty,
+only the first-ever list of a scope (fresh data dir) still blocks.
 
 ## The freshness contract
 

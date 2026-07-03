@@ -581,6 +581,210 @@ describe("SessionIndexService", () => {
     });
   });
 
+  describe("stale-while-revalidate", () => {
+    async function overwriteSession(
+      sessionId: string,
+      content: string,
+    ): Promise<void> {
+      const jsonl = JSON.stringify({
+        type: "user",
+        message: { content },
+        uuid: `msg-${sessionId}-updated`,
+        timestamp: new Date().toISOString(),
+      });
+      await writeFile(join(sessionDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+    }
+
+    it("serves stale summaries after the TTL and emits session-updated from the background walk", async () => {
+      const eventBus = new EventBus();
+      const events: Array<{ type: string; sessionId?: string; title?: string | null }> = [];
+      eventBus.subscribe((event) => {
+        if (event.type === "session-updated") {
+          events.push({
+            type: event.type,
+            sessionId: event.sessionId,
+            title: event.title,
+          });
+        }
+      });
+      const swrService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        eventBus,
+        fullValidationIntervalMs: 40,
+      });
+      await swrService.initialize();
+
+      await createSession("session-1", "Original content");
+      const first = await swrService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(first[0]?.title).toBe("Original content");
+
+      // Change the file without watcher events, then let the TTL lapse.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await overwriteSession("session-1", "Updated content in background");
+
+      // TTL expired: the response is the stale cached summary, not a blocking
+      // re-validation.
+      const second = await swrService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(second[0]?.title).toBe("Original content");
+
+      await waitForCondition(
+        () =>
+          events.some(
+            (e) =>
+              e.sessionId === "session-1" &&
+              e.title === "Updated content in background",
+          ),
+        "expected background validation to emit session-updated",
+      );
+
+      // The background walk refreshed the index: next call serves it fresh.
+      const third = await swrService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(third[0]?.title).toBe("Updated content in background");
+    });
+
+    it("emits session-created for sessions found only by the background walk", async () => {
+      const eventBus = new EventBus();
+      const created: string[] = [];
+      eventBus.subscribe((event) => {
+        if (event.type === "session-created") {
+          created.push(event.session.id);
+        }
+      });
+      const swrService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        eventBus,
+        fullValidationIntervalMs: 40,
+      });
+      await swrService.initialize();
+
+      await createSession("session-1", "First session");
+      await swrService.getSessionsWithCache(sessionDir, projectId, reader);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await createSession("session-2", "Second session");
+
+      // Stale serve: the new file is not in the response yet.
+      const stale = await swrService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(stale.map((s) => s.id)).toEqual(["session-1"]);
+
+      await waitForCondition(
+        () => created.includes("session-2"),
+        "expected background validation to emit session-created",
+      );
+
+      const fresh = await swrService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(fresh.map((s) => s.id).sort()).toEqual([
+        "session-1",
+        "session-2",
+      ]);
+    });
+
+    it("serves a persisted index immediately after a service restart", async () => {
+      const firstRun = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await firstRun.initialize();
+      await createSession("session-1", "Persisted content");
+      await firstRun.getSessionsWithCache(sessionDir, projectId, reader);
+      // The first validation persists the index before returning.
+      await readFile(firstRun.getIndexPath(sessionDir), "utf-8");
+
+      const secondRun = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await secondRun.initialize();
+      const freshReader = new SessionReader({ sessionDir });
+      const parseSpy = vi.spyOn(freshReader, "getSessionSummary");
+
+      const sessions = await secondRun.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        freshReader,
+      );
+      expect(sessions[0]?.title).toBe("Persisted content");
+      // Served from the persisted index without a blocking re-parse.
+      expect(parseSpy).not.toHaveBeenCalled();
+    });
+
+    it("persists an empty index so restarts serve the scope without blocking", async () => {
+      const firstRun = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await firstRun.initialize();
+      // No session files in the scope: validation finds nothing to change,
+      // but the index must still be persisted.
+      const empty = await firstRun.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(empty).toEqual([]);
+      await readFile(firstRun.getIndexPath(sessionDir), "utf-8");
+
+      const secondRun = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await secondRun.initialize();
+      const sessions = await secondRun.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(sessions).toEqual([]);
+      // Served via stale-while-revalidate (a fast hit), not a blocking scan.
+      // The background walk may or may not have run yet, so only the
+      // synchronous fast-hit count is asserted.
+      expect(secondRun.getDebugStats().fastHits).toBe(1);
+    });
+
+    it("still blocks on first-ever scans with no usable index", async () => {
+      const swrService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await swrService.initialize();
+
+      await createSession("session-1", "Cold scan content");
+      const sessions = await swrService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(sessions[0]?.title).toBe("Cold scan content");
+    });
+  });
+
   describe("invalidation", () => {
     it("invalidateSession removes session from memory cache", async () => {
       await createSession("session-1", "Original");

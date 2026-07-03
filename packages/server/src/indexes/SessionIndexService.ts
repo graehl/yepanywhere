@@ -87,6 +87,10 @@ interface SessionIndexPerfDetails {
   cacheMisses?: number;
   cacheMissBytes?: number;
   largestCacheMisses?: SessionIndexLargestCacheMiss[];
+  /** Response served from the existing index while a background walk runs. */
+  staleWhileRevalidate?: boolean;
+  /** Full validation ran in the background, not on a request. */
+  background?: boolean;
 }
 
 type SessionIndexWarmupJobStatus = "running" | "completed" | "failed";
@@ -208,6 +212,12 @@ export class SessionIndexService implements ISessionIndexService {
   private lastFullValidationAt: Map<string, number> = new Map();
   private dirtyDirs: Set<string> = new Set();
   private dirtySessionsByDir: Map<string, Set<string>> = new Map();
+  /** Scopes with a persisted index file (loaded or written this run). */
+  private persistedIndexScopes: Set<string> = new Set();
+  /** In-flight background full validations, keyed by validation key. */
+  private backgroundValidations: Map<string, Promise<void>> = new Map();
+  /** Serializes background validations to bound concurrent I/O. */
+  private backgroundValidationChain: Promise<void> = Promise.resolve();
   private inFlightSessionLoads: Map<string, Promise<SessionSummary[]>> =
     new Map();
   private inFlightSessionSummaryLoads: Map<
@@ -233,6 +243,7 @@ export class SessionIndexService implements ISessionIndexService {
     totalDurationMs: 0,
   };
   private unsubscribeEventBus: (() => void) | null = null;
+  private eventBus: EventBus | null = null;
 
   constructor(options: SessionIndexServiceOptions = {}) {
     const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
@@ -260,6 +271,7 @@ export class SessionIndexService implements ISessionIndexService {
     );
 
     if (options.eventBus) {
+      this.eventBus = options.eventBus;
       this.unsubscribeEventBus = options.eventBus.subscribe((event) => {
         if (event.type !== "file-change") return;
         this.handleFileChange(event);
@@ -362,6 +374,7 @@ export class SessionIndexService implements ISessionIndexService {
         parsed.projectId === projectId
       ) {
         this.indexCache.set(cacheKey, parsed);
+        this.persistedIndexScopes.add(cacheKey);
         this.evictIfNeeded();
         return parsed;
       }
@@ -447,6 +460,7 @@ export class SessionIndexService implements ISessionIndexService {
         await fs.writeFile(tempPath, content, "utf-8");
         await fs.rename(tempPath, indexPath);
       });
+      this.persistedIndexScopes.add(scopeKey);
     } catch (error) {
       await fs.unlink(tempPath).catch(() => {
         // Best-effort cleanup for failed atomic writes.
@@ -1540,7 +1554,13 @@ export class SessionIndexService implements ISessionIndexService {
         }
       }
 
-      if (indexChanged) {
+      // Persist even a no-change (possibly empty) index: a scope with no
+      // index file would otherwise block a request in-line again on the
+      // first list after every server restart.
+      if (
+        indexChanged ||
+        !this.persistedIndexScopes.has(this.getScopeKey(sessionDir, reader))
+      ) {
         await this.saveIndex(sessionDir, reader);
       }
 
@@ -1719,6 +1739,54 @@ export class SessionIndexService implements ISessionIndexService {
       return summaries;
     }
 
+    // Full validation is due only because the TTL lapsed (no directory-level
+    // dirty signal). The TTL walk is a consistency backstop for missed
+    // watcher events, so a scope that already has a previously validated
+    // (this run) or persisted index serves it immediately and revalidates in
+    // the background — a fresh browser window after server idle must not pay
+    // the walk in-line. Background-discovered changes reach clients as
+    // session-updated/session-created bus events. Directory-dirty scopes
+    // (watcher saw a create/delete) still validate in-line, and interval <= 0
+    // keeps its validate-every-request contract. First-ever scans (no usable
+    // index) also still block: there is nothing to serve.
+    const canServeStaleWhileRevalidating =
+      this.fullValidationIntervalMs > 0 &&
+      !hasDirDirty &&
+      (lastFullValidation > 0 || this.persistedIndexScopes.has(scopeKey));
+    if (canServeStaleWhileRevalidating) {
+      let statCalls = 0;
+      let parseCalls = 0;
+      if (hasDirtySessions) {
+        const incremental = await this.applyIncrementalDirtyUpdates(
+          sessionDir,
+          projectId,
+          reader,
+          index,
+        );
+        statCalls = incremental.statCalls;
+        parseCalls = incremental.parseCalls;
+        if (incremental.indexChanged) {
+          await this.saveIndex(sessionDir, reader);
+        }
+      }
+      this.scheduleBackgroundValidation(sessionDir, projectId, reader, options);
+      const summaries = this.buildSummariesFromIndex(index, projectId, options);
+      this.recordCallStats(
+        "fast",
+        Date.now() - start,
+        statCalls,
+        parseCalls,
+        sessionDir,
+        {
+          scopeKey,
+          validationKey,
+          staleWhileRevalidate: true,
+          indexedSessions: Object.keys(index.sessions).length,
+        },
+      );
+      return summaries;
+    }
+
     const full = await this.runFullValidation(
       sessionDir,
       projectId,
@@ -1747,6 +1815,131 @@ export class SessionIndexService implements ISessionIndexService {
   }
 
   /**
+   * Queue a background full validation for a scope/options variant, deduped
+   * while one is pending and serialized across scopes so a burst of
+   * stale-served requests (the per-project walk behind /api/sessions) does
+   * not stampede the filesystem.
+   */
+  private scheduleBackgroundValidation(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    reader: ISessionReader,
+    options?: SessionIndexListOptions,
+  ): void {
+    const validationKey = this.getValidationKey(sessionDir, reader, options);
+    if (this.backgroundValidations.has(validationKey)) {
+      return;
+    }
+    const run = this.backgroundValidationChain
+      .then(() =>
+        this.runBackgroundValidation(sessionDir, projectId, reader, options),
+      )
+      .catch((error) => {
+        getLogger().warn(
+          { err: error },
+          `[SessionIndexService] Background validation failed for ${validationKey}`,
+        );
+      })
+      .finally(() => {
+        this.backgroundValidations.delete(validationKey);
+      });
+    this.backgroundValidations.set(validationKey, run);
+    this.backgroundValidationChain = run;
+  }
+
+  private async runBackgroundValidation(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    reader: ISessionReader,
+    options?: SessionIndexListOptions,
+  ): Promise<void> {
+    const validationKey = this.getValidationKey(sessionDir, reader, options);
+    // A queued validation may have been satisfied while waiting in the chain.
+    const lastFullValidation =
+      this.lastFullValidationAt.get(validationKey) ?? 0;
+    if (
+      lastFullValidation > 0 &&
+      Date.now() - lastFullValidation < this.fullValidationIntervalMs
+    ) {
+      return;
+    }
+
+    const start = Date.now();
+    const scopeKey = this.getScopeKey(sessionDir, reader);
+    const index = await this.loadIndex(sessionDir, projectId, reader);
+    const before = new Map(Object.entries(index.sessions));
+    const full = await this.runFullValidation(
+      sessionDir,
+      projectId,
+      reader,
+      index,
+      options,
+    );
+    this.recordCallStats(
+      "full",
+      Date.now() - start,
+      full.statCalls,
+      full.parseCalls,
+      sessionDir,
+      {
+        scopeKey,
+        validationKey,
+        background: true,
+        indexedSessions: Object.keys(index.sessions).length,
+        totalFiles: full.totalFiles,
+        cacheHits: full.cacheHits,
+        cacheMisses: full.cacheMisses,
+        cacheMissBytes: full.cacheMissBytes,
+        largestCacheMisses: full.largestCacheMisses,
+      },
+    );
+    this.emitBackgroundIndexChanges(index, before, projectId);
+  }
+
+  /**
+   * Emit bus events for sessions a background validation changed, so clients
+   * that were served a stale response converge without refetching. Unchanged
+   * entries keep their object identity through runFullValidation (only
+   * changed rows are reassigned), so reference comparison is exact. Deleted
+   * sessions have no removal event; they disappear on the next refetch.
+   */
+  private emitBackgroundIndexChanges(
+    index: SessionIndexState,
+    before: Map<string, CachedSessionSummary>,
+    projectId: UrlProjectId,
+  ): void {
+    if (!this.eventBus) {
+      return;
+    }
+    const timestamp = new Date().toISOString();
+    for (const [sessionId, cached] of Object.entries(index.sessions)) {
+      if (cached.isEmpty) continue;
+      const previous = before.get(sessionId);
+      if (previous === cached) continue;
+      if (!previous || previous.isEmpty) {
+        this.eventBus.emit({
+          type: "session-created",
+          session: this.toSessionSummary(sessionId, cached, projectId),
+          timestamp,
+        });
+        continue;
+      }
+      this.eventBus.emit({
+        type: "session-updated",
+        sessionId,
+        projectId,
+        title: cached.title,
+        messageCount: cached.messageCount,
+        updatedAt: cached.updatedAt,
+        contextUsage: cached.contextUsage,
+        model: cached.model,
+        lastAgentText: cached.lastAgentText,
+        timestamp,
+      });
+    }
+  }
+
+  /**
    * Invalidate the cache for a specific session.
    * Call this when you know a session file has been modified.
    */
@@ -1763,6 +1956,7 @@ export class SessionIndexService implements ISessionIndexService {
    */
   clearCache(sessionDir: string): void {
     this.indexCache.delete(sessionDir);
+    this.persistedIndexScopes.delete(sessionDir);
     this.clearDirDirtyState(sessionDir);
     this.lastFullValidationAt.delete(sessionDir);
   }

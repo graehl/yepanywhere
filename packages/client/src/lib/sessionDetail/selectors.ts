@@ -62,6 +62,12 @@ export function selectSessionDetailSession(
   return state.session;
 }
 
+export function selectSessionDetailLastMessageId(
+  state: SessionDetailState,
+): string | undefined {
+  return state.lastMessageId;
+}
+
 export function selectSessionDetailPreprocessAugments(
   state: SessionDetailState,
   options: { activeToolApproval?: ActiveToolApproval } = {},

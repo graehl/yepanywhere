@@ -11,12 +11,6 @@ import {
   type PaginationInfo,
   api,
 } from "../api/client";
-import { getMessageTimestampMs } from "../lib/linearMessageDedup";
-import {
-  findLastJsonlMessageId,
-  reconcilePersistedMessagesForProvider,
-  tagJsonlMessages,
-} from "../lib/sessionDetail/transcriptReducer";
 import { getMessageId } from "../lib/mergeMessages";
 import {
   prepareWarmRefreshAfterHydration,
@@ -59,6 +53,7 @@ import {
 } from "../lib/sessionDetail/shadowDiagnostics";
 import {
   selectSessionDetailAgentContent,
+  selectSessionDetailLastMessageId,
   selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
@@ -229,10 +224,6 @@ export function __resetSessionLoadCacheForTest(): void {
   defaultSessionDetailStore.clear();
 }
 
-function isDurableRecapOverlay(message: Message): boolean {
-  return typeof message.yaRecapSource === "string";
-}
-
 function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
@@ -301,9 +292,8 @@ export function useSessionMessages(
     useState<SessionLoadProgress>(() => createSessionLoadProgress("idle"));
   const [loadingOlder, setLoadingOlder] = useState(false);
 
-  // Session and pagination are store-authoritative: the reducer owns them and
-  // the hook returns store-selected values, so there are no local mirrors to
-  // drift. The refs below hold hook-only bookkeeping.
+  // Store-authoritative fields come from reducer-owned state. The remaining ref
+  // holds hook-only scroll bookkeeping, which is intentionally not reactive.
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ? cachedLoad?.scrollSnapshot
@@ -322,6 +312,15 @@ export function useSessionMessages(
         snapshotKey,
         selectSessionDetailSession,
       ) ?? null,
+    [snapshotKey],
+  );
+
+  const readStoreLastMessageId = useCallback(
+    () =>
+      defaultSessionDetailStore.readSelected(
+        snapshotKey,
+        selectSessionDetailLastMessageId,
+      ),
     [snapshotKey],
   );
 
@@ -373,15 +372,6 @@ export function useSessionMessages(
     [snapshotKey],
   );
 
-  // Track provider for DAG ordering decisions
-  const providerRef = useRef<string | undefined>(undefined);
-
-  // Track last message ID for incremental fetching
-  const lastMessageIdRef = useRef<string | undefined>(undefined);
-  // Highest timestamp observed from persisted JSONL messages.
-  // Used to suppress startup replay events that are already on disk.
-  const maxPersistedTimestampMsRef = useRef<number>(Number.NEGATIVE_INFINITY);
-
   const reportStoreDivergence = useCallback(
     (
       boundary: string,
@@ -408,17 +398,12 @@ export function useSessionMessages(
         agentContent: livePatch.agentContent ?? store.agentContent,
         toolUseToAgentEntries:
           livePatch.toolUseToAgentEntries ?? store.toolUseToAgentEntries,
-        lastMessageId: livePatch.lastMessageId ?? lastMessageIdRef.current,
-        maxPersistedTimestampMs:
-          livePatch.maxPersistedTimestampMs ??
-          maxPersistedTimestampMsRef.current,
         scrollSnapshot: livePatch.scrollSnapshot ?? scrollSnapshotRef.current,
       };
       reportSessionDetailStoreDivergence({
         boundary,
         projectId,
         sessionId,
-        provider: liveSession?.provider ?? providerRef.current,
         live,
         store,
       });
@@ -642,23 +627,6 @@ export function useSessionMessages(
   );
   const initialLoadCompleteRef = useRef(false);
 
-  const updatePersistedTimestampWatermark = useCallback(
-    (persistedMessages: Message[]) => {
-      let maxMs = maxPersistedTimestampMsRef.current;
-      for (const message of persistedMessages) {
-        if (isDurableRecapOverlay(message)) {
-          continue;
-        }
-        const ts = getMessageTimestampMs(message);
-        if (ts !== null && ts > maxMs) {
-          maxMs = ts;
-        }
-      }
-      maxPersistedTimestampMsRef.current = maxMs;
-    },
-    [],
-  );
-
   useEffect(() => {
     return () => {
       if (persistCurrentStoreRouteSnapshot()) {
@@ -757,11 +725,13 @@ export function useSessionMessages(
         "maxPersistedTimestampMs"
       >,
     ): SessionDetailRevealSnapshotResult => {
+      const selected = readSelectorBackedRuntimeSnapshot();
       const reveal = buildSessionDetailRevealSnapshot({
-        selected: readSelectorBackedRuntimeSnapshot(),
+        selected,
         fallback: {
           ...fallback,
-          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+          maxPersistedTimestampMs:
+            selected?.maxPersistedTimestampMs ?? Number.NEGATIVE_INFINITY,
           scrollSnapshot: fallback.scrollSnapshot ?? scrollSnapshotRef.current,
         },
       });
@@ -772,10 +742,6 @@ export function useSessionMessages(
     };
 
     const applyRevealSnapshot = (snapshot: SessionRouteSnapshot) => {
-      if (snapshot.lastMessageId) {
-        lastMessageIdRef.current = snapshot.lastMessageId;
-      }
-      maxPersistedTimestampMsRef.current = snapshot.maxPersistedTimestampMs;
       scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
         getSessionScrollBehaviorMode(),
       )
@@ -829,23 +795,18 @@ export function useSessionMessages(
     };
 
     const finishWarmHydration = (options: {
-      loadedMessages: Message[];
       loadedSession: SessionMetadata;
       loadedPagination?: PaginationInfo;
       sourceMessageCount: number;
       provider?: string;
       diagnosticBoundary: string;
     }): SessionDetailRevealSnapshotResult => {
-      const lastJsonlId = findLastJsonlMessageId(options.loadedMessages);
-      if (lastJsonlId) {
-        lastMessageIdRef.current = lastJsonlId;
-      }
       const reveal = readRevealSnapshotAfterStoreUpdate(
         options.diagnosticBoundary,
         {
           session: options.loadedSession,
           pagination: options.loadedPagination,
-          lastMessageId: lastJsonlId,
+          lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
         },
       );
@@ -870,7 +831,6 @@ export function useSessionMessages(
         hasOlderMessages: data.pagination?.hasOlderMessages,
         restoredFromSnapshot: true,
       });
-      providerRef.current = data.session.provider;
       setSessionLoadProgress(
         createSessionLoadProgressForWindow("loaded", {
           messageCount: data.messages.length,
@@ -889,7 +849,6 @@ export function useSessionMessages(
         refreshSession: data.session,
         refreshPagination: data.pagination,
       });
-      updatePersistedTimestampWatermark(warmRefresh.taggedMessages);
       dispatchSessionDetailAction({
         type: "applyCatchupMessages",
         session: data.session,
@@ -903,7 +862,6 @@ export function useSessionMessages(
         }),
       );
       const reveal = finishWarmHydration({
-        loadedMessages: warmRefresh.mergedMessages,
         loadedSession: data.session,
         loadedPagination: warmRefresh.pagination,
         sourceMessageCount: warmRefresh.taggedMessages.length,
@@ -926,7 +884,6 @@ export function useSessionMessages(
         restoredFromSnapshot: true,
         appliedAfterSnapshotHydration: true,
       });
-      providerRef.current = data.session.provider;
       const latestSnapshot = readCurrentStoreRouteSnapshot();
       const warmRefresh = prepareWarmRefreshAfterHydration({
         warmLoad,
@@ -935,7 +892,6 @@ export function useSessionMessages(
         refreshSession: data.session,
         refreshPagination: data.pagination,
       });
-      updatePersistedTimestampWatermark(warmRefresh.taggedMessages);
       dispatchSessionDetailAction({
         type: "applyCatchupMessages",
         session: data.session,
@@ -947,7 +903,7 @@ export function useSessionMessages(
         {
           session: data.session,
           pagination: warmRefresh.pagination,
-          lastMessageId: findLastJsonlMessageId(warmRefresh.mergedMessages),
+          lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
         },
       );
@@ -986,9 +942,6 @@ export function useSessionMessages(
           pagination: warmLoad.pagination,
         }),
       );
-      maxPersistedTimestampMsRef.current = warmLoad.maxPersistedTimestampMs;
-      providerRef.current = warmLoad.session.provider;
-      lastMessageIdRef.current = warmLoad.lastMessageId;
       setLoading(true);
       void (async () => {
         setSessionLoadProgress(
@@ -1005,7 +958,6 @@ export function useSessionMessages(
           return;
         }
         finishWarmHydration({
-          loadedMessages: warmLoad.messages,
           loadedSession: warmLoad.session,
           loadedPagination: warmLoad.pagination,
           sourceMessageCount: warmLoad.messages.length,
@@ -1019,14 +971,12 @@ export function useSessionMessages(
     } else {
       setSessionLoadProgress(createSessionLoadProgress("fetching"));
       resetSessionDetailState();
-      maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
-      providerRef.current = undefined;
-      lastMessageIdRef.current = undefined;
       setLoading(true);
     }
 
+    const initialAfterMessageId = readStoreLastMessageId();
     api
-      .getSession(projectId, sessionId, lastMessageIdRef.current, {
+      .getSession(projectId, sessionId, initialAfterMessageId, {
         tailCompactions: 2,
         tailTurns,
         tailFrom,
@@ -1053,37 +1003,21 @@ export function useSessionMessages(
             pagination: data.pagination,
           }),
         );
-        providerRef.current = data.session.provider;
 
-        // Tag messages from JSONL as authoritative
         setSessionLoadProgress(
           createSessionLoadProgressForWindow("preparing", {
             messageCount: data.messages.length,
             pagination: data.pagination,
           }),
         );
-        const taggedMessages = tagJsonlMessages(data.messages);
-        updatePersistedTimestampWatermark(taggedMessages);
-        const loadedMessages = reconcilePersistedMessagesForProvider(
-          taggedMessages,
-          data.session.provider,
-        );
         setSessionLoadProgress(
           createSessionLoadProgressForWindow("rendering", {
-            messageCount: loadedMessages.length,
+            messageCount: data.messages.length,
             pagination: data.pagination,
           }),
         );
         await yieldForSessionLoadingProgressPaint(detailedLoadingProgress);
         if (cancelled) return;
-        // Update lastMessageIdRef synchronously to avoid race condition:
-        // stream "connected" event calls fetchNewMessages() immediately, but the
-        // useEffect that normally updates lastMessageIdRef runs asynchronously.
-        // Without this, fetchNewMessages() would use undefined and refetch everything.
-        const lastJsonlId = findLastJsonlMessageId(loadedMessages);
-        if (lastJsonlId) {
-          lastMessageIdRef.current = lastJsonlId;
-        }
 
         const nextPagination = data.pagination;
         dispatchSessionDetailAction({
@@ -1097,14 +1031,14 @@ export function useSessionMessages(
           {
             session: data.session,
             pagination: nextPagination,
-            lastMessageId: lastJsonlId,
+            lastMessageId: readStoreLastMessageId(),
             scrollSnapshot: scrollSnapshotRef.current,
           },
         );
         const { snapshot } = reveal;
         completeInitialReveal({
           snapshot,
-          sourceMessageCount: taggedMessages.length,
+          sourceMessageCount: data.messages.length,
           provider: data.session.provider,
         });
 
@@ -1146,10 +1080,10 @@ export function useSessionMessages(
     onLoadComplete,
     onLoadError,
     flushBuffer,
-    updatePersistedTimestampWatermark,
     resetSessionDetailState,
     dispatchSessionDetailAction,
     readCurrentStoreRouteSnapshot,
+    readStoreLastMessageId,
     readSelectorBackedRuntimeSnapshot,
     snapshotKey,
     snapshotKeyString,
@@ -1276,7 +1210,7 @@ export function useSessionMessages(
         const data = await api.getSession(
           projectId,
           sessionId,
-          lastMessageIdRef.current,
+          readStoreLastMessageId(),
         );
         if (data.messages.length > 0) {
           dispatchSessionDetailAction({
@@ -1284,17 +1218,10 @@ export function useSessionMessages(
             messages: data.messages,
             session: data.session,
           });
-          updatePersistedTimestampWatermark(data.messages);
           const nextMessages = readMessagesAfterDispatch("catchup");
-          const lastJsonlId = findLastJsonlMessageId(nextMessages);
-          if (lastJsonlId) {
-            lastMessageIdRef.current = lastJsonlId;
-          }
           reportStoreDivergence("catchup", {
             messages: nextMessages,
             session: data.session,
-            lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
           });
         }
         // Update session metadata (including title, model, contextUsage) which may have changed
@@ -1318,7 +1245,7 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    updatePersistedTimestampWatermark,
+    readStoreLastMessageId,
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
@@ -1354,21 +1281,10 @@ export function useSessionMessages(
         messages: data.messages,
         pagination: data.pagination,
       });
-      const taggedOlder = data.messages.map((m) => ({
-        ...m,
-        _source: "jsonl" as const,
-      }));
-      updatePersistedTimestampWatermark(taggedOlder);
       const nextMessages = readMessagesAfterDispatch("older-page");
-      const lastJsonlId = findLastJsonlMessageId(nextMessages);
-      if (lastJsonlId) {
-        lastMessageIdRef.current = lastJsonlId;
-      }
       reportStoreDivergence("older-page", {
         messages: nextMessages,
         session: data.session,
-        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-        maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       });
     } catch {
       // Silent fail for loading older messages
@@ -1379,7 +1295,6 @@ export function useSessionMessages(
     projectId,
     sessionId,
     readSelectorBackedPagination,
-    updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,

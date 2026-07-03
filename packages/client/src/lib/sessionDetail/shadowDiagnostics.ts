@@ -46,8 +46,6 @@ interface CompactSessionDetail {
   agentKeys: string[];
   agents: Record<string, CompactAgent>;
   toolUseToAgentEntries: Array<[string, string]>;
-  lastMessageId?: string;
-  maxPersistedTimestampMs: number;
   scrollSnapshot?: CompactScrollSnapshot;
 }
 
@@ -57,8 +55,6 @@ export interface SessionDetailRuntimeStateInput {
   pagination?: SessionDetailRuntimeSnapshot["pagination"];
   agentContent: SessionDetailRuntimeSnapshot["agentContent"];
   toolUseToAgentEntries: SessionDetailRuntimeSnapshot["toolUseToAgentEntries"];
-  lastMessageId?: string;
-  maxPersistedTimestampMs: number;
   scrollSnapshot?: SessionDetailRuntimeSnapshot["scrollSnapshot"];
 }
 
@@ -66,7 +62,6 @@ export interface SessionDetailStoreDivergenceInput {
   boundary: string;
   projectId: string;
   sessionId: string;
-  provider?: string;
   live: SessionDetailRuntimeStateInput;
   store: SessionDetailRuntimeSnapshot;
 }
@@ -203,8 +198,6 @@ function compactSessionDetail(
     agentKeys,
     agents,
     toolUseToAgentEntries,
-    lastMessageId: input.lastMessageId,
-    maxPersistedTimestampMs: input.maxPersistedTimestampMs,
     scrollSnapshot: compactScrollSnapshot(input.scrollSnapshot),
   };
 }
@@ -219,8 +212,6 @@ function comparableCompact(input: CompactSessionDetail): string {
     agentKeys: input.agentKeys,
     agents: input.agents,
     toolUseToAgentEntries: input.toolUseToAgentEntries,
-    lastMessageId: input.lastMessageId,
-    maxPersistedTimestampMs: input.maxPersistedTimestampMs,
     scrollSnapshot: input.scrollSnapshot,
   });
 }
@@ -273,7 +264,7 @@ export function reportSessionDetailStoreDivergence(
     boundary: input.boundary,
     projectId: input.projectId,
     sessionId: input.sessionId,
-    provider: input.provider ?? live.provider ?? store.provider,
+    provider: live.provider ?? store.provider,
     firstMessageDiff: findFirstMessageDiff(
       input.live.messages,
       input.store.messages,

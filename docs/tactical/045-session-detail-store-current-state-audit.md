@@ -158,9 +158,9 @@ The outer cache manager remains custom either way.
 - stream buffering until initial load completes;
 - incremental catch-up requests;
 - older-page pagination requests;
-- metadata ref updates;
+- metadata update dispatches;
 - loading/progress state;
-- cursor and timestamp-watermark refs;
+- synchronous store cursor reads for incremental requests;
 - scroll snapshot refs and DOM-facing scroll restore inputs.
 
 `defaultSessionDetailStore` owns the reducer-fed canonical transcript mirror and
@@ -168,6 +168,7 @@ same-tab retained entries:
 
 - persisted load state;
 - stream/catch-up/older-page transcript state;
+- persisted cursor and startup-replay timestamp watermark state;
 - subagent content and context usage;
 - tool-use-to-agent mappings;
 - markdown augments;

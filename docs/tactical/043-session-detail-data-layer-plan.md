@@ -58,9 +58,9 @@ What is already in place:
 - Initial load, warm-route restore, warm catch-up before hydration, and warm
   catch-up after hydration now share one selected-runtime-snapshot reveal path:
   after the store restore/load/catch-up action, the hook reads that snapshot to
-  update local session/pagination/cursor/scroll bookkeeping while preserving the
-  existing loading gate. The store-vs-fallback reveal snapshot shape now lives
-  in a tested `sessionDetail/revealSnapshot` helper.
+  update scroll bookkeeping while preserving the existing loading gate. Cursor
+  and timestamp-watermark state are reducer-owned. The store-vs-fallback reveal
+  snapshot shape now lives in a tested `sessionDetail/revealSnapshot` helper.
 - Warm and cold initial reveal completion now share one hook-local completion
   helper for applying the reveal snapshot, marking reload phases, flushing the
   buffered stream queue, clearing loading, and writing final progress.
@@ -77,7 +77,7 @@ What is already in place:
 - Route-cache refresh on unmount now reads the current route snapshot directly
   from `defaultSessionDetailStore` instead of rebuilding it from returned hook
   data. The old `latestSnapshotRef` mirror has been removed; diagnostics that
-  need local context read the hook refs directly.
+  need local context read store-selected state plus hook-owned scroll context.
 - `toolUseToAgent` registration now dispatches through the reducer/store and
   validates the selector-backed mapping read after dispatch instead of keeping a
   hook-local returned-data `Map`.
@@ -88,18 +88,18 @@ What is already in place:
 - Ordinary stream, streaming-placeholder, subagent, tool-use mapping,
   persisted catch-up, and older-page adapter paths no longer independently
   recompute or retain legacy fallback transcript data after dispatch. They read
-  the store-selected result only where cursor/bookkeeping or missing-selector
-  diagnostics need it.
-- Selected runtime-snapshot reveal updates local session/pagination/cursor/scroll
-  bookkeeping but does not write local `messages`, `agentContent`, or
-  tool-use state. Reset-to-loading uses an explicit current-route reveal gate
-  instead of clearing local transcript state, so warm store data and stale
-  route detail stay hidden until the route snapshot is revealed.
+  the store-selected result only where post-dispatch diagnostics or
+  missing-selector diagnostics need it.
+- Selected runtime-snapshot reveal updates hook-owned scroll bookkeeping but
+  does not write local `messages`, `agentContent`, tool-use, session,
+  pagination, cursor, or timestamp-watermark state. Reset-to-loading uses an
+  explicit current-route reveal gate instead of clearing local transcript state,
+  so warm store data and stale route detail stay hidden until the route
+  snapshot is revealed.
 - No-signal store/local diagnostics have been removed from store-selected
-  stream, placeholder, subagent, tool-use, and reveal paths. Remaining
-  `[SessionDetailStore]` logs cover metadata, catch-up/older
-  cursor-watermark-pagination bookkeeping, scroll snapshots, and unexpected
-  missing selectors.
+  stream, placeholder, subagent, tool-use, reveal, cursor, and watermark paths.
+  Remaining `[SessionDetailStore]` logs cover metadata, catch-up/older
+  selected-data checks, scroll snapshots, and unexpected missing selectors.
 - Store-selected `messages`, `agentContent`, and tool-use mappings are now the
   only returned hook data after initial hydration has reached the reveal point.
   The Development settings rollback switch has been removed. If the store entry
@@ -166,9 +166,8 @@ Current diagnostic stance:
   boring enough for a cleaner cutover audit.
 - Keep dogfooding the default store-backed returned-detail path and turn
   visible regressions or non-scroll store/local divergences into compact
-  fixtures. Store/local diagnostics now have residual signal mostly for fields
-  that are not simply copied from the store-selected result: cursor refs,
-  timestamp watermarks, pagination, metadata, and scroll.
+  fixtures. Store/local diagnostics now have residual signal mostly for
+  metadata handoff, scroll snapshots, and unexpected missing selectors.
 - Do not use absence of `[SessionDetailReturnedData]` logs as evidence. That
   diagnostic was removed because the default returned data is store-selected by
   construction. Current confidence comes from reducer fixtures, focused hook
@@ -226,9 +225,10 @@ Ownership is intentionally still split while we migrate:
 - `useSession` owns session status, liveness, stream/watch subscriptions, and
   page-level actions.
 - `useSessionMessages` owns initial REST load, stream-buffer readiness timing,
-  pagination/metadata/scroll bookkeeping, and snapshot lifecycle. Returned
-  transcript data is store-selected after reveal, not kept in local transcript
-  mirrors.
+  metadata updates, older-page request timing, scroll bookkeeping, and snapshot
+  lifecycle. Returned transcript data, pagination, session metadata, cursors,
+  and replay watermarks are store-selected or reducer-owned rather than kept in
+  local mirrors.
 - `defaultSessionDetailStore` owns the reducer-fed canonical mirror and retained
   same-tab cache entries.
 - `MessageList` still owns display policy, progressive rendering, scroll
@@ -324,20 +324,20 @@ Store-backed return path:
   adapter/retention bug, not an alternate data path.
 - Missing-selector behavior: if warm/initial reveal cannot read a runtime
   snapshot after a store dispatch, it logs
-  `session-detail-selector-missing-after-dispatch`, applies metadata/cursor
-  bookkeeping with empty transcript surfaces, and skips writing that empty result
-  back to the route cache.
-- Keep local refs only where they still support diagnostics or imperative side
-  effects for independently owned fields such as cursor, timestamp watermark,
-  pagination, metadata, and scroll.
+  `session-detail-selector-missing-after-dispatch`, applies the warned empty
+  transcript fallback, and skips writing that empty result back to the route
+  cache.
+- Keep local refs only where they still support imperative side effects for
+  independently owned fields such as scroll. Cursor, timestamp watermark,
+  pagination, and metadata reads should go through the store/reducer layer.
 - Ordinary post-dispatch store-selected paths no longer update local transcript
   refs or local mirror state.
 - Reveal follows the same rule for returned store-backed surfaces. Reset starts
   an explicit returned-detail reveal gate instead of clearing transcript state to
   preserve warm-hydration gating.
 - Store/local diagnostics no longer run on paths where the live payload is just
-  the selected store result; remaining logs are for independently owned refs,
-  metadata, scroll, or missing selector cases.
+  the selected store result; remaining logs are for metadata, scroll, or missing
+  selector cases.
 - Do not include render selectors or `/btw` in this cutover.
 
 ## Current Risks

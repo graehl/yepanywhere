@@ -63,13 +63,11 @@ describe("session detail shadow diagnostics", () => {
       boundary: "repeat",
       projectId: "project-1",
       sessionId: "session-1",
-      provider: "codex",
       live: {
         messages: [userMessage("live-user-1", "live")],
         session,
         agentContent: {},
         toolUseToAgentEntries: [],
-        maxPersistedTimestampMs: Number.NEGATIVE_INFINITY,
       },
       store: {
         messages: [userMessage("store-user-1", "store")],
@@ -97,13 +95,11 @@ describe("session detail shadow diagnostics", () => {
       boundary: "store-boundary",
       projectId: "project-1",
       sessionId: "session-1",
-      provider: "codex",
       live: {
         messages: [liveMessage],
         session,
         agentContent: {},
         toolUseToAgentEntries: [],
-        maxPersistedTimestampMs: Number.NEGATIVE_INFINITY,
       },
       store: {
         messages: [storeMessage],

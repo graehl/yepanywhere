@@ -221,14 +221,16 @@ Relay only sees encrypted blobs. SRP handshake passes through relay to yepanywhe
 7. Duplicate detection ensures no duplicates
 
 **Key code:**
-- `lastMessageIdRef` tracks last known message ID (`useSessionMessages.ts:112`)
-- `fetchNewMessages()` uses incremental API (`useSessionMessages.ts:294-320`)
+- `defaultSessionDetailStore` tracks the reducer-owned last persisted message
+  ID for each route-window entry.
+- `fetchNewMessages()` reads that cursor synchronously through the session
+  detail store and uses the incremental API.
 - Server `afterMessageId` implemented in all readers (`reader.ts`, `gemini-reader.ts`, etc.)
 - Unit tested: `packages/server/test/incremental-session.test.ts`
 
 **Example scenario:**
 ```
-1. Open session, see 10 messages → lastMessageIdRef = msg10.id
+1. Open session, see 10 messages → store lastMessageId = msg10.id
 2. Close laptop
 3. 100 messages added on another computer
 4. Open laptop

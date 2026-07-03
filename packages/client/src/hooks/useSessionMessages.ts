@@ -704,6 +704,7 @@ export function useSessionMessages(
     let pendingWarmData: Awaited<ReturnType<typeof api.getSession>> | null =
       null;
     let pendingWarmError: Error | null = null;
+    let initialAfterMessageId: string | undefined;
     const warmLoad = readSessionLoadCache(snapshotKey);
 
     const notifyLoadComplete = (
@@ -820,6 +821,74 @@ export function useSessionMessages(
       return reveal;
     };
 
+    const applyWarmRefreshAction = (
+      data: Awaited<ReturnType<typeof api.getSession>>,
+      latestSnapshot?: Pick<SessionRouteSnapshot, "messages">,
+    ): {
+      messageCount: number;
+      pagination?: PaginationInfo;
+      sourceMessageCount: number;
+    } => {
+      if (!warmLoad) {
+        return {
+          messageCount: data.messages.length,
+          pagination: data.pagination,
+          sourceMessageCount: data.messages.length,
+        };
+      }
+
+      if (initialAfterMessageId === undefined) {
+        dispatchSessionDetailAction({
+          type: "loadPersistedTranscript",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        });
+        return {
+          messageCount: data.messages.length,
+          pagination: data.pagination,
+          sourceMessageCount: data.messages.length,
+        };
+      }
+
+      if (data.pagination) {
+        dispatchSessionDetailAction({
+          type: "replaceTailWindow",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        });
+        return {
+          messageCount: data.messages.length,
+          pagination: data.pagination,
+          sourceMessageCount: data.messages.length,
+        };
+      }
+
+      const warmRefresh = latestSnapshot
+        ? prepareWarmRefreshAfterHydration({
+            warmLoad,
+            latestSnapshot,
+            refreshMessages: data.messages,
+            refreshSession: data.session,
+          })
+        : prepareWarmRefreshBeforeHydration({
+            warmLoad,
+            refreshMessages: data.messages,
+            refreshSession: data.session,
+          });
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
+        session: data.session,
+        messages: data.messages,
+      });
+      return {
+        messageCount: warmRefresh.mergedMessages.length,
+        pagination: readSelectorBackedRuntimeSnapshot()?.pagination,
+        sourceMessageCount: warmRefresh.taggedMessages.length,
+      };
+    };
+
     const applyWarmDataBeforeHydration = (
       data: Awaited<ReturnType<typeof api.getSession>>,
     ) => {
@@ -843,28 +912,17 @@ export function useSessionMessages(
           pagination: data.pagination,
         }),
       );
-      const warmRefresh = prepareWarmRefreshBeforeHydration({
-        warmLoad,
-        refreshMessages: data.messages,
-        refreshSession: data.session,
-        refreshPagination: data.pagination,
-      });
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        session: data.session,
-        messages: data.messages,
-        pagination: warmRefresh.pagination,
-      });
+      const applied = applyWarmRefreshAction(data);
       setSessionLoadProgress(
         createSessionLoadProgressForWindow("rendering", {
-          messageCount: warmRefresh.mergedMessages.length,
-          pagination: warmRefresh.pagination,
+          messageCount: applied.messageCount,
+          pagination: applied.pagination,
         }),
       );
       const reveal = finishWarmHydration({
         loadedSession: data.session,
-        loadedPagination: warmRefresh.pagination,
-        sourceMessageCount: warmRefresh.taggedMessages.length,
+        loadedPagination: applied.pagination,
+        sourceMessageCount: applied.sourceMessageCount,
         provider: data.session.provider,
         diagnosticBoundary: "warm-catchup-before-hydration",
       });
@@ -885,24 +943,12 @@ export function useSessionMessages(
         appliedAfterSnapshotHydration: true,
       });
       const latestSnapshot = readCurrentStoreRouteSnapshot();
-      const warmRefresh = prepareWarmRefreshAfterHydration({
-        warmLoad,
-        latestSnapshot,
-        refreshMessages: data.messages,
-        refreshSession: data.session,
-        refreshPagination: data.pagination,
-      });
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        session: data.session,
-        messages: data.messages,
-        pagination: warmRefresh.pagination,
-      });
+      const applied = applyWarmRefreshAction(data, latestSnapshot);
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
         {
           session: data.session,
-          pagination: warmRefresh.pagination,
+          pagination: applied.pagination,
           lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
         },
@@ -974,7 +1020,7 @@ export function useSessionMessages(
       setLoading(true);
     }
 
-    const initialAfterMessageId = readStoreLastMessageId();
+    initialAfterMessageId = readStoreLastMessageId();
     api
       .getSession(projectId, sessionId, initialAfterMessageId, {
         tailCompactions: 2,
@@ -1207,17 +1253,23 @@ export function useSessionMessages(
 
     const request = (async () => {
       try {
-        const data = await api.getSession(
-          projectId,
-          sessionId,
-          readStoreLastMessageId(),
-        );
+        const afterMessageId = readStoreLastMessageId();
+        const data = await api.getSession(projectId, sessionId, afterMessageId);
         if (data.messages.length > 0) {
-          dispatchSessionDetailAction({
-            type: "applyCatchupMessages",
-            messages: data.messages,
-            session: data.session,
-          });
+          if (afterMessageId !== undefined && data.pagination) {
+            dispatchSessionDetailAction({
+              type: "replaceTailWindow",
+              messages: data.messages,
+              session: data.session,
+              pagination: data.pagination,
+            });
+          } else {
+            dispatchSessionDetailAction({
+              type: "applyCatchupMessages",
+              messages: data.messages,
+              session: data.session,
+            });
+          }
           const nextMessages = readMessagesAfterDispatch("catchup");
           reportStoreDivergence("catchup", {
             messages: nextMessages,

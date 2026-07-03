@@ -156,6 +156,53 @@ export function reconcilePersistedMessagesForProvider(
   return maybeReconcileApprox(messages, provider);
 }
 
+function maxOptionalNumber(
+  left: number | undefined,
+  right: number | undefined,
+): number | undefined {
+  if (left === undefined) {
+    return right;
+  }
+  if (right === undefined) {
+    return left;
+  }
+  return Math.max(left, right);
+}
+
+function updateCatchupPaginationCounts(
+  current: SessionDetailState["pagination"],
+  incoming: SessionDetailState["pagination"],
+  messageCount: number,
+): SessionDetailState["pagination"] {
+  if (!current) {
+    return undefined;
+  }
+
+  const totalUserTurns = maxOptionalNumber(
+    current.totalUserTurns,
+    incoming?.totalUserTurns,
+  );
+
+  return {
+    ...current,
+    totalMessageCount: Math.max(
+      current.totalMessageCount,
+      incoming?.totalMessageCount ?? 0,
+      messageCount,
+    ),
+    returnedMessageCount: Math.max(
+      current.returnedMessageCount,
+      incoming?.returnedMessageCount ?? 0,
+      messageCount,
+    ),
+    totalCompactions: Math.max(
+      current.totalCompactions,
+      incoming?.totalCompactions ?? 0,
+    ),
+    ...(totalUserTurns !== undefined && { totalUserTurns }),
+  };
+}
+
 function applyStreamMessage(
   state: SessionDetailState,
   action: Extract<SessionDetailAction, { type: "applyStreamMessage" }>,
@@ -601,11 +648,36 @@ export function reduceSessionDetailState(
         ...state,
         messages,
         session,
-        pagination: action.pagination ?? state.pagination,
+        pagination: updateCatchupPaginationCounts(
+          state.pagination,
+          action.pagination,
+          messages.length,
+        ),
         markdownAugments: reconcileMarkdownAugmentMessageIds(
           state,
           messages,
           provider,
+        ),
+        lastMessageId: findLastJsonlMessageId(messages),
+        maxPersistedTimestampMs: updatePersistedTimestampWatermark(
+          state.maxPersistedTimestampMs,
+          taggedMessages,
+        ),
+      };
+    }
+
+    case "replaceTailWindow": {
+      const taggedMessages = tagJsonlMessages(action.messages);
+      const messages = maybeReconcileApprox(taggedMessages, action.session.provider);
+      return {
+        ...state,
+        messages,
+        session: action.session,
+        pagination: action.pagination,
+        markdownAugments: reconcileMarkdownAugmentMessageIds(
+          state,
+          messages,
+          action.session.provider,
         ),
         lastMessageId: findLastJsonlMessageId(messages),
         maxPersistedTimestampMs: updatePersistedTimestampWatermark(

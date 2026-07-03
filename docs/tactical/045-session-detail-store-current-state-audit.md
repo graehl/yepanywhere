@@ -195,7 +195,9 @@ Store writes enter mainly through `useSessionMessages`:
   needed;
 - warm route snapshot restore writes through `writeRouteSnapshot`;
 - cold initial load dispatches `loadPersistedTranscript`;
-- warm refresh dispatches `applyCatchupMessages` over the restored entry;
+- warm refresh dispatches `applyCatchupMessages` over the restored entry for
+  ordinary deltas, or `replaceTailWindow` when an after-cursor response returns
+  compacted-tail pagination after an anchor miss;
 - stream events dispatch `applyStreamMessage`;
 - streaming placeholder updates dispatch `upsertStreamingPlaceholder`;
 - subagent stream events dispatch `applyStreamSubagentMessage`;
@@ -204,7 +206,8 @@ Store writes enter mainly through `useSessionMessages`:
 - final placeholder cleanup dispatches `clearStreamingPlaceholders` or
   `clearAgentStreamingPlaceholders`;
 - tool mappings dispatch `registerToolUseAgent`;
-- incremental file-watch catch-up dispatches `applyCatchupMessages`;
+- incremental file-watch catch-up dispatches `applyCatchupMessages`, except
+  anchor-miss fallback responses dispatch `replaceTailWindow`;
 - older-page loads dispatch `prependOlderMessages`;
 - metadata patches dispatch `setSessionMetadata`;
 - scroll snapshot updates call `patchScrollSnapshot`.

@@ -129,9 +129,9 @@ What is already in place:
 - Focused hook coverage now verifies that metadata-only store updates do not
   rerender the returned transcript subscription or replace returned transcript
   references.
-- Focused helper coverage verifies warm-refresh pagination reconciliation,
-  pre-hydration cursor/no-cursor behavior, and after-hydration use of the latest
-  store snapshot as the merge base.
+- Focused helper coverage verifies warm-refresh pre-hydration cursor/no-cursor
+  merge behavior and after-hydration use of the latest store snapshot as the
+  merge base. Reducer coverage owns loaded-window pagination invariants.
 - Focused helper coverage verifies reveal snapshot construction from a selected
   runtime snapshot, including the empty-transcript fallback path for unexpected
   missing store selection, cursor derivation, retained scroll fallback, and
@@ -142,11 +142,10 @@ What is already in place:
   the message count rather than implicitly using `returnedMessageCount`.
 - Focused helper coverage verifies stream-buffer ordering, drain-clears
   behavior, and reset behavior for queued main/subagent stream events.
-- Warm-cache hook coverage now verifies that a retained full transcript window
-  remains coherent when the refresh response falls back to a smaller compacted
-  tail window: the store-backed returned data keeps the broader message set and
-  reconciles pagination so `hasOlderMessages`/`returnedMessageCount` describe
-  the merged window rather than the narrower tail response.
+- Warm-cache hook coverage now verifies that an after-cursor refresh which
+  returns compacted-tail pagination is treated as an explicit anchor-miss
+  replacement: the reducer replaces the loaded tail window instead of smuggling
+  a boundary change through ordinary catch-up.
 - The catch-up store-authoritative hook fixture now guards against React's
   cross-update warning. Metadata reconciliation no longer dispatches to the
   external store from inside the legacy `setSession` functional updater.
@@ -188,8 +187,8 @@ Current diagnostic stance:
   while the store/shadow entry had a much larger accumulated transcript, and a
   React warning caused by external-store notification during a React state
   reducer. The tail-window/full-history contract now has reducer/store/hook
-  fixtures and warm-refresh pagination reconciliation; the warning case is
-  covered by the catch-up hook fixture and fixed by keeping metadata store
+  fixtures and an explicit `replaceTailWindow` anchor-miss action; the warning
+  case is covered by the catch-up hook fixture and fixed by keeping metadata store
   dispatch out of the legacy state updater.
 
 The key remaining truth is simple: the reducer/store is now the default source
@@ -296,10 +295,10 @@ Next likely slice:
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
-  than `pagination.returnedMessageCount`; `prependOlderMessages` and catch-up
-  actions may expand that window. A store-authoritative return path must not
-  accidentally swap a tail-window UI back to a full-history retained entry
-  unless the user actually loaded that broader window.
+  than `pagination.returnedMessageCount`; `prependOlderMessages` expands the
+  window backward, and `replaceTailWindow` explicitly replaces an anchor-miss
+  fallback tail. Ordinary catch-up may extend the live tail and update counts,
+  but it must not move `hasOlderMessages` or the older-page cursor.
 - Move the next implementation chunk back to `useSessionMessages`: keep shaving
   down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation,
   reveal snapshot construction/cacheability, and progress detail construction

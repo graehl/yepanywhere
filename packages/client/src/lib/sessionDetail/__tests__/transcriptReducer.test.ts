@@ -187,6 +187,112 @@ describe("transcriptReducer", () => {
     expect(tailWindow.lastMessageId).toBe("user-2");
   });
 
+  it("preserves loaded-window boundaries during catch-up", () => {
+    const loadedFullHistory = reduceSessionDetailState(
+      createInitialSessionDetailState(),
+      {
+        type: "loadPersistedTranscript",
+        session: sessionMetadata(),
+        messages: [
+          userMessage("user-1", "old", "2026-07-01T12:00:00.000Z"),
+          assistantMessage("assistant-1", "old", "2026-07-01T12:00:01.000Z"),
+          userMessage("user-2", "current", "2026-07-01T12:10:00.000Z"),
+        ],
+        pagination: pagination({
+          hasOlderMessages: false,
+          totalMessageCount: 3,
+          returnedMessageCount: 3,
+        }),
+      },
+    );
+
+    const state = reduceSessionDetailState(loadedFullHistory, {
+      type: "applyCatchupMessages",
+      session: sessionMetadata(),
+      messages: [
+        assistantMessage(
+          "assistant-2",
+          "current reply",
+          "2026-07-01T12:10:01.000Z",
+        ),
+      ],
+      pagination: pagination({
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "assistant-2",
+        truncatedBy: "compact_boundary",
+        totalMessageCount: 5,
+        returnedMessageCount: 1,
+      }),
+    });
+
+    expect(state.messages.map((message) => message.uuid)).toEqual([
+      "user-1",
+      "assistant-1",
+      "user-2",
+      "assistant-2",
+    ]);
+    expect(state.pagination).toMatchObject({
+      hasOlderMessages: false,
+      totalMessageCount: 5,
+      returnedMessageCount: 4,
+    });
+    expect(state.pagination?.truncatedBeforeMessageId).toBeUndefined();
+    expect(state.pagination?.truncatedBy).toBeUndefined();
+  });
+
+  it("replaces the loaded tail window for explicit anchor-miss fallback", () => {
+    const loadedFullHistory = reduceSessionDetailState(
+      createInitialSessionDetailState(),
+      {
+        type: "loadPersistedTranscript",
+        session: sessionMetadata(),
+        messages: [
+          userMessage("user-1", "old", "2026-07-01T12:00:00.000Z"),
+          assistantMessage("assistant-1", "old", "2026-07-01T12:00:01.000Z"),
+          userMessage("user-2", "current", "2026-07-01T12:10:00.000Z"),
+        ],
+        pagination: pagination({
+          hasOlderMessages: false,
+          totalMessageCount: 3,
+          returnedMessageCount: 3,
+        }),
+      },
+    );
+
+    const state = reduceSessionDetailState(loadedFullHistory, {
+      type: "replaceTailWindow",
+      session: sessionMetadata(),
+      messages: [
+        userMessage("user-2", "current", "2026-07-01T12:10:00.000Z"),
+        assistantMessage(
+          "assistant-2",
+          "current reply",
+          "2026-07-01T12:10:01.000Z",
+        ),
+      ],
+      pagination: pagination({
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "user-2",
+        truncatedBy: "compact_boundary",
+        totalMessageCount: 5,
+        returnedMessageCount: 2,
+      }),
+    });
+
+    expect(state.messages.map((message) => message.uuid)).toEqual([
+      "user-2",
+      "assistant-2",
+    ]);
+    expect(state.pagination).toMatchObject({
+      hasOlderMessages: true,
+      totalMessageCount: 5,
+      returnedMessageCount: 2,
+      truncatedBeforeMessageId: "user-2",
+      truncatedBy: "compact_boundary",
+    });
+    expect(state.lastMessageId).toBe("assistant-2");
+  });
+
   it("sets session metadata without changing transcript rows", () => {
     const messages = [
       userMessage("user-1", "hello", "2026-07-01T12:00:00.000Z"),

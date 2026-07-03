@@ -6,11 +6,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  type DeferredQueueMessage,
-  type PaginationInfo,
-  api,
-} from "../api/client";
+import type { DeferredQueueMessage, PaginationInfo } from "../api/client";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
 import {
   prepareWarmRefreshAfterHydration,
@@ -45,10 +42,7 @@ import {
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import { shouldRetainSessionScrollMemory } from "../lib/sessionScrollBehavior";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
-import {
-  reportProviderRuntimeStatusSnapshot,
-  useClientSummarySourceKey,
-} from "../lib/clientSummaryStore";
+import { reportProviderRuntimeStatusSnapshot } from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
   reportSessionDetailStoreDivergence,
@@ -68,6 +62,10 @@ import {
   getSessionDetailEntryKey,
   type SessionDetailEntryKeyInput,
 } from "../lib/sessionDetail/sessionDetailStore";
+import type {
+  GetSessionResult,
+  SessionDetailMemoryCache,
+} from "../lib/sourceRuntime";
 import type {
   AgentContextUsage,
   SessionDetailAction,
@@ -198,22 +196,24 @@ interface StoreBackedSessionDetail {
 }
 
 function readSessionLoadCache(
+  cache: SessionDetailMemoryCache,
   input: SessionDetailEntryKeyInput,
 ): SessionRouteSnapshot | undefined {
   if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
     return undefined;
   }
-  return defaultSessionDetailStore.readRouteSnapshot(input);
+  return cache.readRouteSnapshot(input);
 }
 
 function writeSessionLoadCache(
+  cache: SessionDetailMemoryCache,
   input: SessionDetailEntryKeyInput,
   entry: SessionRouteSnapshot,
 ): boolean {
   if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
     return false;
   }
-  return defaultSessionDetailStore.writeRouteSnapshot(input, {
+  return cache.writeRouteSnapshot(input, {
     ...entry,
     scrollSnapshot: shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
@@ -262,7 +262,10 @@ export function useSessionMessages(
     onLoadComplete,
     onLoadError,
   } = options;
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceApi = runtime.api;
+  const sessionDetailCache = runtime.sessionDetails.cache;
   const snapshotKey: SessionDetailEntryKeyInput = useMemo(
     () => ({
       sourceKey,
@@ -276,12 +279,17 @@ export function useSessionMessages(
   const snapshotKeyString = getSessionDetailEntryKey(snapshotKey);
   const cachedLoadRef = useRef<{
     key: string;
+    cache: SessionDetailMemoryCache;
     load: SessionRouteSnapshot | undefined;
   } | null>(null);
-  if (cachedLoadRef.current?.key !== snapshotKeyString) {
+  if (
+    cachedLoadRef.current?.key !== snapshotKeyString ||
+    cachedLoadRef.current.cache !== sessionDetailCache
+  ) {
     cachedLoadRef.current = {
       key: snapshotKeyString,
-      load: readSessionLoadCache(snapshotKey),
+      cache: sessionDetailCache,
+      load: readSessionLoadCache(sessionDetailCache, snapshotKey),
     };
   }
   const cachedLoad = cachedLoadRef.current.load;
@@ -304,32 +312,32 @@ export function useSessionMessages(
   );
   const dispatchSessionDetailAction = useCallback(
     (action: SessionDetailAction) => {
-      defaultSessionDetailStore.dispatch(snapshotKey, action);
+      sessionDetailCache.dispatch(snapshotKey, action);
     },
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   const readStoreSession = useCallback(
     () =>
-      defaultSessionDetailStore.readSelected(
+      sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailSession,
       ) ?? null,
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   const readStoreLastMessageId = useCallback(
     () =>
-      defaultSessionDetailStore.readSelected(
+      sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailLastMessageId,
       ),
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   const readCurrentStoreRouteSnapshot = useCallback(
-    () => defaultSessionDetailStore.readRouteSnapshot(snapshotKey),
-    [snapshotKey],
+    () => sessionDetailCache.readRouteSnapshot(snapshotKey),
+    [sessionDetailCache, snapshotKey],
   );
 
   const persistCurrentStoreRouteSnapshot = useCallback(() => {
@@ -340,39 +348,43 @@ export function useSessionMessages(
     if (!snapshot) {
       return false;
     }
-    return writeSessionLoadCache(snapshotKey, {
-      ...snapshot,
-      scrollSnapshot: shouldRetainSessionScrollMemory(
-        getSessionScrollBehaviorMode(),
-      )
-        ? scrollSnapshotRef.current
-        : undefined,
-    });
-  }, [readCurrentStoreRouteSnapshot, snapshotKey]);
+    return writeSessionLoadCache(
+      sessionDetailCache,
+      snapshotKey,
+      {
+        ...snapshot,
+        scrollSnapshot: shouldRetainSessionScrollMemory(
+          getSessionScrollBehaviorMode(),
+        )
+          ? scrollSnapshotRef.current
+          : undefined,
+      },
+    );
+  }, [readCurrentStoreRouteSnapshot, sessionDetailCache, snapshotKey]);
   const recordCurrentEntryBytes = useCallback(() => {
-    const bytes = defaultSessionDetailStore
+    const bytes = sessionDetailCache
       .getStats()
       .entries.find((entry) => entry.key === snapshotKeyString)?.approxBytes;
     if (bytes) {
       recordLastSessionTranscriptBytes(bytes);
     }
-  }, [snapshotKeyString]);
+  }, [sessionDetailCache, snapshotKeyString]);
   const resetSessionDetailState = useCallback(
     (snapshot?: SessionRouteSnapshot) => {
       if (snapshot) {
-        defaultSessionDetailStore.replaceRouteSnapshot(snapshotKey, snapshot);
+        sessionDetailCache.replaceRouteSnapshot(snapshotKey, snapshot);
         return;
       }
-      defaultSessionDetailStore.resetEntryState(snapshotKey);
+      sessionDetailCache.resetEntryState(snapshotKey);
     },
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   // Hold the store entry for the mounted session: retention protects it from
   // TTL/LRU eviction, so incremental dispatches always land on real state.
   useEffect(
-    () => defaultSessionDetailStore.retain(snapshotKey),
-    [snapshotKey],
+    () => sessionDetailCache.retain(snapshotKey),
+    [sessionDetailCache, snapshotKey],
   );
 
   const reportStoreDivergence = useCallback(
@@ -383,7 +395,7 @@ export function useSessionMessages(
       if (!isSessionDetailShadowDiagnosticsEnabled()) {
         return;
       }
-      const store = defaultSessionDetailStore.readSelected(
+      const store = sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailRuntimeSnapshot,
       );
@@ -411,7 +423,7 @@ export function useSessionMessages(
         store,
       });
     },
-    [snapshotKey, projectId, sessionId],
+    [sessionDetailCache, snapshotKey, projectId, sessionId],
   );
 
   const updateSession = useCallback(
@@ -431,25 +443,25 @@ export function useSessionMessages(
 
   const readSelectorBackedMessages = useCallback(
     () =>
-      defaultSessionDetailStore.readSelected(
+      sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailMessages,
       ),
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   const readSelectorBackedAgentContent = useCallback(
     () =>
-      defaultSessionDetailStore.readSelected(
+      sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailAgentContent,
       ),
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   const readSelectorBackedRuntimeSnapshot = useCallback(
     () => {
-      const selected = defaultSessionDetailStore.readSelected(
+      const selected = sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailRuntimeSnapshot,
       );
@@ -458,21 +470,21 @@ export function useSessionMessages(
       }
       return {
         ...selected,
-        scrollSnapshot: defaultSessionDetailStore.readScrollSnapshot(
+        scrollSnapshot: sessionDetailCache.readScrollSnapshot(
           snapshotKey,
         ),
       };
     },
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   const readSelectorBackedToolUseToAgent = useCallback(() => {
-    const entries = defaultSessionDetailStore.readSelected(
+    const entries = sessionDetailCache.readSelected(
       snapshotKey,
       selectSessionDetailToolUseToAgentEntries,
     );
     return entries ? new Map(entries) : undefined;
-  }, [snapshotKey]);
+  }, [sessionDetailCache, snapshotKey]);
 
   const warnSessionDetailStore = useCallback(
     (payload: Record<string, unknown>) => {
@@ -584,21 +596,21 @@ export function useSessionMessages(
   const storeBackedDetail = useSyncExternalStore(
     useCallback(
       (listener) => {
-        return defaultSessionDetailStore.subscribe(
+        return sessionDetailCache.subscribe(
           snapshotKey,
           selectStoreBackedDetail,
           listener,
         );
       },
-      [snapshotKey, selectStoreBackedDetail],
+      [sessionDetailCache, snapshotKey, selectStoreBackedDetail],
     ),
     useCallback(
       () =>
-        defaultSessionDetailStore.readSelected(
+        sessionDetailCache.readSelected(
           snapshotKey,
           selectStoreBackedDetail,
         ),
-      [snapshotKey, selectStoreBackedDetail],
+      [sessionDetailCache, snapshotKey, selectStoreBackedDetail],
     ),
     () => undefined,
   );
@@ -637,7 +649,7 @@ export function useSessionMessages(
         return;
       }
       recordCurrentEntryBytes();
-      defaultSessionDetailStore.deleteEntry({
+      sessionDetailCache.deleteEntry({
         sourceKey,
         projectId,
         sessionId,
@@ -652,6 +664,7 @@ export function useSessionMessages(
     sessionId,
     tailTurns,
     tailFrom,
+    sessionDetailCache,
     recordCurrentEntryBytes,
   ]);
 
@@ -704,14 +717,13 @@ export function useSessionMessages(
   useEffect(() => {
     let cancelled = false;
     let warmHydrated = false;
-    let pendingWarmData: Awaited<ReturnType<typeof api.getSession>> | null =
-      null;
+    let pendingWarmData: GetSessionResult | null = null;
     let pendingWarmError: Error | null = null;
     let initialAfterMessageId: string | undefined;
-    const warmLoad = readSessionLoadCache(snapshotKey);
+    const warmLoad = readSessionLoadCache(sessionDetailCache, snapshotKey);
 
     const notifyLoadComplete = (
-      data: Awaited<ReturnType<typeof api.getSession>>,
+      data: GetSessionResult,
     ) => {
       reportProviderRuntimeStatusSnapshot(
         sourceKey,
@@ -770,7 +782,11 @@ export function useSessionMessages(
       if (!cacheableSnapshot) {
         return false;
       }
-      return writeSessionLoadCache(snapshotKey, cacheableSnapshot);
+      return writeSessionLoadCache(
+        sessionDetailCache,
+        snapshotKey,
+        cacheableSnapshot,
+      );
     };
 
     const completeInitialReveal = (options: {
@@ -833,7 +849,7 @@ export function useSessionMessages(
     };
 
     const applyWarmRefreshAction = (
-      data: Awaited<ReturnType<typeof api.getSession>>,
+      data: GetSessionResult,
       latestSnapshot?: Pick<SessionRouteSnapshot, "messages">,
     ): {
       messageCount: number;
@@ -901,7 +917,7 @@ export function useSessionMessages(
     };
 
     const applyWarmDataBeforeHydration = (
-      data: Awaited<ReturnType<typeof api.getSession>>,
+      data: GetSessionResult,
     ) => {
       if (!warmLoad) return;
       markReloadPerfPhase("session_initial_load_data_ready", {
@@ -942,7 +958,7 @@ export function useSessionMessages(
     };
 
     const applyWarmDeltaAfterHydration = (
-      data: Awaited<ReturnType<typeof api.getSession>>,
+      data: GetSessionResult,
     ) => {
       if (!warmLoad) return;
       markReloadPerfPhase("session_initial_load_data_ready", {
@@ -1032,8 +1048,11 @@ export function useSessionMessages(
     }
 
     initialAfterMessageId = readStoreLastMessageId();
-    api
-      .getSession(projectId, sessionId, initialAfterMessageId, {
+    sourceApi
+      .getSession({
+        projectId,
+        sessionId,
+        afterMessageId: initialAfterMessageId,
         tailCompactions: 2,
         tailTurns,
         tailFrom,
@@ -1142,8 +1161,10 @@ export function useSessionMessages(
     readCurrentStoreRouteSnapshot,
     readStoreLastMessageId,
     readSelectorBackedRuntimeSnapshot,
+    sessionDetailCache,
     snapshotKey,
     snapshotKeyString,
+    sourceApi,
     warnMissingSelectorAfterDispatch,
     sourceKey,
   ]);
@@ -1266,7 +1287,11 @@ export function useSessionMessages(
     const request = (async () => {
       try {
         const afterMessageId = readStoreLastMessageId();
-        const data = await api.getSession(projectId, sessionId, afterMessageId);
+        const data = await sourceApi.getSession({
+          projectId,
+          sessionId,
+          afterMessageId,
+        });
         reportProviderRuntimeStatusSnapshot(sourceKey, {
           sessionId,
           projectId,
@@ -1318,17 +1343,18 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
+    sourceApi,
     sourceKey,
     updateSession,
   ]);
 
   const readSelectorBackedPagination = useCallback(
     () =>
-      defaultSessionDetailStore.readSelected(
+      sessionDetailCache.readSelected(
         snapshotKey,
         selectSessionDetailPagination,
       ),
-    [snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   // Load older messages (previous chunk before the current truncation point)
@@ -1342,7 +1368,9 @@ export function useSessionMessages(
     }
     setLoadingOlder(true);
     try {
-      const data = await api.getSession(projectId, sessionId, undefined, {
+      const data = await sourceApi.getSession({
+        projectId,
+        sessionId,
         tailCompactions: 2,
         beforeMessageId: currentPagination.truncatedBeforeMessageId,
       });
@@ -1373,6 +1401,7 @@ export function useSessionMessages(
     dispatchSessionDetailAction,
     readMessagesAfterDispatch,
     reportStoreDivergence,
+    sourceApi,
     sourceKey,
   ]);
 
@@ -1385,18 +1414,21 @@ export function useSessionMessages(
         return;
       }
       scrollSnapshotRef.current = snapshot;
-      defaultSessionDetailStore.patchScrollSnapshot(snapshotKey, snapshot);
+      sessionDetailCache.patchScrollSnapshot(snapshotKey, snapshot);
       reportStoreDivergence("scroll-snapshot", {
         scrollSnapshot: snapshot,
       });
     },
-    [reportStoreDivergence, snapshotKey],
+    [reportStoreDivergence, sessionDetailCache, snapshotKey],
   );
 
   // Fetch session metadata only
   const fetchSessionMetadata = useCallback(async () => {
     try {
-      const data = await api.getSessionMetadata(projectId, sessionId);
+      const data = await sourceApi.getSessionMetadata({
+        projectId,
+        sessionId,
+      });
       reportProviderRuntimeStatusSnapshot(sourceKey, {
         sessionId,
         projectId,
@@ -1413,10 +1445,10 @@ export function useSessionMessages(
     } catch {
       // Silent fail for metadata updates
     }
-  }, [projectId, sessionId, sourceKey, updateSession]);
+  }, [projectId, sessionId, sourceApi, sourceKey, updateSession]);
   const selectedInitialScrollSnapshot =
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
-      ? (defaultSessionDetailStore.readScrollSnapshot(snapshotKey) ??
+      ? (sessionDetailCache.readScrollSnapshot(snapshotKey) ??
         cachedLoad?.scrollSnapshot ??
         null)
       : null;

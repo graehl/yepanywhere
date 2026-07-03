@@ -135,6 +135,9 @@ Acceptance:
 
 ## Phase 1: Introduce Source Runtime Interfaces
 
+Status: Implemented for the session-detail-consuming subset. Activity stream
+ownership and coordinator factories remain in their later phases.
+
 Intent:
 
 - Add small interfaces/types before moving behavior:
@@ -180,7 +183,22 @@ Notes:
   `sourceKey` in these interfaces. Route-scoped keys are acceptable for the
   first pass only if no new interface treats them as server identities.
 
+Implementation note:
+
+- Added a `YaSourceRuntime` contract with source-bound session-detail API and
+  cache access, plus a current-source adapter that wraps the existing global
+  API transport and `defaultSessionDetailStore`.
+- Added `CurrentSourceRuntimeProvider` next to `ClientSummarySourceBinding` so
+  app shells construct the current runtime from the existing route-derived
+  source key. The adapter keeps route-scoped keys opaque and does not parse
+  transport facts from them.
+- Left `SourceActivityStream` and `SessionDetailCoordinator` out of the first
+  runtime surface because no Phase 1/2 consumer uses them yet; Phase 3 and
+  Phase 6 still own those moves.
+
 ## Phase 2: Pass Runtime Into Session Messages
+
+Status: Implemented.
 
 Intent:
 
@@ -212,6 +230,15 @@ Non-goal:
   messages to session detail. Moving stream subscriptions under the runtime is
   Phase 6 scope. Until then, "session detail no longer depends on the global
   connection" is true of REST and cache access, not of streaming.
+
+Implementation note:
+
+- `useSessionMessages` now derives `sourceKey`, REST session reads, and the
+  session-detail cache from `useCurrentSourceRuntime()`.
+- The current-source adapter preserves existing `api.getSession` call shapes
+  so direct/local/remote behavior and existing tests remain unchanged.
+- Added focused coverage proving two fake source runtimes can load the same
+  project/session ids without crossing API calls or cache entries.
 
 ## Phase 3: Extract SessionDetailCoordinator Skeleton
 

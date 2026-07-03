@@ -32,6 +32,7 @@ import {
   useRemoteConnection,
 } from "./contexts/RemoteConnectionContext";
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
+import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
@@ -235,11 +236,13 @@ export function RemoteApp({ children }: Props) {
     <ToastProvider>
       <RemoteConnectionProvider>
         <ClientSummarySourceBinding />
-        <InboxProvider>
-          <SchemaValidationProvider>
-            <RemoteAppInner>{children}</RemoteAppInner>
-          </SchemaValidationProvider>
-        </InboxProvider>
+        <CurrentSourceRuntimeProvider>
+          <InboxProvider>
+            <SchemaValidationProvider>
+              <RemoteAppInner>{children}</RemoteAppInner>
+            </SchemaValidationProvider>
+          </InboxProvider>
+        </CurrentSourceRuntimeProvider>
       </RemoteConnectionProvider>
     </ToastProvider>
   );

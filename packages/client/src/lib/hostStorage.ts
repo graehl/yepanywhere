@@ -26,6 +26,12 @@ export interface SavedHost {
   srpUsername: string;
   session?: StoredSession;
 
+  // Stable server-advertised identity, learned during auth/pairing. When
+  // present, source identity resolves to `server:<id>` so it survives
+  // direct/relay transport failover (see lib/sourceIdentity.ts). Not yet
+  // populated by any flow.
+  serverInstanceId?: string;
+
   // Metadata
   lastConnected?: string;
   createdAt: string;

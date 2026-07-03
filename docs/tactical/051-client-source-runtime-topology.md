@@ -61,7 +61,11 @@ This plan starts from the current post-refactor state:
   Source disposal is new behavior to build, not existing behavior to relocate.
 - Source keys are connection-route identities (`host:<savedHostId>`,
   `direct:<normalizedWsUrl>`); the same server reached via direct and relay
-  yields two keys. See the source-identity section of the vision topic.
+  yields two keys. See the source-identity section of the vision topic. The
+  seam for server-scoped identity exists (`lib/sourceIdentity.ts`,
+  `SavedHost.serverInstanceId` resolving to `server:<instanceId>`), but no
+  flow populates it yet — new interfaces must treat keys as opaque either
+  way.
 - `useSessionMessages` also reports provider runtime status keyed by the
   ambient source key (`reportProviderRuntimeStatusSnapshot`).
 

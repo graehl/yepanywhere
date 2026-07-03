@@ -1,8 +1,6 @@
 import { useLayoutEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  createClientSummaryDirectSourceKey,
-  createClientSummaryHostSourceKey,
   getCurrentClientSummarySourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
@@ -10,6 +8,10 @@ import {
   type ClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
 import { getHostById, getHostByRelayUsername } from "../lib/hostStorage";
+import {
+  resolveSourceKeyForDirectUrl,
+  resolveSourceKeyForSavedHost,
+} from "../lib/sourceIdentity";
 import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 
 const DIRECT_ROUTE_SEGMENTS = new Set([
@@ -41,17 +43,6 @@ function firstPathSegment(pathname: string): string {
   }
 }
 
-function normalizeDirectSourceUrl(wsUrl: string): string {
-  const trimmed = wsUrl.trim();
-  try {
-    const url = new URL(trimmed);
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return trimmed;
-  }
-}
-
 export function resolveClientSummarySourceKey(options: {
   pathname: string;
   remote: ClientSummarySourceRemoteState | null;
@@ -69,7 +60,7 @@ export function resolveClientSummarySourceKey(options: {
   if (!DIRECT_ROUTE_SEGMENTS.has(segment)) {
     const host = getHostByRelayUsername(segment);
     return host
-      ? createClientSummaryHostSourceKey(host.id)
+      ? resolveSourceKeyForSavedHost(host)
       : REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY;
   }
 
@@ -77,13 +68,11 @@ export function resolveClientSummarySourceKey(options: {
     ? getHostById(remote.currentHostId)
     : undefined;
   if (currentHost?.mode === "direct") {
-    return createClientSummaryHostSourceKey(currentHost.id);
+    return resolveSourceKeyForSavedHost(currentHost);
   }
 
   if (remote.currentDirectUrl) {
-    return createClientSummaryDirectSourceKey(
-      normalizeDirectSourceUrl(remote.currentDirectUrl),
-    );
+    return resolveSourceKeyForDirectUrl(remote.currentDirectUrl);
   }
 
   return REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY;

@@ -112,6 +112,13 @@ instance id surfaced during auth/pairing), which does not exist yet. The
 tactical plan may proceed with route-scoped keys, provided no new interface
 treats a route-scoped key as a server identity.
 
+The concept has a thin code seam already:
+`packages/client/src/lib/sourceIdentity.ts` is the single place that answers
+"what is a source's identity," and `SavedHost.serverInstanceId` is the field
+a future auth/pairing flow would populate. When present, identity resolves to
+`server:<instanceId>` and survives transport failover; nothing populates it
+yet, so all keys remain route-scoped in practice.
+
 ### SourceRuntimeRegistry
 
 The registry owns construction, lookup, and disposal of `YaSourceRuntime`

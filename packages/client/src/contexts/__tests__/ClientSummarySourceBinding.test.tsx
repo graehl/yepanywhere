@@ -122,6 +122,20 @@ describe("resolveClientSummarySourceKey", () => {
     ).toBe("direct:ws://127.0.0.1:3400/api/ws");
   });
 
+  it("prefers a server instance id when the saved host carries one", () => {
+    saveHost({
+      ...directHost("direct-host", "ws://127.0.0.1:3400/api/ws"),
+      serverInstanceId: "srv-1",
+    });
+
+    expect(
+      resolveClientSummarySourceKey({
+        pathname: "/sessions",
+        remote: remote({ currentHostId: "direct-host" }),
+      }),
+    ).toBe("server:srv-1");
+  });
+
   it("does not reuse a relay host id on direct app routes", () => {
     saveHost(relayHost("host-macbook", "macbook"));
 

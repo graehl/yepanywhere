@@ -193,6 +193,51 @@ function applyStreamMessage(
   return messages === state.messages ? state : { ...state, messages };
 }
 
+export function applyStreamSubagentMessageToMap(
+  agentContent: AgentContentMap,
+  agentId: string,
+  message: Message,
+  streamingEnabled?: boolean,
+): AgentContentMap {
+  const existing = agentContent[agentId] ?? {
+    messages: [],
+    status: "running" as const,
+  };
+
+  if (message._isStreaming === true && streamingEnabled === false) {
+    const messages = clearStreamingPlaceholderMessages(existing.messages);
+    if (messages === existing.messages) {
+      return agentContent;
+    }
+    if (messages.length === 0 && existing.contextUsage === undefined) {
+      const next = { ...agentContent };
+      delete next[agentId];
+      return next;
+    }
+    return {
+      ...agentContent,
+      [agentId]: {
+        ...existing,
+        messages,
+      },
+    };
+  }
+
+  const incomingId = getMessageId(message);
+  if (findMessageIndexById(existing.messages, incomingId) !== -1) {
+    return agentContent;
+  }
+
+  return {
+    ...agentContent,
+    [agentId]: {
+      ...existing,
+      messages: [...existing.messages, message],
+      status: "running",
+    },
+  };
+}
+
 function applyStreamSubagentMessage(
   state: SessionDetailState,
   action: Extract<
@@ -200,55 +245,13 @@ function applyStreamSubagentMessage(
     { type: "applyStreamSubagentMessage" }
   >,
 ): SessionDetailState {
-  const existing = state.agentContent[action.agentId] ?? {
-    messages: [],
-    status: "running" as const,
-  };
-
-  if (
-    action.message._isStreaming === true &&
-    action.streamingEnabled === false
-  ) {
-    const messages = clearStreamingPlaceholderMessages(existing.messages);
-    if (messages === existing.messages) {
-      return state;
-    }
-    if (messages.length === 0 && existing.contextUsage === undefined) {
-      const agentContent = { ...state.agentContent };
-      delete agentContent[action.agentId];
-      return {
-        ...state,
-        agentContent,
-      };
-    }
-    return {
-      ...state,
-      agentContent: {
-        ...state.agentContent,
-        [action.agentId]: {
-          ...existing,
-          messages,
-        },
-      },
-    };
-  }
-
-  const incomingId = getMessageId(action.message);
-  if (findMessageIndexById(existing.messages, incomingId) !== -1) {
-    return state;
-  }
-
-  return {
-    ...state,
-    agentContent: {
-      ...state.agentContent,
-      [action.agentId]: {
-        ...existing,
-        messages: [...existing.messages, action.message],
-        status: "running",
-      },
-    },
-  };
+  const agentContent = applyStreamSubagentMessageToMap(
+    state.agentContent,
+    action.agentId,
+    action.message,
+    action.streamingEnabled,
+  );
+  return agentContent === state.agentContent ? state : { ...state, agentContent };
 }
 
 export function upsertStreamingPlaceholderMessages(

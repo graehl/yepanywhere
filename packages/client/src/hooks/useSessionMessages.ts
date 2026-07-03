@@ -17,7 +17,6 @@ import {
   reconcileLinearMessages,
 } from "../lib/linearMessageDedup";
 import {
-  findMessageIndexById,
   getMessageId,
   mergeJSONLMessages,
   mergeStreamMessage,
@@ -44,6 +43,7 @@ import {
 } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
+  applyStreamSubagentMessageToMap,
   clearAgentStreamingPlaceholdersMap,
   clearStreamingPlaceholderMessages,
   mergeLoadedAgentContentMap,
@@ -416,6 +416,33 @@ export function useSessionMessages(
     undefined,
   );
   const [loadingOlder, setLoadingOlder] = useState(false);
+
+  // State updaters must stay pure (React may replay them mid-render), so
+  // store dispatches and divergence reports cannot live inside setState
+  // callbacks. Instead these refs mirror the last written value, next values
+  // are computed eagerly from them in event context, and every write goes
+  // through the apply* helpers so ref and state never diverge.
+  const messagesRef = useRef<Message[]>([]);
+  const agentContentRef = useRef<AgentContentMap>({});
+  const toolUseToAgentRef = useRef<Map<string, string>>(new Map());
+  const sessionRef = useRef<SessionMetadata | null>(null);
+  const applyMessages = useCallback((next: Message[]) => {
+    messagesRef.current = next;
+    setMessages(next);
+  }, []);
+  const applyAgentContent = useCallback((next: AgentContentMap) => {
+    agentContentRef.current = next;
+    setAgentContent(next);
+  }, []);
+  const applyToolUseToAgent = useCallback((next: Map<string, string>) => {
+    toolUseToAgentRef.current = next;
+    setToolUseToAgent(next);
+  }, []);
+  const applySession = useCallback((next: SessionMetadata | null) => {
+    sessionRef.current = next;
+    setSession(next);
+  }, []);
+
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
     cachedLoad?.scrollSnapshot,
   );
@@ -517,19 +544,18 @@ export function useSessionMessages(
 
   const updateSession = useCallback(
     (update: SessionMetadataUpdate) => {
-      setSession((previous) => {
-        const next = typeof update === "function" ? update(previous) : update;
-        if (next === previous) {
-          return previous;
-        }
-        dispatchSessionDetailAction({ type: "setSessionMetadata", session: next });
-        reportStoreDivergence("session-metadata", {
-          session: next,
-        });
-        return next;
+      const previous = sessionRef.current;
+      const next = typeof update === "function" ? update(previous) : update;
+      if (next === previous) {
+        return;
+      }
+      dispatchSessionDetailAction({ type: "setSessionMetadata", session: next });
+      reportStoreDivergence("session-metadata", {
+        session: next,
       });
+      applySession(next);
     },
-    [dispatchSessionDetailAction, reportStoreDivergence],
+    [applySession, dispatchSessionDetailAction, reportStoreDivergence],
   );
 
   const readSelectorBackedMessages = useCallback(
@@ -707,32 +733,20 @@ export function useSessionMessages(
         streamingEnabled,
       });
 
-      setMessages((prev) => {
-        let nextMessages = prev;
-        if (suppressStreaming) {
-          nextMessages = clearStreamingMessages(prev);
-        } else if (!isPersistedReplay) {
-          if (shouldApplyReplayDedupe) {
-            if (isEmptyAssistantContent(incoming)) {
-              reportStoreDivergence("stream-message", {
-                messages: nextMessages,
-              });
-              return nextMessages;
-            }
-            if (
-              hasEquivalentJsonlMessage(
-                prev,
-                incoming,
-                approxDedupOptions(provider),
-              )
-            ) {
-              reportStoreDivergence("stream-message", {
-                messages: nextMessages,
-              });
-              return nextMessages;
-            }
-          }
-
+      const prev = messagesRef.current;
+      let nextMessages = prev;
+      if (suppressStreaming) {
+        nextMessages = clearStreamingMessages(prev);
+      } else if (!isPersistedReplay) {
+        const isReplayDuplicate =
+          shouldApplyReplayDedupe &&
+          (isEmptyAssistantContent(incoming) ||
+            hasEquivalentJsonlMessage(
+              prev,
+              incoming,
+              approxDedupOptions(provider),
+            ));
+        if (!isReplayDuplicate) {
           const result = mergeStreamMessage(prev, incoming);
           nextMessages = usesApproxMessageDedup(provider)
             ? reconcileLinearMessages(
@@ -741,14 +755,14 @@ export function useSessionMessages(
               )
             : result.messages;
         }
+      }
 
-        reportStoreDivergence("stream-message", {
-          messages: nextMessages,
-        });
-        return nextMessages;
+      applyMessages(nextMessages);
+      reportStoreDivergence("stream-message", {
+        messages: nextMessages,
       });
     },
-    [dispatchSessionDetailAction, reportStoreDivergence],
+    [applyMessages, dispatchSessionDetailAction, reportStoreDivergence],
   );
 
   // Process a buffered stream subagent message
@@ -761,68 +775,21 @@ export function useSessionMessages(
         message: incoming,
         streamingEnabled,
       });
-      const selectorBackedAgentContent = readSelectorBackedAgentContent();
-      setAgentContent((prev) => {
-        if (selectorBackedAgentContent) {
-          reportStoreDivergence("stream-subagent-message", {
-            agentContent: selectorBackedAgentContent,
-          });
-          return selectorBackedAgentContent;
-        }
-        const existing = prev[agentId] ?? {
-          messages: [],
-          status: "running" as const,
-        };
-        if (incoming._isStreaming === true && !streamingEnabled) {
-          const messages = clearStreamingMessages(existing.messages);
-          if (messages === existing.messages) {
-            reportStoreDivergence("stream-subagent-message", {
-              agentContent: prev,
-            });
-            return prev;
-          }
-          if (messages.length === 0 && existing.contextUsage === undefined) {
-            const next = { ...prev };
-            delete next[agentId];
-            reportStoreDivergence("stream-subagent-message", {
-              agentContent: next,
-            });
-            return next;
-          }
-          const next: AgentContentMap = {
-            ...prev,
-            [agentId]: {
-              ...existing,
-              messages,
-            },
-          };
-          reportStoreDivergence("stream-subagent-message", {
-            agentContent: next,
-          });
-          return next;
-        }
-        const incomingId = getMessageId(incoming);
-        if (findMessageIndexById(existing.messages, incomingId) !== -1) {
-          reportStoreDivergence("stream-subagent-message", {
-            agentContent: prev,
-          });
-          return prev;
-        }
-        const next: AgentContentMap = {
-          ...prev,
-          [agentId]: {
-            ...existing,
-            messages: [...existing.messages, incoming],
-            status: "running" as const,
-          },
-        };
-        reportStoreDivergence("stream-subagent-message", {
-          agentContent: next,
-        });
-        return next;
+      const next =
+        readSelectorBackedAgentContent() ??
+        applyStreamSubagentMessageToMap(
+          agentContentRef.current,
+          agentId,
+          incoming,
+          streamingEnabled,
+        );
+      applyAgentContent(next);
+      reportStoreDivergence("stream-subagent-message", {
+        agentContent: next,
       });
     },
     [
+      applyAgentContent,
       dispatchSessionDetailAction,
       readSelectorBackedAgentContent,
       reportStoreDivergence,
@@ -884,10 +851,10 @@ export function useSessionMessages(
         lastMessageIdRef.current = lastJsonlId;
       }
 
-      setAgentContent(warmLoad?.agentContent ?? {});
-      setToolUseToAgent(new Map(warmLoad?.toolUseToAgentEntries ?? []));
-      setSession(options.loadedSession);
-      setMessages(options.loadedMessages);
+      applyAgentContent(warmLoad?.agentContent ?? {});
+      applyToolUseToAgent(new Map(warmLoad?.toolUseToAgentEntries ?? []));
+      applySession(options.loadedSession);
+      applyMessages(options.loadedMessages);
       setPagination(options.loadedPagination);
       markReloadPerfPhase("session_initial_messages_state_queued", {
         messages: options.sourceMessageCount,
@@ -1018,7 +985,7 @@ export function useSessionMessages(
         appliedAfterSnapshotHydration: true,
       });
       providerRef.current = data.session.provider;
-      setSession(data.session);
+      applySession(data.session);
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
       const nextPagination = data.pagination ?? warmLoad.pagination;
@@ -1028,34 +995,34 @@ export function useSessionMessages(
         session: data.session,
         pagination: nextPagination,
       });
-      setMessages((prev) => {
-        const baseMessages = prev.length > 0 ? prev : warmLoad.messages;
-        const loadedMessages = mergePersistedMessagesForProvider(
-          baseMessages,
-          taggedMessages,
-          data.session.provider,
-        );
-        const lastJsonlId = findLastJsonlMessageId(loadedMessages);
-        if (lastJsonlId) {
-          lastMessageIdRef.current = lastJsonlId;
-        }
-        reportStoreDivergence("warm-catchup-after-hydration", {
-          messages: loadedMessages,
-          session: data.session,
-          pagination: nextPagination,
-          agentContent:
-            latestSnapshotRef.current?.agentContent ??
-            warmLoad.agentContent ??
-            {},
-          toolUseToAgentEntries:
-            latestSnapshotRef.current?.toolUseToAgentEntries ??
-            warmLoad.toolUseToAgentEntries ??
-            [],
-          lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-          scrollSnapshot: scrollSnapshotRef.current,
-        });
-        return loadedMessages;
+      const prevMessages = messagesRef.current;
+      const baseMessages =
+        prevMessages.length > 0 ? prevMessages : warmLoad.messages;
+      const loadedMessages = mergePersistedMessagesForProvider(
+        baseMessages,
+        taggedMessages,
+        data.session.provider,
+      );
+      const lastJsonlId = findLastJsonlMessageId(loadedMessages);
+      if (lastJsonlId) {
+        lastMessageIdRef.current = lastJsonlId;
+      }
+      applyMessages(loadedMessages);
+      reportStoreDivergence("warm-catchup-after-hydration", {
+        messages: loadedMessages,
+        session: data.session,
+        pagination: nextPagination,
+        agentContent:
+          latestSnapshotRef.current?.agentContent ??
+          warmLoad.agentContent ??
+          {},
+        toolUseToAgentEntries:
+          latestSnapshotRef.current?.toolUseToAgentEntries ??
+          warmLoad.toolUseToAgentEntries ??
+          [],
+        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+        maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+        scrollSnapshot: scrollSnapshotRef.current,
       });
       setPagination(nextPagination);
       setSessionLoadProgress(
@@ -1092,10 +1059,10 @@ export function useSessionMessages(
       providerRef.current = warmLoad.session.provider;
       lastMessageIdRef.current = warmLoad.lastMessageId;
       setLoading(true);
-      setMessages([]);
-      setAgentContent({});
-      setToolUseToAgent(new Map());
-      setSession(null);
+      applyMessages([]);
+      applyAgentContent({});
+      applyToolUseToAgent(new Map());
+      applySession(null);
       setPagination(undefined);
       void (async () => {
         setSessionLoadProgress(
@@ -1131,9 +1098,9 @@ export function useSessionMessages(
       providerRef.current = undefined;
       lastMessageIdRef.current = undefined;
       setLoading(true);
-      setAgentContent({});
-      setToolUseToAgent(new Map());
-      setSession(null);
+      applyAgentContent({});
+      applyToolUseToAgent(new Map());
+      applySession(null);
       setPagination(undefined);
     }
 
@@ -1166,7 +1133,7 @@ export function useSessionMessages(
             hasOlderMessages: data.pagination?.hasOlderMessages,
           }),
         );
-        setSession(data.session);
+        applySession(data.session);
         providerRef.current = data.session.provider;
 
         // Tag messages from JSONL as authoritative
@@ -1211,7 +1178,7 @@ export function useSessionMessages(
           pagination: nextPagination,
         });
         const revealInitialTranscript = () => {
-          setMessages(loadedMessages);
+          applyMessages(loadedMessages);
           setPagination(nextPagination);
           markReloadPerfPhase("session_initial_messages_state_queued", {
             messages: taggedMessages.length,
@@ -1315,6 +1282,10 @@ export function useSessionMessages(
     resetSessionDetailState,
     dispatchSessionDetailAction,
     reportStoreDivergence,
+    applyAgentContent,
+    applyMessages,
+    applySession,
+    applyToolUseToAgent,
   ]);
 
   // Handle streaming content updates (from useStreamingContent)
@@ -1330,31 +1301,34 @@ export function useSessionMessages(
       });
 
       if (agentId) {
-        const selectorBackedAgentContent = readSelectorBackedAgentContent();
-        setAgentContent((prev) => {
-          const next =
-            selectorBackedAgentContent ??
-            upsertAgentStreamingPlaceholderMap(prev, agentId, streamingMessage);
-          reportStoreDivergence("streaming-placeholder", {
-            agentContent: next,
-          });
-          return next;
+        const next =
+          readSelectorBackedAgentContent() ??
+          upsertAgentStreamingPlaceholderMap(
+            agentContentRef.current,
+            agentId,
+            streamingMessage,
+          );
+        applyAgentContent(next);
+        reportStoreDivergence("streaming-placeholder", {
+          agentContent: next,
         });
         return;
       }
 
-      const selectorBackedMessages = readSelectorBackedMessages();
-      setMessages((prev) => {
-        const next =
-          selectorBackedMessages ??
-          upsertStreamingPlaceholderMessages(prev, streamingMessage);
-        reportStoreDivergence("streaming-placeholder", {
-          messages: next,
-        });
-        return next;
+      const next =
+        readSelectorBackedMessages() ??
+        upsertStreamingPlaceholderMessages(
+          messagesRef.current,
+          streamingMessage,
+        );
+      applyMessages(next);
+      reportStoreDivergence("streaming-placeholder", {
+        messages: next,
       });
     },
     [
+      applyAgentContent,
+      applyMessages,
       dispatchSessionDetailAction,
       readSelectorBackedAgentContent,
       readSelectorBackedMessages,
@@ -1398,22 +1372,21 @@ export function useSessionMessages(
         toolUseId,
         agentId,
       });
-      setToolUseToAgent((prev) => {
-        if (prev.has(toolUseId)) {
-          reportStoreDivergence("tool-use-agent-map", {
-            toolUseToAgentEntries: Array.from(prev.entries()),
-          });
-          return prev;
-        }
-        const next = new Map(prev);
-        next.set(toolUseId, agentId);
+      const prev = toolUseToAgentRef.current;
+      if (prev.has(toolUseId)) {
         reportStoreDivergence("tool-use-agent-map", {
-          toolUseToAgentEntries: Array.from(next.entries()),
+          toolUseToAgentEntries: Array.from(prev.entries()),
         });
-        return next;
+        return;
+      }
+      const next = new Map(prev);
+      next.set(toolUseId, agentId);
+      applyToolUseToAgent(next);
+      reportStoreDivergence("tool-use-agent-map", {
+        toolUseToAgentEntries: Array.from(next.entries()),
       });
     },
-    [dispatchSessionDetailAction, reportStoreDivergence],
+    [applyToolUseToAgent, dispatchSessionDetailAction, reportStoreDivergence],
   );
 
   const mergeLoadedAgentContent = useCallback(
@@ -1423,18 +1396,16 @@ export function useSessionMessages(
         agentId,
         content,
       });
-      const selectorBackedAgentContent = readSelectorBackedAgentContent();
-      setAgentContent((prev) => {
-        const next =
-          selectorBackedAgentContent ??
-          mergeLoadedAgentContentMap(prev, agentId, content);
-        reportStoreDivergence("loaded-agent-content", {
-          agentContent: next,
-        });
-        return next;
+      const next =
+        readSelectorBackedAgentContent() ??
+        mergeLoadedAgentContentMap(agentContentRef.current, agentId, content);
+      applyAgentContent(next);
+      reportStoreDivergence("loaded-agent-content", {
+        agentContent: next,
       });
     },
     [
+      applyAgentContent,
       dispatchSessionDetailAction,
       readSelectorBackedAgentContent,
       reportStoreDivergence,
@@ -1448,18 +1419,20 @@ export function useSessionMessages(
         agentId,
         contextUsage,
       });
-      const selectorBackedAgentContent = readSelectorBackedAgentContent();
-      setAgentContent((prev) => {
-        const next =
-          selectorBackedAgentContent ??
-          updateAgentContextUsageMap(prev, agentId, contextUsage);
-        reportStoreDivergence("agent-context-usage", {
-          agentContent: next,
-        });
-        return next;
+      const next =
+        readSelectorBackedAgentContent() ??
+        updateAgentContextUsageMap(
+          agentContentRef.current,
+          agentId,
+          contextUsage,
+        );
+      applyAgentContent(next);
+      reportStoreDivergence("agent-context-usage", {
+        agentContent: next,
       });
     },
     [
+      applyAgentContent,
       dispatchSessionDetailAction,
       readSelectorBackedAgentContent,
       reportStoreDivergence,
@@ -1472,18 +1445,16 @@ export function useSessionMessages(
         type: "clearAgentStreamingPlaceholders",
         agentId,
       });
-      const selectorBackedAgentContent = readSelectorBackedAgentContent();
-      setAgentContent((prev) => {
-        const next =
-          selectorBackedAgentContent ??
-          clearAgentStreamingPlaceholdersMap(prev, agentId);
-        reportStoreDivergence("agent-streaming-placeholder-cleanup", {
-          agentContent: next,
-        });
-        return next;
+      const next =
+        readSelectorBackedAgentContent() ??
+        clearAgentStreamingPlaceholdersMap(agentContentRef.current, agentId);
+      applyAgentContent(next);
+      reportStoreDivergence("agent-streaming-placeholder-cleanup", {
+        agentContent: next,
       });
     },
     [
+      applyAgentContent,
       dispatchSessionDetailAction,
       readSelectorBackedAgentContent,
       reportStoreDivergence,
@@ -1492,16 +1463,15 @@ export function useSessionMessages(
 
   const clearStreamingPlaceholders = useCallback(() => {
     dispatchSessionDetailAction({ type: "clearStreamingPlaceholders" });
-    const selectorBackedMessages = readSelectorBackedMessages();
-    setMessages((prev) => {
-      const next =
-        selectorBackedMessages ?? clearStreamingPlaceholderMessages(prev);
-      reportStoreDivergence("streaming-placeholder-cleanup", {
-        messages: next,
-      });
-      return next;
+    const next =
+      readSelectorBackedMessages() ??
+      clearStreamingPlaceholderMessages(messagesRef.current);
+    applyMessages(next);
+    reportStoreDivergence("streaming-placeholder-cleanup", {
+      messages: next,
     });
   }, [
+    applyMessages,
     dispatchSessionDetailAction,
     readSelectorBackedMessages,
     reportStoreDivergence,
@@ -1529,28 +1499,26 @@ export function useSessionMessages(
             session: data.session,
           });
           updatePersistedTimestampWatermark(data.messages);
-          setMessages((prev) => {
-            const result = mergeJSONLMessages(prev, data.messages, {
-              skipDagOrdering: !getProvider(data.session.provider).capabilities
-                .supportsDag,
-            });
-            const nextMessages = usesApproxMessageDedup(data.session.provider)
-              ? reconcileLinearMessages(
-                  result.messages,
-                  approxDedupOptions(data.session.provider),
-                )
-              : result.messages;
-            const lastJsonlId = findLastJsonlMessageId(nextMessages);
-            if (lastJsonlId) {
-              lastMessageIdRef.current = lastJsonlId;
-            }
-            reportStoreDivergence("catchup", {
-              messages: nextMessages,
-              session: data.session,
-              lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-              maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-            });
-            return nextMessages;
+          const result = mergeJSONLMessages(messagesRef.current, data.messages, {
+            skipDagOrdering: !getProvider(data.session.provider).capabilities
+              .supportsDag,
+          });
+          const nextMessages = usesApproxMessageDedup(data.session.provider)
+            ? reconcileLinearMessages(
+                result.messages,
+                approxDedupOptions(data.session.provider),
+              )
+            : result.messages;
+          const lastJsonlId = findLastJsonlMessageId(nextMessages);
+          if (lastJsonlId) {
+            lastMessageIdRef.current = lastJsonlId;
+          }
+          applyMessages(nextMessages);
+          reportStoreDivergence("catchup", {
+            messages: nextMessages,
+            session: data.session,
+            lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
           });
         }
         // Update session metadata (including title, model, contextUsage) which may have changed
@@ -1574,6 +1542,7 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
+    applyMessages,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
     reportStoreDivergence,
@@ -1609,31 +1578,29 @@ export function useSessionMessages(
         messages: data.messages,
         pagination: data.pagination,
       });
-      setMessages((prev) => {
-        const taggedOlder = data.messages.map((m) => ({
-          ...m,
-          _source: "jsonl" as const,
-        }));
-        updatePersistedTimestampWatermark(taggedOlder);
-        const combined = [...taggedOlder, ...prev];
-        const nextMessages = usesApproxMessageDedup(data.session.provider)
-          ? reconcileLinearMessages(
-              combined,
-              approxDedupOptions(data.session.provider),
-            )
-          : combined;
-        const lastJsonlId = findLastJsonlMessageId(nextMessages);
-        if (lastJsonlId) {
-          lastMessageIdRef.current = lastJsonlId;
-        }
-        reportStoreDivergence("older-page", {
-          messages: nextMessages,
-          session: data.session,
-          pagination: data.pagination,
-          lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-        });
-        return nextMessages;
+      const taggedOlder = data.messages.map((m) => ({
+        ...m,
+        _source: "jsonl" as const,
+      }));
+      updatePersistedTimestampWatermark(taggedOlder);
+      const combined = [...taggedOlder, ...messagesRef.current];
+      const nextMessages = usesApproxMessageDedup(data.session.provider)
+        ? reconcileLinearMessages(
+            combined,
+            approxDedupOptions(data.session.provider),
+          )
+        : combined;
+      const lastJsonlId = findLastJsonlMessageId(nextMessages);
+      if (lastJsonlId) {
+        lastMessageIdRef.current = lastJsonlId;
+      }
+      applyMessages(nextMessages);
+      reportStoreDivergence("older-page", {
+        messages: nextMessages,
+        session: data.session,
+        pagination: data.pagination,
+        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+        maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       });
       setPagination(data.pagination);
     } catch {
@@ -1644,6 +1611,7 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
+    applyMessages,
     readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,

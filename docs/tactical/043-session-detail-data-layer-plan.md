@@ -13,10 +13,11 @@ The render-selector preflight lives in
 
 ## Current Status
 
-The migration is in the adapter/store phase. We have a tested
-`SessionDetailState` reducer and a small keyed external store, but
-`useSessionMessages` still returns local React state for the main transcript and
-subagent maps.
+The migration is in the adapter/store cutdown phase. We have a tested
+`SessionDetailState` reducer and a small keyed external store, and the store
+snapshot is already the normal returned data source for the main transcript,
+subagent maps, and tool-use mapping after hydration. The remaining work is to
+delete legacy local mirrors and fallback recomputation one boundary at a time.
 
 What is already in place:
 
@@ -31,10 +32,9 @@ What is already in place:
   logging transcript text. The earlier hook-local shadow reducer ref was
   removed once store parity reporting covered the same comparison; the store
   is the single mirrored reduction.
-- A dev-only returned-data invariant diagnostic now checks the store-backed
-  Developer toggle path itself: once hydration is complete and a store entry
-  exists, returned `messages`, `agentContent`, and tool-use mappings should
-  match the store snapshot.
+- The earlier returned-data invariant diagnostic was removed because it
+  compared returned data to the same store snapshot that produced it. It did
+  not provide an independent safety signal.
 - Same-tab route snapshot retention now sits behind
   `defaultSessionDetailStore`, with TTL, byte-cap, retain/release, selector
   subscriptions, and stats. TTL and the byte budget are user-configurable
@@ -61,6 +61,11 @@ What is already in place:
   events, loaded subagent content, context-usage updates, and subagent
   streaming placeholder upsert/cleanup; those paths copy the store-selected
   map back into the local hook mirror after reducer/store dispatch.
+- Ordinary stream, streaming-placeholder, subagent, tool-use mapping,
+  persisted catch-up, and older-page adapter paths no longer independently
+  recompute legacy fallback data after dispatch. They read the store-selected
+  result and only fall back to the current local mirror if the retained store
+  entry is unexpectedly missing.
 - Store-selected `messages`, `agentContent`, and tool-use mappings are now the
   default returned hook data after initial hydration has reached the same reveal
   point as the local mirror. The Development settings switch remains as a
@@ -73,9 +78,8 @@ What is already in place:
   when the toggle is off, and returns selector-only entries when the toggle is
   on.
 - Focused hook coverage now verifies that store-authoritative returned
-  tool-use mappings can expose selector-only entries when the toggle is on,
-  stay local-only when it is off, and remain quiet under the returned-data
-  invariant during ordinary registration.
+  tool-use mappings can expose selector-only entries when the toggle is on and
+  stay local-only when it is off during ordinary registration.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -99,10 +103,14 @@ Current diagnostic stance:
   returned `messages`/`agentContent` and render-selector parity are otherwise
   boring enough for a cleaner cutover audit.
 - Keep dogfooding the default store-backed returned-detail path and turn
-  non-scroll data divergences into compact fixtures. Fresh browser checks with
-  the path enabled did not show catastrophic failures or fresh store
-  divergence. The returned-data invariant is now the primary signal for the
-  actual UI-consumed data while the Development setting remains enabled.
+  visible regressions or non-scroll store/local divergences into compact
+  fixtures. Store/local diagnostics now have residual signal mostly for fields
+  that are not simply copied from the store-selected result: cursor refs,
+  timestamp watermarks, pagination, metadata, and scroll.
+- Do not use absence of `[SessionDetailReturnedData]` logs as evidence. That
+  diagnostic was removed because the default returned data is store-selected by
+  construction. Current confidence comes from reducer fixtures, focused hook
+  tests, and dogfooding the real browser path.
 - Browser mismatch checks should use the real inbox-to-session path, not only
   unit fixtures. A useful read-only pass is: launch Playwright against
   `https://127.0.0.1:3400`, ignore local HTTPS errors, block service workers
@@ -110,27 +118,31 @@ Current diagnostic stance:
   `sessionDetailStoreMessagesEnabled: true` (the default), set
   `yep-anywhere-session-detail-shadow-diagnostics-enabled` to `true`, click a
   few visible `/inbox` session links, and capture console/page/request
-  failures plus `[SessionDetailShadow]`, `[SessionDetailStore]`, and
-  `[SessionDetailReturnedData]` logs. Also sample
+  failures plus `[SessionDetailShadow]` and `[SessionDetailStore]` logs. Also
+  sample
   `main.session-messages` `scrollTop`, `scrollHeight`, and `clientHeight` so
   scroll-to-top symptoms are separated from data divergence.
 - A 2026-07-02 browser pass found no scroll-to-top reproduction and no
-  `[SessionDetailReturnedData]` warnings, but did expose two follow-up
-  signals: a Codex compaction-tail case where live state represented a
-  returned tail window while the store/shadow entry had a much larger
-  accumulated transcript, and a React warning caused by external-store
-  notification during a React state reducer. The tail-window/full-history
-  contract now has reducer/store/hook fixtures and warm-refresh pagination
-  reconciliation; the warning case is covered by the catch-up hook fixture and
-  fixed by keeping metadata store dispatch out of the legacy state updater.
+  data-visible regression, but did expose two follow-up signals: a Codex
+  compaction-tail case where live state represented a returned tail window
+  while the store/shadow entry had a much larger accumulated transcript, and a
+  React warning caused by external-store notification during a React state
+  reducer. The tail-window/full-history contract now has reducer/store/hook
+  fixtures and warm-refresh pagination reconciliation; the warning case is
+  covered by the catch-up hook fixture and fixed by keeping metadata store
+  dispatch out of the legacy state updater.
 
 The key remaining truth is simple: the reducer/store is now the default source
 for returned `messages`, `agentContent`, and tool-use mappings after hydration,
-while the legacy hook-local mirrors still run for fallback, diagnostics, and
-the Development settings rollback. The render-selector preflight is complete
-enough for cutover planning: `MessageList` still owns stateful UI, callbacks,
-scroll, DOM behavior, and JSX, but broad transcript/view shape derivation is no
-longer hidden inside the component.
+while the legacy hook-local mirrors are progressively shrinking into
+revealed-state copies plus rollback/reveal scaffolding. The Development
+settings switch no longer means "do not use the store"; it means "return the
+store snapshot everywhere it is currently approved" versus "return the safer
+local mirror copies while the store continues to feed, retain, and drive
+selector reads." The render-selector preflight is complete enough for cutover
+planning: `MessageList` still owns stateful UI, callbacks, scroll, DOM
+behavior, and JSX, but broad transcript/view shape derivation is no longer
+hidden inside the component.
 
 ## Why This Exists
 
@@ -210,9 +222,15 @@ Next likely slice:
   extracting every remaining branch from `MessageList` unless it directly
   unlocks store cutover or fixes a fixture-backed bug.
 - Continue dogfooding the default store-authoritative returned
-  `messages`/`agentContent`/tool-use mapping path and turn any non-scroll
-  divergence into a compact reducer or hook fixture. Treat returned-data
-  invariant warnings as higher signal than legacy local-vs-store diagnostics.
+  `messages`/`agentContent`/tool-use mapping path and turn any visible
+  regression or meaningful non-scroll store/local divergence into a compact
+  reducer or hook fixture. Do not reintroduce a returned-data invariant unless
+  it compares two genuinely independent sources.
+- Delete legacy local mirror ownership aggressively, one boundary at a time.
+  Ordinary stream, placeholder, mapping, catch-up, and older-page recompute
+  fallbacks have already been cut down to store-selected reads; the next slices
+  should target the remaining warm-hydration and initial-reveal dual-sourcing
+  once dogfooding stays quiet.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -220,10 +238,10 @@ Next likely slice:
   actions may expand that window. A store-authoritative return path must not
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
-- Move the next implementation chunks back to `useSessionMessages`: reduce
-  independent local mirror ownership, keep store-selected returned detail as
-  the normal test path with a Development rollback, and identify one legacy
-  mirror path at a time that can become fallback-only.
+- Move the next implementation chunks back to `useSessionMessages`: keep
+  store-selected returned detail as the normal test path with a Development
+  rollback, and identify one remaining mirror path at a time that can become a
+  simple revealed-state copy or disappear.
 
 Then:
 
@@ -242,9 +260,11 @@ Dogfood switch:
   local mirrors as fallback.
 - Off behavior: return the legacy hook-local mirrors, but keep the
   reducer/store feed, selector-backed adapter reads, diagnostics, and cache
-  ownership running. Turning the switch off is not a store no-op.
-- Keep local mirrors running for comparison, diagnostics, fallback, and the
-  Development settings rollback.
+  ownership running. Turning the switch off is not a store no-op and no longer
+  provides an independent data-semantics rollback on normal mounted paths.
+- Keep local mirrors only where they still support loading reveal, fallback,
+  diagnostics for independently owned fields, or the Development settings
+  rollback.
 - Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks
@@ -253,15 +273,23 @@ Dogfood switch:
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook, but their revealed fallback data
   now comes from the store-selected snapshot.
+- The rollback switch mainly protects reveal timing, subscription behavior,
+  object identity, and remaining locally owned refs. It should not be treated
+  as an independent rollback for reducer data semantics on normal mounted
+  paths.
 - Compaction-tail and full-history states are easy to confuse because the
   default route has no explicit `tailTurns`/`tailFrom` URL parameter even
   though the client requests `tailCompactions: 2`. Treat message-count
   differences where `totalMessageCount > returnedMessageCount` as a cutover
   invariant to classify, not automatic noise.
-- Store subscribers can currently be notified from inside legacy React state
-  updaters in some metadata/stream paths. That is a real dogfood warning, but
-  lower priority than returned-data mismatches unless it produces visible UI
-  breakage.
+- Retention pre-creates the entry for mounted sessions, so the store dispatch
+  guard only protects completely missing/unretained entries. If a required
+  selector read after dispatch ever logs
+  `session-detail-selector-missing-after-dispatch`, treat that as an
+  adapter/retention bug and add a fixture.
+- Store subscribers can currently be notified on broad state-object changes.
+  That is acceptable during cutdown but should become keyed/selector-specific
+  before calling the data-layer cutover done.
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.

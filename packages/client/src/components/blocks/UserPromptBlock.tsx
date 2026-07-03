@@ -9,6 +9,7 @@ import {
 import type { ContentBlock } from "../../types";
 import { AttachmentChip } from "../AttachmentChip";
 import { CopyTextButton } from "../ui/CopyTextButton";
+import { LinkifiedText } from "../ui/LinkifiedText";
 
 const MAX_LINES = 12;
 const MAX_CHARS = MAX_LINES * 100;
@@ -289,7 +290,9 @@ function CollapsibleText({ text }: { text: string }) {
   if (!needsTruncation || isExpanded) {
     return (
       <div className="text-block">
-        <div ref={fullTextRef}>{text}</div>
+        <div ref={fullTextRef}>
+          <LinkifiedText text={text} />
+        </div>
         {isExpanded && needsTruncation && (
           <button
             type="button"
@@ -306,7 +309,8 @@ function CollapsibleText({ text }: { text: string }) {
   return (
     <div className="text-block collapsible-text">
       <div ref={truncatedRef} className="truncated-content">
-        {truncatedText}
+        {/* A char-level cut can land mid-URL; don't link a truncated target. */}
+        <LinkifiedText text={truncatedText} suppressTrailingUrl={true} />
         <div className="fade-overlay" />
       </div>
       <button
@@ -449,7 +453,7 @@ function UserPromptText({ text }: { text: string }) {
       <CollapsibleText text={correction.correctedText} />
       {correction.change && (
         <div className="user-prompt-correction-change">
-          Change: {correction.change}
+          Change: <LinkifiedText text={correction.change} />
         </div>
       )}
     </div>

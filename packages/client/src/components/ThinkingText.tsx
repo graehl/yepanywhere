@@ -1,5 +1,6 @@
 import { Fragment, memo, type ReactNode, useMemo, useState } from "react";
 import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
+import { LinkifiedText } from "./ui/LinkifiedText";
 
 interface ThinkingTextProps {
   text: string;
@@ -148,7 +149,7 @@ function renderThinkingInline(text: string): ReactNode {
 
   return nodes.map((node, nodeIndex) => (
     <Fragment key={typeof node === "string" ? `text-${nodeIndex}` : nodeIndex}>
-      {node}
+      {typeof node === "string" ? <LinkifiedText text={node} /> : node}
     </Fragment>
   ));
 }
@@ -166,7 +167,7 @@ export const ThinkingText = memo(function ThinkingText({
   if (!outline) {
     return (
       <span ref={plainRef} className="thinking-text thinking-text-plain">
-        {text}
+        <LinkifiedText text={text} />
       </span>
     );
   }

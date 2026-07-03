@@ -15,6 +15,7 @@ import { TextBlock } from "./blocks/TextBlock";
 import { ThinkingBlock } from "./blocks/ThinkingBlock";
 import { ToolCallRow } from "./blocks/ToolCallRow";
 import { UserPromptBlock } from "./blocks/UserPromptBlock";
+import { LinkifiedText } from "./ui/LinkifiedText";
 
 interface Props {
   item: RenderItem;
@@ -185,7 +186,9 @@ function CollapsibleSystemMessage({
     return (
       <div className={`system-message ${variantClass}`}>
         <span className="system-message-icon">{icon}</span>
-        <span className="system-message-text">{item.content}</span>
+        <span className="system-message-text">
+          <LinkifiedText text={item.content} />
+        </span>
       </div>
     );
   }
@@ -199,7 +202,9 @@ function CollapsibleSystemMessage({
           ▸
         </span>
         <span className="system-message-icon">{icon}</span>
-        <span className="system-message-text">{item.content}</span>
+        <span className="system-message-text">
+          <LinkifiedText text={item.content} />
+        </span>
       </summary>
       <div className="system-message-details">
         {details.map((detail, index) => (
@@ -352,7 +357,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             <div className="system-message-recap">
               <span className="system-message-recap-mark">※</span>
               <span ref={recapQuoteRef} className="system-message-recap-body">
-                {item.content}
+                <LinkifiedText text={item.content} />
               </span>
             </div>
           );
@@ -388,7 +393,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             >
               {icon}
             </span>
-            <span className="system-message-text">{item.content}</span>
+            <span className="system-message-text">
+              <LinkifiedText text={item.content} />
+            </span>
           </div>
         );
       }

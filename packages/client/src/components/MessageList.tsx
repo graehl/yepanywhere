@@ -102,6 +102,7 @@ import {
   type UserTurnNavSearchState,
 } from "./UserTurnNavigator";
 import { CopyTextButton } from "./ui/CopyTextButton";
+import { LinkifiedText } from "./ui/LinkifiedText";
 
 const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
 const SELECTION_QUOTE_BUTTON_SIZE_PX = 30;
@@ -3183,7 +3184,7 @@ export const MessageList = memo(function MessageList({
               >
                 <div className="message-render-content">
                   <div className="message-user-prompt pending-message-bubble">
-                    {pending.content}
+                    <LinkifiedText text={pending.content} />
                   </div>
                   {pending.attachments?.length ? (
                     <div className="attachment-list pending-message-attachments">
@@ -3244,7 +3245,7 @@ export const MessageList = memo(function MessageList({
               >
                 <div className="message-render-content">
                   <div className="message-user-prompt deferred-message-bubble project-queue-inline-message-bubble">
-                    {projectQueue.content}
+                    <LinkifiedText text={projectQueue.content} />
                   </div>
                   {projectQueue.attachments?.length ? (
                     <div className="attachment-list deferred-message-attachments-list">
@@ -3356,7 +3357,7 @@ export const MessageList = memo(function MessageList({
             >
               <div className="message-render-content">
                 <div className="message-user-prompt deferred-message-bubble">
-                  {deferred.content}
+                  <LinkifiedText text={deferred.content} />
                 </div>
                 {deferred.attachments?.length ? (
                   <div className="attachment-list deferred-message-attachments-list">

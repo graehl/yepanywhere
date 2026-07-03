@@ -3961,6 +3961,19 @@ a.sidebar-nav-item {
   white-space: pre-wrap;
 }
 
+/* Bare URLs linkified out of plain text (user prompts, queued chips,
+   system messages, thinking text). Long URLs must wrap inside bubbles. */
+a.linkified-url {
+  color: var(--link-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+a.linkified-url:hover {
+  text-decoration-thickness: 2px;
+}
+
 .message-user-prompt:focus {
   outline: none;
 }

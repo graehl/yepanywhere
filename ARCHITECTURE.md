@@ -30,6 +30,9 @@ linked docs when the details change.
   reconnect across multiple subscriptions. Distributed hook-and-context state
   (no Redux/Zustand). Streaming text and markdown go through ref-based DOM
   updates with adaptive 100–750 ms throttling, not React state per token.
+  [`topics/client-source-runtime-topology.md`](topics/client-source-runtime-topology.md)
+  records the desired next source-runtime boundary above the current
+  one-source-at-a-time UI.
 - **Relay** (optional) is a dumb pipe carrying NaCl-encrypted frames between
   client and server when neither has a routable address to the other.
 
@@ -44,11 +47,15 @@ section below for what would have to change at higher fan-out.
 - [`packages/client/RENDERING_PERFORMANCE.md`](packages/client/RENDERING_PERFORMANCE.md)
   — the React render/update pipeline, what's coalesced, what stays immediate,
   the streaming-markdown ref pattern, and the review checklist.
+- [`topics/client-source-runtime-topology.md`](topics/client-source-runtime-topology.md)
+  — vision for explicit per-source client runtimes so local/direct/relay YA
+  servers can own their API transport, activity stream, summary stores, and
+  session-detail services without hidden current-source globals.
 - [`topics/session-detail-data-layer.md`](topics/session-detail-data-layer.md)
-  — vision for a canonical client session-detail data layer between provider
-  stream/REST inputs and transcript DOM rendering; see the linked tactical
-  plan before reshaping `useSession`, `useSessionMessages`, transcript
-  augments, subagents, or same-tab message caches.
+  — lower-level vision for a canonical client session-detail data layer
+  between provider stream/REST inputs and transcript DOM rendering; see the
+  linked tactical plan before reshaping `useSession`, `useSessionMessages`,
+  transcript augments, subagents, or same-tab message caches.
 - [`docs/project/connection-matrix.md`](docs/project/connection-matrix.md) —
   the four client transport modes (Direct / WS / SecureConnection /
   SecureConnection-via-relay) and which auth/encoding each uses.

@@ -12,6 +12,9 @@ Status: Vision. Use this document to orient design work before editing
 message caches, augments, subagent transcript rendering, or `/btw` transcript
 surfaces. The tactical implementation plan starts in
 [`docs/tactical/043-session-detail-data-layer-plan.md`](../docs/tactical/043-session-detail-data-layer-plan.md).
+For the higher-level source/runtime boundary above this transcript data layer,
+see
+[`client-source-runtime-topology.md`](client-source-runtime-topology.md).
 
 ## Problem
 
@@ -64,6 +67,11 @@ state such as an in-flight token stream. Subagents are the early exception to
 that parity bar: provider persistence and live activity surfaces differ enough
 that the first goal is explicit provenance and broad shape correctness, not
 claiming exact live/reload equivalence before fixtures prove it.
+
+This document is intentionally below the source-runtime layer. It describes how
+one source/project/session/window becomes canonical renderable session detail.
+It does not own source selection, source transport, multi-host UI, or the
+future `YaSourceRuntime` / `SessionDetailCoordinator` topology.
 
 ## Boundaries
 
@@ -196,6 +204,9 @@ The data layer should make the following substantially easier:
 
 ## Relationship To Existing Documents
 
+- [`client-source-runtime-topology.md`](client-source-runtime-topology.md)
+  records the higher-level source runtime, API transport, coordinator, and
+  cache topology that should eventually own this data layer per source.
 - [`stream-persisted-render-parity.md`](stream-persisted-render-parity.md)
   records the invariant this layer should enforce: live-stream and durable
   reload rendering must converge.

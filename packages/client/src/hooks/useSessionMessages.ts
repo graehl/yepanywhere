@@ -360,7 +360,7 @@ export function useSessionMessages(
   const resetSessionDetailState = useCallback(
     (snapshot?: SessionRouteSnapshot) => {
       if (snapshot) {
-        defaultSessionDetailStore.writeRouteSnapshot(snapshotKey, snapshot);
+        defaultSessionDetailStore.replaceRouteSnapshot(snapshotKey, snapshot);
         return;
       }
       defaultSessionDetailStore.resetEntryState(snapshotKey);

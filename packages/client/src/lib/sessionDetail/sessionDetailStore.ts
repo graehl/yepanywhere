@@ -69,6 +69,14 @@ export class SessionDetailStore {
     return this.cache.writeRouteSnapshot(input, snapshot, options);
   }
 
+  replaceRouteSnapshot(
+    input: SessionDetailEntryKeyInput,
+    snapshot: SessionRouteSnapshot,
+    options: SessionDetailRetentionOptions = {},
+  ): boolean {
+    return this.cache.replaceRouteSnapshot(input, snapshot, options);
+  }
+
   dispatch(
     input: SessionDetailEntryKeyInput,
     action: SessionDetailAction,

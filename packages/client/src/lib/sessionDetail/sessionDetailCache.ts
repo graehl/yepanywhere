@@ -120,6 +120,29 @@ export class SessionDetailCache {
     return true;
   }
 
+  replaceRouteSnapshot(
+    input: SessionDetailEntryKeyInput,
+    snapshot: SessionRouteSnapshot,
+    options: SessionDetailRetentionOptions = {},
+  ): boolean {
+    const at = getSessionDetailNow(options);
+    const key = getSessionDetailEntryKey(input);
+    this.evictExpired({ nowMs: at });
+
+    const state = routeSnapshotToState(snapshot);
+    const approxBytes = estimateStateBytes(state);
+    const entry = this.getOrCreateEntry(input);
+    entry.replaceState(
+      state,
+      at,
+      options,
+      approxBytes,
+      snapshot.scrollSnapshot,
+    );
+    this.evictLeastRecentlyUsed(options, new Set([key]));
+    return true;
+  }
+
   dispatch(
     input: SessionDetailEntryKeyInput,
     action: SessionDetailAction,
@@ -352,12 +375,15 @@ export class SessionDetailCache {
 
   private evictLeastRecentlyUsed(
     options: SessionDetailRetentionOptions,
+    protectedKeys: ReadonlySet<string> = new Set(),
   ): void {
     const maxEntryCount = getSessionDetailMaxEntries(options);
     const maxByteCount = getSessionDetailMaxBytes(options);
     const candidates = () =>
       this.recordEntries()
-        .filter((entry) => entry.retainCount === 0)
+        .filter(
+          (entry) => entry.retainCount === 0 && !protectedKeys.has(entry.key),
+        )
         .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt);
 
     while (this.recordEntries().length > maxEntryCount) {

@@ -383,6 +383,56 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(storeKey, { nowMs: 2 })).toBeUndefined();
   });
 
+  it("replaces retained active snapshots outside cache admission budget", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
+      nowMs: 0,
+    });
+    const release = store.retain(storeKey, { nowMs: 1 });
+
+    expect(
+      store.replaceRouteSnapshot(
+        storeKey,
+        snapshot("session-a", ["msg-2"]),
+        {
+          maxBytes: 1,
+          nowMs: 2,
+        },
+      ),
+    ).toBe(true);
+    expect(
+      store.readRouteSnapshot(storeKey, { nowMs: 3 })?.messages.map(
+        (message) => message.uuid,
+      ),
+    ).toEqual(["msg-2"]);
+
+    const stats = store.getStats();
+    expect(stats.entries[0]?.retainCount).toBe(1);
+    expect(stats.entries[0]?.approxBytes).toBeGreaterThan(1);
+
+    release();
+  });
+
+  it("does not evict the active replacement target before retain attaches", () => {
+    const store = createSessionDetailStore();
+    const storeKey = key("session-a");
+
+    expect(
+      store.replaceRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
+        maxBytes: 1,
+        nowMs: 0,
+      }),
+    ).toBe(true);
+
+    expect(
+      store.readRouteSnapshot(storeKey, { nowMs: 1 })?.messages.map(
+        (message) => message.uuid,
+      ),
+    ).toEqual(["msg-1"]);
+  });
+
   it("drops incremental actions for a missing entry instead of fabricating state", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");

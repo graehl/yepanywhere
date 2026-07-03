@@ -2,9 +2,9 @@
 
 Topic: session-detail-data-layer
 
-Status: First fix landed 2026-07-03. Over-budget cache admission failures no
-longer delete a mounted session detail entry. The larger
-active-store/cache-boundary cleanup remains open.
+Status: Second implementation chunk landed 2026-07-03. Over-budget cache
+admission failures no longer delete a mounted session detail entry, and active
+session-detail replacement now uses a separate API from warm-cache admission.
 
 ## Problem
 
@@ -75,21 +75,26 @@ Focused regression coverage should include:
 - `useSessionMessages` returns loaded messages when transcript cache is enabled
   but the loaded reveal snapshot is over budget.
 
-## Larger Boundary Issue
+## Boundary Cleanup
 
 The underlying design smell is that one API, `writeRouteSnapshot`, can mean both
 "replace active reducer-backed detail state" and "admit this route snapshot to a
 warm cache." Those are different operations with different failure semantics.
 
-The first fix can be small and should restore correctness. A later cleanup
-should consider making this boundary explicit, for example:
+The first follow-up cleanup makes this boundary explicit:
 
-- active store writes are allowed while retained and are not rejected by warm
-  cache budget policy;
-- cache admission is a separate operation that can fail without mutating live
-  state;
-- diagnostics distinguish "live retained bytes" from "warm-cache-admitted
-  bytes" so Performance settings remain understandable.
+- `replaceRouteSnapshot` is the live state replacement path. It is used when a
+  mounted session is restoring the active detail state and is not rejected by
+  warm-cache byte budget admission. Its LRU cleanup protects the replacement
+  target, even if retain ownership has not attached yet.
+- `writeRouteSnapshot` remains the budgeted warm-cache admission path. It can
+  reject an oversized snapshot, and unretained stale cache records are still
+  cleared on rejection.
+
+Remaining cleanup should consider diagnostics that distinguish "live retained
+bytes" from "warm-cache-admitted bytes" so Performance settings remain
+understandable when a mounted transcript exceeds the configured warm-cache
+budget.
 
 ## Status Notes
 
@@ -101,3 +106,9 @@ should consider making this boundary explicit, for example:
   over-budget route-snapshot write is rejected. Focused coverage now checks
   retained and unretained store behavior plus the `useSessionMessages` initial
   load path with transcript cache enabled and an intentionally tiny byte budget.
+- 2026-07-03: Second implementation chunk split active replacement from cache
+  admission. `useSessionMessages` now restores active snapshots through
+  `replaceRouteSnapshot`, while warm-cache persistence continues to use
+  `writeRouteSnapshot`. Store coverage checks that retained active replacement
+  succeeds even when the snapshot is larger than the warm-cache budget, and
+  that the replacement target cannot evict itself before retain attaches.

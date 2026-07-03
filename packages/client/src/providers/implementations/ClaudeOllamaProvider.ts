@@ -12,6 +12,9 @@ export class ClaudeOllamaProvider implements Provider {
     supportsDag: true,
     supportsCloning: true,
     needsApproxMessageDedup: false,
+    // Same Claude CLI persistence as ClaudeProvider: busy-path sends become
+    // uuid-less queue-operation rows (topics/stream-durable-id-dedup.md).
+    dedupQueueOperationEchoes: true,
   };
 
   readonly metadata: ProviderMetadata = {

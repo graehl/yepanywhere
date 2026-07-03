@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "../../types";
 import {
   hasEquivalentJsonlMessage,
+  reconcileClaudeQueueOperationEchoes,
   reconcileLinearMessages,
 } from "../linearMessageDedup";
 
@@ -574,5 +575,140 @@ describe("reconcileLinearMessages", () => {
     const result = reconcileLinearMessages(messages);
 
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("reconcileClaudeQueueOperationEchoes", () => {
+  const STEER_TEXT =
+    "update task indicating the advisories you just mentioned all should be fixed, too";
+
+  function optimisticEcho(
+    overrides: Partial<Message> & { timestamp: string },
+  ): Message {
+    return {
+      uuid: "ya-queue-uuid-1",
+      type: "user",
+      tempId: "temp-1",
+      _source: "sdk",
+      message: { role: "user", content: STEER_TEXT },
+      ...overrides,
+    } as Message;
+  }
+
+  function queueOperationRow(
+    overrides: Partial<Message> & { timestamp: string },
+  ): Message {
+    return {
+      id: "queue-operation-217-2026-07-03T20:30:24.635Z",
+      type: "user",
+      role: "user",
+      content: STEER_TEXT,
+      deferred: true,
+      deferredSource: "queue-operation",
+      _source: "jsonl",
+      message: { role: "user", content: STEER_TEXT },
+      ...overrides,
+    } as Message;
+  }
+
+  it("merges the optimistic echo with the durable queue-operation row", () => {
+    const echo = optimisticEcho({ timestamp: "2026-07-03T20:30:24.500Z" });
+    const row = queueOperationRow({ timestamp: "2026-07-03T20:30:24.635Z" });
+
+    const result = reconcileClaudeQueueOperationEchoes([echo, row]);
+    expect(result).toHaveLength(1);
+    expect(result[0]?._source).toBe("jsonl");
+    expect(result[0]?.deferredSource).toBe("queue-operation");
+  });
+
+  it("keeps the durable row when the echo replays after a reload", () => {
+    const row = queueOperationRow({ timestamp: "2026-07-03T20:30:24.635Z" });
+    const echo = optimisticEcho({ timestamp: "2026-07-03T20:30:24.500Z" });
+
+    const result = reconcileClaudeQueueOperationEchoes([row, echo]);
+    expect(result).toHaveLength(1);
+    expect(result[0]?._source).toBe("jsonl");
+    expect(result[0]?.id).toBe("queue-operation-217-2026-07-03T20:30:24.635Z");
+  });
+
+  it("pairs two identical steers one-to-one", () => {
+    const echo1 = optimisticEcho({
+      uuid: "ya-queue-uuid-1",
+      timestamp: "2026-07-03T20:30:24.500Z",
+    });
+    const echo2 = optimisticEcho({
+      uuid: "ya-queue-uuid-2",
+      timestamp: "2026-07-03T20:30:30.000Z",
+    });
+    const row1 = queueOperationRow({
+      id: "queue-operation-217-a",
+      timestamp: "2026-07-03T20:30:24.635Z",
+    });
+    const row2 = queueOperationRow({
+      id: "queue-operation-218-b",
+      timestamp: "2026-07-03T20:30:30.100Z",
+    });
+
+    const result = reconcileClaudeQueueOperationEchoes([
+      echo1,
+      echo2,
+      row1,
+      row2,
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.every((m) => m._source === "jsonl")).toBe(true);
+  });
+
+  it("does not pair outside the window or across different text", () => {
+    const staleEcho = optimisticEcho({ timestamp: "2026-07-03T20:00:00.000Z" });
+    const otherTextEcho = optimisticEcho({
+      uuid: "ya-queue-uuid-3",
+      timestamp: "2026-07-03T20:30:24.600Z",
+      message: { role: "user", content: "different message" },
+    });
+    const row = queueOperationRow({ timestamp: "2026-07-03T20:30:24.635Z" });
+
+    const result = reconcileClaudeQueueOperationEchoes([
+      staleEcho,
+      otherTextEcho,
+      row,
+    ]);
+    expect(result).toHaveLength(3);
+  });
+
+  it("prefers the nearest echo so direct sends keep their own copy", () => {
+    // An earlier direct send with identical text (dedups by uuid elsewhere).
+    const directEcho = optimisticEcho({
+      uuid: "direct-send-uuid",
+      timestamp: "2026-07-03T20:30:00.000Z",
+    });
+    const steerEcho = optimisticEcho({
+      uuid: "ya-queue-uuid-4",
+      timestamp: "2026-07-03T20:30:24.500Z",
+    });
+    const row = queueOperationRow({ timestamp: "2026-07-03T20:30:24.635Z" });
+
+    const result = reconcileClaudeQueueOperationEchoes([
+      directEcho,
+      steerEcho,
+      row,
+    ]);
+    expect(result).toHaveLength(2);
+    const remainingUuids = result.map((m) => m.uuid);
+    expect(remainingUuids).toContain("direct-send-uuid");
+    expect(remainingUuids).not.toContain("ya-queue-uuid-4");
+  });
+
+  it("is a no-op without queue-operation rows", () => {
+    const echo = optimisticEcho({ timestamp: "2026-07-03T20:30:24.500Z" });
+    const plain: Message = {
+      uuid: "assistant-1",
+      type: "assistant",
+      timestamp: "2026-07-03T20:30:25.000Z",
+      _source: "jsonl",
+      message: { role: "assistant", content: "ok" },
+    };
+    const input = [echo, plain];
+    expect(reconcileClaudeQueueOperationEchoes(input)).toBe(input);
   });
 });

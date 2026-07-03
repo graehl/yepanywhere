@@ -342,6 +342,131 @@ export function getMessageTimestampMs(message: Message): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+// --- Claude queue-operation echo pairing -----------------------------------
+//
+// A Claude busy-send (steer or queued delivery) is persisted by the CLI as a
+// queue-operation enqueue row — no uuid, no tempId — which the server reader
+// normalizes into a user message with a positional `queue-operation-…` id and
+// `deferredSource: "queue-operation"`. YA's optimistic live echo carries the
+// YA queue uuid, so by-id dedup can never match the pair and the general
+// approx backstop is off for Claude. This pairing is the scoped remedy: only
+// queue-operation rows participate, only against sdk-source plain user turns,
+// matched one-to-one by identical visible text and nearest timestamp. Both
+// sides are stamped at enqueue time on the same machine (typically <1s
+// apart); the wide window absorbs CLI stdin lag and stays safe because of the
+// structural scoping. See topics/stream-durable-id-dedup.md.
+
+const QUEUE_OPERATION_ECHO_WINDOW_MS = 60_000;
+
+function isClaudeQueueOperationRow(message: Message): boolean {
+  return (
+    (message._source ?? "sdk") === "jsonl" &&
+    (message as { deferredSource?: unknown }).deferredSource ===
+      "queue-operation" &&
+    isPlainUserTurn(message)
+  );
+}
+
+function isOptimisticUserEcho(message: Message): boolean {
+  return (message._source ?? "sdk") === "sdk" && isPlainUserTurn(message);
+}
+
+function getComparableUserText(message: Message): string | null {
+  const text = getTextContent(message);
+  return text === null ? null : normalizeVisibleText(text);
+}
+
+export function reconcileClaudeQueueOperationEchoes(
+  messages: Message[],
+): Message[] {
+  const startIndex = Math.max(0, messages.length - MAX_SCAN_MESSAGES);
+
+  interface Candidate {
+    index: number;
+    timestampMs: number;
+    text: string;
+  }
+
+  let rows: Candidate[] | null = null;
+  let echoes: Candidate[] | null = null;
+  for (let i = startIndex; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (!message) continue;
+    const isRow = isClaudeQueueOperationRow(message);
+    if (!isRow && !isOptimisticUserEcho(message)) continue;
+    const timestampMs = getMessageTimestampMs(message);
+    const text = getComparableUserText(message);
+    if (timestampMs === null || !text) continue;
+    const candidate: Candidate = { index: i, timestampMs, text };
+    if (isRow) {
+      rows ??= [];
+      rows.push(candidate);
+    } else {
+      echoes ??= [];
+      echoes.push(candidate);
+    }
+  }
+  if (!rows || !echoes) {
+    return messages;
+  }
+
+  // Pair each queue-operation row with the nearest-in-time unmatched echo of
+  // identical text. Nearest wins so an older direct-send echo with the same
+  // text cannot steal a steer's row.
+  const pairs: Array<{ echoIndex: number; rowIndex: number }> = [];
+  const takenEchoes = new Set<number>();
+  for (const row of rows) {
+    let best: Candidate | null = null;
+    for (const echo of echoes) {
+      if (takenEchoes.has(echo.index)) continue;
+      if (echo.text !== row.text) continue;
+      const deltaMs = Math.abs(echo.timestampMs - row.timestampMs);
+      if (deltaMs > QUEUE_OPERATION_ECHO_WINDOW_MS) continue;
+      if (!best || deltaMs < Math.abs(best.timestampMs - row.timestampMs)) {
+        best = echo;
+      }
+    }
+    if (best) {
+      takenEchoes.add(best.index);
+      pairs.push({ echoIndex: best.index, rowIndex: row.index });
+    }
+  }
+  if (pairs.length === 0) {
+    return messages;
+  }
+
+  // The earlier array position absorbs the pair so the transcript does not
+  // jump. The durable row is authoritative for shared fields and — decisive
+  // for future by-id merges — for identity: the result must key on the row's
+  // `queue-operation-…` id, or the next durable fetch re-appends the row and
+  // the duplicate returns. Echo-only fields (tempId, metadata) are preserved.
+  const mergedByIndex = new Map<number, Message>();
+  const droppedIndices = new Set<number>();
+  for (const { echoIndex, rowIndex } of pairs) {
+    const echo = messages[echoIndex];
+    const row = messages[rowIndex];
+    if (!echo || !row) continue;
+    const { uuid: _echoUuid, ...merged } = mergeMessage(echo, row, "jsonl");
+    const rowUuid = (row as { uuid?: unknown }).uuid;
+    mergedByIndex.set(
+      Math.min(echoIndex, rowIndex),
+      typeof rowUuid === "string" ? { ...merged, uuid: rowUuid } : merged,
+    );
+    droppedIndices.add(Math.max(echoIndex, rowIndex));
+  }
+  if (droppedIndices.size === 0) {
+    return messages;
+  }
+
+  const result: Message[] = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    if (droppedIndices.has(i)) continue;
+    const message = mergedByIndex.get(i) ?? messages[i];
+    if (message) result.push(message);
+  }
+  return result;
+}
+
 export function hasEquivalentJsonlMessage(
   existing: Message[],
   incoming: Message,

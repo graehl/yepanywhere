@@ -976,3 +976,98 @@ describe("transcriptReducer", () => {
     ).toBeUndefined();
   });
 });
+
+describe("claude queue-operation echo dedup", () => {
+  const STEER = "please also update the docs";
+
+  function steerEcho(uuid: string, timestamp: string): Message {
+    return {
+      type: "user",
+      uuid,
+      tempId: "temp-steer-1",
+      timestamp,
+      message: { role: "user", content: STEER },
+    } as Message;
+  }
+
+  function queueOperationRow(id: string, timestamp: string): Message {
+    return {
+      id,
+      type: "user",
+      role: "user",
+      content: STEER,
+      timestamp,
+      deferred: true,
+      deferredSource: "queue-operation",
+      message: { role: "user", content: STEER },
+    } as Message;
+  }
+
+  it("collapses a busy-send echo with its durable queue-operation row", () => {
+    const state = reduceSessionDetailActions(
+      [
+        {
+          type: "applyStreamMessage",
+          message: steerEcho("ya-queue-uuid", "2026-07-01T12:00:00.500Z"),
+        },
+        {
+          type: "applyCatchupMessages",
+          messages: [
+            queueOperationRow(
+              "queue-operation-10-2026-07-01T12:00:00.635Z",
+              "2026-07-01T12:00:00.635Z",
+            ),
+          ],
+        },
+      ],
+      {
+        ...createInitialSessionDetailState(),
+        session: sessionMetadata("claude"),
+      },
+    );
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?._source).toBe("jsonl");
+
+    // A later fetch delivering the same durable row again must not
+    // resurrect the duplicate: the merged copy keys on the row id.
+    const refetched = reduceSessionDetailState(state, {
+      type: "applyCatchupMessages",
+      messages: [
+        queueOperationRow(
+          "queue-operation-10-2026-07-01T12:00:00.635Z",
+          "2026-07-01T12:00:00.635Z",
+        ),
+      ],
+    });
+    expect(refetched.messages).toHaveLength(1);
+  });
+
+  it("collapses the replayed echo into an already-loaded durable row", () => {
+    const state = reduceSessionDetailActions(
+      [
+        {
+          type: "loadPersistedTranscript",
+          session: sessionMetadata("claude"),
+          messages: [
+            queueOperationRow(
+              "queue-operation-10-2026-07-01T12:00:00.635Z",
+              "2026-07-01T12:00:00.635Z",
+            ),
+          ],
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            ...steerEcho("ya-queue-uuid", "2026-07-01T12:00:00.500Z"),
+            isReplay: true,
+          },
+        },
+      ],
+      createInitialSessionDetailState(),
+    );
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?._source).toBe("jsonl");
+  });
+});

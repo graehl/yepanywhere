@@ -32,6 +32,16 @@ export interface ProviderCapabilities {
    * (backstop covers tools too). See topics/stream-durable-id-dedup.md.
    */
   approxDedupExcludesTools?: boolean;
+
+  /**
+   * Whether the provider persists busy-path sends (steer/queued delivery) as
+   * queue-operation rows with no uuid, so YA's optimistic user echo can never
+   * dedup by id against the durable copy. When true, the client pairs
+   * `deferredSource: "queue-operation"` rows one-to-one against sdk-source
+   * user echoes by identical text and nearest timestamp. Claude-family only;
+   * defaults to false. See topics/stream-durable-id-dedup.md.
+   */
+  dedupQueueOperationEchoes?: boolean;
 }
 
 /**

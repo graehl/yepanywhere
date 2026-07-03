@@ -1,6 +1,7 @@
 import {
   getMessageTimestampMs,
   hasEquivalentJsonlMessage,
+  reconcileClaudeQueueOperationEchoes,
   reconcileLinearMessages,
 } from "../linearMessageDedup";
 import {
@@ -34,6 +35,10 @@ export function createInitialSessionDetailState(): SessionDetailState {
 
 function usesApproxMessageDedup(provider?: string): boolean {
   return getProvider(provider).capabilities.needsApproxMessageDedup;
+}
+
+function usesQueueOperationEchoDedup(provider?: string): boolean {
+  return getProvider(provider).capabilities.dedupQueueOperationEchoes === true;
 }
 
 function approxDedupOptions(provider?: string): { excludeTools: boolean } {
@@ -95,12 +100,12 @@ export function mergePersistedMessagesForProvider(
   const result = mergeJSONLMessages(baseMessages, taggedMessages, {
     skipDagOrdering: !getProvider(provider).capabilities.supportsDag,
   });
-  return usesApproxMessageDedup(provider)
-    ? reconcileLinearMessages(result.messages, approxDedupOptions(provider))
-    : result.messages;
+  return maybeReconcileApprox(result.messages, provider);
 }
 
-export function clearStreamingPlaceholderMessages(messages: Message[]): Message[] {
+export function clearStreamingPlaceholderMessages(
+  messages: Message[],
+): Message[] {
   const filtered = messages.filter((message) => !message._isStreaming);
   return filtered.length === messages.length ? messages : filtered;
 }
@@ -144,9 +149,12 @@ function maybeReconcileApprox(
   messages: Message[],
   provider: string | undefined,
 ): Message[] {
-  return usesApproxMessageDedup(provider)
+  const approx = usesApproxMessageDedup(provider)
     ? reconcileLinearMessages(messages, approxDedupOptions(provider))
     : messages;
+  return usesQueueOperationEchoDedup(provider)
+    ? reconcileClaudeQueueOperationEchoes(approx)
+    : approx;
 }
 
 export function reconcilePersistedMessagesForProvider(
@@ -294,10 +302,7 @@ export function applyStreamSubagentMessageToMap(
 
 function applyStreamSubagentMessage(
   state: SessionDetailState,
-  action: Extract<
-    SessionDetailAction,
-    { type: "applyStreamSubagentMessage" }
-  >,
+  action: Extract<SessionDetailAction, { type: "applyStreamSubagentMessage" }>,
 ): SessionDetailState {
   const agentContent = applyStreamSubagentMessageToMap(
     state.agentContent,
@@ -305,7 +310,9 @@ function applyStreamSubagentMessage(
     action.message,
     action.streamingEnabled,
   );
-  return agentContent === state.agentContent ? state : { ...state, agentContent };
+  return agentContent === state.agentContent
+    ? state
+    : { ...state, agentContent };
 }
 
 export function upsertStreamingPlaceholderMessages(
@@ -668,7 +675,10 @@ export function reduceSessionDetailState(
 
     case "replaceTailWindow": {
       const taggedMessages = tagJsonlMessages(action.messages);
-      const messages = maybeReconcileApprox(taggedMessages, action.session.provider);
+      const messages = maybeReconcileApprox(
+        taggedMessages,
+        action.session.provider,
+      );
       return {
         ...state,
         messages,

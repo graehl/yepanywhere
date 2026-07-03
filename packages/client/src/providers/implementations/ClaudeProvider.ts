@@ -12,6 +12,9 @@ export class ClaudeProvider implements Provider {
     supportsDag: true,
     supportsCloning: true,
     needsApproxMessageDedup: false,
+    // Busy-path sends persist as uuid-less queue-operation rows; pair them
+    // against the optimistic echoes (topics/stream-durable-id-dedup.md).
+    dedupQueueOperationEchoes: true,
   };
 
   readonly metadata: ProviderMetadata = {

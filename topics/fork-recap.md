@@ -239,3 +239,6 @@ waiting for idle and then using `process.sessionId` for detail/list assertions.
   recap-config, read on reactivation), surviving server restart.
 - A revived process with an empty recap buffer still emits a forked recap
   (the `{revived:true}` bypass), and reactivation no longer resets recapMode.
+- A forked recap landing on a fully-seen session does not mark it unread
+  (no bold sidebar title / inbox unread tier): `hasUnread` compares
+  pre-overlay `updatedAt` (see recaps.md § Invariants).

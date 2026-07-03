@@ -289,14 +289,13 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
           )
         : session;
 
-      // Get last seen and unread status
+      // Get last seen and unread status. Unread tracks provider content
+      // only: recap overlays bump updatedAt for list freshness, so compare
+      // pre-overlay.
       const lastSeenEntry = deps.notificationService?.getLastSeen(session.id);
       const lastSeenAt = lastSeenEntry?.timestamp;
       const hasUnread = deps.notificationService
-        ? deps.notificationService.hasUnread(
-            session.id,
-            overlaidSession.updatedAt,
-          )
+        ? deps.notificationService.hasUnread(session.id, session.updatedAt)
         : undefined;
 
       const customTitle = metadata?.customTitle;

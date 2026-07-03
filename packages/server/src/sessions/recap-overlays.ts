@@ -153,6 +153,13 @@ export function latestRecapMessage(
   return latest;
 }
 
+/**
+ * Bump summary freshness (updatedAt/lastAgentText) to the latest recap.
+ * The bump is display/order freshness only: unread computations must
+ * compare lastSeen against the pre-overlay updatedAt, so a recap landing
+ * never flips its session unread (recaps describe provider content, they
+ * are not provider content).
+ */
 export function applyRecapOverlayToSummary<T extends SessionSummary>(
   summary: T,
   recaps: readonly DurableRecapMessage[],

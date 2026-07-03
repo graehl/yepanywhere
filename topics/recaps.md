@@ -81,6 +81,14 @@ cancellation on activity) and the current trigger/threshold gaps.
 - Session lists and hovercards treat a fresher recap as the current ending
   text (`lastAgentText`) immediately on emission and after reload. A later
   real assistant turn naturally supersedes it through the normal summary path.
+- A recap landing never flips its session unread. Recaps describe provider
+  content; they are not provider content. The overlay's `updatedAt` bump is
+  display/order freshness only — every server `hasUnread` computation compares
+  `lastSeen` against the pre-overlay (provider transcript) `updatedAt`, so a
+  fully-seen session stays unbolded in the sidebar/lists/inbox when its recap
+  arrives, while genuinely unseen provider output still marks unread on its
+  own. (This deliberately reverses the earlier overlaid-freshness unread
+  computation from "Tighten recap overlay cursor and freshness handling".)
 - Recap rendering is read-only. There is no recap-specific reply box,
   thumbs, retry, or dedicated copy-to-composer action; clicking the recap row
   should not change provider state. The recap body text still participates in
@@ -234,6 +242,9 @@ Remaining probes:
 - Recap rendering does not expose retry or recap-specific action chrome; the
   only path that can move recap text into the composer is the shared
   selection quote-comment path used for other transcript content.
+- A recap overlay newer than a fully-seen session's transcript leaves
+  `hasUnread` false in session detail, project lists, and global lists, while
+  the row's `updatedAt` still reflects the recap timestamp.
 
 ## Decision: YA synthesizes rather than passing through
 

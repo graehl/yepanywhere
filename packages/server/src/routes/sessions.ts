@@ -2628,12 +2628,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    // Calculate hasUnread if we have session summary
+    // Calculate hasUnread if we have session summary. Unread tracks
+    // provider content only: recap overlays bump updatedAt for list
+    // freshness, so compare pre-overlay.
     const hasUnread =
-      deps.notificationService && sessionSummary
+      deps.notificationService && rawSessionSummary
         ? deps.notificationService.hasUnread(
             sessionId,
-            sessionSummary.updatedAt,
+            rawSessionSummary.updatedAt,
           )
         : undefined;
 
@@ -3172,6 +3174,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         },
       });
     }
+    // Unread tracks provider content only: recap overlays bump updatedAt
+    // for list freshness, so capture the pre-overlay timestamp.
+    const preRecapUpdatedAt = session.updatedAt;
     if (!beforeMessageId) {
       session = applyRecapOverlayToSession(session, recapMessages);
       if (recapCursor && afterMessageId) {
@@ -3189,7 +3194,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const augmentEndMs = performance.now();
 
     const hasUnread = deps.notificationService
-      ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
+      ? deps.notificationService.hasUnread(sessionId, preRecapUpdatedAt)
       : undefined;
 
     // Override context usage with SDK-reported context window from live process

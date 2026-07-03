@@ -868,6 +868,41 @@ describe("Global Sessions Routes", () => {
       expect(result.sessions[0].hasUnread).toBe(true);
     });
 
+    it("computes hasUnread from the pre-recap-overlay updatedAt", async () => {
+      const project = createProject("proj1", "project", "/sessions/proj1");
+      const rawUpdatedAt = minutesAgo(30);
+      const session = createSession("sess1", "proj1", rawUpdatedAt);
+      const recapTimestamp = minutesAgo(5);
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      vi.mocked(mockMetadataService.getRecapMessages).mockReturnValue([
+        {
+          type: "system",
+          subtype: "away_summary",
+          content: "Recap of what happened while away",
+          timestamp: recapTimestamp,
+          uuid: "recap-1",
+          yaRecapSource: "ya-synthetic",
+        },
+      ]);
+      // Session fully seen after the last provider write but before the
+      // recap landed: the recap bumps list freshness, never unread.
+      const lastSeenAt = minutesAgo(20);
+      vi.mocked(mockNotificationService.hasUnread).mockImplementation(
+        (_sessionId: string, updatedAt: string) => updatedAt > lastSeenAt,
+      );
+
+      const result = await makeRequest();
+
+      expect(result.sessions[0].updatedAt).toBe(recapTimestamp);
+      expect(result.sessions[0].hasUnread).toBe(false);
+      expect(mockNotificationService.hasUnread).toHaveBeenCalledWith(
+        "sess1",
+        rawUpdatedAt,
+      );
+    });
+
     it("enriches with metadata (customTitle, isArchived, isStarred)", async () => {
       const project = createProject("proj1", "project", "/sessions/proj1");
       const session = createSession("sess1", "proj1", minutesAgo(5));

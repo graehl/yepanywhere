@@ -1403,7 +1403,7 @@ describe("Sessions metadata route", () => {
     );
   });
 
-  it("computes detail unread state from overlaid recap freshness", async () => {
+  it("computes detail unread from pre-overlay updatedAt so a recap never flips unread", async () => {
     const project = { ...createProject(), provider: "grok" as const };
     const recap: DurableRecapMessage = {
       type: "system",
@@ -1414,8 +1414,11 @@ describe("Sessions metadata route", () => {
       id: "recap-1",
       yaRecapSource: "ya-synthetic",
     };
+    // Session fully seen (09:49) after the last provider write (09:46);
+    // the recap (09:50) bumps display freshness but must not mark unread.
+    const lastSeenAt = "2026-03-10T09:49:00.000Z";
     const hasUnread = vi.fn(
-      (_sessionId: string, updatedAt: string) => updatedAt === recap.timestamp,
+      (_sessionId: string, updatedAt: string) => updatedAt > lastSeenAt,
     );
 
     const routes = createSessionsRoutes({
@@ -1440,7 +1443,7 @@ describe("Sessions metadata route", () => {
       notificationService: {
         getLastSeen: vi.fn(() => ({
           sessionId: "sess-1",
-          timestamp: "2026-03-10T09:49:00.000Z",
+          timestamp: lastSeenAt,
         })),
         hasUnread,
       } as unknown as NonNullable<SessionsDeps["notificationService"]>,
@@ -1457,10 +1460,13 @@ describe("Sessions metadata route", () => {
     expect(response.status).toBe(200);
 
     const json = await response.json();
-    expect(hasUnread).toHaveBeenCalledWith("sess-1", recap.timestamp);
+    expect(hasUnread).toHaveBeenCalledWith(
+      "sess-1",
+      "2026-03-10T09:46:00.000Z",
+    );
     expect(json.session).toMatchObject({
       updatedAt: recap.timestamp,
-      hasUnread: true,
+      hasUnread: false,
     });
   });
 

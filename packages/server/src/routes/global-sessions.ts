@@ -241,11 +241,10 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const executor = metadata?.executor;
 
+        // Unread tracks provider content only: recap overlays bump
+        // updatedAt for list freshness, so compare pre-overlay.
         const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(
-              session.id,
-              overlaidSession.updatedAt,
-            )
+          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
           : false;
 
         if (isArchived) {
@@ -387,12 +386,10 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           metadata?.initialPrompt ?? overlaidSession.fullTitle;
         const executor = metadata?.executor;
 
-        // Get unread status
+        // Get unread status. Unread tracks provider content only: recap
+        // overlays bump updatedAt for list freshness, so compare pre-overlay.
         const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(
-              session.id,
-              overlaidSession.updatedAt,
-            )
+          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
           : undefined;
 
         // Skip archived sessions unless explicitly requested

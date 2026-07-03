@@ -2,7 +2,9 @@
 
 Topic: session-detail-data-layer
 
-Status: Proposed tracking doc. This follows the current-state audit in
+Status: Boundary phases and the behavior-preserving module split are
+implemented. Zustand was evaluated and deferred. This follows the current-state
+audit in
 [`045-session-detail-store-current-state-audit.md`](045-session-detail-store-current-state-audit.md).
 
 ## Goal
@@ -80,8 +82,9 @@ transcript-window semantics.
 - **Scroll snapshots:** keep them associated with the entry key for this
   refactor and preserve non-notifying patch behavior.
 - **Diagnostics:** keep aggregate `getStats()` on the cache manager.
-- **Zustand:** evaluate only after the cache/entry boundary exists. If used, it
-  should likely back `SessionDetailEntryStore`, not the whole cache registry.
+- **Zustand:** evaluated after the cache/entry boundary landed and deferred.
+  If reconsidered later, it should only back `SessionDetailEntryStore`, not the
+  cache registry.
 
 ## Proposed API Shape
 
@@ -241,7 +244,7 @@ Implementation note:
 
 ## Phase 5: Optional Entry Store Substrate Spike
 
-Status: Deferred.
+Status: Evaluated / Deferred.
 
 Intent:
 
@@ -258,6 +261,86 @@ Acceptance for adopting Zustand:
 - Scroll snapshot patches can remain non-notifying for returned transcript
   subscribers.
 - Bundle/dependency impact remains acceptable.
+
+Decision:
+
+- Do not replace `SessionDetailEntryStore` with `zustand/vanilla` in this
+  series. After the boundary cleanup, the candidate surface is a small leaf
+  state holder plus selector subscriptions, while the hard lifecycle logic
+  remains correctly custom in `SessionDetailCache`.
+- A Zustand version would need `subscribeWithSelector` and still needs special
+  handling for non-notifying scroll snapshot patches. Preserving that behavior
+  would either keep custom code around the store or introduce out-of-band state
+  mutation, which weakens the readability argument.
+- Revisit only if per-entry stores become direct React stores, or if
+  `SessionDetailEntryStore` grows enough that standard Zustand mechanics would
+  remove meaningful code rather than mostly rename it.
+
+## Phase 6: Split Store Modules
+
+Status: Implemented.
+
+Intent:
+
+- Split `sessionDetailStore.ts` into smaller internal modules now that the
+  cache, entry metadata, entry store, and public facade boundaries are clear.
+- Preserve the public import surface for hook callers and compatibility helpers.
+- Keep behavior unchanged; this is a readability and reviewability cleanup.
+
+Proposed file shape:
+
+```text
+sessionDetail/
+  sessionDetailStore.ts          public facade and exported defaults
+  sessionDetailCache.ts          cache manager, retention, eviction, stats
+  sessionDetailEntry.ts          entry metadata and lifecycle wrapper
+  sessionDetailEntryStore.ts     leaf state, selectors, notifications
+  sessionDetailKey.ts            entry key input and key encoder
+  sessionDetailSnapshots.ts      route snapshot conversion helpers
+  sessionDetailRetention.ts      retention defaults/configuration helpers
+```
+
+Acceptance:
+
+- Existing public exports from `sessionDetailStore.ts` remain available.
+- No behavior changes in direct store, hook cache, performance-settings, or
+  route-snapshot compatibility tests.
+- `sessionDetailStore.ts` becomes a small facade/export file rather than the
+  implementation owner.
+
+Implementation note:
+
+- Split the monolithic store implementation into key, retention, snapshot
+  conversion, entry-store, entry, and cache modules.
+- Kept `sessionDetailStore.ts` as the public facade and compatibility export
+  surface for existing callers.
+- Preserved the existing direct store, hook cache, performance-settings, and
+  route-snapshot compatibility test coverage.
+
+## Potential Further Refactors
+
+These are deliberately separate from the module split because they could change
+semantics or test obligations.
+
+- **Move retention metadata fully cache-side:** keep `retainCount`, timestamps,
+  expiry, and byte size in cache-owned records rather than `SessionDetailEntry`.
+  This would make `SessionDetailEntry` closer to a pure state store but may add
+  indirection in stats and eviction.
+- **Introduce a typed entry handle:** have `retain()` return an object with
+  `release()`, key metadata, and maybe debug stats. This can make ownership more
+  legible than a bare release callback, but would touch hook ergonomics.
+- **Separate scroll snapshot state:** keep scroll snapshots outside
+  `SessionDetailState` so non-notifying scroll updates become structurally
+  obvious. This could simplify entry-store semantics, but it changes route
+  snapshot conversion and divergence diagnostics.
+- **Promote snapshot conversion into a local adapter:** isolate
+  `SessionRouteSnapshot` conversion from reducer state so cache and route DTO
+  boundaries are explicit. The module split can prepare this without changing
+  behavior.
+- **Canonical per-session store:** unify default/tail windows under one
+  `source/project/session` store and derive requested windows from it. This is
+  a larger semantic design, not a cleanup, because it changes compacted-tail,
+  pagination, and cache-restore behavior.
 
 ## Tests To Preserve
 

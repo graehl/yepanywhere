@@ -845,15 +845,11 @@ export function useSessionMessages(
       });
       const nextMessages = readMessagesAfterDispatch("stream-message");
       mirrorStoreSelectedMessages(nextMessages);
-      reportStoreDivergence("stream-message", {
-        messages: nextMessages,
-      });
     },
     [
       dispatchSessionDetailAction,
       mirrorStoreSelectedMessages,
       readMessagesAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -869,15 +865,11 @@ export function useSessionMessages(
       });
       const next = readAgentContentAfterDispatch("stream-subagent-message");
       mirrorStoreSelectedAgentContent(next);
-      reportStoreDivergence("stream-subagent-message", {
-        agentContent: next,
-      });
     },
     [
       dispatchSessionDetailAction,
       mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -1003,16 +995,6 @@ export function useSessionMessages(
         totalMessages: revealedSnapshot.messages.length,
         provider: options.provider,
         restoredFromSnapshot: true,
-      });
-      reportStoreDivergence(options.diagnosticBoundary, {
-        messages: revealedSnapshot.messages,
-        session: revealedSnapshot.session,
-        pagination: revealedSnapshot.pagination,
-        agentContent: revealedSnapshot.agentContent,
-        toolUseToAgentEntries: revealedSnapshot.toolUseToAgentEntries,
-        lastMessageId: revealedSnapshot.lastMessageId,
-        maxPersistedTimestampMs: revealedSnapshot.maxPersistedTimestampMs,
-        scrollSnapshot: revealedSnapshot.scrollSnapshot,
       });
 
       initialLoadCompleteRef.current = true;
@@ -1160,16 +1142,6 @@ export function useSessionMessages(
         },
       );
       applyRevealSnapshot(revealedSnapshot);
-      reportStoreDivergence("warm-catchup-after-hydration", {
-        messages: revealedSnapshot.messages,
-        session: revealedSnapshot.session,
-        pagination: revealedSnapshot.pagination,
-        agentContent: revealedSnapshot.agentContent,
-        toolUseToAgentEntries: revealedSnapshot.toolUseToAgentEntries,
-        lastMessageId: revealedSnapshot.lastMessageId,
-        maxPersistedTimestampMs: revealedSnapshot.maxPersistedTimestampMs,
-        scrollSnapshot: revealedSnapshot.scrollSnapshot,
-      });
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
           messageCount: revealedSnapshot.pagination?.returnedMessageCount,
@@ -1340,16 +1312,6 @@ export function useSessionMessages(
             totalMessages: revealedSnapshot.messages.length,
             provider: data.session.provider,
           });
-          reportStoreDivergence("initial-load", {
-            messages: revealedSnapshot.messages,
-            session: revealedSnapshot.session,
-            pagination: revealedSnapshot.pagination,
-            agentContent: revealedSnapshot.agentContent,
-            toolUseToAgentEntries: revealedSnapshot.toolUseToAgentEntries,
-            lastMessageId: revealedSnapshot.lastMessageId,
-            maxPersistedTimestampMs: revealedSnapshot.maxPersistedTimestampMs,
-            scrollSnapshot: revealedSnapshot.scrollSnapshot,
-          });
 
           // Mark ready and flush buffer after the REST snapshot has been queued
           // so buffered stream events merge on top of the loaded transcript.
@@ -1427,7 +1389,6 @@ export function useSessionMessages(
     updatePersistedTimestampWatermark,
     resetSessionDetailState,
     dispatchSessionDetailAction,
-    reportStoreDivergence,
     applyAgentContent,
     applyMessages,
     applyPagination,
@@ -1453,17 +1414,11 @@ export function useSessionMessages(
       if (agentId) {
         const next = readAgentContentAfterDispatch("streaming-placeholder");
         mirrorStoreSelectedAgentContent(next);
-        reportStoreDivergence("streaming-placeholder", {
-          agentContent: next,
-        });
         return;
       }
 
       const next = readMessagesAfterDispatch("streaming-placeholder");
       mirrorStoreSelectedMessages(next);
-      reportStoreDivergence("streaming-placeholder", {
-        messages: next,
-      });
     },
     [
       dispatchSessionDetailAction,
@@ -1471,7 +1426,6 @@ export function useSessionMessages(
       mirrorStoreSelectedMessages,
       readAgentContentAfterDispatch,
       readMessagesAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -1513,15 +1467,11 @@ export function useSessionMessages(
       });
       const next = readToolUseToAgentAfterDispatch("tool-use-agent-map");
       mirrorStoreSelectedToolUseToAgent(next);
-      reportStoreDivergence("tool-use-agent-map", {
-        toolUseToAgentEntries: Array.from(next.entries()),
-      });
     },
     [
       dispatchSessionDetailAction,
       mirrorStoreSelectedToolUseToAgent,
       readToolUseToAgentAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -1534,15 +1484,11 @@ export function useSessionMessages(
       });
       const next = readAgentContentAfterDispatch("loaded-agent-content");
       mirrorStoreSelectedAgentContent(next);
-      reportStoreDivergence("loaded-agent-content", {
-        agentContent: next,
-      });
     },
     [
       dispatchSessionDetailAction,
       mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -1555,15 +1501,11 @@ export function useSessionMessages(
       });
       const next = readAgentContentAfterDispatch("agent-context-usage");
       mirrorStoreSelectedAgentContent(next);
-      reportStoreDivergence("agent-context-usage", {
-        agentContent: next,
-      });
     },
     [
       dispatchSessionDetailAction,
       mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -1577,15 +1519,11 @@ export function useSessionMessages(
         "agent-streaming-placeholder-cleanup",
       );
       mirrorStoreSelectedAgentContent(next);
-      reportStoreDivergence("agent-streaming-placeholder-cleanup", {
-        agentContent: next,
-      });
     },
     [
       dispatchSessionDetailAction,
       mirrorStoreSelectedAgentContent,
       readAgentContentAfterDispatch,
-      reportStoreDivergence,
     ],
   );
 
@@ -1593,14 +1531,10 @@ export function useSessionMessages(
     dispatchSessionDetailAction({ type: "clearStreamingPlaceholders" });
     const next = readMessagesAfterDispatch("streaming-placeholder-cleanup");
     mirrorStoreSelectedMessages(next);
-    reportStoreDivergence("streaming-placeholder-cleanup", {
-      messages: next,
-    });
   }, [
     dispatchSessionDetailAction,
     mirrorStoreSelectedMessages,
     readMessagesAfterDispatch,
-    reportStoreDivergence,
   ]);
 
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);

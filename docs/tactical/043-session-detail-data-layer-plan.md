@@ -74,6 +74,11 @@ What is already in place:
   redundant React state writes while Store-Backed Session Detail is enabled.
   When the Development switch is off, the same paths still write the local
   mirrors so rollback mode keeps behaving like the old hook-local return path.
+- No-signal store/local diagnostics have been removed from store-selected
+  stream, placeholder, subagent, tool-use, and reveal paths. Remaining
+  `[SessionDetailStore]` logs cover metadata, catch-up/older
+  cursor-watermark-pagination bookkeeping, scroll snapshots, and unexpected
+  missing selectors.
 - Store-selected `messages`, `agentContent`, and tool-use mappings are now the
   default returned hook data after initial hydration has reached the same reveal
   point as the local mirror. The Development settings switch remains as a
@@ -240,9 +245,9 @@ Next likely slice:
   warm/initial reveal now shares one selected-runtime-snapshot helper. Route
   cache persistence now reads back from the store. Store-selected adapter paths
   now avoid redundant React state writes while the default store-backed return
-  path is enabled. The next slices should target the remaining local mirror
-  state itself: reveal/reset scaffolding, rollback behavior, and any
-  diagnostics that still mostly compare store-selected data to itself.
+  path is enabled, and no-signal store/local diagnostics have been narrowed out.
+  The next slices should target the remaining local mirror state itself:
+  reveal/reset scaffolding and rollback behavior.
 - Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
   represents the REST-returned transcript window, including ordinary
   `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
@@ -280,6 +285,9 @@ Dogfood switch:
 - With the switch enabled, ordinary post-dispatch store-selected paths update
   refs but do not set local mirror state. If the switch is flipped off during a
   mounted session, the hook hydrates local mirror state from those refs.
+- Store/local diagnostics no longer run on paths where the live payload is just
+  the selected store result; remaining logs are for independently owned refs,
+  metadata, scroll, or missing selector cases.
 - Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks

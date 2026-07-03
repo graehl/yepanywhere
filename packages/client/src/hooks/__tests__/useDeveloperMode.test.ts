@@ -21,11 +21,11 @@ describe("useDeveloperMode", () => {
     __resetDeveloperModeForTest();
   });
 
-  it("defaults store-backed session messages to disabled", () => {
+  it("defaults store-backed session messages to enabled", () => {
     const { result } = renderHook(() => useDeveloperMode());
 
-    expect(result.current.sessionDetailStoreMessagesEnabled).toBe(false);
-    expect(getSessionDetailStoreMessagesEnabled()).toBe(false);
+    expect(result.current.sessionDetailStoreMessagesEnabled).toBe(true);
+    expect(getSessionDetailStoreMessagesEnabled()).toBe(true);
   });
 
   it("persists and publishes store-backed session message updates", () => {
@@ -33,16 +33,16 @@ describe("useDeveloperMode", () => {
     const { result: second } = renderHook(() => useDeveloperMode());
 
     act(() => {
-      first.current.setSessionDetailStoreMessagesEnabled(true);
+      first.current.setSessionDetailStoreMessagesEnabled(false);
     });
 
-    expect(first.current.sessionDetailStoreMessagesEnabled).toBe(true);
-    expect(second.current.sessionDetailStoreMessagesEnabled).toBe(true);
-    expect(getSessionDetailStoreMessagesEnabled()).toBe(true);
+    expect(first.current.sessionDetailStoreMessagesEnabled).toBe(false);
+    expect(second.current.sessionDetailStoreMessagesEnabled).toBe(false);
+    expect(getSessionDetailStoreMessagesEnabled()).toBe(false);
     expect(
       JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
     ).toMatchObject({
-      sessionDetailStoreMessagesEnabled: true,
+      sessionDetailStoreMessagesEnabled: false,
     });
   });
 });

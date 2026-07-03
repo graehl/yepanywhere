@@ -31,22 +31,34 @@ What is already in place:
   logging transcript text. The earlier hook-local shadow reducer ref was
   removed once store parity reporting covered the same comparison; the store
   is the single mirrored reduction.
+- A dev-only returned-data invariant diagnostic now checks the store-backed
+  Developer toggle path itself: once hydration is complete and a store entry
+  exists, returned `messages`, `agentContent`, and tool-use mappings should
+  match the store snapshot.
 - Same-tab route snapshot retention now sits behind
   `defaultSessionDetailStore`, with TTL, max-entry, byte-cap, retain/release,
   selector subscriptions, and stats.
 - Public raw setter escape hatches have been removed for tool-use mappings,
   session metadata, agent content, and messages.
 - Narrow selectors are already used for retained scroll, pagination,
-  older-page cursor selection, and main streaming placeholder message
-  upsert/cleanup.
+  older-page cursor selection, main stream-message fallback mirroring,
+  persisted catch-up fallback mirroring, older-page fallback mirroring, and
+  main streaming placeholder message upsert/cleanup.
+- Initial load, warm-route restore, and warm delta reveal now copy the
+  store-selected runtime snapshot into the local fallback mirrors after the
+  store restore/load/catch-up action, while preserving the existing loading
+  gate.
+- `toolUseToAgent` registration now has a selector-backed mirror: after the
+  reducer/store dispatch, the local fallback `Map` copies the store-selected
+  mapping entries instead of independently rebuilding from its previous value.
 - `agentContent` has selector-backed mirrors for ordinary subagent stream
   events, loaded subagent content, context-usage updates, and subagent
   streaming placeholder upsert/cleanup; those paths copy the store-selected
   map back into the local hook mirror after reducer/store dispatch.
-- A Developer settings debug toggle can now return store-selected `messages`
-  and `agentContent` from one coherent store-state snapshot after initial
-  hydration has reached the same reveal point as the local mirror. Local mirrors
-  still run for fallback and diagnostics.
+- Store-selected `messages`, `agentContent`, and tool-use mappings are now the
+  default returned hook data after initial hydration has reached the same reveal
+  point as the local mirror. The Development settings switch remains as a
+  rollback path to compare against the legacy hook-local mirror.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -54,6 +66,18 @@ What is already in place:
   `agentContent` is gated during warm hydration, ignores selector-only entries
   when the toggle is off, and returns selector-only entries when the toggle is
   on.
+- Focused hook coverage now verifies that store-authoritative returned
+  tool-use mappings can expose selector-only entries when the toggle is on,
+  stay local-only when it is off, and remain quiet under the returned-data
+  invariant during ordinary registration.
+- Warm-cache hook coverage now verifies that a retained full transcript window
+  remains coherent when the refresh response falls back to a smaller compacted
+  tail window: the store-backed returned data keeps the broader message set and
+  reconciles pagination so `hasOlderMessages`/`returnedMessageCount` describe
+  the merged window rather than the narrower tail response.
+- The catch-up store-authoritative hook fixture now guards against React's
+  cross-update warning. Metadata reconciliation no longer dispatches to the
+  external store from inside the legacy `setSession` functional updater.
 - The render-selector preflight is complete: transcript/view shape
   derivation — render items and turn grouping, search anchors/projections,
   timeline and progressive-reveal entries, thinking summaries, composer tail
@@ -68,13 +92,36 @@ Current diagnostic stance:
   from the older snapshot path. Do not spend migration time chasing those until
   returned `messages`/`agentContent` and render-selector parity are otherwise
   boring enough for a cleaner cutover audit.
-- Keep dogfooding the Developer toggle and turn non-scroll data divergences
-  into compact fixtures. Fresh browser checks with the toggle enabled did not
-  show catastrophic failures or fresh store divergence.
+- Keep dogfooding the default store-backed returned-detail path and turn
+  non-scroll data divergences into compact fixtures. Fresh browser checks with
+  the path enabled did not show catastrophic failures or fresh store
+  divergence. The returned-data invariant is now the primary signal for the
+  actual UI-consumed data while the Development setting remains enabled.
+- Browser mismatch checks should use the real inbox-to-session path, not only
+  unit fixtures. A useful read-only pass is: launch Playwright against
+  `https://127.0.0.1:3400`, ignore local HTTPS errors, block service workers
+  if possible, confirm `yep-anywhere-developer-mode` has
+  `sessionDetailStoreMessagesEnabled: true` (the default), set
+  `yep-anywhere-session-detail-shadow-diagnostics-enabled` to `true`, click a
+  few visible `/inbox` session links, and capture console/page/request
+  failures plus `[SessionDetailShadow]`, `[SessionDetailStore]`, and
+  `[SessionDetailReturnedData]` logs. Also sample
+  `main.session-messages` `scrollTop`, `scrollHeight`, and `clientHeight` so
+  scroll-to-top symptoms are separated from data divergence.
+- A 2026-07-02 browser pass found no scroll-to-top reproduction and no
+  `[SessionDetailReturnedData]` warnings, but did expose two follow-up
+  signals: a Codex compaction-tail case where live state represented a
+  returned tail window while the store/shadow entry had a much larger
+  accumulated transcript, and a React warning caused by external-store
+  notification during a React state reducer. The tail-window/full-history
+  contract now has reducer/store/hook fixtures and warm-refresh pagination
+  reconciliation; the warning case is covered by the catch-up hook fixture and
+  fixed by keeping metadata store dispatch out of the legacy state updater.
 
-The key remaining truth is simple: the reducer/store is now a real parallel
-data layer, but store-authoritative returned `messages` and `agentContent` are
-still dev-only and default-off. The render-selector preflight is complete
+The key remaining truth is simple: the reducer/store is now the default source
+for returned `messages`, `agentContent`, and tool-use mappings after hydration,
+while the legacy hook-local mirrors still run for fallback, diagnostics, and
+the Development settings rollback. The render-selector preflight is complete
 enough for cutover planning: `MessageList` still owns stateful UI, callbacks,
 scroll, DOM behavior, and JSX, but broad transcript/view shape derivation is no
 longer hidden inside the component.
@@ -129,8 +176,9 @@ next meaningful migration work is in the hook/store adapter.
 - Preserve user-visible behavior unless a fixture exposes a clear bug.
 - Prefer explicit actions and selectors over a broad global rerender source.
 - Keep the coarse client summary store separate from session detail state.
-- Default user-facing behavior must stay provider-like. Experimental runtime
-  changes should be default-off and placed in Developer settings first.
+- Default user-facing behavior must stay provider-like. New experimental
+  runtime changes should start default-off in Developer settings before they
+  graduate to default-on with rollback.
 
 ## Migration Shape
 
@@ -139,8 +187,8 @@ The strategy remains shadow-first and adapter-first:
 1. Keep the reducer/store fed from existing hook boundaries.
 2. Add compact fixtures when diagnostics expose a divergence.
 3. Replace one local derivation at a time with a store selector plus fallback.
-4. Only after enough parity, offer an experimental store-authoritative mode for
-   a larger surface such as returned `messages`.
+4. Only after enough parity, promote a store-authoritative mode for larger
+   returned surfaces, while keeping a rollback switch during dogfooding.
 5. Keep `MessageList` and DOM-local scroll/progressive rendering out of the
    data-layer cutover until the data model is boring.
 
@@ -155,36 +203,59 @@ Next likely slice:
 - Treat the render-selector preflight as complete enough. Do not keep
   extracting every remaining branch from `MessageList` unless it directly
   unlocks store cutover or fixes a fixture-backed bug.
-- Continue dogfooding the Developer settings store-authoritative returned
-  `messages`/`agentContent` toggle and turn any non-scroll divergence into a
-  compact reducer or hook fixture.
+- Continue dogfooding the default store-authoritative returned
+  `messages`/`agentContent`/tool-use mapping path and turn any non-scroll
+  divergence into a compact reducer or hook fixture. Treat returned-data
+  invariant warnings as higher signal than legacy local-vs-store diagnostics.
+- Keep the compaction/tail invariant explicit: `loadPersistedTranscript`
+  represents the REST-returned transcript window, including ordinary
+  `tailCompactions: 2` responses whose `pagination.totalMessageCount` is larger
+  than `pagination.returnedMessageCount`; `prependOlderMessages` and catch-up
+  actions may expand that window. A store-authoritative return path must not
+  accidentally swap a tail-window UI back to a full-history retained entry
+  unless the user actually loaded that broader window.
 - Move the next implementation chunks back to `useSessionMessages`: reduce
-  independent local mirror ownership, make store-selected returned detail the
-  normal test path behind the Developer toggle, and identify one legacy mirror
-  path at a time that can become fallback-only.
+  independent local mirror ownership, keep store-selected returned detail as
+  the normal test path with a Development rollback, and identify one legacy
+  mirror path at a time that can become fallback-only.
 
 Then:
 
-- Keep the toggle dev-only and default-off until dogfooding has produced
-  fixtures for any live divergence.
+- Keep the Development settings switch available as a dev-only rollback while
+  dogfooding the default store-backed path.
 - Do not broaden to scroll ownership or `/btw` until returned `messages` and
   `agentContent` are boring.
 
-Dogfood toggle:
+Dogfood switch:
 
-- Name: Store-Backed Session Messages in the Development settings page.
-- Current scope: returned `messages` and `agentContent`.
-- Behavior today: read store-selected `messages` and `agentContent` from one
-  coherent store-state snapshot after hydration, with the local mirrors as
-  fallback.
-- Keep local mirrors running for comparison, diagnostics, fallback, and
-  rollback.
+- Name: Store-Backed Session Detail in the Development settings page.
+- Current default-on scope: returned `messages`, `agentContent`, and tool-use
+  mappings.
+- Behavior today: read store-selected `messages`, `agentContent`, and tool-use
+  mappings from one coherent store-state snapshot after hydration, with the
+  local mirrors as fallback.
+- Off behavior: return the legacy hook-local mirrors, but keep the
+  reducer/store feed, selector-backed adapter reads, diagnostics, and cache
+  ownership running. Turning the switch off is not a store no-op.
+- Keep local mirrors running for comparison, diagnostics, fallback, and the
+  Development settings rollback.
 - Do not include render selectors or `/btw` in this toggle.
 
 ## Current Risks
 
-- Persisted catch-up and older-page transitions still mix transcript writes
-  with cursor/watermark side effects.
+- Initial load and warm hydration still contain the most sequencing logic
+  because they coordinate loading progress, warm-cache reveal, cache writes,
+  and stream-buffer flushing inside the hook, but their revealed fallback data
+  now comes from the store-selected snapshot.
+- Compaction-tail and full-history states are easy to confuse because the
+  default route has no explicit `tailTurns`/`tailFrom` URL parameter even
+  though the client requests `tailCompactions: 2`. Treat message-count
+  differences where `totalMessageCount > returnedMessageCount` as a cutover
+  invariant to classify, not automatic noise.
+- Store subscribers can currently be notified from inside legacy React state
+  updaters in some metadata/stream paths. That is a real dogfood warning, but
+  lower priority than returned-data mismatches unless it produces visible UI
+  breakage.
 - Subagent live-vs-durable parity is intentionally broad-shape only. Some
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
@@ -259,6 +330,8 @@ as a failing reducer/selector test before changing UI code.
 - Keep dev diagnostics available during dogfooding.
 - Store stats should answer which sessions are retained, why, approximate bytes,
   and expiry time.
-- Experimental toggles should be default-off and easy to disable.
+- New experimental toggles should be default-off and easy to disable. This
+  store-backed returned-detail switch has graduated to default-on, with rollback
+  retained while local mirrors still exist.
 - A successful dogfood period should leave behind fixtures for any divergence
   that was found and fixed.

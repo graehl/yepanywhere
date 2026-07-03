@@ -31,6 +31,7 @@ import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
+  reportSessionDetailReturnedDataDivergence,
   reportSessionDetailStoreDivergence,
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
@@ -40,6 +41,7 @@ import {
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
   selectSessionDetailScrollSnapshot,
+  selectSessionDetailToolUseToAgentEntries,
 } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
@@ -349,6 +351,38 @@ function mergePersistedMessagesForProvider(
     : result.messages;
 }
 
+function reconcileWarmRefreshPagination(
+  warmPagination: PaginationInfo | undefined,
+  refreshPagination: PaginationInfo | undefined,
+  mergedMessages: readonly Message[],
+): PaginationInfo | undefined {
+  if (!refreshPagination) {
+    return warmPagination;
+  }
+  if (
+    warmPagination?.hasOlderMessages === false &&
+    refreshPagination.hasOlderMessages &&
+    mergedMessages.length > refreshPagination.returnedMessageCount
+  ) {
+    return {
+      ...refreshPagination,
+      hasOlderMessages: false,
+      returnedMessageCount: Math.max(
+        mergedMessages.length,
+        refreshPagination.returnedMessageCount,
+      ),
+      totalMessageCount: Math.max(
+        warmPagination.totalMessageCount,
+        refreshPagination.totalMessageCount,
+        mergedMessages.length,
+      ),
+      truncatedBeforeMessageId: undefined,
+      truncatedBy: undefined,
+    };
+  }
+  return refreshPagination;
+}
+
 /**
  * Hook for managing session messages with stream buffering.
  *
@@ -576,6 +610,23 @@ export function useSessionMessages(
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
+  const readSelectorBackedRuntimeSnapshot = useCallback(
+    () =>
+      defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailRuntimeSnapshot,
+      ),
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+  );
+
+  const readSelectorBackedToolUseToAgent = useCallback(() => {
+    const entries = defaultSessionDetailStore.readSelected(
+      { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+      selectSessionDetailToolUseToAgentEntries,
+    );
+    return entries ? new Map(entries) : undefined;
+  }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
+
   const canReadStoreBackedDetail = storeBackedMessagesEnabled && !loading;
   const storeBackedDetailState = useSyncExternalStore(
     useCallback(
@@ -621,6 +672,49 @@ export function useSessionMessages(
   const returnedMessages = storeBackedDetailState?.messages ?? messages;
   const returnedAgentContent =
     storeBackedDetailState?.agentContent ?? agentContent;
+  const returnedToolUseToAgent = useMemo(
+    () =>
+      storeBackedDetailState
+        ? new Map(storeBackedDetailState.toolUseToAgentEntries)
+        : toolUseToAgent,
+    [storeBackedDetailState, toolUseToAgent],
+  );
+  useEffect(() => {
+    if (
+      !storeBackedMessagesEnabled ||
+      loading ||
+      storeBackedDetailState === undefined
+    ) {
+      return;
+    }
+
+    reportSessionDetailReturnedDataDivergence({
+      boundary: "returned-detail",
+      projectId,
+      sessionId,
+      provider: session?.provider ?? providerRef.current,
+      returned: {
+        messages: returnedMessages,
+        agentContent: returnedAgentContent,
+        toolUseToAgentEntries: Array.from(returnedToolUseToAgent.entries()),
+      },
+      store: {
+        messages: storeBackedDetailState.messages,
+        agentContent: storeBackedDetailState.agentContent,
+        toolUseToAgentEntries: storeBackedDetailState.toolUseToAgentEntries,
+      },
+    });
+  }, [
+    storeBackedMessagesEnabled,
+    loading,
+    storeBackedDetailState,
+    projectId,
+    sessionId,
+    session?.provider,
+    returnedMessages,
+    returnedAgentContent,
+    returnedToolUseToAgent,
+  ]);
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -668,7 +762,7 @@ export function useSessionMessages(
       session,
       pagination,
       agentContent: returnedAgentContent,
-      toolUseToAgentEntries: Array.from(toolUseToAgent.entries()),
+      toolUseToAgentEntries: Array.from(returnedToolUseToAgent.entries()),
       lastMessageId: lastMessageIdRef.current,
       maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       scrollSnapshot: scrollSnapshotRef.current,
@@ -678,7 +772,7 @@ export function useSessionMessages(
     returnedMessages,
     pagination,
     session,
-    toolUseToAgent,
+    returnedToolUseToAgent,
   ]);
 
   useEffect(() => {
@@ -709,8 +803,6 @@ export function useSessionMessages(
   }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
   // Process a stream message event.
-  // When replaying buffered startup events for Codex, suppress entries that are
-  // semantically identical to already-loaded JSONL messages but have different UUIDs.
   const processStreamMessage = useCallback(
     (incoming: Message, fromBufferedReplay = false) => {
       const provider = providerRef.current;
@@ -732,6 +824,14 @@ export function useSessionMessages(
         fromBufferedReplay,
         streamingEnabled,
       });
+      const selectorBackedMessages = readSelectorBackedMessages();
+      if (selectorBackedMessages) {
+        applyMessages(selectorBackedMessages);
+        reportStoreDivergence("stream-message", {
+          messages: selectorBackedMessages,
+        });
+        return;
+      }
 
       const prev = messagesRef.current;
       let nextMessages = prev;
@@ -762,7 +862,12 @@ export function useSessionMessages(
         messages: nextMessages,
       });
     },
-    [applyMessages, dispatchSessionDetailAction, reportStoreDivergence],
+    [
+      applyMessages,
+      dispatchSessionDetailAction,
+      readSelectorBackedMessages,
+      reportStoreDivergence,
+    ],
   );
 
   // Process a buffered stream subagent message
@@ -850,25 +955,45 @@ export function useSessionMessages(
       if (lastJsonlId) {
         lastMessageIdRef.current = lastJsonlId;
       }
+      const selectorBackedSnapshot = readSelectorBackedRuntimeSnapshot();
+      const revealedMessages = selectorBackedSnapshot
+        ? [...selectorBackedSnapshot.messages]
+        : options.loadedMessages;
+      const revealedSession =
+        selectorBackedSnapshot?.session ?? options.loadedSession;
+      const revealedPagination =
+        selectorBackedSnapshot?.pagination ?? options.loadedPagination;
+      const revealedAgentContent =
+        selectorBackedSnapshot?.agentContent ?? warmLoad?.agentContent ?? {};
+      const revealedToolUseToAgentEntries =
+        selectorBackedSnapshot?.toolUseToAgentEntries ??
+        warmLoad?.toolUseToAgentEntries ??
+        [];
+      const revealedLastJsonlId =
+        selectorBackedSnapshot?.lastMessageId ??
+        findLastJsonlMessageId(revealedMessages);
+      if (revealedLastJsonlId) {
+        lastMessageIdRef.current = revealedLastJsonlId;
+      }
 
-      applyAgentContent(warmLoad?.agentContent ?? {});
-      applyToolUseToAgent(new Map(warmLoad?.toolUseToAgentEntries ?? []));
-      applySession(options.loadedSession);
-      applyMessages(options.loadedMessages);
-      setPagination(options.loadedPagination);
+      applyAgentContent(revealedAgentContent);
+      applyToolUseToAgent(new Map(revealedToolUseToAgentEntries));
+      applySession(revealedSession);
+      applyMessages(revealedMessages);
+      setPagination(revealedPagination);
       markReloadPerfPhase("session_initial_messages_state_queued", {
         messages: options.sourceMessageCount,
-        totalMessages: options.loadedMessages.length,
+        totalMessages: revealedMessages.length,
         provider: options.provider,
         restoredFromSnapshot: true,
       });
       reportStoreDivergence(options.diagnosticBoundary, {
-        messages: options.loadedMessages,
-        session: options.loadedSession,
-        pagination: options.loadedPagination,
-        agentContent: warmLoad?.agentContent ?? {},
-        toolUseToAgentEntries: warmLoad?.toolUseToAgentEntries ?? [],
-        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+        messages: revealedMessages,
+        session: revealedSession,
+        pagination: revealedPagination,
+        agentContent: revealedAgentContent,
+        toolUseToAgentEntries: revealedToolUseToAgentEntries,
+        lastMessageId: revealedLastJsonlId ?? lastMessageIdRef.current,
         maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
         scrollSnapshot: scrollSnapshotRef.current,
       });
@@ -879,9 +1004,9 @@ export function useSessionMessages(
       setLoading(false);
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
-          messageCount: options.loadedMessages.length,
-          totalMessageCount: options.loadedPagination?.totalMessageCount,
-          hasOlderMessages: options.loadedPagination?.hasOlderMessages,
+          messageCount: revealedMessages.length,
+          totalMessageCount: revealedPagination?.totalMessageCount,
+          hasOlderMessages: revealedPagination?.hasOlderMessages,
         }),
       );
       markReloadPerfPhase("session_initial_load_complete", {
@@ -930,11 +1055,15 @@ export function useSessionMessages(
               approxDedupOptions(data.session.provider),
             )
           : taggedMessages;
-      const nextPagination = data.pagination ?? warmLoad.pagination;
+      const nextPagination = reconcileWarmRefreshPagination(
+        warmLoad.pagination,
+        data.pagination,
+        loadedMessages,
+      );
       dispatchSessionDetailAction({
         type: "applyCatchupMessages",
-        messages: data.messages,
         session: data.session,
+        messages: data.messages,
         pagination: nextPagination,
       });
       setSessionLoadProgress(
@@ -988,48 +1117,70 @@ export function useSessionMessages(
       applySession(data.session);
       const taggedMessages = tagJsonlMessages(data.messages);
       updatePersistedTimestampWatermark(taggedMessages);
-      const nextPagination = data.pagination ?? warmLoad.pagination;
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        messages: data.messages,
-        session: data.session,
-        pagination: nextPagination,
-      });
-      const prevMessages = messagesRef.current;
+      const latestSnapshot = latestSnapshotRef.current;
       const baseMessages =
-        prevMessages.length > 0 ? prevMessages : warmLoad.messages;
+        latestSnapshot && latestSnapshot.messages.length > 0
+          ? latestSnapshot.messages
+          : warmLoad.messages;
       const loadedMessages = mergePersistedMessagesForProvider(
         baseMessages,
         taggedMessages,
         data.session.provider,
       );
-      const lastJsonlId = findLastJsonlMessageId(loadedMessages);
-      if (lastJsonlId) {
-        lastMessageIdRef.current = lastJsonlId;
-      }
-      applyMessages(loadedMessages);
-      reportStoreDivergence("warm-catchup-after-hydration", {
-        messages: loadedMessages,
+      const nextPagination = reconcileWarmRefreshPagination(
+        warmLoad.pagination,
+        data.pagination,
+        loadedMessages,
+      );
+      dispatchSessionDetailAction({
+        type: "applyCatchupMessages",
         session: data.session,
+        messages: data.messages,
         pagination: nextPagination,
-        agentContent:
-          latestSnapshotRef.current?.agentContent ??
-          warmLoad.agentContent ??
-          {},
-        toolUseToAgentEntries:
-          latestSnapshotRef.current?.toolUseToAgentEntries ??
-          warmLoad.toolUseToAgentEntries ??
-          [],
-        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+      });
+      const selectorBackedSnapshot = readSelectorBackedRuntimeSnapshot();
+      const revealedMessages = selectorBackedSnapshot
+        ? [...selectorBackedSnapshot.messages]
+        : loadedMessages;
+      const revealedSession = selectorBackedSnapshot?.session ?? data.session;
+      const revealedPagination =
+        selectorBackedSnapshot?.pagination ?? nextPagination;
+      const revealedAgentContent =
+        selectorBackedSnapshot?.agentContent ??
+        latestSnapshotRef.current?.agentContent ??
+        warmLoad.agentContent ??
+        {};
+      const revealedToolUseToAgentEntries =
+        selectorBackedSnapshot?.toolUseToAgentEntries ??
+        latestSnapshotRef.current?.toolUseToAgentEntries ??
+        warmLoad.toolUseToAgentEntries ??
+        [];
+      const revealedLastJsonlId =
+        selectorBackedSnapshot?.lastMessageId ??
+        findLastJsonlMessageId(revealedMessages);
+      if (revealedLastJsonlId) {
+        lastMessageIdRef.current = revealedLastJsonlId;
+      }
+      applyAgentContent(revealedAgentContent);
+      applyToolUseToAgent(new Map(revealedToolUseToAgentEntries));
+      applySession(revealedSession);
+      applyMessages(revealedMessages);
+      reportStoreDivergence("warm-catchup-after-hydration", {
+        messages: revealedMessages,
+        session: revealedSession,
+        pagination: revealedPagination,
+        agentContent: revealedAgentContent,
+        toolUseToAgentEntries: revealedToolUseToAgentEntries,
+        lastMessageId: revealedLastJsonlId ?? lastMessageIdRef.current,
         maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
         scrollSnapshot: scrollSnapshotRef.current,
       });
-      setPagination(nextPagination);
+      setPagination(revealedPagination);
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
-          messageCount: nextPagination?.returnedMessageCount,
-          totalMessageCount: nextPagination?.totalMessageCount,
-          hasOlderMessages: nextPagination?.hasOlderMessages,
+          messageCount: revealedPagination?.returnedMessageCount,
+          totalMessageCount: revealedPagination?.totalMessageCount,
+          hasOlderMessages: revealedPagination?.hasOlderMessages,
         }),
       );
       notifyLoadComplete(data);
@@ -1177,21 +1328,41 @@ export function useSessionMessages(
           session: data.session,
           pagination: nextPagination,
         });
+        const selectorBackedSnapshot = readSelectorBackedRuntimeSnapshot();
+        const revealedMessages = selectorBackedSnapshot
+          ? [...selectorBackedSnapshot.messages]
+          : loadedMessages;
+        const revealedSession = selectorBackedSnapshot?.session ?? data.session;
+        const revealedPagination =
+          selectorBackedSnapshot?.pagination ?? nextPagination;
+        const revealedAgentContent =
+          selectorBackedSnapshot?.agentContent ?? {};
+        const revealedToolUseToAgentEntries =
+          selectorBackedSnapshot?.toolUseToAgentEntries ?? [];
+        const revealedLastJsonlId =
+          selectorBackedSnapshot?.lastMessageId ??
+          findLastJsonlMessageId(revealedMessages);
+        if (revealedLastJsonlId) {
+          lastMessageIdRef.current = revealedLastJsonlId;
+        }
         const revealInitialTranscript = () => {
-          applyMessages(loadedMessages);
-          setPagination(nextPagination);
+          applyAgentContent(revealedAgentContent);
+          applyToolUseToAgent(new Map(revealedToolUseToAgentEntries));
+          applySession(revealedSession);
+          applyMessages(revealedMessages);
+          setPagination(revealedPagination);
           markReloadPerfPhase("session_initial_messages_state_queued", {
             messages: taggedMessages.length,
-            totalMessages: loadedMessages.length,
+            totalMessages: revealedMessages.length,
             provider: data.session.provider,
           });
           reportStoreDivergence("initial-load", {
-            messages: loadedMessages,
-            session: data.session,
-            pagination: nextPagination,
-            agentContent: {},
-            toolUseToAgentEntries: [],
-            lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+            messages: revealedMessages,
+            session: revealedSession,
+            pagination: revealedPagination,
+            agentContent: revealedAgentContent,
+            toolUseToAgentEntries: revealedToolUseToAgentEntries,
+            lastMessageId: revealedLastJsonlId ?? lastMessageIdRef.current,
             maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
             scrollSnapshot: scrollSnapshotRef.current,
           });
@@ -1204,9 +1375,9 @@ export function useSessionMessages(
           setLoading(false);
           setSessionLoadProgress(
             createSessionLoadProgress("complete", {
-              messageCount: loadedMessages.length,
-              totalMessageCount: data.pagination?.totalMessageCount,
-              hasOlderMessages: data.pagination?.hasOlderMessages,
+              messageCount: revealedMessages.length,
+              totalMessageCount: revealedPagination?.totalMessageCount,
+              hasOlderMessages: revealedPagination?.hasOlderMessages,
             }),
           );
           markReloadPerfPhase("session_initial_load_complete", {
@@ -1221,11 +1392,11 @@ export function useSessionMessages(
           projectId,
           sessionId,
           {
-            messages: loadedMessages,
-            session: data.session,
-            pagination: data.pagination,
-            agentContent: {},
-            toolUseToAgentEntries: [],
+            messages: revealedMessages,
+            session: revealedSession,
+            pagination: revealedPagination,
+            agentContent: revealedAgentContent,
+            toolUseToAgentEntries: revealedToolUseToAgentEntries,
             lastMessageId: lastMessageIdRef.current,
             maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
             scrollSnapshot: scrollSnapshotRef.current,
@@ -1286,6 +1457,7 @@ export function useSessionMessages(
     applyMessages,
     applySession,
     applyToolUseToAgent,
+    readSelectorBackedRuntimeSnapshot,
   ]);
 
   // Handle streaming content updates (from useStreamingContent)
@@ -1372,6 +1544,16 @@ export function useSessionMessages(
         toolUseId,
         agentId,
       });
+      const selectorBackedToolUseToAgent = readSelectorBackedToolUseToAgent();
+      if (selectorBackedToolUseToAgent) {
+        applyToolUseToAgent(selectorBackedToolUseToAgent);
+        reportStoreDivergence("tool-use-agent-map", {
+          toolUseToAgentEntries: Array.from(
+            selectorBackedToolUseToAgent.entries(),
+          ),
+        });
+        return;
+      }
       const prev = toolUseToAgentRef.current;
       if (prev.has(toolUseId)) {
         reportStoreDivergence("tool-use-agent-map", {
@@ -1386,7 +1568,12 @@ export function useSessionMessages(
         toolUseToAgentEntries: Array.from(next.entries()),
       });
     },
-    [applyToolUseToAgent, dispatchSessionDetailAction, reportStoreDivergence],
+    [
+      applyToolUseToAgent,
+      dispatchSessionDetailAction,
+      readSelectorBackedToolUseToAgent,
+      reportStoreDivergence,
+    ],
   );
 
   const mergeLoadedAgentContent = useCallback(
@@ -1499,27 +1686,46 @@ export function useSessionMessages(
             session: data.session,
           });
           updatePersistedTimestampWatermark(data.messages);
-          const result = mergeJSONLMessages(messagesRef.current, data.messages, {
-            skipDagOrdering: !getProvider(data.session.provider).capabilities
-              .supportsDag,
-          });
-          const nextMessages = usesApproxMessageDedup(data.session.provider)
-            ? reconcileLinearMessages(
-                result.messages,
-                approxDedupOptions(data.session.provider),
-              )
-            : result.messages;
-          const lastJsonlId = findLastJsonlMessageId(nextMessages);
-          if (lastJsonlId) {
-            lastMessageIdRef.current = lastJsonlId;
+          const selectorBackedMessages = readSelectorBackedMessages();
+          if (selectorBackedMessages) {
+            const lastJsonlId = findLastJsonlMessageId(selectorBackedMessages);
+            if (lastJsonlId) {
+              lastMessageIdRef.current = lastJsonlId;
+            }
+            applyMessages(selectorBackedMessages);
+            reportStoreDivergence("catchup", {
+              messages: selectorBackedMessages,
+              session: data.session,
+              lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+              maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            });
+          } else {
+            const result = mergeJSONLMessages(
+              messagesRef.current,
+              data.messages,
+              {
+                skipDagOrdering: !getProvider(data.session.provider)
+                  .capabilities.supportsDag,
+              },
+            );
+            const nextMessages = usesApproxMessageDedup(data.session.provider)
+              ? reconcileLinearMessages(
+                  result.messages,
+                  approxDedupOptions(data.session.provider),
+                )
+              : result.messages;
+            const lastJsonlId = findLastJsonlMessageId(nextMessages);
+            if (lastJsonlId) {
+              lastMessageIdRef.current = lastJsonlId;
+            }
+            applyMessages(nextMessages);
+            reportStoreDivergence("catchup", {
+              messages: nextMessages,
+              session: data.session,
+              lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+              maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            });
           }
-          applyMessages(nextMessages);
-          reportStoreDivergence("catchup", {
-            messages: nextMessages,
-            session: data.session,
-            lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-          });
         }
         // Update session metadata (including title, model, contextUsage) which may have changed
         // For new sessions, prev may be null if JSONL didn't exist on initial load
@@ -1545,6 +1751,7 @@ export function useSessionMessages(
     applyMessages,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
+    readSelectorBackedMessages,
     reportStoreDivergence,
     updateSession,
   ]);
@@ -1583,26 +1790,46 @@ export function useSessionMessages(
         _source: "jsonl" as const,
       }));
       updatePersistedTimestampWatermark(taggedOlder);
-      const combined = [...taggedOlder, ...messagesRef.current];
-      const nextMessages = usesApproxMessageDedup(data.session.provider)
-        ? reconcileLinearMessages(
-            combined,
-            approxDedupOptions(data.session.provider),
-          )
-        : combined;
-      const lastJsonlId = findLastJsonlMessageId(nextMessages);
-      if (lastJsonlId) {
-        lastMessageIdRef.current = lastJsonlId;
+      const selectorBackedMessages = readSelectorBackedMessages();
+      const selectorBackedPagination = defaultSessionDetailStore.readSelected(
+        { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+        selectSessionDetailPagination,
+      );
+      if (selectorBackedMessages) {
+        const lastJsonlId = findLastJsonlMessageId(selectorBackedMessages);
+        if (lastJsonlId) {
+          lastMessageIdRef.current = lastJsonlId;
+        }
+        applyMessages(selectorBackedMessages);
+        reportStoreDivergence("older-page", {
+          messages: selectorBackedMessages,
+          session: data.session,
+          pagination: selectorBackedPagination ?? data.pagination,
+          lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+        });
+      } else {
+        const combined = [...taggedOlder, ...messagesRef.current];
+        const nextMessages = usesApproxMessageDedup(data.session.provider)
+          ? reconcileLinearMessages(
+              combined,
+              approxDedupOptions(data.session.provider),
+            )
+          : combined;
+        const lastJsonlId = findLastJsonlMessageId(nextMessages);
+        if (lastJsonlId) {
+          lastMessageIdRef.current = lastJsonlId;
+        }
+        applyMessages(nextMessages);
+        reportStoreDivergence("older-page", {
+          messages: nextMessages,
+          session: data.session,
+          pagination: data.pagination,
+          lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+        });
       }
-      applyMessages(nextMessages);
-      reportStoreDivergence("older-page", {
-        messages: nextMessages,
-        session: data.session,
-        pagination: data.pagination,
-        lastMessageId: lastJsonlId ?? lastMessageIdRef.current,
-        maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-      });
-      setPagination(data.pagination);
+      setPagination(selectorBackedPagination ?? data.pagination);
     } catch {
       // Silent fail for loading older messages
     } finally {
@@ -1615,6 +1842,10 @@ export function useSessionMessages(
     readSelectorBackedPagination,
     updatePersistedTimestampWatermark,
     dispatchSessionDetailAction,
+    readSelectorBackedMessages,
+    sourceKey,
+    tailTurns,
+    tailFrom,
     reportStoreDivergence,
   ]);
 
@@ -1669,7 +1900,7 @@ export function useSessionMessages(
   return {
     messages: returnedMessages,
     agentContent: returnedAgentContent,
-    toolUseToAgent,
+    toolUseToAgent: returnedToolUseToAgent,
     loading,
     sessionLoadProgress,
     session,

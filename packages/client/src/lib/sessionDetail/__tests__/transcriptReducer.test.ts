@@ -139,6 +139,54 @@ describe("transcriptReducer", () => {
     expect(state.pagination?.totalMessageCount).toBe(2);
   });
 
+  it("treats persisted loads as the returned transcript window", () => {
+    const loadedFullHistory = reduceSessionDetailState(
+      createInitialSessionDetailState(),
+      {
+        type: "loadPersistedTranscript",
+        session: sessionMetadata("codex"),
+        messages: [
+          userMessage("user-1", "old", "2026-07-01T12:00:00.000Z"),
+          assistantMessage("assistant-1", "old", "2026-07-01T12:00:01.000Z"),
+          userMessage("user-2", "current", "2026-07-01T12:10:00.000Z"),
+        ],
+        pagination: pagination({
+          hasOlderMessages: false,
+          totalMessageCount: 3,
+          returnedMessageCount: 3,
+          totalCompactions: 1,
+        }),
+      },
+    );
+
+    const tailWindow = reduceSessionDetailState(loadedFullHistory, {
+      type: "loadPersistedTranscript",
+      session: sessionMetadata("codex"),
+      messages: [
+        assistantMessage("assistant-1", "old", "2026-07-01T12:00:01.000Z"),
+        userMessage("user-2", "current", "2026-07-01T12:10:00.000Z"),
+      ],
+      pagination: pagination({
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "assistant-1",
+        totalMessageCount: 3,
+        returnedMessageCount: 2,
+        totalCompactions: 1,
+      }),
+    });
+
+    expect(tailWindow.messages.map((message) => message.uuid)).toEqual([
+      "assistant-1",
+      "user-2",
+    ]);
+    expect(tailWindow.pagination).toMatchObject({
+      hasOlderMessages: true,
+      totalMessageCount: 3,
+      returnedMessageCount: 2,
+    });
+    expect(tailWindow.lastMessageId).toBe("user-2");
+  });
+
   it("sets session metadata without changing transcript rows", () => {
     const messages = [
       userMessage("user-1", "hello", "2026-07-01T12:00:00.000Z"),
@@ -508,9 +556,7 @@ describe("transcriptReducer", () => {
     const state = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",
       session: sessionMetadata(),
-      messages: [
-        userMessage("user-1", "delegate", "2026-07-01T12:00:00.000Z"),
-      ],
+      messages: [userMessage("user-1", "delegate", "2026-07-01T12:00:00.000Z")],
       agentContent: {
         "agent-a": {
           messages: [agentMessage],
@@ -819,11 +865,7 @@ describe("transcriptReducer", () => {
       type: "loadPersistedTranscript",
       session: sessionMetadata(),
       messages: [
-        assistantMessage(
-          "assistant-1",
-          "loaded",
-          "2026-07-01T12:00:00.000Z",
-        ),
+        assistantMessage("assistant-1", "loaded", "2026-07-01T12:00:00.000Z"),
       ],
       scrollSnapshot: initialSnapshot,
     });

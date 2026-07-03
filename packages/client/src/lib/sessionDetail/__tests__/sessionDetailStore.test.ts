@@ -66,9 +66,9 @@ describe("SessionDetailStore", () => {
       }),
     ).toBe(true);
 
-    expect(store.readRouteSnapshot(storeKey, { nowMs: 11 })?.lastMessageId).toBe(
-      "msg-1",
-    );
+    expect(
+      store.readRouteSnapshot(storeKey, { nowMs: 11 })?.lastMessageId,
+    ).toBe("msg-1");
     expect(store.readRouteSnapshot(key("session-a", SOURCE_B))).toBeUndefined();
     expect(getSessionDetailStoreKey(storeKey)).toBe(
       "host%3Aa:project-a:session-a",
@@ -132,14 +132,89 @@ describe("SessionDetailStore", () => {
     );
 
     expect(
-      store.readSelected(
-        storeKey,
-        (state) => state.messages.map((message) => message.uuid),
+      store.readSelected(storeKey, (state) =>
+        state.messages.map((message) => message.uuid),
       ),
     ).toEqual(["msg-1", "msg-2"]);
     expect(
       store.readSelected(key("missing"), (state) => state.messages.length),
     ).toBeUndefined();
+  });
+
+  it("keeps explicit tail variants separate from the default session entry", () => {
+    const store = createSessionDetailStore();
+    const defaultKey = key("session-a");
+    const tailTurnsKey = {
+      ...defaultKey,
+      tailTurns: 5,
+    };
+    const tailFromKey = {
+      ...defaultKey,
+      tailFrom: "msg-2",
+    };
+
+    store.writeRouteSnapshot(
+      defaultKey,
+      snapshot("session-a", ["msg-1", "msg-2", "msg-3"]),
+    );
+    store.writeRouteSnapshot(
+      tailTurnsKey,
+      snapshot("session-a", ["msg-2", "msg-3"]),
+    );
+    store.writeRouteSnapshot(tailFromKey, snapshot("session-a", ["msg-3"]));
+
+    expect(
+      store
+        .readRouteSnapshot(defaultKey)
+        ?.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1", "msg-2", "msg-3"]);
+    expect(
+      store
+        .readRouteSnapshot(tailTurnsKey)
+        ?.messages.map((message) => message.uuid),
+    ).toEqual(["msg-2", "msg-3"]);
+    expect(
+      store
+        .readRouteSnapshot(tailFromKey)
+        ?.messages.map((message) => message.uuid),
+    ).toEqual(["msg-3"]);
+    expect(getSessionDetailStoreKey(tailTurnsKey)).toBe(
+      "host%3Aa:project-a:session-a?tailTurns=5",
+    );
+    expect(getSessionDetailStoreKey(tailFromKey)).toBe(
+      "host%3Aa:project-a:session-a?tailFrom=msg-2",
+    );
+
+    expect(
+      store
+        .getStats()
+        .entries.map((entry) => ({
+          key: entry.key,
+          messageCount: entry.messageCount,
+          tailTurns: entry.tailTurns,
+          tailFrom: entry.tailFrom,
+        }))
+        .sort((left, right) => left.key.localeCompare(right.key)),
+    ).toEqual([
+      {
+        key: "host%3Aa:project-a:session-a",
+        messageCount: 3,
+        tailTurns: undefined,
+        tailFrom: undefined,
+      },
+      {
+        key: "host%3Aa:project-a:session-a?tailFrom=msg-2",
+        messageCount: 1,
+        tailTurns: undefined,
+        tailFrom: "msg-2",
+      },
+      {
+        key: "host%3Aa:project-a:session-a?tailTurns=5",
+        messageCount: 2,
+        tailTurns: 5,
+        tailFrom: undefined,
+      },
+    ]);
   });
 
   it("deletes a single entry without clearing unrelated entries", () => {
@@ -303,5 +378,4 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(key("two"), { nowMs: 4 })).toBeUndefined();
     expect(store.readRouteSnapshot(key("three"), { nowMs: 4 })).toBeDefined();
   });
-
 });

@@ -1,39 +1,49 @@
-# Store-Backed Messages Toggle Preflight
+# Store-Backed Session Detail Switch Preflight
 
 Topic: session-detail-data-layer
 
 This note supports the tactical plan in
 [`043-session-detail-data-layer-plan.md`](043-session-detail-data-layer-plan.md).
-It records the remaining `useSessionMessages` main-transcript writes before the
-Developer settings dogfood toggle returns store-selected `messages` instead of
-local React state. The first dogfood toggle now exists as Store-Backed Session
-Messages in the Development settings page.
+It records the `useSessionMessages` main-transcript writes that were checked
+before the store-backed returned detail path became the default. The Store-
+Backed Session Detail switch remains in the Development settings page as a
+rollback path to compare against the legacy hook-local mirror.
 
-## Toggle Shape
+## Switch Shape
 
-The first toggle started narrow and now covers the two returned hook data
-surfaces that already have selector-backed mirrors:
+The path started as a narrow toggle and now covers the returned hook data
+surfaces that have selector-backed mirrors:
 
-- Scope: returned `messages` and `agentContent`.
+- Scope: returned `messages`, `agentContent`, and tool-use mappings.
 - Source: one stable `defaultSessionDetailStore` state snapshot, using
-  `state.messages` and `state.agentContent` together.
+  `state.messages`, `state.agentContent`, and
+  `state.toolUseToAgentEntries` together.
 - Fallback: local `messages`/`agentContent` state if the store entry is
   missing or the hook has not reached the reveal point.
 - Still maintain local mirrors for diagnostics, fallback, and rollback.
+- Confidence signal: when the default store-backed path is active, hydration is
+  complete, and the store entry exists, a dev-only returned-data invariant
+  diagnostic warns if returned `messages`/`agentContent` differ from the store
+  snapshot.
 - Do not include render selectors, scroll ownership, or `/btw` in this toggle.
 
-One important guard: warm snapshot restore currently writes the store before it
+Turning the switch off does not disable the reducer/store feed. It only returns
+the legacy hook-local mirrors instead of the broad store-selected snapshot;
+selector-backed adapter reads, diagnostics, cache ownership, and store
+retention still run.
+
+One important guard remains: warm snapshot restore writes the store before it
 reveals local `messages`/`agentContent`, because the hook intentionally yields
-through the loading path. A naive `store ?? local` read would bypass that
-yield. The toggle is gated until `loading` is false so dogfooding tests the
-data source change without also changing the deferred warm-reveal behavior.
+through the loading path. The store-backed returned path is still gated until
+`loading` is false so the default source change does not bypass the deferred
+warm-reveal behavior.
 
 ## Main Transcript Transition Audit
 
 | Boundary | Local mirror write | Store path | Preflight status |
 | --- | --- | --- | --- |
 | No warm snapshot reset | Clears local state while REST starts | Deletes the store entry | Ready with fallback to local empty state |
-| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Needs hydration gating before broad toggle |
+| Warm snapshot start | Clears local state before deferred reveal | Restores route snapshot immediately | Gated before broad returned snapshot |
 | Warm catch-up before hydration | Merges REST delta into warm snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Warm catch-up after hydration | Merges REST delta into revealed snapshot | `applyCatchupMessages` over restored snapshot | Hook/store parity asserted |
 | Cold persisted load | Sets tagged/reconciled REST snapshot | `loadPersistedTranscript` | Reducer and hook/store coverage exist |
@@ -43,10 +53,19 @@ data source change without also changing the deferred warm-reveal behavior.
 | Incremental persisted catch-up | Merges new REST rows and updates cursor | `applyCatchupMessages` | Store-backed return parity asserted |
 | Older-page prepend | Prepends older REST rows and updates cursor | `prependOlderMessages` | Store-backed return parity asserted |
 
-## Remaining Toggle Risks
+## Remaining Risks
 
 - Warm snapshot timing is the main behavioral risk. The store has messages
   earlier than the returned local mirror during deferred loading.
+- Compaction-tail views need an explicit contract during cutover. Cold
+  `loadPersistedTranscript` state is the REST-returned window, even when
+  `pagination.totalMessageCount` is larger than the returned row count; older
+  page loads and catch-up can then expand that window. A retained full-history
+  entry must not silently replace the returned tail window in the UI just
+  because the store has more rows. A warm-cache fixture now covers the inverse
+  case too: if the retained window was already broader/full and the refresh
+  falls back to a compacted tail response, the merged message set keeps
+  coherent pagination for the broader window.
 - Stream/replay parity depends on provider-specific approximate dedupe. Reducer
   fixtures cover the important Codex shapes, but the hook still computes local
   state independently after dispatch.
@@ -57,12 +76,18 @@ data source change without also changing the deferred warm-reveal behavior.
   dogfood toggle can prove store read ownership for the current shape, but it
   does not make streamed and persisted subagent transcripts semantically
   equivalent.
+- Browser dogfood should capture console diagnostics from real navigation:
+  keep Store-Backed Session Detail enabled (the default), enable session-detail
+  shadow diagnostics, drive `/inbox` to several session detail pages, and record
+  `[SessionDetailReturnedData]`, `[SessionDetailStore]`,
+  `[SessionDetailShadow]`, React errors, request failures, and scroll bottom
+  deltas. Treat returned-data warnings as blockers; treat shadow/store
+  warnings as fixture candidates unless they are scroll-only noise.
 
 ## Readiness Call
 
-The Developer settings opt-in is ready for dogfooding returned `messages` and
-`agentContent`. The render-selector preflight is now complete enough, so the
-next implementation chunks should focus on the hook/store adapter: keep
-capturing any returned-data divergence as a compact reducer or hook fixture,
-then make one legacy local mirror path at a time fallback-only. Scroll
-ownership and `/btw` remain out of scope.
+The store-backed returned detail path is now the default, with the Development
+settings switch retained as rollback. The next implementation chunks should
+keep capturing any returned-data divergence as a compact reducer or hook
+fixture, then decide when the legacy local mirrors can be deleted rather than
+maintained as fallback. Scroll ownership and `/btw` remain out of scope.

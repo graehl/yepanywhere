@@ -15,7 +15,7 @@ interface DeveloperModeSettings {
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
-  sessionDetailStoreMessagesEnabled: false,
+  sessionDetailStoreMessagesEnabled: true,
   showConnectionBars: false,
 };
 

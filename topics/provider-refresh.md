@@ -274,7 +274,22 @@ Difference detectors:
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
 
-Current source refresh, 2026-06-29:
+Current source refresh, 2026-07-03:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.195` to `0.3.199`,
+  whose bundled executable reports Claude Code `2.1.199`.
+- npm `@anthropic-ai/claude-agent-sdk` `latest` is `0.3.199` (`next` is
+  `0.3.200`). Root `package.json` records Claude Code compatibility through
+  `2.1.199` and pairs it with SDK `0.3.199`.
+- Fable remains represented by YA's existing fallback/catalog normalization:
+  the `fable` alias and SDK-reported `claude-fable-5` carry 1M context,
+  adaptive thinking, auto mode, and effort metadata. No additional runtime
+  source change was indicated by this package refresh slice.
+
+Status: Claude Code 2.1.199 / SDK 0.3.199 compatibility refresh complete as a
+package and marker update; no new runtime behavior change was introduced.
+
+Previous source refresh, 2026-06-29:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.183` to `0.3.195`,
   whose package metadata declares bundled Claude Code `2.1.195`.
@@ -508,7 +523,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.195` | `0.3.195` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.199` | `0.3.199` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

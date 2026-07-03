@@ -242,16 +242,36 @@ That is intentionally not the baseline route-retention mechanism: it trades a
 small bounded amount of continued mounted-route work for even faster return
 when the user immediately bounces away and back.
 
+## Contract: Coming Back To Where You Left Off
+
+Maintainer-confirmed contract (2026-07-03; previously a 2026-07-02 lean):
+returning to a session resumes at *what the user last viewed*. Landing on
+never-seen content is the failure to avoid; output that arrived while away
+belongs below the restored viewport (surfaced by the new-output-below
+follow affordance), not silently scrolled past.
+
+Which mode *engages* the restore is policy (`sessionScrollBehavior.ts`;
+mode decisions in
+[`docs/tactical/047-session-scroll-memory-policy.md`](../docs/tactical/047-session-scroll-memory-policy.md)):
+the default `live-tail` deliberately returns bottom snapshots to the live
+tail, while `remember-place` restores the last-viewed anchor. The capture
+machinery is load-bearing regardless of active mode: anchors are captured
+even at bottom, each anchor carries neighbor row ids and a timestamp for
+recovery when the exact row is gone, and snapshot publication is gated to
+settled (post-hydration) content. A change that stops capturing at-bottom
+anchors, overwrites settled snapshots with transient hydration geometry,
+or drops the context fallbacks breaks this contract even while the
+`live-tail` default hides the loss.
+
 ## Known Divergence Risks: Warm Restore vs Cold Reload (2026-07-02)
 
 Investigated after upstream defaulted the retention features off during the
 intermittent scroll-reset investigation (upstream commit `45279b9b`). The
 question: can a cached return with delta catch-up land the viewport somewhere
 a cold reload never would, especially when the server moved while the user was
-away? Four gaps, ordered by user impact. Correctness criterion (maintainer
-lean, 2026-07-02): the objectively right restore target is probably *what the
-user last viewed*, even if follow mode was engaged when they left; landing on
-never-seen content is the failure to avoid.
+away? Four gaps, ordered by user impact. Correctness criterion: the restore
+target is *what the user last viewed*, even if follow mode was engaged when
+they left (§ Contract: Coming Back To Where You Left Off).
 
 1. **Follow-mode returns can still choose newest-bottom over last-viewed
    content.** Before 2026-07-03, `captureScrollSnapshot` suppressed anchor
@@ -310,8 +330,8 @@ content.
   2026-07-03 at the `MessageList` publisher, before the single
   `updateRouteScrollSnapshot` writer can patch the session detail store; the
   publisher emits one settled snapshot when progressive reveal completes. Keep
-  the existing restore-side discard heuristics
-  (`shouldRestoreInitialScrollSnapshot`) as regression guards.
+  the existing restore-side discard heuristics (the `skip` decision in
+  `decideSessionScrollRestore`) as regression guards.
 - Diagnostics: emit a divergence event (the `reportStoreDivergence` pattern)
   whenever a restore resolves by anything other than the exact anchor, with a
   miss reason. This converts the scroll-reset investigation from anecdotes to

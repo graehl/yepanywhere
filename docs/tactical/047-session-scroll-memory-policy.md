@@ -4,6 +4,11 @@ Date: 2026-07-03
 
 Status: initial slice implemented
 
+See also:
+[`topics/client-route-retention.md`](../../topics/client-route-retention.md)
+§ Contract: Coming Back To Where You Left Off — the restore contract these
+policy modes serve.
+
 ## Motivation
 
 Session detail scroll state can look like a read cursor, but it is not durable

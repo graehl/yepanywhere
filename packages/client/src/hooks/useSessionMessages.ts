@@ -27,6 +27,12 @@ import {
   type SessionDetailRevealSnapshotFallback,
   type SessionDetailRevealSnapshotResult,
 } from "../lib/sessionDetail/revealSnapshot";
+import {
+  createSessionLoadProgress,
+  createSessionLoadProgressForWindow,
+  type SessionLoadProgress,
+  type SessionLoadProgressStage,
+} from "../lib/sessionDetail/loadProgress";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   getSessionTranscriptCacheEnabled,
@@ -98,22 +104,7 @@ export type SessionMetadataUpdate =
   | null
   | ((previous: SessionMetadata | null) => SessionMetadata | null);
 
-export type SessionLoadProgressStage =
-  | "idle"
-  | "fetching"
-  | "loaded"
-  | "preparing"
-  | "rendering"
-  | "complete"
-  | "error";
-
-export interface SessionLoadProgress {
-  stage: SessionLoadProgressStage;
-  messageCount?: number;
-  totalMessageCount?: number;
-  hasOlderMessages?: boolean;
-  updatedAtMs: number;
-}
+export type { SessionLoadProgress, SessionLoadProgressStage };
 
 /** Options for useSessionMessages */
 export interface UseSessionMessagesOptions {
@@ -233,17 +224,6 @@ export function __resetSessionLoadCacheForTest(): void {
 
 function isDurableRecapOverlay(message: Message): boolean {
   return typeof message.yaRecapSource === "string";
-}
-
-function createSessionLoadProgress(
-  stage: SessionLoadProgressStage,
-  details: Omit<SessionLoadProgress, "stage" | "updatedAtMs"> = {},
-): SessionLoadProgress {
-  return {
-    stage,
-    ...details,
-    updatedAtMs: Date.now(),
-  };
 }
 
 function toError(value: unknown): Error {
@@ -869,10 +849,9 @@ export function useSessionMessages(
 
       setLoading(false);
       setSessionLoadProgress(
-        createSessionLoadProgress("complete", {
+        createSessionLoadProgressForWindow("complete", {
           messageCount: snapshot.messages.length,
-          totalMessageCount: snapshot.pagination?.totalMessageCount,
-          hasOlderMessages: snapshot.pagination?.hasOlderMessages,
+          pagination: snapshot.pagination,
         }),
       );
       markReloadPerfPhase("session_initial_load_complete", {
@@ -925,17 +904,15 @@ export function useSessionMessages(
       });
       providerRef.current = data.session.provider;
       setSessionLoadProgress(
-        createSessionLoadProgress("loaded", {
+        createSessionLoadProgressForWindow("loaded", {
           messageCount: data.messages.length,
-          totalMessageCount: data.pagination?.totalMessageCount,
-          hasOlderMessages: data.pagination?.hasOlderMessages,
+          pagination: data.pagination,
         }),
       );
       setSessionLoadProgress(
-        createSessionLoadProgress("preparing", {
+        createSessionLoadProgressForWindow("preparing", {
           messageCount: data.messages.length,
-          totalMessageCount: data.pagination?.totalMessageCount,
-          hasOlderMessages: data.pagination?.hasOlderMessages,
+          pagination: data.pagination,
         }),
       );
       const warmRefresh = prepareWarmRefreshBeforeHydration({
@@ -952,10 +929,9 @@ export function useSessionMessages(
         pagination: warmRefresh.pagination,
       });
       setSessionLoadProgress(
-        createSessionLoadProgress("rendering", {
+        createSessionLoadProgressForWindow("rendering", {
           messageCount: warmRefresh.mergedMessages.length,
-          totalMessageCount: warmRefresh.pagination?.totalMessageCount,
-          hasOlderMessages: warmRefresh.pagination?.hasOlderMessages,
+          pagination: warmRefresh.pagination,
         }),
       );
       const reveal = finishWarmHydration({
@@ -1019,10 +995,9 @@ export function useSessionMessages(
       const { snapshot } = reveal;
       applyRevealSnapshot(snapshot);
       setSessionLoadProgress(
-        createSessionLoadProgress("complete", {
+        createSessionLoadProgressForWindow("complete", {
           messageCount: snapshot.pagination?.returnedMessageCount,
-          totalMessageCount: snapshot.pagination?.totalMessageCount,
-          hasOlderMessages: snapshot.pagination?.hasOlderMessages,
+          pagination: snapshot.pagination,
         }),
       );
       notifyLoadComplete(data);
@@ -1043,10 +1018,9 @@ export function useSessionMessages(
     if (warmLoad) {
       resetSessionDetailState(warmLoad);
       setSessionLoadProgress(
-        createSessionLoadProgress("fetching", {
+        createSessionLoadProgressForWindow("fetching", {
           messageCount: warmLoad.messages.length,
-          totalMessageCount: warmLoad.pagination?.totalMessageCount,
-          hasOlderMessages: warmLoad.pagination?.hasOlderMessages,
+          pagination: warmLoad.pagination,
         }),
       );
       maxPersistedTimestampMsRef.current = warmLoad.maxPersistedTimestampMs;
@@ -1057,10 +1031,9 @@ export function useSessionMessages(
       applyPagination(undefined);
       void (async () => {
         setSessionLoadProgress(
-          createSessionLoadProgress("rendering", {
+          createSessionLoadProgressForWindow("rendering", {
             messageCount: warmLoad.messages.length,
-            totalMessageCount: warmLoad.pagination?.totalMessageCount,
-            hasOlderMessages: warmLoad.pagination?.hasOlderMessages,
+            pagination: warmLoad.pagination,
           }),
         );
         await yieldForSessionLoadingProgressPaint(true);
@@ -1116,20 +1089,18 @@ export function useSessionMessages(
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
         setSessionLoadProgress(
-          createSessionLoadProgress("loaded", {
+          createSessionLoadProgressForWindow("loaded", {
             messageCount: data.messages.length,
-            totalMessageCount: data.pagination?.totalMessageCount,
-            hasOlderMessages: data.pagination?.hasOlderMessages,
+            pagination: data.pagination,
           }),
         );
         providerRef.current = data.session.provider;
 
         // Tag messages from JSONL as authoritative
         setSessionLoadProgress(
-          createSessionLoadProgress("preparing", {
+          createSessionLoadProgressForWindow("preparing", {
             messageCount: data.messages.length,
-            totalMessageCount: data.pagination?.totalMessageCount,
-            hasOlderMessages: data.pagination?.hasOlderMessages,
+            pagination: data.pagination,
           }),
         );
         const taggedMessages = tagJsonlMessages(data.messages);
@@ -1139,10 +1110,9 @@ export function useSessionMessages(
           data.session.provider,
         );
         setSessionLoadProgress(
-          createSessionLoadProgress("rendering", {
+          createSessionLoadProgressForWindow("rendering", {
             messageCount: loadedMessages.length,
-            totalMessageCount: data.pagination?.totalMessageCount,
-            hasOlderMessages: data.pagination?.hasOlderMessages,
+            pagination: data.pagination,
           }),
         );
         await yieldForSessionLoadingProgressPaint(detailedLoadingProgress);

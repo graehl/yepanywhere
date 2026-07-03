@@ -111,6 +111,7 @@ empty result. The returned transcript subscription now listens only to
 pagination, and scroll-only store updates no longer notify it. Warm-refresh
 merge/pagination preparation and reveal snapshot construction now live in tested
 helpers, and warm/cold initial reveal completion is centralized in one hook
-helper. The next implementation chunk should keep reducing
-progress/cache/flush sequencing inside `useSessionMessages`. Scroll ownership
-and `/btw` remain out of scope.
+helper. Session-load progress detail construction now also lives in a tested
+helper, though the hook still owns progress timing. The next implementation
+chunk should keep reducing cache/flush sequencing inside `useSessionMessages`.
+Scroll ownership and `/btw` remain out of scope.

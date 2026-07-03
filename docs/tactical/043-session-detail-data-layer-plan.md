@@ -59,6 +59,10 @@ What is already in place:
 - Warm and cold initial reveal completion now share one hook-local completion
   helper for applying the reveal snapshot, marking reload phases, flushing the
   buffered stream queue, clearing loading, and writing final progress.
+- Session-load progress window details now use a tested
+  `sessionDetail/loadProgress` helper, so repeated message-count/pagination
+  projection is no longer hand-built at each load stage. The hook still owns
+  when each progress stage is emitted.
 - Route-cache refresh on unmount now reads the current route snapshot directly
   from `defaultSessionDetailStore` instead of rebuilding it from returned hook
   data. The old `latestSnapshotRef` mirror has been removed; diagnostics that
@@ -121,6 +125,9 @@ What is already in place:
   runtime snapshot, including the empty-transcript fallback path for unexpected
   missing store selection, cursor derivation, retained scroll fallback, and
   cloned message/tool-use arrays.
+- Focused helper coverage verifies session-load progress construction, including
+  injectable timestamps, pagination projection, and the fact that callers choose
+  the message count rather than implicitly using `returnedMessageCount`.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -278,10 +285,11 @@ Next likely slice:
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
 - Move the next implementation chunk back to `useSessionMessages`: keep shaving
-  down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation
-  and reveal snapshot construction are now pure/tested, initial reveal
-  completion is centralized, the reveal path no longer owns transcript fallback
-  data, and the returned transcript subscription is selector-specific.
+  down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation,
+  reveal snapshot construction, and progress detail construction are now
+  pure/tested; initial reveal completion is centralized, the reveal path no
+  longer owns transcript fallback data, and the returned transcript subscription
+  is selector-specific.
 
 Then:
 
@@ -320,10 +328,10 @@ Store-backed return path:
 - Initial load and warm hydration still contain the most sequencing logic
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook. Their visible reveal now comes
-  from one selected store snapshot; warm refresh merge/pagination preparation
-  and reveal snapshot construction are pure, and initial reveal completion is
-  centralized, but the hook still owns progress timing, cache writes, and
-  stream-buffer flushing.
+  from one selected store snapshot; warm refresh merge/pagination preparation,
+  reveal snapshot construction, and progress detail construction are pure; and
+  initial reveal completion is centralized, but the hook still owns progress
+  timing, cache writes, and stream-buffer flushing.
 - Transcript fallback refs are gone, so a missing retained store entry after
   reveal intentionally empties returned transcript surfaces and logs a dev
   diagnostic. Treat that as a retention/adapter failure, not a recoverable

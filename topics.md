@@ -100,3 +100,6 @@
   between provider transcript inputs and transcript DOM rendering.
 - remote-client-ci-publish - Opt-in CI publish proposal for the hosted remote
   client (repo-variable-gated GitHub Actions to a personal Pages repo).
+- thinking-expand-latest-only - Thinking auto-expand policies and the
+  thought-toggle right-click gesture (registered retroactively; series
+  began at fd47ecb2).

@@ -1,7 +1,8 @@
 # Thinking expansion: "latest-only" mode
 
-Status: implemented 2026-06-13 (uncommitted). Right-click / long-press the
-thought-transcript toggle in `ProcessingIndicator`; mode persists in
+Status: implemented 2026-06-13; right-click enriched 2026-07-03 (expand-all
+now also seeds history and reveals hidden thinking). Right-click / long-press
+the thought-transcript toggle in `ProcessingIndicator`; mode persists in
 `localStorage` (`sessionThinkingLatestOnly`), off by default. A subtle dot on
 the toggle marks latest-only when thinking is visible; the tooltip explains it.
 Resolver `resolveThinkingItemExpanded` in `MessageList.tsx` is the single
@@ -20,7 +21,8 @@ always winning:
 
 - **all-new** (current default): every thinking block that arrives *after the
   view mounts* auto-expands and stays expanded (accumulating). Historical
-  blocks present at mount start collapsed.
+  blocks present at mount start collapsed — until the right-click gesture
+  seeds them (below).
 - **latest-only** (the requested old behavior): only the single most-recent
   thinking block is auto-open; it auto-collapses the moment a newer block
   appears. Blocks the user manually opened/closed keep that explicit state.
@@ -29,9 +31,35 @@ always winning:
 "Last active one temporarily open" + "auto-collapse the entries that weren't
 manually toggled" = exactly latest-only.
 
-Left-click of the toggle still flips global visibility (`thinkingItemsVisible`);
-right-click flips the *policy*. They are orthogonal: policy only matters while
-thinking is visible.
+Left-click of the toggle still flips global visibility (`thinkingItemsVisible`).
+
+## Right-click gesture (2026-07-03 semantics)
+
+Right-click / long-press is the explicit "show me everything" ↔ "latest only"
+gesture, not a bare policy bit-flip:
+
+- **From hidden** (any policy): turn visibility on, set the policy to all-new,
+  and auto-expand every thinking block currently in the transcript (historical
+  included). Previously right-click while hidden flipped an invisible policy
+  bit — clunky, observable only later.
+- **From visible latest-only**: set all-new and auto-expand the full history
+  the same way.
+- **From visible all-new**: back to latest-only (non-pinned blocks collapse to
+  just the latest).
+
+The expand-all seeds `autoExpandedThinkingItemIds` with all current thinking
+ids (`expandAllThinkingItems` in `MessageList.tsx`) — the same mechanism as
+the pi provider's historical seeding. It also *clears manual-collapse
+(`false`) overrides*: an explicit expand-all outranks an old per-block
+collapse, and keeping the stale `false` would leave one confusing closed
+block. Manual-open pins (`true`) are untouched. Scroll is preserved by the
+existing `preserveScrollAfterTranscriptHeightChange` wrapper: at bottom the
+view stays pinned to bottom (the toggle lives in the transcript's last line,
+so its visibility implies at-bottom/follow); otherwise the first visible row
+is re-anchored.
+
+The tooltip now describes the *action* right-click will take from the current
+state (`processingThinkingRightClick*` i18n keys), not the current mode.
 
 ## State model (current, all in `MessageList.tsx`)
 
@@ -109,7 +137,9 @@ toggle write logic is needed.**
 Do **not** "prune overrides that currently match auto" as a map-size
 optimization: that would silently downgrade a `true` pin whose block happens to
 be the current latest, then auto-collapse it on the next turn — violating the
-rule. A `true` override is never cleared.
+rule. A `true` override is never cleared. (`false` overrides are different:
+the explicit right-click expand-all clears them deliberately — see the
+right-click gesture section above.)
 
 Worked example (latest-only): pin A open. B starts streaming → B is latest so it
 auto-opens *and* A stays (pinned): both open. B completes, C starts → B

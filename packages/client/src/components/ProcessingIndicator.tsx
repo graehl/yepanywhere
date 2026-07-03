@@ -57,7 +57,10 @@ interface Props {
   onToggleThinkingItemsVisible?: () => void;
   /** Auto-expand policy: true = only the latest block, false = every new one. */
   thinkingLatestOnly?: boolean;
-  /** Right-click / long-press the toggle flips the auto-expand policy. */
+  /**
+   * Right-click / long-press: from hidden or latest-only, show thinking and
+   * expand the full history; from everything-expanded, back to latest-only.
+   */
   onToggleThinkingLatestOnly?: () => void;
 }
 
@@ -205,13 +208,14 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
     : hasThinkingItems
       ? t("processingThinkingTranscriptShowHidden")
       : t("processingThinkingTranscriptShowWhenAvailable");
-  // Append the right-click affordance only when it is wired and visible.
-  const modeHint =
-    onToggleThinkingLatestOnly && thinkingItemsVisible
-      ? thinkingLatestOnly
-        ? t("processingThinkingExpandLatestOnly")
-        : t("processingThinkingExpandAll")
-      : null;
+  // Describe what right-click / long-press does from the current state.
+  const modeHint = onToggleThinkingLatestOnly
+    ? !thinkingItemsVisible
+      ? t("processingThinkingRightClickShowExpandAll")
+      : thinkingLatestOnly
+        ? t("processingThinkingRightClickExpandAll")
+        : t("processingThinkingRightClickLatestOnly")
+    : null;
   const thinkingToggleTitle = modeHint
     ? `${visibilityTitle}\n${modeHint}`
     : visibilityTitle;

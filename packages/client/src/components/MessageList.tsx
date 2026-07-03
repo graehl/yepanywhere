@@ -1943,15 +1943,47 @@ export const MessageList = memo(function MessageList({
     });
   }, [preserveScrollAfterTranscriptHeightChange]);
 
+  // The explicit "show me everything" gesture: auto-expand every thinking
+  // block currently in the transcript (historical blocks included, unlike the
+  // all-new policy's since-mount seeding). Earlier manual collapses yield to
+  // it; manual-open pins are unaffected. See
+  // topics/thinking-expand-latest-only.md.
+  const expandAllThinkingItems = useCallback(() => {
+    setAutoExpandedThinkingItemIds(getThinkingItemIds(renderItems));
+    setThinkingExpansionOverrides((previous) => {
+      if (!Object.values(previous).includes(false)) return previous;
+      return Object.fromEntries(
+        Object.entries(previous).filter(([, open]) => open),
+      );
+    });
+  }, [renderItems]);
+
+  // Right-click / long-press on the thought-transcript toggle. From hidden or
+  // latest-only it reveals thinking and expands the full history; from the
+  // everything-expanded state it drops back to latest-only.
   const toggleThinkingLatestOnly = useCallback(() => {
     preserveScrollAfterTranscriptHeightChange(() => {
-      setThinkingLatestOnly((previous) => {
-        const next = !previous;
-        saveSessionThinkingLatestOnly(next);
-        return next;
-      });
+      if (!thinkingItemsVisible || thinkingLatestOnly) {
+        if (!thinkingItemsVisible) {
+          setThinkingItemsVisible(true);
+          saveSessionThinkingVisible(true);
+        }
+        if (thinkingLatestOnly) {
+          setThinkingLatestOnly(false);
+          saveSessionThinkingLatestOnly(false);
+        }
+        expandAllThinkingItems();
+        return;
+      }
+      setThinkingLatestOnly(true);
+      saveSessionThinkingLatestOnly(true);
     });
-  }, [preserveScrollAfterTranscriptHeightChange]);
+  }, [
+    expandAllThinkingItems,
+    preserveScrollAfterTranscriptHeightChange,
+    thinkingItemsVisible,
+    thinkingLatestOnly,
+  ]);
 
   const showNavMotionCue = useCallback((direction: "up" | "down") => {
     if (navMotionCueClearTimerRef.current !== null) {

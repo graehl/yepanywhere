@@ -18,10 +18,12 @@ vi.mock("../../i18n", () => ({
           "Show hidden thinking transcript rows",
         processingThinkingTranscriptShowWhenAvailable:
           "Show thinking transcript rows when available",
-        processingThinkingExpandLatestOnly:
-          "Right-click: only the latest thinking block stays expanded",
-        processingThinkingExpandAll:
-          "Right-click: every new thinking block stays expanded",
+        processingThinkingRightClickShowExpandAll:
+          "Right-click: show thinking and expand all blocks",
+        processingThinkingRightClickExpandAll:
+          "Right-click: expand all thinking blocks, including earlier ones",
+        processingThinkingRightClickLatestOnly:
+          "Right-click: auto-expand only the latest thinking block",
       })[key] ?? key,
   }),
 }));
@@ -129,7 +131,7 @@ describe("ProcessingIndicator", () => {
     expect(onToggleVisible).not.toHaveBeenCalled();
   });
 
-  it("marks the toggle and surfaces the mode hint in latest-only mode", () => {
+  it("marks the toggle and hints that right-click expands history in latest-only mode", () => {
     render(
       <ProcessingIndicator
         isProcessing={false}
@@ -144,12 +146,50 @@ describe("ProcessingIndicator", () => {
     const button = screen.getByRole("button");
     expect(button.classList.contains("is-latest-only")).toBe(true);
     expect(button.getAttribute("title")).toContain(
-      "only the latest thinking block",
+      "expand all thinking blocks, including earlier ones",
     );
     // The accessible name stays the clean click action.
     expect(button.getAttribute("aria-label")).toBe(
       "Hide thinking transcript rows (display only; the agent keeps working)",
     );
+  });
+
+  it("hints that right-click drops back to latest-only when everything expands", () => {
+    render(
+      <ProcessingIndicator
+        isProcessing={false}
+        hasThinkingItems={true}
+        thinkingItemsVisible={true}
+        thinkingLatestOnly={false}
+        onToggleThinkingItemsVisible={vi.fn()}
+        onToggleThinkingLatestOnly={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button").getAttribute("title")).toContain(
+      "auto-expand only the latest thinking block",
+    );
+  });
+
+  it("right-click works from the hidden state and the hint says it reveals", () => {
+    const onToggleLatestOnly = vi.fn();
+    render(
+      <ProcessingIndicator
+        isProcessing={false}
+        hasThinkingItems={true}
+        thinkingItemsVisible={false}
+        onToggleThinkingItemsVisible={vi.fn()}
+        onToggleThinkingLatestOnly={onToggleLatestOnly}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("title")).toContain(
+      "show thinking and expand all blocks",
+    );
+
+    fireEvent.contextMenu(button);
+    expect(onToggleLatestOnly).toHaveBeenCalledTimes(1);
   });
 
   it("long-press toggles policy and suppresses the follow-up click", () => {

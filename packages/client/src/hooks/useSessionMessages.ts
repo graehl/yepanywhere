@@ -11,13 +11,18 @@ import {
   type PaginationInfo,
   api,
 } from "../api/client";
+import { getMessageTimestampMs } from "../lib/linearMessageDedup";
 import {
-  getMessageTimestampMs,
-  reconcileLinearMessages,
-} from "../lib/linearMessageDedup";
-import { getMessageId, mergeJSONLMessages } from "../lib/mergeMessages";
+  findLastJsonlMessageId,
+  reconcilePersistedMessagesForProvider,
+  tagJsonlMessages,
+} from "../lib/sessionDetail/transcriptReducer";
+import { getMessageId } from "../lib/mergeMessages";
+import {
+  prepareWarmRefreshAfterHydration,
+  prepareWarmRefreshBeforeHydration,
+} from "../lib/sessionDetail/warmRefresh";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
-import { getProvider } from "../providers/registry";
 import {
   getSessionTranscriptCacheEnabled,
   recordLastSessionTranscriptBytes,
@@ -233,46 +238,8 @@ export function __resetSessionLoadCacheForTest(): void {
   resetSessionRouteSnapshotsForTests();
 }
 
-function usesApproxMessageDedup(provider?: string): boolean {
-  return getProvider(provider).capabilities.needsApproxMessageDedup;
-}
-
-// Options for the approx-dedup backstop. Codex tool messages dedup by call_id,
-// so they are excluded here; the backstop keeps covering non-tool messages.
-function approxDedupOptions(provider?: string): { excludeTools: boolean } {
-  return {
-    excludeTools:
-      getProvider(provider).capabilities.approxDedupExcludesTools === true,
-  };
-}
-
 function isDurableRecapOverlay(message: Message): boolean {
   return typeof message.yaRecapSource === "string";
-}
-
-/**
- * Find the id of the newest JSONL-sourced message.
- *
- * The incremental-fetch cursor (afterMessageId) must only advance over
- * rows actually delivered from JSONL. Live stream rows also land in the
- * array (and get persisted to the file), so cursoring on the array tail
- * lets streaming advance the cursor past JSONL rows that were never
- * fetched — permanently skipping them, including chain connector rows
- * (attachment, system/api_error) that only exist in JSONL. Over-fetching
- * is safe (merge dedupes by uuid); gaps are not.
- */
-function findLastJsonlMessageId(messages: Message[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (
-      message &&
-      (message._source ?? "sdk") === "jsonl" &&
-      !isDurableRecapOverlay(message)
-    ) {
-      return getMessageId(message);
-    }
-  }
-  return undefined;
 }
 
 function createSessionLoadProgress(
@@ -298,58 +265,6 @@ function yieldForSessionLoadingProgressPaint(
   }
 
   return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function tagJsonlMessages(messages: Message[]): Message[] {
-  return messages.map((m) => ({
-    ...m,
-    _source: "jsonl" as const,
-  }));
-}
-
-function mergePersistedMessagesForProvider(
-  baseMessages: Message[],
-  taggedMessages: Message[],
-  provider: string | undefined,
-): Message[] {
-  const result = mergeJSONLMessages(baseMessages, taggedMessages, {
-    skipDagOrdering: !getProvider(provider).capabilities.supportsDag,
-  });
-  return usesApproxMessageDedup(provider)
-    ? reconcileLinearMessages(result.messages, approxDedupOptions(provider))
-    : result.messages;
-}
-
-function reconcileWarmRefreshPagination(
-  warmPagination: PaginationInfo | undefined,
-  refreshPagination: PaginationInfo | undefined,
-  mergedMessages: readonly Message[],
-): PaginationInfo | undefined {
-  if (!refreshPagination) {
-    return warmPagination;
-  }
-  if (
-    warmPagination?.hasOlderMessages === false &&
-    refreshPagination.hasOlderMessages &&
-    mergedMessages.length > refreshPagination.returnedMessageCount
-  ) {
-    return {
-      ...refreshPagination,
-      hasOlderMessages: false,
-      returnedMessageCount: Math.max(
-        mergedMessages.length,
-        refreshPagination.returnedMessageCount,
-      ),
-      totalMessageCount: Math.max(
-        warmPagination.totalMessageCount,
-        refreshPagination.totalMessageCount,
-        mergedMessages.length,
-      ),
-      truncatedBeforeMessageId: undefined,
-      truncatedBy: undefined,
-    };
-  }
-  return refreshPagination;
 }
 
 /**
@@ -1037,43 +952,31 @@ export function useSessionMessages(
           hasOlderMessages: data.pagination?.hasOlderMessages,
         }),
       );
-      const taggedMessages = tagJsonlMessages(data.messages);
-      updatePersistedTimestampWatermark(taggedMessages);
-      const loadedMessages = warmLoad.lastMessageId
-        ? mergePersistedMessagesForProvider(
-            warmLoad.messages,
-            taggedMessages,
-            data.session.provider,
-          )
-        : usesApproxMessageDedup(data.session.provider)
-          ? reconcileLinearMessages(
-              taggedMessages,
-              approxDedupOptions(data.session.provider),
-            )
-          : taggedMessages;
-      const nextPagination = reconcileWarmRefreshPagination(
-        warmLoad.pagination,
-        data.pagination,
-        loadedMessages,
-      );
+      const warmRefresh = prepareWarmRefreshBeforeHydration({
+        warmLoad,
+        refreshMessages: data.messages,
+        refreshSession: data.session,
+        refreshPagination: data.pagination,
+      });
+      updatePersistedTimestampWatermark(warmRefresh.taggedMessages);
       dispatchSessionDetailAction({
         type: "applyCatchupMessages",
         session: data.session,
         messages: data.messages,
-        pagination: nextPagination,
+        pagination: warmRefresh.pagination,
       });
       setSessionLoadProgress(
         createSessionLoadProgress("rendering", {
-          messageCount: loadedMessages.length,
-          totalMessageCount: nextPagination?.totalMessageCount,
-          hasOlderMessages: nextPagination?.hasOlderMessages,
+          messageCount: warmRefresh.mergedMessages.length,
+          totalMessageCount: warmRefresh.pagination?.totalMessageCount,
+          hasOlderMessages: warmRefresh.pagination?.hasOlderMessages,
         }),
       );
       const reveal = finishWarmHydration({
-        loadedMessages,
+        loadedMessages: warmRefresh.mergedMessages,
         loadedSession: data.session,
-        loadedPagination: nextPagination,
-        sourceMessageCount: taggedMessages.length,
+        loadedPagination: warmRefresh.pagination,
+        sourceMessageCount: warmRefresh.taggedMessages.length,
         provider: data.session.provider,
         diagnosticBoundary: "warm-catchup-before-hydration",
       });
@@ -1103,35 +1006,27 @@ export function useSessionMessages(
         appliedAfterSnapshotHydration: true,
       });
       providerRef.current = data.session.provider;
-      const taggedMessages = tagJsonlMessages(data.messages);
-      updatePersistedTimestampWatermark(taggedMessages);
       const latestSnapshot = readCurrentStoreRouteSnapshot();
-      const baseMessages =
-        latestSnapshot && latestSnapshot.messages.length > 0
-          ? latestSnapshot.messages
-          : warmLoad.messages;
-      const loadedMessages = mergePersistedMessagesForProvider(
-        baseMessages,
-        taggedMessages,
-        data.session.provider,
-      );
-      const nextPagination = reconcileWarmRefreshPagination(
-        warmLoad.pagination,
-        data.pagination,
-        loadedMessages,
-      );
+      const warmRefresh = prepareWarmRefreshAfterHydration({
+        warmLoad,
+        latestSnapshot,
+        refreshMessages: data.messages,
+        refreshSession: data.session,
+        refreshPagination: data.pagination,
+      });
+      updatePersistedTimestampWatermark(warmRefresh.taggedMessages);
       dispatchSessionDetailAction({
         type: "applyCatchupMessages",
         session: data.session,
         messages: data.messages,
-        pagination: nextPagination,
+        pagination: warmRefresh.pagination,
       });
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
         {
           session: data.session,
-          pagination: nextPagination,
-          lastMessageId: findLastJsonlMessageId(loadedMessages),
+          pagination: warmRefresh.pagination,
+          lastMessageId: findLastJsonlMessageId(warmRefresh.mergedMessages),
           scrollSnapshot: scrollSnapshotRef.current,
         },
       );
@@ -1253,12 +1148,10 @@ export function useSessionMessages(
         );
         const taggedMessages = tagJsonlMessages(data.messages);
         updatePersistedTimestampWatermark(taggedMessages);
-        const loadedMessages = usesApproxMessageDedup(data.session.provider)
-          ? reconcileLinearMessages(
-              taggedMessages,
-              approxDedupOptions(data.session.provider),
-            )
-          : taggedMessages;
+        const loadedMessages = reconcilePersistedMessagesForProvider(
+          taggedMessages,
+          data.session.provider,
+        );
         setSessionLoadProgress(
           createSessionLoadProgress("rendering", {
             messageCount: loadedMessages.length,

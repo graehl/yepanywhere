@@ -87,7 +87,7 @@ export function tagJsonlMessages(messages: readonly Message[]): Message[] {
   }));
 }
 
-function mergePersistedMessagesForProvider(
+export function mergePersistedMessagesForProvider(
   baseMessages: Message[],
   taggedMessages: Message[],
   provider: string | undefined,
@@ -147,6 +147,13 @@ function maybeReconcileApprox(
   return usesApproxMessageDedup(provider)
     ? reconcileLinearMessages(messages, approxDedupOptions(provider))
     : messages;
+}
+
+export function reconcilePersistedMessagesForProvider(
+  messages: Message[],
+  provider: string | undefined,
+): Message[] {
+  return maybeReconcileApprox(messages, provider);
 }
 
 function applyStreamMessage(

@@ -18,7 +18,7 @@ The migration is in the adapter/store cutdown phase. We have a tested
 snapshot is now the returned data source for the main transcript, subagent maps,
 and tool-use mapping after hydration/reveal. Transcript local mirrors and
 post-reveal transcript fallback refs have been removed; the remaining work is to
-continue shaving down hydration/pagination bookkeeping.
+continue shaving down reveal/progress/pagination bookkeeping.
 
 What is already in place:
 
@@ -90,6 +90,11 @@ What is already in place:
   and tool-use mapping entries. Metadata, pagination, scroll, and other
   non-transcript store updates no longer notify that returned transcript
   subscription.
+- Warm-refresh merge and pagination preparation now lives in a tested
+  `sessionDetail/warmRefresh` helper that shares persisted-message merge/tagging
+  helpers with the reducer. The hook still coordinates loading progress and
+  dispatch timing, but it no longer owns the warm merge/pagination candidate
+  calculations inline.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -105,6 +110,9 @@ What is already in place:
 - Focused hook coverage now verifies that metadata-only store updates do not
   rerender the returned transcript subscription or replace returned transcript
   references.
+- Focused helper coverage verifies warm-refresh pagination reconciliation,
+  pre-hydration cursor/no-cursor behavior, and after-hydration use of the latest
+  store snapshot as the merge base.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and
@@ -262,9 +270,9 @@ Next likely slice:
   accidentally swap a tail-window UI back to a full-history retained entry
   unless the user actually loaded that broader window.
 - Move the next implementation chunk back to `useSessionMessages`: keep shaving
-  down hydration/pagination bookkeeping. The warm/initial bridge still computes
-  merge candidates for pagination, but its reveal path no longer owns transcript
-  fallback data and the returned transcript subscription is selector-specific.
+  down reveal/progress/pagination bookkeeping. Warm-refresh merge preparation is
+  now pure/tested, the reveal path no longer owns transcript fallback data, and
+  the returned transcript subscription is selector-specific.
 
 Then:
 
@@ -303,8 +311,9 @@ Store-backed return path:
 - Initial load and warm hydration still contain the most sequencing logic
   because they coordinate loading progress, warm-cache reveal, cache writes,
   and stream-buffer flushing inside the hook. Their visible reveal now comes
-  from one selected store snapshot, but the hook still computes warm merge
-  candidates for pagination reconciliation before dispatch.
+  from one selected store snapshot, and warm refresh merge/pagination
+  preparation is pure, but the hook still owns progress timing, reveal, cache
+  writes, and stream-buffer flushing.
 - Transcript fallback refs are gone, so a missing retained store entry after
   reveal intentionally empties returned transcript surfaces and logs a dev
   diagnostic. Treat that as a retention/adapter failure, not a recoverable

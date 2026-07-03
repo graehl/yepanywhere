@@ -108,6 +108,8 @@ fallback payloads. If a warm/initial reveal cannot read the runtime snapshot
 after dispatch, it applies empty transcript surfaces and skips caching that
 empty result. The returned transcript subscription now listens only to
 `messages`, `agentContent`, and tool-use mapping entries, so metadata,
-pagination, and scroll-only store updates no longer notify it. The next
-implementation chunk should keep reducing hydration/pagination bookkeeping.
-Scroll ownership and `/btw` remain out of scope.
+pagination, and scroll-only store updates no longer notify it. Warm-refresh
+merge and pagination preparation now lives in a tested helper, so the next
+implementation chunk should keep reducing reveal/progress/pagination
+bookkeeping inside `useSessionMessages`. Scroll ownership and `/btw` remain out
+of scope.

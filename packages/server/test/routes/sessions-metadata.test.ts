@@ -532,7 +532,7 @@ describe("Sessions metadata route", () => {
     });
   });
 
-  it("rejects non-head recovered patient queue resume", async () => {
+  it("resumes recovered patient queue entries through a non-head entry", async () => {
     await withSessionQueuePersistence(
       async (sessionQueuePersistenceService) => {
         const project = createProject();
@@ -547,9 +547,24 @@ describe("Sessions metadata route", () => {
           }),
         ]);
 
+        const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+        const process = {
+          id: "proc-1",
+          isTerminated: false,
+          state: { type: "idle" },
+          permissionMode: "default",
+          modeVersion: 0,
+          recapAfterSeconds: 300,
+          setPermissionMode: vi.fn(),
+          primeSupportedCommandsForMessage: vi.fn(async () => {}),
+          deferMessage,
+          waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
+          getDeferredQueueSummary: vi.fn(() => []),
+        };
         const routes = createSessionsRoutes({
           supervisor: {
             getProcessForSession: vi.fn(() => null),
+            reactivateSession: vi.fn(async () => process),
           } as unknown as SessionsDeps["supervisor"],
           sessionQueuePersistenceService,
         });
@@ -559,24 +574,36 @@ describe("Sessions metadata route", () => {
           { method: "POST" },
         );
 
-        expect(response.status).toBe(409);
+        expect(response.status).toBe(200);
+        expect(deferMessage).toHaveBeenCalledTimes(2);
+        expect(deferMessage).toHaveBeenNthCalledWith(
+          1,
+          expect.objectContaining({ tempId: "temp-queue-1" }),
+          {
+            promoteIfReady: true,
+            persistedQueueId: "queue-1",
+            timestamp: "2026-06-30T09:00:00.000Z",
+          },
+        );
+        expect(deferMessage).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({ tempId: "temp-queue-2" }),
+          {
+            promoteIfReady: true,
+            persistedQueueId: "queue-2",
+            timestamp: "2026-06-30T09:05:00.000Z",
+          },
+        );
         await expect(response.json()).resolves.toMatchObject({
-          headQueueId: "queue-1",
-          deferredMessages: [
-            { id: "queue-1", status: "paused-after-restart" },
-            { id: "queue-2", status: "paused-after-restart" },
-          ],
+          resumed: true,
+          resumedCount: 2,
+          processId: "proc-1",
         });
-        expect(
-          sessionQueuePersistenceService
-            .listSession("sess-1")
-            .map((item) => item.status),
-        ).toEqual(["paused-after-restart", "paused-after-restart"]);
       },
     );
   });
 
-  it("rejects recovered patient queue resume behind live queued work", async () => {
+  it("rejects recovered patient queue resume behind newer live patient work", async () => {
     await withSessionQueuePersistence(
       async (sessionQueuePersistenceService) => {
         const project = createProject();
@@ -589,8 +616,9 @@ describe("Sessions metadata route", () => {
         const getDeferredQueueSummary = vi.fn(() => [
           {
             tempId: "temp-newer",
-            content: "newer queued work",
+            content: "newer patient work",
             timestamp: "2026-06-30T10:00:00.000Z",
+            metadata: { deliveryIntent: "patient" },
           },
         ]);
 
@@ -614,7 +642,7 @@ describe("Sessions metadata route", () => {
           headQueueId: "queue-1",
           deferredMessages: [
             { id: "queue-1", status: "paused-after-restart" },
-            { tempId: "temp-newer", content: "newer queued work" },
+            { tempId: "temp-newer", content: "newer patient work" },
           ],
         });
         expect(
@@ -622,6 +650,133 @@ describe("Sessions metadata route", () => {
         ).toMatchObject({
           id: "queue-1",
           status: "paused-after-restart",
+        });
+      },
+    );
+  });
+
+  it("resumes recovered patient work past newer regular queued work", async () => {
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        await sessionQueuePersistenceService.replaceAll([
+          createPersistedPatientQueueItem(project, {
+            id: "queue-1",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+          }),
+        ]);
+        const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+        const process = {
+          id: "proc-1",
+          isTerminated: false,
+          state: { type: "in-turn" },
+          permissionMode: "default",
+          modeVersion: 0,
+          recapAfterSeconds: 300,
+          setPermissionMode: vi.fn(),
+          primeSupportedCommandsForMessage: vi.fn(async () => {}),
+          deferMessage,
+          waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
+          // The regular deferred lane delivers on turn boundaries and may
+          // pass patient work by design, so it must not block resume.
+          getDeferredQueueSummary: vi.fn(() => [
+            {
+              tempId: "temp-regular",
+              content: "newer regular queued work",
+              timestamp: "2026-06-30T10:00:00.000Z",
+            },
+          ]),
+        };
+
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => process),
+          } as unknown as SessionsDeps["supervisor"],
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request(
+          "/sessions/sess-1/recovered-queue/queue-1/resume",
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        expect(deferMessage).toHaveBeenCalledTimes(1);
+        await expect(response.json()).resolves.toMatchObject({
+          resumed: true,
+          resumedCount: 1,
+          processState: "in-turn",
+        });
+      },
+    );
+  });
+
+  it("steers recovered patient queue entries through the requested entry", async () => {
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        await sessionQueuePersistenceService.replaceAll([
+          createPersistedPatientQueueItem(project, {
+            id: "queue-1",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+          }),
+          createPersistedPatientQueueItem(project, {
+            id: "queue-2",
+            queuedAt: "2026-06-30T09:05:00.000Z",
+          }),
+        ]);
+
+        const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+        const steerPatientDeferredMessagesThrough = vi.fn(() => ({
+          success: true,
+          steered: 2,
+        }));
+        const process = {
+          id: "proc-1",
+          isTerminated: false,
+          state: { type: "in-turn" },
+          permissionMode: "default",
+          modeVersion: 0,
+          recapAfterSeconds: 300,
+          setPermissionMode: vi.fn(),
+          primeSupportedCommandsForMessage: vi.fn(async () => {}),
+          deferMessage,
+          steerPatientDeferredMessagesThrough,
+          waitForPatientQueuePersistenceIdle: vi.fn(async () => {}),
+          getDeferredQueueSummary: vi.fn(() => []),
+        };
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => null),
+            reactivateSession: vi.fn(async () => process),
+          } as unknown as SessionsDeps["supervisor"],
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request(
+          "/sessions/sess-1/recovered-queue/queue-2/steer",
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        expect(deferMessage).toHaveBeenCalledTimes(2);
+        expect(deferMessage).toHaveBeenNthCalledWith(
+          1,
+          expect.objectContaining({ tempId: "temp-queue-1" }),
+          {
+            promoteIfReady: false,
+            persistedQueueId: "queue-1",
+            timestamp: "2026-06-30T09:00:00.000Z",
+          },
+        );
+        expect(steerPatientDeferredMessagesThrough).toHaveBeenCalledWith(
+          "temp-queue-2",
+        );
+        await expect(response.json()).resolves.toMatchObject({
+          steered: true,
+          count: 2,
+          processId: "proc-1",
+          processState: "in-turn",
         });
       },
     );

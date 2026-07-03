@@ -1910,6 +1910,66 @@ describe("Process", () => {
       });
     });
 
+    it("deletes the persisted row when a resumed entry promotes straight through", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const controller = createControllableIterator();
+        const queue = new MessageQueue();
+        // Outside the Claude patient lane a patient-tagged deferMessage with
+        // promoteIfReady sends immediately on an idle process; the durable
+        // row must still be released even though no queue entry ever exists.
+        const process = new Process(controller.iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          idleTimeoutMs: 100,
+          queue,
+          sessionQueuePersistenceService: service,
+        });
+
+        controller.push({ type: "result", session_id: "sess-1" });
+        await waitFor(() => expect(process.state.type).toBe("idle"));
+
+        await service.upsertItem({
+          id: "row-1",
+          sessionId: "sess-1",
+          projectId,
+          projectPath: "/tmp/process-session-queue",
+          provider: "codex",
+          kind: "patient",
+          message: {
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          },
+          createdAt: "2026-06-30T09:00:00.000Z",
+          updatedAt: "2026-06-30T09:00:00.000Z",
+          queuedAt: "2026-06-30T09:00:00.000Z",
+          status: "paused-after-restart",
+        });
+
+        const result = process.deferMessage(
+          {
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          },
+          {
+            promoteIfReady: true,
+            persistedQueueId: "row-1",
+            timestamp: "2026-06-30T09:00:00.000Z",
+          },
+        );
+        expect(result).toMatchObject({ success: true, promoted: true });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toEqual([]);
+
+        controller.finish();
+        await process.abort();
+      });
+    });
+
     it("preserves patient queue entries as paused restart work", async () => {
       await withSessionQueuePersistence(async ({ service, projectId }) => {
         const iterator = createMockIterator([

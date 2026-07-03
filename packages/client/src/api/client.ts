@@ -1080,6 +1080,7 @@ export const api = {
   resumeRecoveredQueuedMessage: (sessionId: string, queueId: string) =>
     fetchJSON<{
       resumed: boolean;
+      resumedCount?: number;
       deferred?: boolean;
       promoted?: boolean;
       position?: number;
@@ -1094,6 +1095,24 @@ export const api = {
       `/sessions/${sessionId}/recovered-queue/${encodeURIComponent(
         queueId,
       )}/resume`,
+      { method: "POST" },
+    ),
+
+  steerRecoveredQueuedMessage: (sessionId: string, queueId: string) =>
+    fetchJSON<{
+      steered: boolean;
+      count?: number;
+      processId: string;
+      processState?: "idle" | "in-turn" | "waiting-input";
+      permissionMode?: PermissionMode;
+      modeVersion?: number;
+      recapAfterSeconds?: number;
+      deferredMessages: DeferredQueueMessage[];
+      serverTimestamp: number;
+    }>(
+      `/sessions/${sessionId}/recovered-queue/${encodeURIComponent(
+        queueId,
+      )}/steer`,
       { method: "POST" },
     ),
 

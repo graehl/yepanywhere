@@ -3037,6 +3037,34 @@ function SessionPageContent({
     [sessionId, setDeferredMessages, setProcessState, setStatus, showToast, t],
   );
 
+  const handleSteerRecoveredDeferred = useCallback(
+    async (queueId: string) => {
+      try {
+        const result = await api.steerRecoveredQueuedMessage(
+          sessionId,
+          queueId,
+        );
+        setStatus({
+          owner: "self",
+          processId: result.processId,
+          permissionMode: result.permissionMode,
+          modeVersion: result.modeVersion,
+          recapAfterSeconds: result.recapAfterSeconds,
+        });
+        setProcessState(result.processState ?? "idle");
+        setDeferredMessages(result.deferredMessages ?? []);
+      } catch (err) {
+        console.error("Failed to steer recovered queued message:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("sessionDeferredSteerFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [sessionId, setDeferredMessages, setProcessState, setStatus, showToast, t],
+  );
+
   const handleCancelLatestDeferred = useCallback(() => {
     const latest = [...deferredMessages]
       .reverse()
@@ -5621,6 +5649,7 @@ function SessionPageContent({
                   onCancelDeferred={handleCancelDeferred}
                   onSteerDeferred={handleSteerDeferred}
                   onResumeRecoveredDeferred={handleResumeRecoveredDeferred}
+                  onSteerRecoveredDeferred={handleSteerRecoveredDeferred}
                   onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
                   onCancelProjectQueueMessage={handleCancelProjectQueueItem}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}

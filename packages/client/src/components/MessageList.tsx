@@ -667,6 +667,8 @@ interface Props {
   onSteerDeferred?: (tempId: string) => void;
   /** Callback to resume a restart-paused recovered queue entry */
   onResumeRecoveredDeferred?: (queueId: string) => void;
+  /** Steer a restart-paused recovered entry, and earlier patient entries, into the session now */
+  onSteerRecoveredDeferred?: (queueId: string) => void;
   /** Callback to delete a restart-paused recovered queue entry */
   onDeleteRecoveredDeferred?: (queueId: string) => void;
   /** Callback to cancel a Project Queue item */
@@ -876,6 +878,7 @@ export const MessageList = memo(function MessageList({
   onCancelDeferred,
   onSteerDeferred,
   onResumeRecoveredDeferred,
+  onSteerRecoveredDeferred,
   onDeleteRecoveredDeferred,
   onCancelProjectQueueMessage,
   onCorrectLatestUserMessage,
@@ -3428,6 +3431,22 @@ export const MessageList = memo(function MessageList({
                         className="deferred-message-action deferred-message-action-steer"
                         onClick={() =>
                           onSteerDeferred(deferred.tempId as string)
+                        }
+                        aria-label={steerQueuedLabel}
+                        title={steerQueuedLabel}
+                      >
+                        <PlayIcon />
+                        <span>{t("sessionSteerNow")}</span>
+                      </button>
+                    ) : null}
+                    {tailRow.isRecovered &&
+                    recoveredQueueId &&
+                    onSteerRecoveredDeferred ? (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-steer"
+                        onClick={() =>
+                          onSteerRecoveredDeferred(recoveredQueueId)
                         }
                         aria-label={steerQueuedLabel}
                         title={steerQueuedLabel}

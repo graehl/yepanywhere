@@ -1086,6 +1086,43 @@ describe("MessageList", () => {
     expect(onSteerDeferred).toHaveBeenCalledWith("temp-patient-2");
   });
 
+  it("offers steer-now on restart-recovered patient chips by durable queue id", () => {
+    const onSteerDeferred = vi.fn();
+    const onSteerRecoveredDeferred = vi.fn();
+    render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            id: "queue-1",
+            tempId: "temp-recovered-1",
+            content: "recovered one",
+            timestamp: "2026-04-25T00:00:00.000Z",
+            status: "paused-after-restart",
+            metadata: { deliveryIntent: "patient" },
+          },
+          {
+            id: "queue-2",
+            tempId: "temp-recovered-2",
+            content: "recovered two",
+            timestamp: "2026-04-25T00:00:01.000Z",
+            status: "paused-after-restart",
+            metadata: { deliveryIntent: "patient" },
+          },
+        ]}
+        onSteerDeferred={onSteerDeferred}
+        onSteerRecoveredDeferred={onSteerRecoveredDeferred}
+      />,
+    );
+
+    expect(screen.getAllByText("Steer now")).toHaveLength(2);
+    fireEvent.click(
+      screen.getByLabelText("Steer this and 1 earlier patient message now"),
+    );
+    expect(onSteerRecoveredDeferred).toHaveBeenCalledWith("queue-2");
+    expect(onSteerDeferred).not.toHaveBeenCalled();
+  });
+
   it("renders project queue messages below normal queued messages with project position", () => {
     const { container } = render(
       <MessageList

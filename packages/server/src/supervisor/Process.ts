@@ -2622,6 +2622,23 @@ export class Process {
           error: result.error ?? "Failed to queue message",
         };
       }
+      // A recovered entry promoted straight through never enters the
+      // deferred queue, so release its durable row here; nothing else will.
+      const persistedQueueId = options?.persistedQueueId;
+      if (persistedQueueId) {
+        this.enqueuePatientQueuePersistence(
+          async () => {
+            await this.sessionQueuePersistenceService?.deleteItem(
+              persistedQueueId,
+            );
+          },
+          {
+            action: "delete",
+            reason: "promoted",
+            persistedQueueIds: [persistedQueueId],
+          },
+        );
+      }
       this.emitDeferredQueueChange("promoted", message.tempId);
       return {
         success: true,

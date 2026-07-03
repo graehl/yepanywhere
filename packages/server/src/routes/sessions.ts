@@ -680,11 +680,35 @@ function recoveredPatientUserMessage(
     ...item.message.metadata,
     deliveryIntent: "patient" satisfies UserMessageDeliveryIntent,
   };
+  // Live-queue chip actions (cancel, steer) address entries by tempId, so a
+  // recovered entry that was persisted without one gets a stable fallback.
+  const tempId =
+    item.message.tempId ?? item.source?.tempId ?? `recovered-${item.id}`;
   return {
     ...item.message,
+    tempId,
     ...(mode ? { mode } : {}),
     metadata,
   };
+}
+
+/**
+ * Count live patient queue entries composed after the given recovered entry.
+ * Resuming or steering the recovered entry would deliver its older content
+ * behind these newer ones, so callers reject while any exist. Regular
+ * deferred entries never block recovered work: the regular lane delivers on
+ * turn boundaries and may pass patient work by design.
+ */
+function livePatientEntriesNewerThan(
+  process: Process | undefined,
+  queuedAt: string,
+): number {
+  const live = process?.getDeferredQueueSummary() ?? [];
+  return live.filter(
+    (entry) =>
+      entry.metadata?.deliveryIntent === "patient" &&
+      entry.timestamp.localeCompare(queuedAt) > 0,
+  ).length;
 }
 
 async function resolveSessionReaderForAgentContent({
@@ -5592,8 +5616,111 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     });
   });
 
-  // POST /api/sessions/:sessionId/recovered-queue/:queueId/resume - Move the
-  // oldest restart-paused patient queue entry back into the live patient queue.
+  // A recovered patient queue entry may need a fresh process before it can
+  // rejoin the live queue. Shared by the recovered-queue resume/steer routes.
+  const ensureProcessForRecoveredItem = async (
+    sessionId: string,
+    item: PersistedSessionQueuedMessage,
+    existing: Process | undefined,
+  ): Promise<{ process: Process } | { error: string; status: 400 | 503 }> => {
+    let process = existing;
+    const mode = item.message.mode ?? item.mode;
+    const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+    const parsedExecutor = parseOptionalExecutor(
+      item.executor ?? metadata?.executor,
+    );
+    if (parsedExecutor.error) {
+      return { error: parsedExecutor.error, status: 400 };
+    }
+    const rawModel = item.model ?? metadata?.requestedModel;
+    const model = rawModel && rawModel !== "default" ? rawModel : undefined;
+
+    if (!process) {
+      try {
+        process = await deps.supervisor.reactivateSession(
+          item.projectPath,
+          sessionId,
+          mode,
+          {
+            model,
+            serviceTier: item.serviceTier,
+            providerName: item.provider,
+            executor: parsedExecutor.executor,
+            globalInstructions: getGlobalInstructions(),
+            recapAfterSeconds: metadata?.recapAfterSeconds,
+            promptSuggestionMode: metadata?.promptSuggestionMode,
+          },
+        );
+      } catch (error) {
+        return {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to reactivate session",
+          status: 503,
+        };
+      }
+      await persistLaunchMetadata(
+        sessionId,
+        item.provider,
+        parsedExecutor.executor,
+        undefined,
+        item.model ?? metadata?.requestedModel,
+        metadata?.promptSuggestionMode,
+        metadata?.recapAfterSeconds,
+      );
+    } else if (mode) {
+      process.setPermissionMode(mode);
+    }
+    return { process };
+  };
+
+  // Move recovered entries back into the live patient queue in queuedAt
+  // order. On a mid-group failure the earlier resumes stand; the caller
+  // reports the failed entry.
+  const resumeRecoveredGroup = async (
+    process: Process,
+    group: PersistedSessionQueuedMessage[],
+    options: { promoteIfReady: boolean },
+  ): Promise<{
+    last?: { deferred: boolean; promoted?: boolean; position?: number };
+    lastMessage?: UserMessage;
+    error?: string;
+  }> => {
+    let last:
+      | { deferred: boolean; promoted?: boolean; position?: number }
+      | undefined;
+    let lastMessage: UserMessage | undefined;
+    for (const item of group) {
+      const userMessage = recoveredPatientUserMessage(item);
+      await process.primeSupportedCommandsForMessage(userMessage);
+      const result = process.deferMessage(userMessage, {
+        promoteIfReady: options.promoteIfReady,
+        persistedQueueId: item.id,
+        timestamp: item.queuedAt,
+      });
+      if (!result.success) {
+        return {
+          last,
+          lastMessage,
+          error: result.error ?? "Failed to queue message",
+        };
+      }
+      last = result;
+      lastMessage = userMessage;
+    }
+    return { last, lastMessage };
+  };
+
+  const reportableProcessState = (process: Process) =>
+    process.state.type === "waiting-input" || process.state.type === "in-turn"
+      ? process.state.type
+      : "idle";
+
+  // POST /api/sessions/:sessionId/recovered-queue/:queueId/resume - Move
+  // restart-paused patient queue entries back into the live patient queue,
+  // through the requested entry: resuming a non-head entry also resumes every
+  // recovered entry before it, so compose order is preserved.
   routes.post(
     "/sessions/:sessionId/recovered-queue/:queueId/resume",
     async (c) => {
@@ -5605,117 +5732,62 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
 
       const recoveredItems = recoveredPatientQueueItems(deps, sessionId);
-      const item = recoveredItems.find((candidate) => candidate.id === queueId);
-      if (!item) {
+      const targetIndex = recoveredItems.findIndex(
+        (candidate) => candidate.id === queueId,
+      );
+      const target = recoveredItems[targetIndex];
+      if (!target) {
         return c.json({ error: "Recovered queued message not found" }, 404);
       }
-
-      const head = recoveredItems[0];
-      if (!head || head.id !== item.id) {
-        return c.json(
-          {
-            error: "Resume recovered queued messages in their original order.",
-            headQueueId: head?.id,
-            deferredMessages: recoveredItems.map(persistedPatientQueueSummary),
-          },
-          409,
-        );
-      }
+      const group = recoveredItems.slice(0, targetIndex + 1);
 
       let process = deps.supervisor.getProcessForSession(sessionId);
       if (process?.isTerminated) {
         process = undefined;
       }
-      const liveDeferredMessages = process?.getDeferredQueueSummary() ?? [];
-      if (liveDeferredMessages.length > 0) {
+      if (livePatientEntriesNewerThan(process, target.queuedAt) > 0) {
         return c.json(
           {
             error:
-              "Drain or cancel live queued messages before resuming recovered work.",
-            headQueueId: item.id,
+              "Drain or cancel newer queued messages before resuming recovered work.",
+            headQueueId: target.id,
             deferredMessages: sessionQueueSummaries(deps, sessionId, process),
           },
           409,
         );
       }
 
-      const mode = item.message.mode ?? item.mode;
-      const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
-      const parsedExecutor = parseOptionalExecutor(
-        item.executor ?? metadata?.executor,
+      const ensured = await ensureProcessForRecoveredItem(
+        sessionId,
+        target,
+        process,
       );
-      if (parsedExecutor.error) {
-        return c.json({ error: parsedExecutor.error }, 400);
+      if ("error" in ensured) {
+        return c.json({ error: ensured.error }, ensured.status);
       }
-      const rawModel = item.model ?? metadata?.requestedModel;
-      const model = rawModel && rawModel !== "default" ? rawModel : undefined;
+      process = ensured.process;
 
-      if (!process) {
-        try {
-          process = await deps.supervisor.reactivateSession(
-            item.projectPath,
-            sessionId,
-            mode,
-            {
-              model,
-              serviceTier: item.serviceTier,
-              providerName: item.provider,
-              executor: parsedExecutor.executor,
-              globalInstructions: getGlobalInstructions(),
-              recapAfterSeconds: metadata?.recapAfterSeconds,
-              promptSuggestionMode: metadata?.promptSuggestionMode,
-            },
-          );
-        } catch (error) {
-          return c.json(
-            {
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Failed to reactivate session",
-            },
-            503,
-          );
-        }
-        await persistLaunchMetadata(
-          sessionId,
-          item.provider,
-          parsedExecutor.executor,
-          undefined,
-          item.model ?? metadata?.requestedModel,
-          metadata?.promptSuggestionMode,
-          metadata?.recapAfterSeconds,
-        );
-      } else if (mode) {
-        process.setPermissionMode(mode);
-      }
-
-      const reactivatedBacklog = process.getDeferredQueueSummary();
-      if (reactivatedBacklog.length > 0) {
+      if (livePatientEntriesNewerThan(process, target.queuedAt) > 0) {
         return c.json(
           {
             error:
-              "Drain or cancel live queued messages before resuming recovered work.",
-            headQueueId: item.id,
+              "Drain or cancel newer queued messages before resuming recovered work.",
+            headQueueId: target.id,
             deferredMessages: sessionQueueSummaries(deps, sessionId, process),
           },
           409,
         );
       }
 
-      const userMessage = recoveredPatientUserMessage(item);
-      await process.primeSupportedCommandsForMessage(userMessage);
-      const deferredResult = process.deferMessage(userMessage, {
+      const { last, error } = await resumeRecoveredGroup(process, group, {
         promoteIfReady: true,
-        persistedQueueId: item.id,
-        timestamp: item.queuedAt,
       });
-      if (!deferredResult.success) {
+      if (error || !last) {
         return c.json(
           {
             error: "Failed to resume recovered queued message",
-            reason: deferredResult.error,
-            deferredMessages: recoveredPatientQueueSummaries(deps, sessionId),
+            reason: error,
+            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
           },
           409,
         );
@@ -5724,15 +5796,107 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       await process.waitForPatientQueuePersistenceIdle();
       return c.json({
         resumed: true,
-        deferred: deferredResult.deferred,
-        promoted: deferredResult.promoted,
-        position: deferredResult.position,
+        resumedCount: group.length,
+        deferred: last.deferred,
+        promoted: last.promoted,
+        position: last.position,
         processId: process.id,
-        processState:
-          process.state.type === "waiting-input" ||
-          process.state.type === "in-turn"
-            ? process.state.type
-            : "idle",
+        processState: reportableProcessState(process),
+        permissionMode: process.permissionMode,
+        modeVersion: process.modeVersion,
+        recapAfterSeconds: process.recapAfterSeconds,
+        deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+        serverTimestamp: Date.now(),
+      });
+    },
+  );
+
+  // POST /api/sessions/:sessionId/recovered-queue/:queueId/steer - Steer a
+  // restart-paused patient queue entry into the session now, without waiting
+  // for verified quiet: the entry and every recovered or live patient entry
+  // composed before it rejoin the live queue and steer in compose order.
+  routes.post(
+    "/sessions/:sessionId/recovered-queue/:queueId/steer",
+    async (c) => {
+      const sessionId = c.req.param("sessionId");
+      const queueId = c.req.param("queueId");
+      const service = deps.sessionQueuePersistenceService;
+      if (!service) {
+        return c.json({ error: "Session queue persistence unavailable" }, 503);
+      }
+
+      const recoveredItems = recoveredPatientQueueItems(deps, sessionId);
+      const targetIndex = recoveredItems.findIndex(
+        (candidate) => candidate.id === queueId,
+      );
+      const target = recoveredItems[targetIndex];
+      if (!target) {
+        return c.json({ error: "Recovered queued message not found" }, 404);
+      }
+      const group = recoveredItems.slice(0, targetIndex + 1);
+
+      let process = deps.supervisor.getProcessForSession(sessionId);
+      if (process?.isTerminated) {
+        process = undefined;
+      }
+      if (livePatientEntriesNewerThan(process, target.queuedAt) > 0) {
+        return c.json(
+          {
+            error:
+              "Drain or cancel newer queued messages before steering recovered work.",
+            headQueueId: target.id,
+            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+          },
+          409,
+        );
+      }
+
+      const ensured = await ensureProcessForRecoveredItem(
+        sessionId,
+        target,
+        process,
+      );
+      if ("error" in ensured) {
+        return c.json({ error: ensured.error }, ensured.status);
+      }
+      process = ensured.process;
+
+      const { lastMessage, error } = await resumeRecoveredGroup(
+        process,
+        group,
+        { promoteIfReady: false },
+      );
+      if (error || !lastMessage?.tempId) {
+        return c.json(
+          {
+            error: "Failed to steer recovered queued message",
+            reason: error,
+            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+          },
+          409,
+        );
+      }
+
+      const steerResult = process.steerPatientDeferredMessagesThrough(
+        lastMessage.tempId,
+      );
+      if (!steerResult.success) {
+        return c.json(
+          {
+            error:
+              steerResult.error ?? "Failed to steer recovered queued message",
+            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+          },
+          409,
+        );
+      }
+
+      await process.waitForPatientQueuePersistenceIdle();
+      return c.json({
+        steered: true,
+        count: steerResult.steered,
+        processId: process.id,
+        processState: reportableProcessState(process),
         permissionMode: process.permissionMode,
         modeVersion: process.modeVersion,
         recapAfterSeconds: process.recapAfterSeconds,
@@ -5782,7 +5946,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({
       steered: true,
       count: result.steered,
-      deferredMessages: process.getDeferredQueueSummary(),
+      // Include any still-paused recovered entries so the client's list does
+      // not lose their chips when a live entry is steered.
+      deferredMessages: sessionQueueSummaries(deps, sessionId, process),
     });
   });
 

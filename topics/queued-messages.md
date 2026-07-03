@@ -48,8 +48,9 @@ minutes.
 4. **Patient persistence only.** Short-term deferred and direct queues live in
    the Process and die when the process restarts or the session stops. Patient
    entries are durable server state while queued. Restart-loaded patient entries
-   surface as `paused-after-restart` queue chips and require explicit resume or
-   delete.
+   surface as `paused-after-restart` queue chips and require an explicit action:
+   resume (rejoin the patient queue and wait for verified quiet), steer (deliver
+   now), or delete.
 5. **No optimism.** Queuing and cancelling behave exactly like sending a normal
    session message: the composer disables, the request goes to the server, and
    the UI only changes when confirmed server state comes back. No optimistic
@@ -104,7 +105,8 @@ not rejected. The point of this note is to ship a correct minimum first.
 - **Reordering / reshuffling the queue.** (Future: server-side reorder by id.)
 - **Steering a queued message into the active turn.** (Landed 2026-07-03 for
   patient entries, on top of the server model: the chip's `Steer now` action
-  steers that entry plus every patient entry ahead of it — see
+  steers that entry plus every patient entry ahead of it, and appears on
+  restart-recovered chips too, where it resumes-through before steering — see
   [message-control-steer-queue-btw-later-interrupt.md](message-control-steer-queue-btw-later-interrupt.md)
   § Patient countdown and promotion.)
 - **"Jump to context" / nearest-timestamp navigation** from a queued chip.
@@ -131,13 +133,21 @@ revision. The agreed live persistence shape is intentionally narrow:
 - keep direct `MessageQueue` entries ephemeral for the same restart semantics;
 - do not use text matching to recover, deduplicate, or remove entries.
 
-Status as of 2026-06-30: live patient queue write/delete is wired into
-`Process`/Supervisor. A queued patient entry is written to the server
-persistence service, and cancel/promotion/drain removes it. Startup-loaded
-paused entries are surfaced through session detail/metadata responses and can
-be deleted by durable queue id. Explicit per-entry resume is implemented for
-the oldest recovered patient entry in a session; non-head resume and resume
-behind live queued backlog are rejected to preserve FIFO ordering. Safe restart
+Status as of 2026-06-30 (revised 2026-07-03): live patient queue write/delete
+is wired into `Process`/Supervisor. A queued patient entry is written to the
+server persistence service, and cancel/promotion/drain removes it — including
+the promote-straight-through path, which consumes the entry's durable row even
+though no queue entry exists to drain later. Startup-loaded paused entries are
+surfaced through session detail/metadata responses and can be deleted by
+durable queue id. Per-entry resume resumes *through* the clicked entry: a
+non-head resume also resumes every recovered entry before it, so compose order
+is preserved rather than rejected. Recovered chips also expose `Steer now`
+(`POST /sessions/:id/recovered-queue/:queueId/steer`), which resumes-through
+and then steers the group into the session immediately. Both actions reject
+only when a live patient entry *newer* than the clicked entry exists
+(delivering older recovered content behind it would break compose order);
+regular-lane deferred entries never block recovered work, since that lane may
+pass patient work by design. Safe restart
 reports recovered patient entries as preserved work, not blockers, and converts
 live patient entries to `paused-after-restart` once active sessions plus
 short-term/direct queue blockers have drained. Project Queue promotion treats

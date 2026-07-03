@@ -115,6 +115,16 @@ Status: promotion landed 2026-07-03; countdown still a proposal.
 - This is distinct from regular queued rows jumping ahead during active work:
   promotion is a user override of patient waiting, not a change to the ordinary
   regular-vs-patient delivery ordering.
+- Restart-recovered (`paused-after-restart`) patient chips carry the same
+  `Steer now` action (`POST /sessions/:id/recovered-queue/:queueId/steer`,
+  2026-07-03): the clicked entry and every recovered entry before it rejoin
+  the live queue, then steer through as above. This is the direct unlock for
+  preserved work — no resume-first step. Both recovered steer and recovered
+  resume reject only when a *newer* live patient entry exists (delivering the
+  older recovered content behind it would break compose order); resume of a
+  non-head recovered entry resumes every recovered entry before it instead of
+  erroring. See [queued-messages.md](queued-messages.md) § Patient
+  persistence revision.
 
 Narrow bottom-row overflow is tracked in
 [`composer-bottom-bar-overflow.md`](composer-bottom-bar-overflow.md).

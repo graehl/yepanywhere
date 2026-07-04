@@ -96,6 +96,7 @@ import { createSessionIndexRoutes } from "./routes/session-index.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
+import { createSupervisorQueueRoutes } from "./routes/supervisor-queue.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
 
@@ -1101,6 +1102,7 @@ export function createApp(options: AppOptions): AppResult {
       }),
     );
   }
+  app.route("/api", createSupervisorQueueRoutes(supervisor));
   app.route(
     "/api",
     createSessionsRoutes({

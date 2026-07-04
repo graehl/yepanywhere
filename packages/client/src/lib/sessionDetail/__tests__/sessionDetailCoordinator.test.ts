@@ -310,6 +310,48 @@ describe("SessionDetailCoordinator", () => {
     ).toBe(12);
   });
 
+  it("persists current route snapshots through explicit cache policy", () => {
+    const detail = coordinator();
+
+    expect(
+      detail.writeCurrentRouteSnapshot({
+        enabled: true,
+        retainScrollSnapshot: true,
+        scrollSnapshot: scrollSnapshot(36),
+      }),
+    ).toBe(false);
+
+    expect(detail.replaceRouteSnapshot(routeSnapshot("current"))).toBe(true);
+
+    expect(
+      detail.writeCurrentRouteSnapshot({
+        enabled: false,
+        retainScrollSnapshot: true,
+        scrollSnapshot: scrollSnapshot(36),
+      }),
+    ).toBe(false);
+    expect(detail.readRouteSnapshot()?.scrollSnapshot?.scrollTop).toBe(12);
+
+    expect(
+      detail.writeCurrentRouteSnapshot({
+        enabled: true,
+        retainScrollSnapshot: true,
+        scrollSnapshot: scrollSnapshot(36),
+      }),
+    ).toBe(true);
+    expect(detail.readRouteSnapshot()?.lastMessageId).toBe("current");
+    expect(detail.readRouteSnapshot()?.scrollSnapshot?.scrollTop).toBe(36);
+
+    expect(
+      detail.writeCurrentRouteSnapshot({
+        enabled: true,
+        retainScrollSnapshot: false,
+        scrollSnapshot: scrollSnapshot(48),
+      }),
+    ).toBe(true);
+    expect(detail.readRouteSnapshot()?.scrollSnapshot).toBeUndefined();
+  });
+
   it("loads a cold persisted transcript for initial load", () => {
     const detail = coordinator();
     const responsePagination = pagination(2);

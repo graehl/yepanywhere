@@ -173,18 +173,6 @@ function readSessionLoadCache(
   });
 }
 
-function writeSessionLoadCache(
-  coordinator: SessionDetailCoordinator,
-  entry: SessionRouteSnapshot,
-): boolean {
-  return coordinator.writeInitialRouteSnapshot(entry, {
-    enabled: getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
-    retainScrollSnapshot: shouldRetainSessionScrollMemory(
-      getSessionScrollBehaviorMode(),
-    ),
-  });
-}
-
 export function __resetSessionLoadCacheForTest(): void {
   defaultSessionDetailStore.clear();
 }
@@ -292,27 +280,16 @@ export function useSessionMessages(
     [coordinator],
   );
 
-  const readCurrentStoreRouteSnapshot = useCallback(
-    () => coordinator.readRouteSnapshot(),
-    [coordinator],
-  );
-
   const persistCurrentStoreRouteSnapshot = useCallback(() => {
-    if (!getSessionTranscriptCacheEnabled()) {
-      return false;
-    }
-    const snapshot = readCurrentStoreRouteSnapshot();
-    if (!snapshot) {
-      return false;
-    }
-    return writeSessionLoadCache(
-      coordinator,
-      {
-        ...snapshot,
-        scrollSnapshot: scrollSnapshotRef.current,
-      },
-    );
-  }, [coordinator, readCurrentStoreRouteSnapshot]);
+    return coordinator.writeCurrentRouteSnapshot({
+      enabled:
+        getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
+      retainScrollSnapshot: shouldRetainSessionScrollMemory(
+        getSessionScrollBehaviorMode(),
+      ),
+      scrollSnapshot: scrollSnapshotRef.current,
+    });
+  }, [coordinator]);
   const recordCurrentEntryBytes = useCallback(() => {
     const bytes = coordinator.getEntryApproxBytes();
     if (bytes) {

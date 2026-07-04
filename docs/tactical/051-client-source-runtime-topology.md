@@ -259,7 +259,9 @@ coordinator-owned, as is the initial reveal completion value bundle. User
 preference and browser-environment decisions remain hook-owned. Initial-load
 reveal input shaping is coordinator-owned while cursor and scroll reads remain
 hook-owned, and reveal cache-write orchestration is coordinator-owned while
-cache enablement and scroll-retention decisions remain hook-owned.
+cache enablement and scroll-retention decisions remain hook-owned. Current
+route snapshot persistence is coordinator-owned with explicit hook-supplied
+cache and scroll policy.
 
 Intent:
 
@@ -405,9 +407,14 @@ Implementation note:
   scroll-retention decisions, but the coordinator now filters reveal snapshots
   to cacheable store-backed snapshots and applies the explicit route snapshot
   write policy.
+- Moved current route snapshot persistence into `SessionDetailCoordinator`.
+  The hook still owns cache enablement, browser availability, and the current
+  scroll snapshot ref, while the coordinator now reads the current route
+  snapshot, attaches the hook-supplied scroll snapshot, and applies the
+  explicit write policy.
 - The next Phase 3 slice should likely move another small initial-load helper,
-  such as current route snapshot persistence, while leaving React state timing
-  and user preference reads in the hook.
+  such as the route-exit persist-vs-delete cleanup decision, while leaving
+  React state timing, byte telemetry, and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

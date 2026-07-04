@@ -57,6 +57,11 @@ export interface SessionDetailRouteSnapshotWritePolicy {
   retainScrollSnapshot: boolean;
 }
 
+export interface SessionDetailCurrentRouteSnapshotWritePolicy
+  extends SessionDetailRouteSnapshotWritePolicy {
+  scrollSnapshot?: SessionRouteScrollSnapshot;
+}
+
 export interface SessionDetailInitialLoadLifecycle {
   readonly restoredFromSnapshot: boolean;
   completeReveal(processors: SessionDetailStreamProcessors): boolean;
@@ -234,6 +239,26 @@ export class SessionDetailCoordinator {
         ? snapshot.scrollSnapshot
         : undefined,
     });
+  }
+
+  writeCurrentRouteSnapshot({
+    scrollSnapshot,
+    ...policy
+  }: SessionDetailCurrentRouteSnapshotWritePolicy): boolean {
+    if (!policy.enabled) {
+      return false;
+    }
+    const snapshot = this.readRouteSnapshot();
+    if (!snapshot) {
+      return false;
+    }
+    return this.writeInitialRouteSnapshot(
+      {
+        ...snapshot,
+        scrollSnapshot,
+      },
+      policy,
+    );
   }
 
   replaceRouteSnapshot(snapshot: SessionRouteSnapshot): boolean {

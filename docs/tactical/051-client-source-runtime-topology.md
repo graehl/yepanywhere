@@ -242,6 +242,11 @@ Implementation note:
 
 ## Phase 3: Extract SessionDetailCoordinator Skeleton
 
+Status: Started. The coordinator skeleton owns entry/runtime references,
+stream buffering, the initial-load-complete gate, and incremental refresh
+coalescing. Initial REST load, reveal gating, scroll snapshot mutation,
+older-page loading, metadata refresh, and load progress remain hook-owned.
+
 Intent:
 
 - Move the non-React session lifecycle logic out of `useSessionMessages` into a
@@ -289,6 +294,19 @@ Risk:
 - `useSessionMessages` currently has subtle reveal gating and progress timing.
   Move this in small slices, preserving tests around warm hydration before and
   after REST data arrival.
+
+Implementation note:
+
+- Added `SessionDetailCoordinator` as a normal TypeScript object with the
+  current entry key, source runtime, session-detail cache/API accessors,
+  stream buffer, initial-load-complete flag, and in-flight incremental refresh
+  promise.
+- `useSessionMessages` now delegates stream-event buffering/replay and
+  `fetchNewMessages` coalescing to the coordinator while keeping the existing
+  hook-owned REST load/reveal/progress behavior intact.
+- Added coordinator unit tests for stream buffering, reset behavior, and
+  refresh coalescing. The next Phase 3 slice should move one additional
+  concern, not the whole load protocol.
 
 ## Phase 4: Rename Public Cache Facade
 

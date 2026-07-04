@@ -111,3 +111,5 @@
   as the type definition, validation kept off hot paths.
 - provider-runtime-status - Live provider retry/failure status surfaced from
   provider streams into YA process/session UI state.
+- client-source-runtime-topology - Source-runtime context and session-detail
+  coordinator extraction for client data-flow cleanup.

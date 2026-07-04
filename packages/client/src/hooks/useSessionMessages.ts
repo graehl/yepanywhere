@@ -21,14 +21,7 @@ import {
   type SessionLoadProgress,
   type SessionLoadProgressStage,
 } from "../lib/sessionDetail/loadProgress";
-import {
-  bufferSessionDetailStreamMessage,
-  bufferSessionDetailStreamSubagentMessage,
-  createSessionDetailStreamBuffer,
-  drainSessionDetailStreamBuffer,
-  resetSessionDetailStreamBuffer,
-  type SessionDetailStreamBuffer,
-} from "../lib/sessionDetail/streamBuffer";
+import { createSessionDetailCoordinator } from "../lib/sessionDetail/sessionDetailCoordinator";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   getSessionScrollBehaviorMode,
@@ -255,8 +248,6 @@ export function useSessionMessages(
   } = options;
   const runtime = useCurrentSourceRuntime();
   const sourceKey = runtime.sourceKey;
-  const sourceApi = runtime.api;
-  const sessionDetailCache = runtime.sessionDetails.cache;
   const snapshotKey: SessionDetailEntryKeyInput = useMemo(
     () => ({
       sourceKey,
@@ -267,6 +258,12 @@ export function useSessionMessages(
     }),
     [projectId, sessionId, sourceKey, tailFrom, tailTurns],
   );
+  const coordinator = useMemo(
+    () => createSessionDetailCoordinator({ entryKey: snapshotKey, runtime }),
+    [runtime, snapshotKey],
+  );
+  const sourceApi = coordinator.api;
+  const sessionDetailCache = coordinator.cache;
   const snapshotKeyString = getSessionDetailEntryKey(snapshotKey);
   const cachedLoadRef = useRef<{
     key: string;
@@ -553,12 +550,6 @@ export function useSessionMessages(
     warnMissingStoreBackedDetailAfterReveal,
   ]);
 
-  // Buffering: queue stream messages until initial load completes
-  const streamBufferRef = useRef<SessionDetailStreamBuffer>(
-    createSessionDetailStreamBuffer(),
-  );
-  const initialLoadCompleteRef = useRef(false);
-
   useEffect(() => {
     return () => {
       if (persistCurrentStoreRouteSnapshot()) {
@@ -613,18 +604,6 @@ export function useSessionMessages(
     },
     [dispatchSessionDetailAction],
   );
-
-  // Flush buffered stream messages after initial load
-  const flushBuffer = useCallback(() => {
-    const buffer = drainSessionDetailStreamBuffer(streamBufferRef.current);
-    for (const item of buffer) {
-      if (item.type === "message") {
-        processStreamMessage(item.message, true);
-      } else {
-        processStreamSubagentMessage(item.message, item.agentId);
-      }
-    }
-  }, [processStreamMessage, processStreamSubagentMessage]);
 
   // Initial load. When a warm in-tab cache exists, the REST request is an
   // incremental refresh after the cached tail; merge that delta instead of
@@ -725,8 +704,10 @@ export function useSessionMessages(
 
       // Mark ready and flush buffered stream events after the reveal snapshot
       // has been queued so buffered events merge on top of loaded transcript.
-      initialLoadCompleteRef.current = true;
-      flushBuffer();
+      coordinator.completeInitialLoad({
+        processMessage: processStreamMessage,
+        processSubagentMessage: processStreamSubagentMessage,
+      });
 
       setLoading(false);
       setSessionLoadProgress(
@@ -893,8 +874,7 @@ export function useSessionMessages(
       tailFrom,
       restoredFromSnapshot: Boolean(warmLoad),
     });
-    initialLoadCompleteRef.current = false;
-    resetSessionDetailStreamBuffer(streamBufferRef.current);
+    coordinator.resetForInitialLoad();
     scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
     )
@@ -1036,9 +1016,11 @@ export function useSessionMessages(
     detailedLoadingProgress,
     onLoadComplete,
     onLoadError,
-    flushBuffer,
+    coordinator,
     resetSessionDetailState,
     dispatchSessionDetailAction,
+    processStreamMessage,
+    processStreamSubagentMessage,
     readStoreLastMessageId,
     readSelectorBackedRuntimeSnapshot,
     sessionDetailCache,
@@ -1067,29 +1049,21 @@ export function useSessionMessages(
   // Handle stream message event (with buffering)
   const handleStreamMessageEvent = useCallback(
     (incoming: Message) => {
-      if (!initialLoadCompleteRef.current) {
-        bufferSessionDetailStreamMessage(streamBufferRef.current, incoming);
-        return;
-      }
-      processStreamMessage(incoming);
+      coordinator.handleStreamMessage(incoming, processStreamMessage);
     },
-    [processStreamMessage],
+    [coordinator, processStreamMessage],
   );
 
   // Handle stream subagent message event (with buffering)
   const handleStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
-      if (!initialLoadCompleteRef.current) {
-        bufferSessionDetailStreamSubagentMessage(
-          streamBufferRef.current,
-          incoming,
-          agentId,
-        );
-        return;
-      }
-      processStreamSubagentMessage(incoming, agentId);
+      coordinator.handleStreamSubagentMessage(
+        incoming,
+        agentId,
+        processStreamSubagentMessage,
+      );
     },
-    [processStreamSubagentMessage],
+    [coordinator, processStreamSubagentMessage],
   );
 
   // Register toolUse → agent mapping
@@ -1140,15 +1114,9 @@ export function useSessionMessages(
     dispatchSessionDetailAction({ type: "clearStreamingPlaceholders" });
   }, [dispatchSessionDetailAction]);
 
-  const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
-
   // Fetch new messages incrementally (for file change events)
   const fetchNewMessages = useCallback(() => {
-    if (fetchNewMessagesInFlightRef.current) {
-      return fetchNewMessagesInFlightRef.current;
-    }
-
-    const request = (async () => {
+    return coordinator.runExclusiveFetchNewMessages(async () => {
       try {
         const afterMessageId = readStoreLastMessageId();
         const data = await sourceApi.getSession({
@@ -1187,17 +1155,9 @@ export function useSessionMessages(
       } catch {
         // Silent fail for incremental updates
       }
-    })();
-
-    fetchNewMessagesInFlightRef.current = request;
-    void request.finally(() => {
-      if (fetchNewMessagesInFlightRef.current === request) {
-        fetchNewMessagesInFlightRef.current = null;
-      }
     });
-
-    return request;
   }, [
+    coordinator,
     projectId,
     sessionId,
     readStoreLastMessageId,

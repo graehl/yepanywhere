@@ -85,6 +85,31 @@ export interface SessionDetailRouteSnapshotLoadProgressOptions
   messageCount?: number;
 }
 
+export interface SessionDetailInitialLoadStartPerfInput {
+  projectId: string;
+  sessionId: string;
+  tailCompactions: number;
+  tailTurns?: number;
+  tailFrom?: string;
+  restoredFromSnapshot: boolean;
+}
+
+export interface SessionDetailRestoredPerfOptions {
+  restoredFromSnapshot?: boolean;
+}
+
+export interface SessionDetailDataReadyPerfOptions
+  extends SessionDetailRestoredPerfOptions {
+  appliedAfterSnapshotHydration?: boolean;
+}
+
+export interface SessionDetailMessagesQueuedPerfOptions
+  extends SessionDetailRestoredPerfOptions {
+  snapshot: SessionRouteSnapshot;
+  sourceMessageCount: number;
+  provider?: string;
+}
+
 export interface SessionDetailLoadCompleteResult {
   session: GetSessionResult["session"];
   status: GetSessionResult["ownership"];
@@ -265,6 +290,74 @@ export class SessionDetailCoordinator {
       pagination: snapshot.pagination,
       nowMs: options.nowMs,
     });
+  }
+
+  buildInitialLoadStartPerfDetail({
+    projectId,
+    sessionId,
+    tailCompactions,
+    tailTurns,
+    tailFrom,
+    restoredFromSnapshot,
+  }: SessionDetailInitialLoadStartPerfInput): Record<string, unknown> {
+    return {
+      projectId,
+      sessionId,
+      tailCompactions,
+      tailTurns,
+      tailFrom,
+      restoredFromSnapshot,
+    };
+  }
+
+  buildInitialLoadDataReadyPerfDetail(
+    data: GetSessionResult,
+    options: SessionDetailDataReadyPerfOptions = {},
+  ): Record<string, unknown> {
+    return {
+      messages: data.messages.length,
+      provider: data.session.provider,
+      totalMessages: data.pagination?.totalMessageCount,
+      hasOlderMessages: data.pagination?.hasOlderMessages,
+      ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
+      ...(options.appliedAfterSnapshotHydration && {
+        appliedAfterSnapshotHydration: true,
+      }),
+    };
+  }
+
+  buildInitialMessagesQueuedPerfDetail({
+    snapshot,
+    sourceMessageCount,
+    provider,
+    restoredFromSnapshot,
+  }: SessionDetailMessagesQueuedPerfOptions): Record<string, unknown> {
+    return {
+      messages: sourceMessageCount,
+      totalMessages: snapshot.messages.length,
+      provider,
+      ...(restoredFromSnapshot && { restoredFromSnapshot: true }),
+    };
+  }
+
+  buildInitialLoadCompletePerfDetail(
+    sourceMessageCount: number,
+    options: SessionDetailRestoredPerfOptions = {},
+  ): Record<string, unknown> {
+    return {
+      messages: sourceMessageCount,
+      ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
+    };
+  }
+
+  buildInitialLoadErrorPerfDetail(
+    error: unknown,
+    options: SessionDetailRestoredPerfOptions = {},
+  ): Record<string, unknown> {
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
+    };
   }
 
   applyInitialLoad(data: GetSessionResult): SessionDetailAppliedInitialLoad {

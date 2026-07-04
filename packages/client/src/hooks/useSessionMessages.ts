@@ -602,12 +602,15 @@ export function useSessionMessages(
     }) => {
       const { snapshot } = options;
       applyRevealSnapshot(snapshot);
-      markReloadPerfPhase("session_initial_messages_state_queued", {
-        messages: options.sourceMessageCount,
-        totalMessages: snapshot.messages.length,
-        provider: options.provider,
-        ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
-      });
+      markReloadPerfPhase(
+        "session_initial_messages_state_queued",
+        coordinator.buildInitialMessagesQueuedPerfDetail({
+          snapshot,
+          sourceMessageCount: options.sourceMessageCount,
+          provider: options.provider,
+          restoredFromSnapshot: options.restoredFromSnapshot,
+        }),
+      );
 
       // Mark ready and flush buffered stream events after the reveal snapshot
       // has been queued so buffered events merge on top of loaded transcript.
@@ -620,10 +623,13 @@ export function useSessionMessages(
       setSessionLoadProgress(
         coordinator.buildRouteSnapshotLoadProgress("complete", snapshot),
       );
-      markReloadPerfPhase("session_initial_load_complete", {
-        messages: options.sourceMessageCount,
-        ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
-      });
+      markReloadPerfPhase(
+        "session_initial_load_complete",
+        coordinator.buildInitialLoadCompletePerfDetail(
+          options.sourceMessageCount,
+          { restoredFromSnapshot: options.restoredFromSnapshot },
+        ),
+      );
     };
 
     const finishWarmHydration = (options: {
@@ -656,13 +662,12 @@ export function useSessionMessages(
       data: GetSessionResult,
     ) => {
       if (!warmLoad) return;
-      markReloadPerfPhase("session_initial_load_data_ready", {
-        messages: data.messages.length,
-        provider: data.session.provider,
-        totalMessages: data.pagination?.totalMessageCount,
-        hasOlderMessages: data.pagination?.hasOlderMessages,
-        restoredFromSnapshot: true,
-      });
+      markReloadPerfPhase(
+        "session_initial_load_data_ready",
+        coordinator.buildInitialLoadDataReadyPerfDetail(data, {
+          restoredFromSnapshot: true,
+        }),
+      );
       const applied = coordinator.applyWarmRefresh(data, {
         warmSnapshot: warmLoad,
         initialAfterMessageId,
@@ -685,14 +690,13 @@ export function useSessionMessages(
       data: GetSessionResult,
     ) => {
       if (!warmLoad) return;
-      markReloadPerfPhase("session_initial_load_data_ready", {
-        messages: data.messages.length,
-        provider: data.session.provider,
-        totalMessages: data.pagination?.totalMessageCount,
-        hasOlderMessages: data.pagination?.hasOlderMessages,
-        restoredFromSnapshot: true,
-        appliedAfterSnapshotHydration: true,
-      });
+      markReloadPerfPhase(
+        "session_initial_load_data_ready",
+        coordinator.buildInitialLoadDataReadyPerfDetail(data, {
+          restoredFromSnapshot: true,
+          appliedAfterSnapshotHydration: true,
+        }),
+      );
       const applied = coordinator.applyWarmRefresh(data, {
         warmSnapshot: warmLoad,
         initialAfterMessageId,
@@ -716,14 +720,17 @@ export function useSessionMessages(
       notifyLoadComplete(data);
     };
 
-    markReloadPerfPhase("session_initial_load_start", {
-      projectId,
-      sessionId,
-      tailCompactions: 2,
-      tailTurns,
-      tailFrom,
-      restoredFromSnapshot: initialLoad.restoredFromSnapshot,
-    });
+    markReloadPerfPhase(
+      "session_initial_load_start",
+      coordinator.buildInitialLoadStartPerfDetail({
+        projectId,
+        sessionId,
+        tailCompactions: 2,
+        tailTurns,
+        tailFrom,
+        restoredFromSnapshot: initialLoad.restoredFromSnapshot,
+      }),
+    );
     scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
     )
@@ -784,12 +791,10 @@ export function useSessionMessages(
           applyWarmDeltaAfterHydration(data);
           return;
         }
-        markReloadPerfPhase("session_initial_load_data_ready", {
-          messages: data.messages.length,
-          provider: data.session.provider,
-          totalMessages: data.pagination?.totalMessageCount,
-          hasOlderMessages: data.pagination?.hasOlderMessages,
-        });
+        markReloadPerfPhase(
+          "session_initial_load_data_ready",
+          coordinator.buildInitialLoadDataReadyPerfDetail(data),
+        );
         setSessionLoadProgress(
           coordinator.buildDataLoadProgress("rendering", data),
         );
@@ -821,10 +826,12 @@ export function useSessionMessages(
         if (cancelled) return;
         if (warmLoad) {
           const error = toError(err);
-          markReloadPerfPhase("session_initial_load_error", {
-            message: error.message,
-            restoredFromSnapshot: true,
-          });
+          markReloadPerfPhase(
+            "session_initial_load_error",
+            coordinator.buildInitialLoadErrorPerfDetail(error, {
+              restoredFromSnapshot: true,
+            }),
+          );
           if (!warmHydrated) {
             pendingWarmError = error;
             return;
@@ -832,9 +839,10 @@ export function useSessionMessages(
           onLoadError?.(error);
           return;
         }
-        markReloadPerfPhase("session_initial_load_error", {
-          message: err instanceof Error ? err.message : String(err),
-        });
+        markReloadPerfPhase(
+          "session_initial_load_error",
+          coordinator.buildInitialLoadErrorPerfDetail(err),
+        );
         setSessionLoadProgress(coordinator.buildLoadProgress("error"));
         setLoading(false);
         onLoadError?.(err);

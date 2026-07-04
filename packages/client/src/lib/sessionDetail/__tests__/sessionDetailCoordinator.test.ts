@@ -379,6 +379,73 @@ describe("SessionDetailCoordinator", () => {
     });
   });
 
+  it("builds initial load perf details without marking phases", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(2);
+    const response = sessionResponse(
+      [message("perf-a"), message("perf-b")],
+      responsePagination,
+    );
+    const snapshot = routeSnapshot("perf-snapshot");
+
+    expect(
+      detail.buildInitialLoadStartPerfDetail({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        tailCompactions: 2,
+        tailTurns: 8,
+        tailFrom: "turn-1",
+        restoredFromSnapshot: true,
+      }),
+    ).toEqual({
+      projectId: "proj-1",
+      sessionId: "sess-1",
+      tailCompactions: 2,
+      tailTurns: 8,
+      tailFrom: "turn-1",
+      restoredFromSnapshot: true,
+    });
+    expect(
+      detail.buildInitialLoadDataReadyPerfDetail(response, {
+        restoredFromSnapshot: true,
+        appliedAfterSnapshotHydration: true,
+      }),
+    ).toEqual({
+      messages: 2,
+      provider: "claude",
+      totalMessages: 2,
+      hasOlderMessages: false,
+      restoredFromSnapshot: true,
+      appliedAfterSnapshotHydration: true,
+    });
+    expect(
+      detail.buildInitialMessagesQueuedPerfDetail({
+        snapshot,
+        sourceMessageCount: 2,
+        provider: "claude",
+        restoredFromSnapshot: true,
+      }),
+    ).toEqual({
+      messages: 2,
+      totalMessages: 1,
+      provider: "claude",
+      restoredFromSnapshot: true,
+    });
+    expect(
+      detail.buildInitialLoadCompletePerfDetail(2, {
+        restoredFromSnapshot: true,
+      }),
+    ).toEqual({
+      messages: 2,
+      restoredFromSnapshot: true,
+    });
+    expect(
+      detail.buildInitialLoadErrorPerfDetail(new Error("boom")),
+    ).toEqual({
+      message: "boom",
+    });
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

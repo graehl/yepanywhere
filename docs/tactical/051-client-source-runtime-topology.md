@@ -254,8 +254,9 @@ warm-refresh reducer action selection, reveal-snapshot construction, and
 initial-load callback payload construction run through the coordinator.
 Cacheable reveal snapshot selection is also coordinator-owned, and initial
 route snapshot reads/writes now pass through coordinator policy wrappers.
-Initial-load progress value construction is also coordinator-owned. User
-preference and browser-environment decisions remain hook-owned.
+Initial-load progress and perf detail value construction are also
+coordinator-owned. User preference and browser-environment decisions remain
+hook-owned.
 
 Intent:
 
@@ -377,9 +378,13 @@ Implementation note:
   and when render-yield delays occur, but the coordinator now builds fetching,
   rendering, completion, and error progress objects from loaded data, applied
   results, or route snapshots.
+- Moved initial-load reload-perf detail construction into
+  `SessionDetailCoordinator`. The hook still owns when
+  `markReloadPerfPhase(...)` is called, while the coordinator now builds the
+  start, data-ready, queued, complete, and error detail records.
 - The next Phase 3 slice should likely move another small initial-load helper,
-  such as initial-load perf payload shaping, while leaving React state timing
-  and user preference reads in the hook.
+  such as initial-load reveal/completion orchestration, while leaving React
+  state timing and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

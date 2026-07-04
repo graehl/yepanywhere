@@ -14,6 +14,10 @@ This ledger tracks simple refactors that can reduce file size or duplication
 without changing the session API contract. Each item should be explicitly
 accepted, deferred, or dropped before implementation.
 
+Line deltas below are rough `sessions.ts` deltas. New-file extractions usually
+add a similar number of lines elsewhere; the goal is smaller ownership
+boundaries, not necessarily fewer total repository lines.
+
 ## Guardrails
 
 - Prefer behavior-preserving extraction over redesign.
@@ -39,6 +43,12 @@ accepted, deferred, or dropped before implementation.
 Status: done.
 
 Commit: `d7227af9` (`Extract session request helpers`).
+
+Destination: new file
+`packages/server/src/routes/session-request-helpers.ts`.
+
+Line delta: about `-300` lines from `sessions.ts`, `+325` lines in the helper
+file.
 
 Moved pure request-boundary helpers from `sessions.ts` to
 `packages/server/src/routes/session-request-helpers.ts`:
@@ -68,6 +78,11 @@ pnpm lint
 ### SRR-002: Deduplicate Provider-Resolution Dependencies
 
 Status: done.
+
+Destination: same file; all callers now use the existing top-level
+`providerResolutionDeps(deps)` helper.
+
+Line delta: `-65` lines from `sessions.ts`.
 
 Problem:
 
@@ -112,7 +127,13 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts
 
 ### SRR-003: Extract Session Ownership Response Shaping
 
-Status: proposed.
+Status: deferred.
+
+Destination: likely same file, as a small helper near
+`providerResolutionDeps(deps)`. A new file is not warranted unless more
+ownership-response code accumulates.
+
+Estimated line delta: about `-12` to `-18` lines from `sessions.ts`.
 
 Problem:
 
@@ -151,6 +172,14 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts
 
 Status: proposed.
 
+Destination: small slices can go into
+`packages/server/src/routes/session-request-helpers.ts`; a larger combined
+builder would deserve a new `session-launch-options.ts`.
+
+Estimated line delta: about `-30` to `-60` lines for a narrow first slice,
+depending on which axis is extracted. A broad all-in-one launch builder is not
+recommended as the first pass.
+
 Problem:
 
 Start, create, detached start, detached create, resume, and reactivate repeat
@@ -187,6 +216,12 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts
 
 Status: proposed.
 
+Destination: new file
+`packages/server/src/routes/session-recovered-queue.ts`.
+
+Estimated line delta: about `-180` to `-230` lines from `sessions.ts`, with a
+similar-size helper module added.
+
 Problem:
 
 Recovered patient-queue behavior is cohesive but takes a large block inside the
@@ -216,4 +251,172 @@ Suggested verification:
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
 node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-recovered-queue.ts
+```
+
+### SRR-006: Move Claude Resume API-Error Guard
+
+Status: proposed.
+
+Destination: new file
+`packages/server/src/routes/session-claude-resume-guard.ts`.
+
+Estimated line delta: about `-95` to `-115` lines from `sessions.ts`, with a
+similar-size helper module added.
+
+Problem:
+
+Claude-specific resume blocking/recovery logic lives near the top of the
+generic sessions route file. It walks the Claude transcript DAG to detect an
+SDK API-error tail and either blocks resume or resumes at the last good
+assistant message.
+
+Likely change:
+
+- move `ClaudeResumeApiErrorBlocker`,
+  `getClaudeResumeApiErrorBlocker(...)`, and
+  `getClaudeResumeBlockerFromReader(...)` into a small helper module;
+- keep the route's existing log messages and response shape unchanged;
+- import only `getClaudeResumeBlockerFromReader(...)` in `sessions.ts`.
+
+Value:
+
+- isolates a provider-specific resume quirk from the generic route;
+- keeps a subtle safety check easier to test and review;
+- removes top-of-file noise before the route dependency/interface section.
+
+Risk:
+
+- low. The logic is already pure except for reading a session through
+  `ISessionReader`.
+
+Suggested verification:
+
+```bash
+pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
+pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-claude-resume-guard.ts
+```
+
+### SRR-007: Move Worker Queue Routes
+
+Status: proposed.
+
+Destination: new file
+`packages/server/src/routes/worker-queue.ts` or
+`packages/server/src/routes/supervisor-queue.ts`; `sessions.ts` would mount it
+with `routes.route("/", createWorkerQueueRoutes(deps.supervisor))`.
+
+Estimated line delta: about `-35` to `-45` lines from `sessions.ts`, with a
+small new route module added.
+
+Problem:
+
+`/status/workers` and `/queue` endpoints are Supervisor/worker-pool admin
+routes, not session-detail routes. They currently live at the end of
+`sessions.ts`.
+
+Likely change:
+
+- extract the four worker queue route registrations;
+- pass only `deps.supervisor` to the new route factory;
+- preserve the current public paths.
+
+Value:
+
+- removes unrelated admin endpoints from the sessions route;
+- clarifies that these endpoints are process/queue status, not per-session
+  transcript behavior.
+
+Risk:
+
+- low to medium. The implementation is tiny, but route mounting must preserve
+  exact paths.
+
+Suggested verification:
+
+```bash
+pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/worker-queue.ts
+```
+
+### SRR-008: Move Compact Threshold Lookup Helpers
+
+Status: proposed.
+
+Destination: new file
+`packages/server/src/routes/session-compact-thresholds.ts`.
+
+Estimated line delta: about `-40` to `-55` lines from `sessions.ts`, with a
+small helper module added. Tests would import from the new helper, or
+`sessions.ts` could temporarily re-export for compatibility.
+
+Problem:
+
+`resolveCompactPercent(...)` and `resolveCompactWindow(...)` are exported from
+the large route file only so focused tests can cover threshold behavior. They
+are pure compact-threshold helpers, not route handlers.
+
+Likely change:
+
+- move those two helpers and their comments to a compact-threshold module;
+- update `sessions.ts` and the two focused tests to import from that module.
+
+Value:
+
+- removes exported utility code from the route surface;
+- makes the threshold behavior easier to test without importing the whole
+  route module.
+
+Risk:
+
+- low. This is pure helper extraction, but tests/imports must be updated.
+
+Suggested verification:
+
+```bash
+pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
+pnpm --filter @yep-anywhere/server test -- test/routes/resolveCompactPercent.test.ts test/routes/resolveCompactWindow.test.ts test/routes/sessions-metadata.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-compact-thresholds.ts
+```
+
+### SRR-009: Extract Session Metadata Patch Parsing
+
+Status: proposed.
+
+Destination: new file
+`packages/server/src/routes/session-metadata-patch.ts`.
+
+Estimated line delta: about `-90` to `-130` lines from `sessions.ts`, with a
+similar-size parser module added.
+
+Problem:
+
+`PUT /sessions/:sessionId/metadata` spends much of its route body validating
+and normalizing heartbeat, parent-session, prompt-suggestion, and recap fields.
+That parsing is mostly pure request-boundary logic.
+
+Likely change:
+
+- add a `parseSessionMetadataPatch(body)` helper returning either a normalized
+  metadata patch or an API error message/status;
+- keep metadata service updates and event emission in `sessions.ts`;
+- preserve every existing validation range and error string.
+
+Value:
+
+- leaves the route handler focused on read body -> update metadata -> emit
+  event;
+- makes validation rules easier to unit test later.
+
+Risk:
+
+- medium. The parser is pure, but the route has many small validation branches
+  and error strings that need to stay identical.
+
+Suggested verification:
+
+```bash
+pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
+pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-metadata-patch.ts
 ```

@@ -686,6 +686,80 @@ describe("SessionDetailCoordinator", () => {
     ).toEqual(["warm", "catchup"]);
   });
 
+  it("does not dispatch incremental refreshes with no messages", () => {
+    const detail = coordinator();
+
+    detail.replaceRouteSnapshot(routeSnapshot("current"));
+
+    expect(
+      detail.applyIncrementalRefresh(sessionResponse([]), {
+        afterMessageId: "current",
+      }),
+    ).toEqual({
+      applied: false,
+      messageCount: 1,
+      pagination: pagination(1),
+      sourceMessageCount: 0,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["current"]);
+  });
+
+  it("replaces the tail window for paginated incremental refreshes", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(1);
+
+    detail.replaceRouteSnapshot(routeSnapshot("current"));
+
+    expect(
+      detail.applyIncrementalRefresh(
+        sessionResponse([message("tail")], responsePagination),
+        {
+          afterMessageId: "current",
+        },
+      ),
+    ).toEqual({
+      applied: true,
+      messageCount: 1,
+      pagination: responsePagination,
+      sourceMessageCount: 1,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["tail"]);
+  });
+
+  it("merges incremental catch-up messages without a tail window", () => {
+    const detail = coordinator();
+
+    detail.replaceRouteSnapshot(routeSnapshot("current"));
+
+    expect(
+      detail.applyIncrementalRefresh(
+        sessionResponse([
+          message("catchup", "2026-07-04T00:00:01.000Z"),
+        ]),
+        {
+          afterMessageId: "current",
+        },
+      ),
+    ).toEqual({
+      applied: true,
+      messageCount: 2,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 2,
+        returnedMessageCount: 2,
+        totalCompactions: 0,
+      },
+      sourceMessageCount: 1,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["current", "catchup"]);
+  });
+
   it("builds reveal snapshots from store-backed runtime state", () => {
     const detail = coordinator();
 

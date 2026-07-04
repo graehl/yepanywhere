@@ -77,10 +77,19 @@ export interface SessionDetailWarmRefreshOptions {
   initialAfterMessageId?: string;
 }
 
+export interface SessionDetailIncrementalRefreshOptions {
+  afterMessageId?: string;
+}
+
 export interface SessionDetailAppliedWarmRefresh {
   messageCount: number;
   pagination: GetSessionResult["pagination"];
   sourceMessageCount: number;
+}
+
+export interface SessionDetailAppliedIncrementalRefresh
+  extends SessionDetailAppliedWarmRefresh {
+  applied: boolean;
 }
 
 export type SessionDetailAppliedInitialLoad =
@@ -547,6 +556,51 @@ export class SessionDetailCoordinator {
     });
     const merged = this.readSelected(selectSessionDetailRuntimeSnapshot);
     return {
+      messageCount: merged?.messages.length ?? sourceMessageCount,
+      pagination: merged?.pagination,
+      sourceMessageCount,
+    };
+  }
+
+  applyIncrementalRefresh(
+    data: GetSessionResult,
+    options: SessionDetailIncrementalRefreshOptions,
+  ): SessionDetailAppliedIncrementalRefresh {
+    const sourceMessageCount = data.messages.length;
+    if (sourceMessageCount === 0) {
+      const current = this.readSelected(selectSessionDetailRuntimeSnapshot);
+      return {
+        applied: false,
+        messageCount: current?.messages.length ?? 0,
+        pagination: current?.pagination,
+        sourceMessageCount,
+      };
+    }
+
+    if (options.afterMessageId !== undefined && data.pagination) {
+      this.dispatch({
+        type: "replaceTailWindow",
+        messages: data.messages,
+        session: data.session,
+        pagination: data.pagination,
+      });
+      return {
+        applied: true,
+        messageCount: sourceMessageCount,
+        pagination: data.pagination,
+        sourceMessageCount,
+      };
+    }
+
+    this.dispatch({
+      type: "applyCatchupMessages",
+      messages: data.messages,
+      session: data.session,
+      pagination: data.pagination,
+    });
+    const merged = this.readSelected(selectSessionDetailRuntimeSnapshot);
+    return {
+      applied: true,
       messageCount: merged?.messages.length ?? sourceMessageCount,
       pagination: merged?.pagination,
       sourceMessageCount,

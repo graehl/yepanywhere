@@ -264,7 +264,9 @@ route snapshot persistence is coordinator-owned with explicit hook-supplied
 cache and scroll policy. The route-exit persist-vs-delete cleanup decision is
 also coordinator-owned while byte telemetry remains hook-owned. Provider
 runtime-status notification payload shaping is coordinator-owned while the
-reporting side effect remains hook-owned.
+reporting side effect remains hook-owned. Incremental refresh reducer-action
+selection is coordinator-owned while the fetch, status-reporting side effect,
+metadata update, and diagnostics timing remain hook-owned.
 
 Intent:
 
@@ -426,9 +428,14 @@ Implementation note:
   routing, while the coordinator now builds the session/project/status payload
   from provider response data for initial load, incremental fetch, older-page
   load, and metadata refresh paths.
-- The next Phase 3 slice should likely move another small initial-load helper,
-  such as the incremental refresh reducer-action decision, while leaving React
-  state timing, side-effect calls, and user preference reads in the hook.
+- Moved the incremental refresh reducer-action decision into
+  `SessionDetailCoordinator`. The hook still owns the REST request,
+  runtime-status reporting side effect, metadata update, and diagnostics
+  timing, while the coordinator now no-ops empty refreshes and dispatches
+  `replaceTailWindow` or `applyCatchupMessages` for non-empty responses.
+- The next Phase 3 slice should likely move another small non-React helper,
+  such as older-page reducer dispatch, while leaving React loading state,
+  side-effect calls, and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

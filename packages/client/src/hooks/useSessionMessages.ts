@@ -924,22 +924,10 @@ export function useSessionMessages(
           sourceKey,
           coordinator.buildProviderRuntimeStatusSnapshot(data),
         );
-        if (data.messages.length > 0) {
-          if (afterMessageId !== undefined && data.pagination) {
-            dispatchSessionDetailAction({
-              type: "replaceTailWindow",
-              messages: data.messages,
-              session: data.session,
-              pagination: data.pagination,
-            });
-          } else {
-            dispatchSessionDetailAction({
-              type: "applyCatchupMessages",
-              messages: data.messages,
-              session: data.session,
-              pagination: data.pagination,
-            });
-          }
+        const applied = coordinator.applyIncrementalRefresh(data, {
+          afterMessageId,
+        });
+        if (applied.applied) {
           reportStoreDivergence("catchup", { session: data.session });
         }
         // Update session metadata (including title, model, contextUsage) which may have changed
@@ -956,7 +944,6 @@ export function useSessionMessages(
     projectId,
     sessionId,
     readStoreLastMessageId,
-    dispatchSessionDetailAction,
     reportStoreDivergence,
     sourceApi,
     sourceKey,

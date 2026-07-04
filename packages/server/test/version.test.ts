@@ -285,9 +285,9 @@ describe("GET /version", () => {
           voiceInputEnabled: true,
           speechMethod: "ya-grok",
         },
-        sessionToolbarVisibility: {
-          microphone: true,
-          queueControls: true,
+        sessionToolbarPresence: {
+          microphone: "pin",
+          slashMenu: "hidden",
         },
       }),
     });
@@ -299,9 +299,9 @@ describe("GET /version", () => {
         voiceInputEnabled: true,
         speechMethod: "ya-grok",
       },
-      sessionToolbarVisibility: {
-        microphone: true,
-        queueControls: true,
+      sessionToolbarPresence: {
+        microphone: "pin",
+        slashMenu: "hidden",
       },
     });
   });

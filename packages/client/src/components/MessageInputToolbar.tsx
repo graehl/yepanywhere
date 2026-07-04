@@ -29,14 +29,11 @@ import { useRelativeNow } from "../hooks/useRelativeNow";
 import {
   DEFAULT_SESSION_TOOLBAR_PRIORITY,
   type SessionToolbarPriority,
-  type ToolbarNarrowingPriority,
-  useSessionToolbarPriority,
-} from "../hooks/useSessionToolbarPriority";
-import {
   type SessionToolbarVisibility,
   type SessionToolbarVisibilityKey,
-  useSessionToolbarVisibility,
-} from "../hooks/useSessionToolbarVisibility";
+  type ToolbarNarrowingPriority,
+  useSessionToolbarPresence,
+} from "../hooks/useSessionToolbarPresence";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
@@ -2349,8 +2346,8 @@ export function MessageInputToolbar({
   const { version: versionInfo } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const { providers } = useProviders();
-  const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
-  const { priority: toolbarPriority } = useSessionToolbarPriority();
+  const { visibility: toolbarVisibility, priority: toolbarPriority } =
+    useSessionToolbarPresence();
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);

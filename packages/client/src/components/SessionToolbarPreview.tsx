@@ -1,12 +1,11 @@
 import type { KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { useSessionToolbarPriority } from "../hooks/useSessionToolbarPriority";
 import {
-  DEFAULT_SESSION_TOOLBAR_VISIBILITY,
+  SESSION_TOOLBAR_CONTROL_KEYS,
   type SessionToolbarVisibility,
   type SessionToolbarVisibilityKey,
-  useSessionToolbarVisibility,
-} from "../hooks/useSessionToolbarVisibility";
+  useSessionToolbarPresence,
+} from "../hooks/useSessionToolbarPresence";
 import { useI18n } from "../i18n";
 import { getEffortLevelOptions } from "../lib/effortLevels";
 import type { ContextUsage } from "../types";
@@ -25,11 +24,7 @@ const PREVIEW_CONTEXT_USAGE: ContextUsage = {
 const noop = () => {};
 
 const ALL_HIDDEN_VISIBILITY = Object.fromEntries(
-  (
-    Object.keys(
-      DEFAULT_SESSION_TOOLBAR_VISIBILITY,
-    ) as SessionToolbarVisibilityKey[]
-  ).map((key) => [key, false]),
+  SESSION_TOOLBAR_CONTROL_KEYS.map((key) => [key, false]),
 ) as unknown as SessionToolbarVisibility;
 
 function visibilityForOnly(
@@ -207,8 +202,7 @@ function useInertPreviewRef() {
 /** Full, faithful preview of the composer toolbar with the user's live config. */
 export function SessionToolbarPreview() {
   const { t } = useI18n();
-  const { visibility } = useSessionToolbarVisibility();
-  const { priority } = useSessionToolbarPriority();
+  const { visibility, priority } = useSessionToolbarPresence();
   const previewNowMs = useMemo(() => Date.now(), []);
   const controls = usePreviewToolbarControls(previewNowMs);
   const inertRef = useInertPreviewRef();

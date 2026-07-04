@@ -34,11 +34,10 @@ import {
   RECAP_MODES,
   type RecapMode,
   clampRecapAfterSeconds,
-  type SessionToolbarPriorityClientDefaults,
-  type SessionToolbarVisibilityClientDefaults,
+  type SessionToolbarPresenceClientDefaults,
   type SpeechSmartTurnClientDefault,
   type ThinkingMode,
-  type ToolbarNarrowingPriority,
+  type ToolbarControlPresence,
   clampProjectQueueQuietSeconds,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -70,7 +69,7 @@ import {
 const HELPER_TARGET_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const MAX_HELPER_TARGETS = 20;
 const HELPER_TARGET_MODEL_DISCOVERY_TIMEOUT_MS = 5000;
-const SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS = [
+const SESSION_TOOLBAR_PRESENCE_CLIENT_DEFAULT_KEYS = [
   "modeSelector",
   "steerNow",
   "attachments",
@@ -85,21 +84,19 @@ const SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS = [
   "nudge",
   "sessionStatus",
   "projectQueue",
-] as const satisfies readonly (keyof SessionToolbarVisibilityClientDefaults)[];
-const SESSION_TOOLBAR_PRIORITY_CLIENT_DEFAULT_KEYS =
-  SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS satisfies readonly (keyof SessionToolbarPriorityClientDefaults)[];
-const TOOLBAR_NARROWING_PRIORITIES = [
+] as const satisfies readonly (keyof SessionToolbarPresenceClientDefaults)[];
+const TOOLBAR_CONTROL_PRESENCES = [
+  "hidden",
   "pin",
   "last",
   "mid",
   "first",
-] as const satisfies readonly ToolbarNarrowingPriority[];
+] as const satisfies readonly ToolbarControlPresence[];
 const CLIENT_DEFAULT_KEYS = [
   "speech",
   "busyComposerDefaultAction",
   "collapsedComposerButton",
-  "sessionToolbarVisibility",
-  "sessionToolbarPriority",
+  "sessionToolbarPresence",
   "steerNowDefault",
   "patientQueueDefault",
   "projectQueueCtrlEnterEnabled",
@@ -626,49 +623,26 @@ function parseGrokSpeechAudioClientDefault(
   return { uplinkMode: raw.uplinkMode };
 }
 
-function parseSessionToolbarVisibilityClientDefaults(
+function parseSessionToolbarPresenceClientDefaults(
   raw: unknown,
-): SessionToolbarVisibilityClientDefaults | undefined | null {
+): SessionToolbarPresenceClientDefaults | undefined | null {
   if (raw === undefined || raw === null || raw === "") return undefined;
   if (!isRecord(raw)) return null;
 
   const allowedKeys = new Set<string>(
-    SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS,
+    SESSION_TOOLBAR_PRESENCE_CLIENT_DEFAULT_KEYS,
   );
   for (const key of Object.keys(raw)) {
     if (!allowedKeys.has(key)) return null;
   }
+  const allowedPresences = new Set<string>(TOOLBAR_CONTROL_PRESENCES);
 
-  const parsed: SessionToolbarVisibilityClientDefaults = {};
-  for (const key of SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS) {
+  const parsed: SessionToolbarPresenceClientDefaults = {};
+  for (const key of SESSION_TOOLBAR_PRESENCE_CLIENT_DEFAULT_KEYS) {
     if (!(key in raw)) continue;
     const value = raw[key];
-    if (typeof value !== "boolean") return null;
-    parsed[key] = value;
-  }
-  return Object.keys(parsed).length > 0 ? parsed : null;
-}
-
-function parseSessionToolbarPriorityClientDefaults(
-  raw: unknown,
-): SessionToolbarPriorityClientDefaults | undefined | null {
-  if (raw === undefined || raw === null || raw === "") return undefined;
-  if (!isRecord(raw)) return null;
-
-  const allowedKeys = new Set<string>(
-    SESSION_TOOLBAR_PRIORITY_CLIENT_DEFAULT_KEYS,
-  );
-  for (const key of Object.keys(raw)) {
-    if (!allowedKeys.has(key)) return null;
-  }
-  const allowedPriorities = new Set<string>(TOOLBAR_NARROWING_PRIORITIES);
-
-  const parsed: SessionToolbarPriorityClientDefaults = {};
-  for (const key of SESSION_TOOLBAR_PRIORITY_CLIENT_DEFAULT_KEYS) {
-    if (!(key in raw)) continue;
-    const value = raw[key];
-    if (typeof value !== "string" || !allowedPriorities.has(value)) return null;
-    parsed[key] = value as ToolbarNarrowingPriority;
+    if (typeof value !== "string" || !allowedPresences.has(value)) return null;
+    parsed[key] = value as ToolbarControlPresence;
   }
   return Object.keys(parsed).length > 0 ? parsed : null;
 }
@@ -816,19 +790,12 @@ function parseClientDefaults(raw: unknown): ClientDefaults | undefined | null {
       parsed.projectQueueCtrlEnterEnabled = raw.projectQueueCtrlEnterEnabled;
     }
   }
-  if ("sessionToolbarVisibility" in raw) {
-    const parsedVisibility = parseSessionToolbarVisibilityClientDefaults(
-      raw.sessionToolbarVisibility,
+  if ("sessionToolbarPresence" in raw) {
+    const parsedPresence = parseSessionToolbarPresenceClientDefaults(
+      raw.sessionToolbarPresence,
     );
-    if (parsedVisibility === null) return null;
-    parsed.sessionToolbarVisibility = parsedVisibility;
-  }
-  if ("sessionToolbarPriority" in raw) {
-    const parsedPriority = parseSessionToolbarPriorityClientDefaults(
-      raw.sessionToolbarPriority,
-    );
-    if (parsedPriority === null) return null;
-    parsed.sessionToolbarPriority = parsedPriority;
+    if (parsedPresence === null) return null;
+    parsed.sessionToolbarPresence = parsedPresence;
   }
   if ("compactAtContextPercent" in raw) {
     const parsedCompact = parseCompactAtContextPercent(
@@ -892,23 +859,13 @@ function mergeClientDefaults(
       merged.projectQueueCtrlEnterEnabled = update.projectQueueCtrlEnterEnabled;
     }
   }
-  if ("sessionToolbarVisibility" in update) {
-    if (update.sessionToolbarVisibility === undefined) {
-      delete merged.sessionToolbarVisibility;
+  if ("sessionToolbarPresence" in update) {
+    if (update.sessionToolbarPresence === undefined) {
+      delete merged.sessionToolbarPresence;
     } else {
-      merged.sessionToolbarVisibility = {
-        ...current?.sessionToolbarVisibility,
-        ...update.sessionToolbarVisibility,
-      };
-    }
-  }
-  if ("sessionToolbarPriority" in update) {
-    if (update.sessionToolbarPriority === undefined) {
-      delete merged.sessionToolbarPriority;
-    } else {
-      merged.sessionToolbarPriority = {
-        ...current?.sessionToolbarPriority,
-        ...update.sessionToolbarPriority,
+      merged.sessionToolbarPresence = {
+        ...current?.sessionToolbarPresence,
+        ...update.sessionToolbarPresence,
       };
     }
   }

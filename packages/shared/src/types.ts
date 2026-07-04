@@ -437,23 +437,6 @@ export interface SpeechClientDefaults {
   grokSpeechAudioSettings?: GrokSpeechAudioClientDefault;
 }
 
-export interface SessionToolbarVisibilityClientDefaults {
-  modeSelector?: boolean;
-  steerNow?: boolean;
-  attachments?: boolean;
-  slashMenu?: boolean;
-  thinkingToggle?: boolean;
-  renderMode?: boolean;
-  microphone?: boolean;
-  waveform?: boolean;
-  shortcutsHelp?: boolean;
-  contextUsage?: boolean;
-  btw?: boolean;
-  nudge?: boolean;
-  sessionStatus?: boolean;
-  projectQueue?: boolean;
-}
-
 /**
  * How eagerly a session-toolbar control collapses into the `...` overflow menu
  * as the composer narrows ("narrowing priority"). `first` collapses first,
@@ -463,24 +446,29 @@ export interface SessionToolbarVisibilityClientDefaults {
 export type ToolbarNarrowingPriority = "pin" | "last" | "mid" | "first";
 
 /**
- * Per-control narrowing priority, mirroring the visibility keys so clients can
- * preserve stored defaults across runtime support changes.
+ * A session-toolbar control's single presence setting: `hidden` keeps it off
+ * the toolbar entirely; any narrowing-priority tier shows it with that
+ * collapse behavior. There is no separate visibility boolean — hiding a
+ * control forgets its previous tier.
  */
-export interface SessionToolbarPriorityClientDefaults {
-  modeSelector?: ToolbarNarrowingPriority;
-  steerNow?: ToolbarNarrowingPriority;
-  attachments?: ToolbarNarrowingPriority;
-  slashMenu?: ToolbarNarrowingPriority;
-  thinkingToggle?: ToolbarNarrowingPriority;
-  renderMode?: ToolbarNarrowingPriority;
-  microphone?: ToolbarNarrowingPriority;
-  waveform?: ToolbarNarrowingPriority;
-  shortcutsHelp?: ToolbarNarrowingPriority;
-  contextUsage?: ToolbarNarrowingPriority;
-  btw?: ToolbarNarrowingPriority;
-  nudge?: ToolbarNarrowingPriority;
-  sessionStatus?: ToolbarNarrowingPriority;
-  projectQueue?: ToolbarNarrowingPriority;
+export type ToolbarControlPresence = "hidden" | ToolbarNarrowingPriority;
+
+/** Per-control presence defaults for controls with no local override. */
+export interface SessionToolbarPresenceClientDefaults {
+  modeSelector?: ToolbarControlPresence;
+  steerNow?: ToolbarControlPresence;
+  attachments?: ToolbarControlPresence;
+  slashMenu?: ToolbarControlPresence;
+  thinkingToggle?: ToolbarControlPresence;
+  renderMode?: ToolbarControlPresence;
+  microphone?: ToolbarControlPresence;
+  waveform?: ToolbarControlPresence;
+  shortcutsHelp?: ToolbarControlPresence;
+  contextUsage?: ToolbarControlPresence;
+  btw?: ToolbarControlPresence;
+  nudge?: ToolbarControlPresence;
+  sessionStatus?: ToolbarControlPresence;
+  projectQueue?: ToolbarControlPresence;
 }
 
 export type BusyComposerDefaultAction = "steer" | "queue";
@@ -523,10 +511,8 @@ export interface ClientDefaults {
    * per-session alternate action.
    */
   projectQueueCtrlEnterEnabled?: boolean;
-  /** Session toolbar visibility defaults for controls with no local override. */
-  sessionToolbarVisibility?: SessionToolbarVisibilityClientDefaults;
-  /** Session toolbar narrowing-priority defaults for controls with no local override. */
-  sessionToolbarPriority?: SessionToolbarPriorityClientDefaults;
+  /** Session toolbar presence defaults for controls with no local override. */
+  sessionToolbarPresence?: SessionToolbarPresenceClientDefaults;
   /**
    * Preemptive compaction thresholds, keyed by model id, each a percent (1–99)
    * of that model's context window. When a model's live context reaches its

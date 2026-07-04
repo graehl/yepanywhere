@@ -22,3 +22,15 @@ pre-recap-overlay `updatedAt` instead of the overlaid one, so a recap landing
 never flips a fully-seen session unread; reverses the overlaid-freshness
 choice in "Tighten recap overlay cursor and freshness handling" because a
 YA-synthesized recap is derived viewer content, not new provider activity.
+
+2026-07-04 `clientDefaults.sessionToolbarVisibility` /
+`clientDefaults.sessionToolbarPriority` — replaced by a single
+`clientDefaults.sessionToolbarPresence` map (`hidden` | narrowing tier) per
+explicit direction that the toolbar data model carry no separate visibility
+boolean; hiding forgets the prior tier. Stored state is folded in at load on
+both sides (`ServerSettingsService.mergeLoadedClientDefaults`; client
+localStorage migration in `useSessionToolbarPresence`), but the settings
+PUT surface no longer accepts the legacy keys: a stale cached client sending
+them gets 400 and logs a console warning until it picks up the new bundle.
+Accept-and-translate was deliberately skipped as speculative scaffolding for
+a transient skew.

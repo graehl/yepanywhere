@@ -387,9 +387,9 @@ describe("Settings Routes", () => {
           },
           busyComposerDefaultAction: "steer",
           collapsedComposerButton: "primary",
-          sessionToolbarVisibility: {
-            microphone: false,
-            queueControls: false,
+          sessionToolbarPresence: {
+            microphone: "hidden",
+            slashMenu: "hidden",
           },
         },
       };
@@ -410,9 +410,9 @@ describe("Settings Routes", () => {
                 timeoutMs: 10000,
               },
             },
-            sessionToolbarVisibility: {
-              microphone: true,
-              waveform: false,
+            sessionToolbarPresence: {
+              microphone: "pin",
+              waveform: "hidden",
             },
             busyComposerDefaultAction: "queue",
             collapsedComposerButton: "alternate",
@@ -436,10 +436,10 @@ describe("Settings Routes", () => {
           busyComposerDefaultAction: "queue",
           collapsedComposerButton: "alternate",
           projectQueueCtrlEnterEnabled: false,
-          sessionToolbarVisibility: {
-            microphone: true,
-            waveform: false,
-            queueControls: false,
+          sessionToolbarPresence: {
+            microphone: "pin",
+            waveform: "hidden",
+            slashMenu: "hidden",
           },
         },
       });
@@ -466,11 +466,11 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
-    it("merges server-learned session toolbar priority", async () => {
+    it("merges server-learned session toolbar presence", async () => {
       settings = {
         ...settings,
         clientDefaults: {
-          sessionToolbarPriority: {
+          sessionToolbarPresence: {
             modeSelector: "first",
             shortcutsHelp: "last",
           },
@@ -485,8 +485,8 @@ describe("Settings Routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientDefaults: {
-            sessionToolbarPriority: {
-              modeSelector: "last",
+            sessionToolbarPresence: {
+              modeSelector: "hidden",
               attachments: "pin",
             },
           },
@@ -496,8 +496,8 @@ describe("Settings Routes", () => {
       expect(response.status).toBe(200);
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         clientDefaults: {
-          sessionToolbarPriority: {
-            modeSelector: "last",
+          sessionToolbarPresence: {
+            modeSelector: "hidden",
             attachments: "pin",
             shortcutsHelp: "last",
           },
@@ -505,7 +505,7 @@ describe("Settings Routes", () => {
       });
     });
 
-    it("rejects an invalid session toolbar priority value", async () => {
+    it("rejects an invalid session toolbar presence value", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
       });
@@ -515,7 +515,7 @@ describe("Settings Routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientDefaults: {
-            sessionToolbarPriority: { modeSelector: "bogus" },
+            sessionToolbarPresence: { modeSelector: "bogus" },
           },
         }),
       });

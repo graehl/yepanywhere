@@ -1,6 +1,7 @@
 import type {
   BusyComposerDefaultAction,
   CollapsedComposerButtonPreference,
+  ToolbarControlPresence,
   ToolbarNarrowingPriority,
 } from "@yep-anywhere/shared";
 import { useCallback, useMemo, useState } from "react";
@@ -8,11 +9,11 @@ import {
   SessionToolbarPreview,
   ToolbarControlPreview,
 } from "../../components/SessionToolbarPreview";
-import { useSessionToolbarPriority } from "../../hooks/useSessionToolbarPriority";
+import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import {
   type SessionToolbarVisibilityKey,
-  useSessionToolbarVisibility,
-} from "../../hooks/useSessionToolbarVisibility";
+  useSessionToolbarPresence,
+} from "../../hooks/useSessionToolbarPresence";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
@@ -56,22 +57,117 @@ const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "projectQueue",
 ]);
 
+// Presence-slider notch order above the Hide notch (0): rightward notches
+// survive narrowing longer, ending at "show always" (pin).
+const PRESENCE_SLIDER_PRIORITIES: readonly ToolbarNarrowingPriority[] = [
+  "first",
+  "mid",
+  "last",
+  "pin",
+];
+
+function presenceSliderId(key: SessionToolbarVisibilityKey): string {
+  return `session-toolbar-presence-${key}`;
+}
+
+function presenceCaptionKey(canSetPriority: boolean, notch: number) {
+  if (notch <= 0) return "appearanceToolbarPresenceHiddenCaption" as const;
+  if (!canSetPriority) return "appearanceToolbarPresenceShownCaption" as const;
+  switch (PRESENCE_SLIDER_PRIORITIES[notch - 1]) {
+    case "first":
+      return "appearanceToolbarPresenceFirstCaption" as const;
+    case "mid":
+      return "appearanceToolbarPresenceMidCaption" as const;
+    case "last":
+      return "appearanceToolbarPresenceLastCaption" as const;
+    default:
+      return "appearanceToolbarPresencePinCaption" as const;
+  }
+}
+
+interface ControlPresenceSliderProps {
+  control: ToolbarControlMeta;
+  presence: ToolbarControlPresence;
+  onCommitNotch: (control: ToolbarControlMeta, notch: number) => void;
+}
+
+// One slider per control editing its single presence value: hidden or a
+// narrowing-priority tier. Controls outside the overflow engine get only the
+// two end notches, since first/mid/last would not map to real runtime
+// behavior.
+function ControlPresenceSlider({
+  control,
+  presence,
+  onCommitNotch,
+}: ControlPresenceSliderProps) {
+  const { t } = useI18n();
+  const [draftNotch, setDraftNotch] = useState<number | null>(null);
+  const max = control.canSetPriority ? PRESENCE_SLIDER_PRIORITIES.length : 1;
+  const notch =
+    presence === "hidden"
+      ? 0
+      : control.canSetPriority
+        ? 1 + Math.max(0, PRESENCE_SLIDER_PRIORITIES.indexOf(presence))
+        : 1;
+  const shownNotch = draftNotch ?? notch;
+  const caption = t(presenceCaptionKey(control.canSetPriority, shownNotch));
+  const inputId = presenceSliderId(control.key);
+  const captionId = `${inputId}-caption`;
+  const clearDraft = () => setDraftNotch(null);
+  return (
+    <span className="session-toolbar-presence">
+      <CommittedRangeInput
+        id={inputId}
+        className="session-toolbar-presence-range"
+        min={0}
+        max={max}
+        step={1}
+        value={notch}
+        onDraftChange={setDraftNotch}
+        onCommit={(next) => {
+          setDraftNotch(null);
+          onCommitNotch(control, next);
+        }}
+        onBlur={clearDraft}
+        onKeyUp={clearDraft}
+        onPointerUp={clearDraft}
+        onPointerCancel={clearDraft}
+        aria-label={t("appearanceToolbarPresenceAria", {
+          control: control.title,
+        })}
+        aria-valuetext={caption}
+        aria-describedby={captionId}
+      />
+      <span className="session-toolbar-presence-ticks" aria-hidden="true">
+        {Array.from({ length: max + 1 }, (_, tick) => (
+          <span
+            key={tick}
+            className={`session-toolbar-presence-tick${
+              tick <= shownNotch ? " is-reached" : ""
+            }`}
+          />
+        ))}
+      </span>
+      <span className="session-toolbar-presence-labels" aria-hidden="true">
+        <span>{t("appearanceToolbarHide")}</span>
+        <span>{t("appearanceToolbarShowAlways")}</span>
+      </span>
+      <span className="session-toolbar-presence-caption" id={captionId}>
+        {caption}
+      </span>
+    </span>
+  );
+}
+
 export function ToolbarSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("appearanceSessionToolbarTitle"));
   const {
-    visibility: toolbarVisibility,
-    setControlVisible,
-    resetVisibility,
-  } = useSessionToolbarVisibility();
-  const {
-    priority: toolbarPriority,
-    setControlPriority,
-    resetPriority,
-  } = useSessionToolbarPriority();
-  const [placementVisibility] = useState(() => ({ ...toolbarVisibility }));
-  const [activeControlKey, setActiveControlKey] =
-    useState<SessionToolbarVisibilityKey | null>(null);
+    presence: toolbarPresence,
+    setControlPresence,
+    resetPresence,
+  } = useSessionToolbarPresence();
+  const [placementPresence] = useState(() => ({ ...toolbarPresence }));
   const { settings, error, updateSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
@@ -85,8 +181,7 @@ export function ToolbarSettings() {
     () =>
       settings
         ? {
-            toolbarVisibility,
-            toolbarPriority,
+            toolbarPresence,
             busyComposerDefaultAction,
             collapsedComposerButton,
           }
@@ -95,18 +190,14 @@ export function ToolbarSettings() {
       busyComposerDefaultAction,
       collapsedComposerButton,
       settings,
-      toolbarPriority,
-      toolbarVisibility,
+      toolbarPresence,
     ],
   );
   const restoreUndoState = useCallback(
     (snapshot: typeof undoState) => {
       if (!snapshot) return;
-      for (const [key, visible] of Object.entries(snapshot.toolbarVisibility)) {
-        setControlVisible(key as SessionToolbarVisibilityKey, visible);
-      }
-      for (const [key, value] of Object.entries(snapshot.toolbarPriority)) {
-        setControlPriority(key as SessionToolbarVisibilityKey, value);
+      for (const [key, value] of Object.entries(snapshot.toolbarPresence)) {
+        setControlPresence(key as SessionToolbarVisibilityKey, value);
       }
       void updateSettings({
         clientDefaults: {
@@ -117,7 +208,7 @@ export function ToolbarSettings() {
         // surfaced via the hook's error state
       });
     },
-    [setControlPriority, setControlVisible, updateSettings],
+    [setControlPresence, updateSettings],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
 
@@ -226,109 +317,31 @@ export function ToolbarSettings() {
   }
 
   const hiddenLeft = toolbarControls.filter(
-    (control) => !placementVisibility[control.key] && control.side === "left",
+    (control) =>
+      placementPresence[control.key] === "hidden" && control.side === "left",
   );
   const hiddenRight = toolbarControls.filter(
-    (control) => !placementVisibility[control.key] && control.side === "right",
+    (control) =>
+      placementPresence[control.key] === "hidden" && control.side === "right",
   );
   const shownControls = toolbarControls.filter(
-    (control) => placementVisibility[control.key],
+    (control) => placementPresence[control.key] !== "hidden",
   );
 
-  const priorityOptions: Array<{
-    value: ToolbarNarrowingPriority;
-    label: string;
-    title: string;
-  }> = [
-    {
-      value: "pin",
-      label: t("appearanceToolbarPriorityPin"),
-      title: t("appearanceToolbarPriorityPinTitle"),
+  const commitPresenceNotch = useCallback(
+    (control: ToolbarControlMeta, notch: number) => {
+      const next: ToolbarControlPresence =
+        notch <= 0
+          ? "hidden"
+          : control.canSetPriority
+            ? (PRESENCE_SLIDER_PRIORITIES[notch - 1] ?? "pin")
+            : "pin";
+      if (toolbarPresence[control.key] !== next) {
+        setControlPresence(control.key, next);
+      }
     },
-    {
-      value: "last",
-      label: t("appearanceToolbarPriorityLast"),
-      title: t("appearanceToolbarPriorityLastTitle"),
-    },
-    {
-      value: "mid",
-      label: t("appearanceToolbarPriorityMid"),
-      title: t("appearanceToolbarPriorityMidTitle"),
-    },
-    {
-      value: "first",
-      label: t("appearanceToolbarPriorityFirst"),
-      title: t("appearanceToolbarPriorityFirstTitle"),
-    },
-  ];
-
-  const renderPriorityControls = (control: ToolbarControlMeta) => {
-    if (!control.canSetPriority) return null;
-    return (
-      <span
-        className="session-toolbar-priority"
-        role="radiogroup"
-        aria-label={t("appearanceToolbarPriorityAria", {
-          control: control.title,
-        })}
-      >
-        {priorityOptions.map((option) => {
-          const selected = toolbarPriority[control.key] === option.value;
-          return (
-            <button
-              type="button"
-              key={option.value}
-              className={`session-toolbar-priority-option${
-                selected ? " is-selected" : ""
-              }`}
-              role="radio"
-              aria-checked={selected}
-              title={option.title}
-              onClick={() => setControlPriority(control.key, option.value)}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </span>
-    );
-  };
-
-  const renderVisibilityButton = (control: ToolbarControlMeta) => {
-    const isVisible = toolbarVisibility[control.key];
-    const label = isVisible
-      ? t("appearanceToolbarHide")
-      : t("appearanceToolbarShowControl", { control: control.title });
-    return (
-      <button
-        type="button"
-        className={`session-toolbar-hide-button${
-          isVisible ? "" : " is-show-action"
-        }`}
-        onClick={() => setControlVisible(control.key, !isVisible)}
-        title={label}
-        aria-label={label}
-      >
-        {isVisible ? "×" : t("appearanceToolbarShow")}
-      </button>
-    );
-  };
-
-  const renderControlMenu = (control: ToolbarControlMeta) => {
-    if (activeControlKey !== control.key) return null;
-    return (
-      <div
-        className="session-toolbar-control-menu"
-        role="dialog"
-        aria-label={t("appearanceToolbarControlMenu", {
-          control: control.title,
-        })}
-      >
-        {renderPriorityControls(control)}
-        {renderVisibilityButton(control)}
-      </div>
-    );
-  };
+    [setControlPresence, toolbarPresence],
+  );
 
   const renderControlRow = (
     control: ToolbarControlMeta,
@@ -336,9 +349,9 @@ export function ToolbarSettings() {
   ) => (
     <div
       className={`session-toolbar-control-row is-${placement} ${
-        toolbarVisibility[control.key]
-          ? "is-currently-shown"
-          : "is-currently-hidden"
+        toolbarPresence[control.key] === "hidden"
+          ? "is-currently-hidden"
+          : "is-currently-shown"
       }`}
       key={control.key}
     >
@@ -348,11 +361,9 @@ export function ToolbarSettings() {
             control: control.title,
           })}
           controlKey={control.key}
-          onActivate={() =>
-            setActiveControlKey((current) =>
-              current === control.key ? null : control.key,
-            )
-          }
+          onActivate={() => {
+            document.getElementById(presenceSliderId(control.key))?.focus();
+          }}
         />
       </span>
       <span className="session-toolbar-control-copy">
@@ -360,10 +371,12 @@ export function ToolbarSettings() {
         <span>{control.description}</span>
       </span>
       <span className="session-toolbar-control-actions">
-        {renderPriorityControls(control)}
-        {renderVisibilityButton(control)}
+        <ControlPresenceSlider
+          control={control}
+          presence={toolbarPresence[control.key]}
+          onCommitNotch={commitPresenceNotch}
+        />
       </span>
-      {renderControlMenu(control)}
     </div>
   );
 
@@ -478,8 +491,7 @@ export function ToolbarSettings() {
               type="button"
               className="settings-button settings-button-secondary"
               onClick={() => {
-                resetVisibility();
-                resetPriority();
+                resetPresence();
               }}
             >
               {t("appearanceSessionToolbarReset")}

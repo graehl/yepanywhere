@@ -76,6 +76,72 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("heartbeatTurnText")).toBe("checking in");
   });
 
+  it("folds legacy toolbar visibility/priority client defaults into presence", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          clientDefaults: {
+            sessionToolbarVisibility: {
+              slashMenu: false,
+              renderMode: true,
+            },
+            sessionToolbarPriority: {
+              slashMenu: "pin",
+              renderMode: "last",
+              contextUsage: "mid",
+            },
+          },
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    const clientDefaults = service.getSetting("clientDefaults") as Record<
+      string,
+      unknown
+    >;
+    // Explicit hide wins over the stored tier; other tiers carry over.
+    expect(clientDefaults.sessionToolbarPresence).toEqual({
+      slashMenu: "hidden",
+      renderMode: "last",
+      contextUsage: "mid",
+    });
+    expect(clientDefaults).not.toHaveProperty("sessionToolbarVisibility");
+    expect(clientDefaults).not.toHaveProperty("sessionToolbarPriority");
+  });
+
+  it("prefers stored presence client defaults over legacy maps", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          clientDefaults: {
+            sessionToolbarPresence: { slashMenu: "pin" },
+            sessionToolbarVisibility: { slashMenu: false },
+          },
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    const clientDefaults = service.getSetting("clientDefaults") as Record<
+      string,
+      unknown
+    >;
+    expect(clientDefaults.sessionToolbarPresence).toEqual({
+      slashMenu: "pin",
+    });
+  });
+
   it("clamps oversized Project Queue quiet-window settings on load", async () => {
     await fs.writeFile(
       path.join(testDir, "server-settings.json"),

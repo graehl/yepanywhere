@@ -54,7 +54,7 @@ import {
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
-import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
+import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useI18n } from "../i18n";
 import {
   getEffortLevelOptions,
@@ -476,7 +476,7 @@ export function NewSessionForm({
     Record<string, { uploaded: number; total: number }>
   >({});
   const [attachmentQuality] = useAttachmentUploadQuality();
-  const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
+  const { visibility: toolbarVisibility } = useSessionToolbarPresence();
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,

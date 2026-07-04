@@ -1,0 +1,310 @@
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CLIENT_STORAGE_DEFAULT } from "../../lib/defaultedStorage";
+import { UI_KEYS } from "../../lib/storageKeys";
+
+const mocks = vi.hoisted(() => ({
+  updateServerSettings: vi.fn(async () => ({ settings: {} })),
+  version: null as unknown,
+}));
+
+vi.mock("../../api/client", () => ({
+  api: {
+    updateServerSettings: mocks.updateServerSettings,
+  },
+}));
+
+vi.mock("../useVersion", () => ({
+  useVersion: () => ({
+    version: mocks.version,
+  }),
+}));
+
+function stubToolbarLayout(matches: boolean): void {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
+}
+
+describe("useSessionToolbarPresence", () => {
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+    mocks.version = null;
+    mocks.updateServerSettings.mockClear();
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the render mode toolbar control hidden by default", async () => {
+    stubToolbarLayout(false);
+    const { DEFAULT_SESSION_TOOLBAR_PRESENCE, useSessionToolbarPresence } =
+      await import("../useSessionToolbarPresence");
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    expect(DEFAULT_SESSION_TOOLBAR_PRESENCE.renderMode).toBe("hidden");
+    expect(result.current.presence.renderMode).toBe("hidden");
+    expect(result.current.visibility.renderMode).toBe(false);
+  });
+
+  it("ignores unknown controls in stored presence", async () => {
+    stubToolbarLayout(false);
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPresence,
+      JSON.stringify({
+        modelIndicator: "pin",
+        slashMenu: "hidden",
+      }),
+    );
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    expect(result.current.presence).not.toHaveProperty("modelIndicator");
+    expect(result.current.presence.slashMenu).toBe("hidden");
+  });
+
+  it("resolves missing and defaulted controls from current defaults", async () => {
+    stubToolbarLayout(true);
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPresence,
+      JSON.stringify({
+        slashMenu: "hidden",
+        microphone: CLIENT_STORAGE_DEFAULT,
+      }),
+    );
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    expect(result.current.presence.slashMenu).toBe("hidden");
+    expect(result.current.presence.microphone).toBe("pin");
+    expect(result.current.presence.waveform).toBe("pin");
+    // Mobile layout defaults hide the shortcuts help control.
+    expect(result.current.presence.shortcutsHelp).toBe("hidden");
+  });
+
+  it("resolves locally defaulted controls from server client defaults", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      clientDefaults: {
+        sessionToolbarPresence: {
+          renderMode: "last",
+          slashMenu: "hidden",
+        },
+      },
+    };
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPresence,
+      JSON.stringify({ slashMenu: CLIENT_STORAGE_DEFAULT }),
+    );
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    await waitFor(() => {
+      expect(result.current.presence.renderMode).toBe("last");
+      expect(result.current.presence.slashMenu).toBe("hidden");
+    });
+  });
+
+  it("keeps local explicit choices over server client defaults", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      clientDefaults: {
+        sessionToolbarPresence: {
+          slashMenu: "hidden",
+        },
+      },
+    };
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPresence,
+      JSON.stringify({ slashMenu: "pin" }),
+    );
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    await waitFor(() => {
+      expect(result.current.presence.slashMenu).toBe("pin");
+    });
+  });
+
+  it("masks Project Queue presence without server capability", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      capabilities: [],
+      clientDefaults: {
+        sessionToolbarPresence: {
+          projectQueue: "pin",
+        },
+      },
+    };
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    await waitFor(() => {
+      expect(result.current.presence.projectQueue).toBe("hidden");
+      expect(result.current.visibility.projectQueue).toBe(false);
+    });
+  });
+
+  it("can reveal Project Queue from server client defaults", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      capabilities: ["projectQueue"],
+      clientDefaults: {
+        sessionToolbarPresence: {
+          projectQueue: "pin",
+        },
+      },
+    };
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    await waitFor(() => {
+      expect(result.current.presence.projectQueue).toBe("pin");
+      expect(result.current.visibility.projectQueue).toBe(true);
+    });
+  });
+
+  it("stores only explicit choices and reset returns to default", async () => {
+    stubToolbarLayout(false);
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    act(() => result.current.setControlPresence("slashMenu", "hidden"));
+
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(UI_KEYS.sessionToolbarPresence) ?? "{}",
+      ),
+    ).toEqual({ slashMenu: "hidden" });
+    expect(mocks.updateServerSettings).toHaveBeenCalledWith({
+      clientDefaults: {
+        sessionToolbarPresence: { slashMenu: "hidden" },
+      },
+    });
+
+    act(() => result.current.resetPresence());
+
+    expect(window.localStorage.getItem(UI_KEYS.sessionToolbarPresence)).toBe(
+      null,
+    );
+    expect(result.current.presence.slashMenu).toBe("mid");
+  });
+
+  it("derives the priority projection with a tier for hidden controls", async () => {
+    stubToolbarLayout(false);
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    expect(result.current.presence.renderMode).toBe("hidden");
+    expect(result.current.priority.renderMode).toBe("last");
+    expect(result.current.priority.slashMenu).toBe("mid");
+  });
+
+  it("migrates legacy visibility and priority maps into presence", async () => {
+    stubToolbarLayout(false);
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarVisibility,
+      JSON.stringify({
+        slashMenu: false,
+        renderMode: true,
+        btw: true,
+        microphone: CLIENT_STORAGE_DEFAULT,
+      }),
+    );
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPriority,
+      JSON.stringify({
+        slashMenu: "pin",
+        btw: "mid",
+        contextUsage: "last",
+      }),
+    );
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    // Explicit hide wins over the stored tier; the tier is forgotten.
+    expect(result.current.presence.slashMenu).toBe("hidden");
+    // Explicit show with no tier falls to the control's default tier.
+    expect(result.current.presence.renderMode).toBe("last");
+    // Explicit show with a stored tier keeps that tier.
+    expect(result.current.presence.btw).toBe("mid");
+    // A tier alone carries over.
+    expect(result.current.presence.contextUsage).toBe("last");
+    // Sentinel "default" entries stay defaulted.
+    expect(result.current.presence.microphone).toBe("pin");
+
+    // Legacy keys are dropped; the folded map persists under the new key.
+    expect(window.localStorage.getItem(UI_KEYS.sessionToolbarVisibility)).toBe(
+      null,
+    );
+    expect(window.localStorage.getItem(UI_KEYS.sessionToolbarPriority)).toBe(
+      null,
+    );
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(UI_KEYS.sessionToolbarPresence) ?? "{}",
+      ),
+    ).toEqual({
+      slashMenu: "hidden",
+      renderMode: "last",
+      btw: "mid",
+      contextUsage: "last",
+    });
+  });
+
+  it("prefers an existing presence map over legacy keys", async () => {
+    stubToolbarLayout(false);
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarPresence,
+      JSON.stringify({ slashMenu: "pin" }),
+    );
+    window.localStorage.setItem(
+      UI_KEYS.sessionToolbarVisibility,
+      JSON.stringify({ slashMenu: false }),
+    );
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    expect(result.current.presence.slashMenu).toBe("pin");
+  });
+});

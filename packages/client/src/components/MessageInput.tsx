@@ -27,7 +27,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
-import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
+import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -486,7 +486,7 @@ export function MessageInput({
   onForkSummaryShortcut,
 }: Props) {
   const { t } = useI18n();
-  const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
+  const { visibility: toolbarVisibility } = useSessionToolbarPresence();
   const [text, setText, controls] = useDraftPersistence(draftKey, {
     sessionDraft: draftIndex,
   });

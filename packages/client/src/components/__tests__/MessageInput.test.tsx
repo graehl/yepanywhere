@@ -17,7 +17,7 @@ import {
   useState,
 } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SESSION_TOOLBAR_PRIORITY } from "../../hooks/useSessionToolbarPriority";
+import { DEFAULT_SESSION_TOOLBAR_PRIORITY } from "../../hooks/useSessionToolbarPresence";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
 import {
   YA_GROK_BATCH_SPEECH_METHOD,
@@ -178,28 +178,36 @@ vi.mock("../../hooks/useModelSettings", () => ({
   }),
 }));
 
-vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
-  useSessionToolbarVisibility: () => ({
-    visibility: {
-      modeSelector: true,
-      steerNow: true,
-      attachments: true,
-      slashMenu: true,
-      thinkingToggle: true,
-      renderMode: true,
-      microphone: true,
-      waveform: true,
-      shortcutsHelp: true,
-      contextUsage: true,
-      btw: true,
-      nudge: true,
-      sessionStatus: true,
-      projectQueue: true,
-    },
-    setControlVisible: vi.fn(),
-    resetVisibility: vi.fn(),
-  }),
-}));
+vi.mock("../../hooks/useSessionToolbarPresence", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../hooks/useSessionToolbarPresence")
+  >("../../hooks/useSessionToolbarPresence");
+  return {
+    ...actual,
+    useSessionToolbarPresence: () => ({
+      presence: actual.DEFAULT_SESSION_TOOLBAR_PRIORITY,
+      visibility: {
+        modeSelector: true,
+        steerNow: true,
+        attachments: true,
+        slashMenu: true,
+        thinkingToggle: true,
+        renderMode: true,
+        microphone: true,
+        waveform: true,
+        shortcutsHelp: true,
+        contextUsage: true,
+        btw: true,
+        nudge: true,
+        sessionStatus: true,
+        projectQueue: true,
+      },
+      priority: actual.DEFAULT_SESSION_TOOLBAR_PRIORITY,
+      setControlPresence: vi.fn(),
+      resetPresence: vi.fn(),
+    }),
+  };
+});
 
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({

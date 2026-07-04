@@ -14,6 +14,8 @@ import type {
   HelperTargetConfig,
   NewSessionDefaults,
   PromptCacheKeepaliveSettings,
+  SessionToolbarPresenceClientDefaults,
+  ToolbarControlPresence,
 } from "@yep-anywhere/shared";
 import {
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
@@ -165,6 +167,45 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
 };
 
+const TOOLBAR_PRESENCE_TIERS = new Set(["pin", "last", "mid", "first"]);
+
+/**
+ * Fold pre-presence toolbar defaults (a visibility boolean map plus a
+ * narrowing-priority map) into the single presence map: explicit `false`
+ * visibility becomes `hidden`, explicit `true` becomes the stored tier when
+ * one exists (else stays absent, falling to client defaults). Values already
+ * in `sessionToolbarPresence` win.
+ */
+function migrateLegacyToolbarClientDefaults(
+  loaded: ClientDefaults | undefined,
+): SessionToolbarPresenceClientDefaults {
+  const legacy = loaded as
+    | undefined
+    | (ClientDefaults & {
+        sessionToolbarVisibility?: Record<string, unknown>;
+        sessionToolbarPriority?: Record<string, unknown>;
+      });
+  const presence: Record<string, ToolbarControlPresence> = {};
+  const priority = legacy?.sessionToolbarPriority;
+  if (priority) {
+    for (const [key, value] of Object.entries(priority)) {
+      if (typeof value === "string" && TOOLBAR_PRESENCE_TIERS.has(value)) {
+        presence[key] = value as ToolbarControlPresence;
+      }
+    }
+  }
+  const visibility = legacy?.sessionToolbarVisibility;
+  if (visibility) {
+    for (const [key, value] of Object.entries(visibility)) {
+      if (value === false) presence[key] = "hidden";
+    }
+  }
+  return {
+    ...presence,
+    ...loaded?.sessionToolbarPresence,
+  } as SessionToolbarPresenceClientDefaults;
+}
+
 function mergeLoadedClientDefaults(
   loaded: ClientDefaults | undefined,
 ): ClientDefaults | undefined {
@@ -172,24 +213,23 @@ function mergeLoadedClientDefaults(
     ...DEFAULT_CLIENT_DEFAULTS,
     ...loaded,
   };
+  delete (merged as Record<string, unknown>).sessionToolbarVisibility;
+  delete (merged as Record<string, unknown>).sessionToolbarPriority;
   const speech = {
     ...DEFAULT_CLIENT_DEFAULTS.speech,
     ...loaded?.speech,
   };
-  const sessionToolbarVisibility = {
-    ...DEFAULT_CLIENT_DEFAULTS.sessionToolbarVisibility,
-    ...loaded?.sessionToolbarVisibility,
-  };
+  const sessionToolbarPresence = migrateLegacyToolbarClientDefaults(loaded);
 
   if (Object.keys(speech).length > 0) {
     merged.speech = speech;
   } else {
     delete merged.speech;
   }
-  if (Object.keys(sessionToolbarVisibility).length > 0) {
-    merged.sessionToolbarVisibility = sessionToolbarVisibility;
+  if (Object.keys(sessionToolbarPresence).length > 0) {
+    merged.sessionToolbarPresence = sessionToolbarPresence;
   } else {
-    delete merged.sessionToolbarVisibility;
+    delete merged.sessionToolbarPresence;
   }
 
   // Per-model compaction thresholds: keep only valid in-range percents (1–99);

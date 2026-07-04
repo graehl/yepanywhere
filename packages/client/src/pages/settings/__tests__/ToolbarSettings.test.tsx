@@ -11,44 +11,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolbarSettings } from "../ToolbarSettings";
 
 const state = vi.hoisted(() => {
-  const defaultVisibility = {
-    modeSelector: true,
-    steerNow: true,
-    attachments: true,
-    slashMenu: true,
-    thinkingToggle: true,
-    renderMode: false,
-    microphone: true,
-    waveform: true,
-    shortcutsHelp: true,
-    contextUsage: true,
-    btw: false,
-    nudge: false,
-    sessionStatus: true,
-    projectQueue: true,
-  };
-  const defaultPriority = {
+  const defaultPresence = {
     modeSelector: "first",
     steerNow: "pin",
     attachments: "first",
     slashMenu: "mid",
     thinkingToggle: "mid",
-    renderMode: "last",
+    renderMode: "hidden",
     microphone: "pin",
     waveform: "pin",
     shortcutsHelp: "last",
     contextUsage: "pin",
-    btw: "pin",
-    nudge: "last",
+    btw: "hidden",
+    nudge: "hidden",
     sessionStatus: "pin",
     projectQueue: "pin",
   };
   return {
-    defaultPriority,
-    defaultVisibility,
+    defaultPresence,
     version: { capabilities: [] as string[] },
-    visibility: { ...defaultVisibility },
-    priority: { ...defaultPriority },
+    presence: { ...defaultPresence },
   };
 });
 
@@ -74,45 +56,22 @@ vi.mock("../../../components/SessionToolbarPreview", () => ({
   ),
 }));
 
-vi.mock("../../../hooks/useSessionToolbarVisibility", async () => {
+vi.mock("../../../hooks/useSessionToolbarPresence", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
   return {
-    useSessionToolbarVisibility: () => {
+    useSessionToolbarPresence: () => {
       const [, forceRender] = React.useState(0);
       return {
-        visibility: state.visibility,
-        setControlVisible: (
-          key: keyof typeof state.visibility,
-          visible: boolean,
-        ) => {
-          state.visibility = { ...state.visibility, [key]: visible };
-          forceRender((value) => value + 1);
-        },
-        resetVisibility: () => {
-          state.visibility = { ...state.defaultVisibility };
-          forceRender((value) => value + 1);
-        },
-      };
-    },
-  };
-});
-
-vi.mock("../../../hooks/useSessionToolbarPriority", async () => {
-  const React = await vi.importActual<typeof import("react")>("react");
-  return {
-    useSessionToolbarPriority: () => {
-      const [, forceRender] = React.useState(0);
-      return {
-        priority: state.priority,
-        setControlPriority: (
-          key: keyof typeof state.priority,
+        presence: state.presence,
+        setControlPresence: (
+          key: keyof typeof state.presence,
           value: string,
         ) => {
-          state.priority = { ...state.priority, [key]: value };
+          state.presence = { ...state.presence, [key]: value };
           forceRender((count) => count + 1);
         },
-        resetPriority: () => {
-          state.priority = { ...state.defaultPriority };
+        resetPresence: () => {
+          state.presence = { ...state.defaultPresence };
           forceRender((count) => count + 1);
         },
       };
@@ -185,21 +144,17 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarCollapsedButtonPrimary: "Primary",
           appearanceToolbarCollapsedButtonAlternate: "Alternate",
           appearanceToolbarCollapsedButtonMicrophone: "Microphone",
-          appearanceToolbarPriorityPin: "Pin",
-          appearanceToolbarPriorityLast: "Last",
-          appearanceToolbarPriorityMid: "Mid",
-          appearanceToolbarPriorityFirst: "First",
-          appearanceToolbarPriorityPinTitle: "Never collapses",
-          appearanceToolbarPriorityLastTitle: "Collapses last",
-          appearanceToolbarPriorityMidTitle: "Collapses in the middle",
-          appearanceToolbarPriorityFirstTitle: "Collapses first",
-          appearanceToolbarPriorityAria: `${params?.control} collapse priority`,
-          appearanceToolbarControlMenu: `${params?.control} toolbar controls`,
+          appearanceToolbarPresenceAria: `${params?.control} visibility`,
+          appearanceToolbarPresenceHiddenCaption: "Not shown on the toolbar.",
+          appearanceToolbarPresenceFirstCaption: "Collapses first",
+          appearanceToolbarPresenceMidCaption: "Collapses in the middle",
+          appearanceToolbarPresenceLastCaption: "Collapses last",
+          appearanceToolbarPresencePinCaption: "Never collapses",
+          appearanceToolbarPresenceShownCaption: "Always visible",
           appearanceToolbarActivateControl: `Edit ${params?.control}`,
-          appearanceToolbarShowControl: `Show ${params?.control}`,
-          appearanceToolbarShow: "Show",
           appearanceSessionToolbarReset: "Reset",
           appearanceToolbarHide: "Hide",
+          appearanceToolbarShowAlways: "Show always",
         }) as Record<string, string>
       )[key] ?? key,
   }),
@@ -216,8 +171,7 @@ vi.mock("../SettingsUndoContext", () => ({
 describe("ToolbarSettings", () => {
   beforeEach(() => {
     state.version = { capabilities: [] };
-    state.visibility = { ...state.defaultVisibility };
-    state.priority = { ...state.defaultPriority };
+    state.presence = { ...state.defaultPresence };
   });
 
   afterEach(() => {
@@ -238,11 +192,23 @@ describe("ToolbarSettings", () => {
     expect(screen.getByText("Project Queue")).toBeTruthy();
   });
 
-  it("shows priority radios for controls the overflow engine supports", () => {
+  it("shows a presence slider for every control row", () => {
     render(<ToolbarSettings />);
 
-    expect(screen.getAllByRole("radiogroup")).toHaveLength(11);
-    expect(screen.getAllByRole("radio")).toHaveLength(44);
+    // 13 controls without the projectQueue capability, one slider each.
+    expect(screen.getAllByRole("slider")).toHaveLength(13);
+    // Overflow-supported controls get the full notch scale...
+    expect(
+      screen
+        .getByRole("slider", { name: "Mode Selector visibility" })
+        .getAttribute("max"),
+    ).toBe("4");
+    // ...while non-overflow controls only get Hide / Show always.
+    expect(
+      screen
+        .getByRole("slider", { name: "Microphone visibility" })
+        .getAttribute("max"),
+    ).toBe("1");
   });
 
   it("keeps hidden overflow controls priority-editable", () => {
@@ -252,32 +218,27 @@ describe("ToolbarSettings", () => {
       .getByText("Render Mode")
       .closest(".session-toolbar-control-row");
     expect(row).toBeTruthy();
-    expect(
-      within(row as HTMLElement).getByRole("radiogroup", {
-        name: "Render Mode collapse priority",
-      }),
-    ).toBeTruthy();
-    expect(
-      within(row as HTMLElement).getByRole("button", {
-        name: "Show Render Mode",
-      }),
-    ).toBeTruthy();
+    const slider = within(row as HTMLElement).getByRole<HTMLInputElement>(
+      "slider",
+      { name: "Render Mode visibility" },
+    );
+    expect(slider.getAttribute("max")).toBe("4");
+    expect(slider.value).toBe("0");
+
+    fireEvent.change(slider, { target: { value: "3" } });
+    fireEvent.pointerUp(slider);
+
+    expect(state.presence.renderMode).toBe("last");
   });
 
-  it("opens row controls from the specimen affordance", () => {
+  it("focuses the row slider from the specimen affordance", () => {
     render(<ToolbarSettings />);
 
     fireEvent.click(screen.getByTestId("toolbar-control-preview-modeSelector"));
 
-    const dialog = screen.getByRole("dialog", {
-      name: "Mode Selector toolbar controls",
-    });
-    expect(within(dialog).getByRole("button", { name: "Hide" })).toBeTruthy();
-    expect(
-      within(dialog).getByRole("radiogroup", {
-        name: "Mode Selector collapse priority",
-      }),
-    ).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("slider", { name: "Mode Selector visibility" }),
+    );
   });
 
   it("keeps rows in their entry section after visibility changes", () => {
@@ -297,20 +258,36 @@ describe("ToolbarSettings", () => {
       .closest(".session-toolbar-control-row");
     expect(modeRow).toBeTruthy();
 
-    fireEvent.click(
-      within(modeRow as HTMLElement).getByRole("button", { name: "Hide" }),
+    const slider = within(modeRow as HTMLElement).getByRole<HTMLInputElement>(
+      "slider",
+      { name: "Mode Selector visibility" },
     );
+    fireEvent.change(slider, { target: { value: "0" } });
+    fireEvent.pointerUp(slider);
 
+    expect(state.presence.modeSelector).toBe("hidden");
     expect(
       within(shownZone as HTMLElement).getByText("Mode Selector"),
     ).toBeTruthy();
     expect(
-      within(modeRow as HTMLElement).getByRole("button", {
-        name: "Show Mode Selector",
-      }),
-    ).toBeTruthy();
-    expect(
       within(hiddenZone as HTMLElement).queryByText("Mode Selector"),
     ).toBeNull();
+  });
+
+  it("hiding forgets the tier; sliding back out picks the landed notch", () => {
+    render(<ToolbarSettings />);
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "Slash Menu visibility",
+    });
+    expect(slider.value).toBe("2");
+
+    fireEvent.change(slider, { target: { value: "0" } });
+    fireEvent.pointerUp(slider);
+    expect(state.presence.slashMenu).toBe("hidden");
+
+    fireEvent.change(slider, { target: { value: "4" } });
+    fireEvent.pointerUp(slider);
+    expect(state.presence.slashMenu).toBe("pin");
   });
 });

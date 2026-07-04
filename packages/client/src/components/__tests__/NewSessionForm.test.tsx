@@ -360,8 +360,8 @@ vi.mock("../../hooks/useServerSettings", () => ({
   }),
 }));
 
-vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
-  useSessionToolbarVisibility: () => ({
+vi.mock("../../hooks/useSessionToolbarPresence", () => ({
+  useSessionToolbarPresence: () => ({
     visibility: {
       projectQueue: toolbarVisibilityState.projectQueue,
     },

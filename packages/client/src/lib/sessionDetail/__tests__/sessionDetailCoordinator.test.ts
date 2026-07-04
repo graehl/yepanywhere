@@ -1,4 +1,7 @@
-import { toUrlProjectId } from "@yep-anywhere/shared";
+import {
+  toUrlProjectId,
+  type ProviderRuntimeStatus,
+} from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../../clientSummaryStore";
 import type {
@@ -25,6 +28,19 @@ function message(
     message: { role: "assistant", content: uuid },
   };
 }
+
+const RUNTIME_STATUS: Exclude<ProviderRuntimeStatus, null> = {
+  kind: "retrying",
+  provider: "claude",
+  reason: "rate_limit",
+  httpStatus: 429,
+  startedAt: "2026-07-04T00:00:00.000Z",
+  lastSeenAt: "2026-07-04T00:00:01.000Z",
+  retryAt: "2026-07-04T00:01:00.000Z",
+  retryDelayMs: 60_000,
+  eventCount: 1,
+  source: "claude.system.api_retry",
+};
 
 function session(): GetSessionResult["session"] {
   return {
@@ -760,6 +776,26 @@ describe("SessionDetailCoordinator", () => {
       pendingInputRequest: response.pendingInputRequest,
       slashCommands: response.slashCommands,
       deferredMessages: response.deferredMessages,
+    });
+  });
+
+  it("builds provider runtime status snapshot payloads", () => {
+    const detail = coordinator();
+
+    expect(
+      detail.buildProviderRuntimeStatusSnapshot({
+        providerRuntimeStatus: RUNTIME_STATUS,
+      }),
+    ).toEqual({
+      sessionId: "sess-1",
+      projectId: "proj-1",
+      providerRuntimeStatus: RUNTIME_STATUS,
+    });
+
+    expect(detail.buildProviderRuntimeStatusSnapshot({})).toEqual({
+      sessionId: "sess-1",
+      projectId: "proj-1",
+      providerRuntimeStatus: null,
     });
   });
 });

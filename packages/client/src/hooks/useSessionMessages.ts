@@ -517,11 +517,7 @@ export function useSessionMessages(
     ) => {
       reportProviderRuntimeStatusSnapshot(
         sourceKey,
-        {
-          sessionId,
-          projectId,
-          providerRuntimeStatus: data.providerRuntimeStatus ?? null,
-        },
+        coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
       onLoadComplete?.(coordinator.buildLoadCompleteResult(data));
     };
@@ -924,11 +920,10 @@ export function useSessionMessages(
           sessionId,
           afterMessageId,
         });
-        reportProviderRuntimeStatusSnapshot(sourceKey, {
-          sessionId,
-          projectId,
-          providerRuntimeStatus: data.providerRuntimeStatus ?? null,
-        });
+        reportProviderRuntimeStatusSnapshot(
+          sourceKey,
+          coordinator.buildProviderRuntimeStatusSnapshot(data),
+        );
         if (data.messages.length > 0) {
           if (afterMessageId !== undefined && data.pagination) {
             dispatchSessionDetailAction({
@@ -990,11 +985,10 @@ export function useSessionMessages(
         tailCompactions: 2,
         beforeMessageId: currentPagination.truncatedBeforeMessageId,
       });
-      reportProviderRuntimeStatusSnapshot(sourceKey, {
-        sessionId,
-        projectId,
-        providerRuntimeStatus: data.providerRuntimeStatus ?? null,
-      });
+      reportProviderRuntimeStatusSnapshot(
+        sourceKey,
+        coordinator.buildProviderRuntimeStatusSnapshot(data),
+      );
       dispatchSessionDetailAction({
         type: "prependOlderMessages",
         messages: data.messages,
@@ -1007,6 +1001,7 @@ export function useSessionMessages(
       setLoadingOlder(false);
     }
   }, [
+    coordinator,
     projectId,
     sessionId,
     readSelectorBackedPagination,
@@ -1037,11 +1032,10 @@ export function useSessionMessages(
         projectId,
         sessionId,
       });
-      reportProviderRuntimeStatusSnapshot(sourceKey, {
-        sessionId,
-        projectId,
-        providerRuntimeStatus: data.providerRuntimeStatus ?? null,
-      });
+      reportProviderRuntimeStatusSnapshot(
+        sourceKey,
+        coordinator.buildProviderRuntimeStatusSnapshot(data),
+      );
       const metadataSession = {
         ...data.session,
         ownership: data.ownership,
@@ -1053,7 +1047,7 @@ export function useSessionMessages(
     } catch {
       // Silent fail for metadata updates
     }
-  }, [projectId, sessionId, sourceApi, sourceKey, updateSession]);
+  }, [coordinator, projectId, sessionId, sourceApi, sourceKey, updateSession]);
   const selectedInitialScrollSnapshot =
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ? (coordinator.readScrollSnapshot() ?? cachedLoad?.scrollSnapshot ?? null)

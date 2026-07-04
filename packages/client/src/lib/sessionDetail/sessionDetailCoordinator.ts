@@ -3,7 +3,12 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
-import type { GetSessionResult, YaSourceRuntime } from "../sourceRuntime";
+import type {
+  GetSessionMetadataResult,
+  GetSessionResult,
+  YaSourceRuntime,
+} from "../sourceRuntime";
+import type { ProviderRuntimeStatusSnapshot } from "../clientSummaryState";
 import {
   createSessionLoadProgress,
   createSessionLoadProgressForWindow,
@@ -147,6 +152,10 @@ export interface SessionDetailLoadCompleteResult {
   slashCommands?: GetSessionResult["slashCommands"];
   deferredMessages?: GetSessionResult["deferredMessages"];
 }
+
+export type SessionDetailProviderRuntimeStatusInput =
+  | Pick<GetSessionResult, "providerRuntimeStatus">
+  | Pick<GetSessionMetadataResult, "providerRuntimeStatus">;
 
 export type SessionDetailRevealSnapshotInput = Omit<
   SessionDetailRevealSnapshotFallback,
@@ -589,6 +598,16 @@ export class SessionDetailCoordinator {
       pendingInputRequest: data.pendingInputRequest,
       slashCommands: data.slashCommands,
       deferredMessages: data.deferredMessages,
+    };
+  }
+
+  buildProviderRuntimeStatusSnapshot(
+    data: SessionDetailProviderRuntimeStatusInput,
+  ): ProviderRuntimeStatusSnapshot {
+    return {
+      sessionId: this.entryKey.sessionId,
+      projectId: this.entryKey.projectId,
+      providerRuntimeStatus: data.providerRuntimeStatus ?? null,
     };
   }
 

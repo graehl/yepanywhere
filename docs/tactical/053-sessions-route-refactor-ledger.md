@@ -350,14 +350,13 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/serv
 
 ### SRR-008: Move Compact Threshold Lookup Helpers
 
-Status: proposed.
+Status: done.
 
 Destination: new file
 `packages/server/src/routes/session-compact-thresholds.ts`.
 
-Estimated line delta: about `-40` to `-55` lines from `sessions.ts`, with a
-small helper module added. Tests would import from the new helper, or
-`sessions.ts` could temporarily re-export for compatibility.
+Line delta: `-36` lines from `sessions.ts`, `+42` lines in the compact
+threshold module.
 
 Problem:
 
@@ -369,6 +368,13 @@ Likely change:
 
 - move those two helpers and their comments to a compact-threshold module;
 - update `sessions.ts` and the two focused tests to import from that module.
+
+Implemented:
+
+- moved both helpers to `session-compact-thresholds.ts`;
+- updated `sessions.ts` to import them;
+- updated the focused compact-threshold tests to import the small module
+  instead of the large route module.
 
 Value:
 

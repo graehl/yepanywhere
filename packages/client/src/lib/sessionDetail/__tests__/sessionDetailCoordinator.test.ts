@@ -93,6 +93,7 @@ function coordinator() {
 describe("SessionDetailCoordinator", () => {
   it("buffers stream messages until initial load completes", () => {
     const detail = coordinator();
+    const initialLoad = detail.beginInitialLoad();
     const processed: string[] = [];
     const processors: SessionDetailStreamProcessors = {
       processMessage: (incoming, fromBufferedReplay = false) => {
@@ -112,7 +113,7 @@ describe("SessionDetailCoordinator", () => {
 
     expect(processed).toEqual([]);
 
-    detail.completeInitialLoad(processors);
+    expect(initialLoad.completeReveal(processors)).toBe(true);
 
     expect(processed).toEqual(["main-1:true", "agent-1:sub-1"]);
 
@@ -125,8 +126,9 @@ describe("SessionDetailCoordinator", () => {
     ]);
   });
 
-  it("resetForInitialLoad clears buffered messages and closes the stream gate", () => {
+  it("beginInitialLoad clears buffered messages and closes the stream gate", () => {
     const detail = coordinator();
+    let initialLoad = detail.beginInitialLoad();
     const processed: string[] = [];
     const processors: SessionDetailStreamProcessors = {
       processMessage: (incoming, fromBufferedReplay = false) => {
@@ -138,20 +140,50 @@ describe("SessionDetailCoordinator", () => {
     };
 
     detail.handleStreamMessage(message("discarded"), processors.processMessage);
-    detail.resetForInitialLoad();
-    detail.completeInitialLoad(processors);
+    initialLoad = detail.beginInitialLoad();
+    expect(initialLoad.completeReveal(processors)).toBe(true);
 
     expect(processed).toEqual([]);
 
     detail.handleStreamMessage(message("live"), processors.processMessage);
-    detail.resetForInitialLoad();
+    initialLoad = detail.beginInitialLoad();
     detail.handleStreamMessage(message("buffered"), processors.processMessage);
 
     expect(processed).toEqual(["live:false"]);
 
-    detail.completeInitialLoad(processors);
+    expect(initialLoad.completeReveal(processors)).toBe(true);
 
     expect(processed).toEqual(["live:false", "buffered:true"]);
+  });
+
+  it("ignores stale initial-load reveal completions", () => {
+    const detail = coordinator();
+    const firstLoad = detail.beginInitialLoad();
+    const processed: string[] = [];
+    const processors: SessionDetailStreamProcessors = {
+      processMessage: (incoming, fromBufferedReplay = false) => {
+        processed.push(`${incoming.uuid}:${fromBufferedReplay}`);
+      },
+      processSubagentMessage: (incoming, agentId) => {
+        processed.push(`${agentId}:${incoming.uuid}`);
+      },
+    };
+
+    detail.handleStreamMessage(message("discarded"), processors.processMessage);
+    const secondLoad = detail.beginInitialLoad();
+    detail.handleStreamMessage(message("kept"), processors.processMessage);
+
+    expect(firstLoad.completeReveal(processors)).toBe(false);
+    detail.handleStreamMessage(
+      message("still-buffered"),
+      processors.processMessage,
+    );
+
+    expect(processed).toEqual([]);
+
+    expect(secondLoad.completeReveal(processors)).toBe(true);
+
+    expect(processed).toEqual(["kept:true", "still-buffered:true"]);
   });
 
   it("coalesces incremental refresh work until the request settles", async () => {

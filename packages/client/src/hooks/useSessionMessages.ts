@@ -577,6 +577,9 @@ export function useSessionMessages(
     let pendingWarmError: Error | null = null;
     let initialAfterMessageId: string | undefined;
     const warmLoad = readSessionLoadCache(coordinator);
+    const initialLoad = coordinator.beginInitialLoad({
+      warmSnapshot: warmLoad,
+    });
 
     const notifyLoadComplete = (
       data: GetSessionResult,
@@ -665,7 +668,7 @@ export function useSessionMessages(
 
       // Mark ready and flush buffered stream events after the reveal snapshot
       // has been queued so buffered events merge on top of loaded transcript.
-      coordinator.completeInitialLoad({
+      initialLoad.completeReveal({
         processMessage: processStreamMessage,
         processSubagentMessage: processStreamSubagentMessage,
       });
@@ -833,9 +836,8 @@ export function useSessionMessages(
       tailCompactions: 2,
       tailTurns,
       tailFrom,
-      restoredFromSnapshot: Boolean(warmLoad),
+      restoredFromSnapshot: initialLoad.restoredFromSnapshot,
     });
-    coordinator.resetForInitialLoad();
     scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
     )

@@ -31,12 +31,22 @@ export interface SessionDetailStreamProcessors {
   processSubagentMessage(message: Message, agentId: string): void;
 }
 
+export interface SessionDetailBeginInitialLoadOptions {
+  warmSnapshot?: SessionRouteSnapshot;
+}
+
+export interface SessionDetailInitialLoadLifecycle {
+  readonly restoredFromSnapshot: boolean;
+  completeReveal(processors: SessionDetailStreamProcessors): boolean;
+}
+
 export class SessionDetailCoordinator {
   readonly entryKey: SessionDetailEntryKeyInput;
   readonly runtime: YaSourceRuntime;
 
   private readonly streamBuffer = createSessionDetailStreamBuffer();
   private initialLoadComplete = false;
+  private initialLoadEpoch = 0;
   private fetchNewMessagesInFlight: Promise<void> | null = null;
 
   constructor({ entryKey, runtime }: SessionDetailCoordinatorInput) {
@@ -60,9 +70,22 @@ export class SessionDetailCoordinator {
     return this.runtime.sessionDetails.cache;
   }
 
-  resetForInitialLoad(): void {
+  beginInitialLoad(
+    options: SessionDetailBeginInitialLoadOptions = {},
+  ): SessionDetailInitialLoadLifecycle {
+    const epoch = this.resetForInitialLoad();
+    return {
+      restoredFromSnapshot: Boolean(options.warmSnapshot),
+      completeReveal: (processors) =>
+        this.completeInitialReveal(epoch, processors),
+    };
+  }
+
+  private resetForInitialLoad(): number {
+    this.initialLoadEpoch += 1;
     this.initialLoadComplete = false;
     resetSessionDetailStreamBuffer(this.streamBuffer);
+    return this.initialLoadEpoch;
   }
 
   dispatch(action: SessionDetailAction): SessionDetailState | undefined {
@@ -119,9 +142,16 @@ export class SessionDetailCoordinator {
       .entries.find((entry) => entry.key === this.entryKeyString)?.approxBytes;
   }
 
-  completeInitialLoad(processors: SessionDetailStreamProcessors): void {
+  private completeInitialReveal(
+    epoch: number,
+    processors: SessionDetailStreamProcessors,
+  ): boolean {
+    if (epoch !== this.initialLoadEpoch) {
+      return false;
+    }
     this.initialLoadComplete = true;
     this.flushBufferedStream(processors);
+    return true;
   }
 
   handleStreamMessage(

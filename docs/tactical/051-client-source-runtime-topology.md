@@ -248,7 +248,8 @@ coalescing. It also owns entry-scoped store/cache operations such as
 dispatch, selector reads/subscriptions, route snapshot read/write/replace,
 retention, deletion, and scroll snapshot patching. Initial REST load, reveal
 gating, scroll memory policy, older-page loading, metadata refresh, and load
-progress remain hook-owned.
+progress remain hook-owned, but the stream-gate part of initial-load lifecycle
+now starts through `beginInitialLoad`.
 
 Intent:
 
@@ -319,6 +320,15 @@ Implementation note:
   step inward, likely a small `beginInitialLoad`/`completeInitialReveal`
   helper that owns the coordinator reset and stream-gate transition while the
   hook still performs the REST request and React state updates.
+- Added a generation-aware `beginInitialLoad` lifecycle object. The hook still
+  owns REST work and React reveal/progress updates, but coordinator-owned
+  lifecycle completion now opens the stream gate and flushes buffered stream
+  events only for the current initial load; stale reveal completions return
+  `false` and leave the current buffer gated.
+- The next Phase 3 slice should move a similarly narrow non-React concern out
+  of the hook, such as the warm-refresh action decision (`loadPersistedTranscript`
+  vs `replaceTailWindow` vs `applyCatchupMessages`) or a read-only
+  reveal-snapshot builder wrapper.
 
 ## Phase 4: Rename Public Cache Facade
 

@@ -3,6 +3,11 @@
 Status: Active running list for small, reviewable refactors in
 `packages/server/src/routes/sessions.ts`.
 
+See also: `topics/core-service-api.md` — the sessions REST surface this
+ledger refactors is the surface that topic proposes exposing as an
+embeddable core API, so ownership-boundary moves here shape that
+extraction.
+
 ## Purpose
 
 `sessions.ts` is one of the largest maintained source files in the repo. It is

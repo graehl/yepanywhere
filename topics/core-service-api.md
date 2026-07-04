@@ -16,7 +16,10 @@ See also: [`provider-abstraction.md`](provider-abstraction.md),
 [`openai-compatible-helper-sessions.md`](openai-compatible-helper-sessions.md),
 [`session-liveness.md`](session-liveness.md),
 [`provider-state-machine.md`](provider-state-machine.md),
-[`trusted-client-packaging.md`](trusted-client-packaging.md).
+[`trusted-client-packaging.md`](trusted-client-packaging.md),
+[`docs/tactical/053-sessions-route-refactor-ledger.md`](../docs/tactical/053-sessions-route-refactor-ledger.md)
+(running ledger of `sessions.ts` extraction refactors that reshape where
+this REST surface lives).
 
 Status: **proposal / not yet built.** The initial shaping decisions are
 resolved (see *Decisions*); one (the OpenAI-adapter session mapping) remains

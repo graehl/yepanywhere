@@ -6,7 +6,6 @@ import {
   PROMPT_SUGGESTION_MODES,
   type PromptSuggestionMode,
   type ProviderName,
-  type ClaudeSessionEntry,
   type RecapMode,
   type SessionMetadataResponse,
   type SessionQueuedMessageSummary,
@@ -52,7 +51,6 @@ import type {
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
-import { buildDag } from "../sessions/dag.js";
 import { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
@@ -113,12 +111,13 @@ import {
   resolveCompactPercent,
   resolveCompactWindow,
 } from "./session-compact-thresholds.js";
+import {
+  type ClaudeResumeApiErrorBlocker,
+  getClaudeResumeBlockerFromReader,
+} from "./session-claude-resume-guard.js";
 import type { EventBus } from "../watcher/index.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
-const CLAUDE_RESUME_API_ERROR_RECOVERY = "handoff-required";
-const CLAUDE_RESUME_API_ERROR_MESSAGE =
-  "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
 
 async function getSessionSlashCommands(
   process: Process | undefined,
@@ -157,81 +156,6 @@ function isQueueFullResponse(
   result: Process | QueuedResponse | QueueFullResponse,
 ): result is QueueFullResponse {
   return "error" in result && result.error === "queue_full";
-}
-
-interface ClaudeResumeApiErrorBlocker {
-  error: string;
-  recovery: typeof CLAUDE_RESUME_API_ERROR_RECOVERY;
-  messageId?: string;
-  apiErrorStatus?: unknown;
-  /**
-   * Transcript UUID of the last assistant message before the API-error tail.
-   * When present, the session is recoverable by resuming up to this message
-   * (SDK `resumeSessionAt`) instead of requiring a handoff.
-   */
-  resumeAtMessageId?: string;
-}
-
-function getClaudeResumeApiErrorBlocker(
-  messages: ClaudeSessionEntry[],
-): ClaudeResumeApiErrorBlocker | null {
-  const { activeBranch } = buildDag(messages);
-
-  for (let i = activeBranch.length - 1; i >= 0; i--) {
-    const raw = activeBranch[i]?.raw;
-    if (raw?.type !== "assistant") {
-      continue;
-    }
-
-    if (raw.isApiErrorMessage !== true) {
-      return null;
-    }
-
-    const apiError = raw as ClaudeSessionEntry & {
-      apiErrorStatus?: unknown;
-    };
-    // Walk further back past the API-error tail for the last good assistant
-    // message; its transcript uuid is a safe prefix-resume point.
-    let resumeAtMessageId: string | undefined;
-    for (let j = i - 1; j >= 0; j--) {
-      const prior = activeBranch[j]?.raw;
-      if (prior?.type !== "assistant") {
-        continue;
-      }
-      if (prior.isApiErrorMessage === true) {
-        continue;
-      }
-      resumeAtMessageId = prior.uuid;
-      break;
-    }
-    return {
-      error: CLAUDE_RESUME_API_ERROR_MESSAGE,
-      recovery: CLAUDE_RESUME_API_ERROR_RECOVERY,
-      messageId: raw.message.id,
-      apiErrorStatus: apiError.apiErrorStatus,
-      resumeAtMessageId,
-    };
-  }
-
-  return null;
-}
-
-async function getClaudeResumeBlockerFromReader(
-  reader: ISessionReader,
-  sessionId: string,
-  projectId: UrlProjectId,
-): Promise<ClaudeResumeApiErrorBlocker | null> {
-  const session = await reader.getSession(sessionId, projectId);
-  if (!session) {
-    return null;
-  }
-  if (
-    session.data.provider !== "claude" &&
-    session.data.provider !== "claude-ollama"
-  ) {
-    return null;
-  }
-  return getClaudeResumeApiErrorBlocker(session.data.session.messages);
 }
 
 function isCodexProviderName(

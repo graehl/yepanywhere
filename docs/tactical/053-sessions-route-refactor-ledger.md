@@ -264,13 +264,13 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/serv
 
 ### SRR-006: Move Claude Resume API-Error Guard
 
-Status: proposed.
+Status: done.
 
 Destination: new file
 `packages/server/src/routes/session-claude-resume-guard.ts`.
 
-Estimated line delta: about `-95` to `-115` lines from `sessions.ts`, with a
-similar-size helper module added.
+Line delta: `-76` lines from `sessions.ts`, `+82` lines in the Claude resume
+guard module.
 
 Problem:
 
@@ -286,6 +286,14 @@ Likely change:
   `getClaudeResumeBlockerFromReader(...)` into a small helper module;
 - keep the route's existing log messages and response shape unchanged;
 - import only `getClaudeResumeBlockerFromReader(...)` in `sessions.ts`.
+
+Implemented:
+
+- moved the Claude API-error tail detector and reader wrapper into
+  `session-claude-resume-guard.ts`;
+- removed the Claude transcript DAG dependency from `sessions.ts`;
+- kept the resume route's logging, `resumeSessionAt` handling, and 409
+  response shape in place.
 
 Value:
 

@@ -701,6 +701,47 @@ describe("SessionIndexService", () => {
       ]);
     });
 
+    it("does not emit for sessions the background walk found unchanged", async () => {
+      const eventBus = new EventBus();
+      const updated: string[] = [];
+      const created: string[] = [];
+      eventBus.subscribe((event) => {
+        if (event.type === "session-updated") {
+          updated.push(event.sessionId);
+        }
+        if (event.type === "session-created") {
+          created.push(event.session.id);
+        }
+      });
+      const swrService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        eventBus,
+        fullValidationIntervalMs: 40,
+      });
+      await swrService.initialize();
+
+      await createSession("session-1", "Unchanged content");
+      await createSession("session-2", "Original content");
+      await swrService.getSessionsWithCache(sessionDir, projectId, reader);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await overwriteSession("session-2", "Changed in background");
+
+      await swrService.getSessionsWithCache(sessionDir, projectId, reader);
+      await waitForCondition(
+        () => updated.includes("session-2"),
+        "expected background validation to emit for the changed session",
+      );
+
+      // Pins the invariant emitBackgroundIndexChanges relies on: the walk
+      // reassigns only changed rows, so untouched sessions keep identity and
+      // must produce no events (a map-rebuilding refactor would fail this by
+      // spamming session-updated for every session).
+      expect(updated).toEqual(["session-2"]);
+      expect(created).toEqual([]);
+    });
+
     it("serves a persisted index immediately after a service restart", async () => {
       const firstRun = new SessionIndexService({
         dataDir,

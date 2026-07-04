@@ -52,6 +52,8 @@ export const UI_KEYS = {
   sessionGeneratedTitleEnabled: "yep-anywhere-session-generated-title-enabled",
   sessionGeneratedTitleLength: "yep-anywhere-session-generated-title-length",
   alwaysShowQuoteCircles: "yep-anywhere-always-show-quote-circles",
+  paragraphQuoteCirclesEnabled:
+    "yep-anywhere-paragraph-quote-circles-enabled",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",

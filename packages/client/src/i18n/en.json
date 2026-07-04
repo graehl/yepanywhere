@@ -140,6 +140,8 @@
   "appearanceInlineImagesDescription": "Start linked image and video previews expanded in transcripts and markdown. Disable to keep media links compact until individually expanded.",
   "appearanceAlwaysShowQuoteCirclesTitle": "Always Show > Reply Buttons",
   "appearanceAlwaysShowQuoteCirclesDescription": "Show the > paragraph reply buttons all the time. When off, they reveal on hover or focus, and selection replies still show their own button.",
+  "appearanceParagraphQuoteCirclesTitle": "Paragraph > Reply Buttons",
+  "appearanceParagraphQuoteCirclesDescription": "Show one > reply button per rendered paragraph in assistant output. Disable to use a single block-level reply button.",
   "appearanceFunPhrasesTitle": "Fun Phrases",
   "appearanceFunPhrasesDescription": "Show playful status messages while waiting for responses. Disable to show only \"Thinking...\"",
   "appearanceFloatingActionButtonTitle": "Floating New Session Button",

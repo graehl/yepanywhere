@@ -153,6 +153,45 @@ describe("TextBlock", () => {
     ).toBeTruthy();
   });
 
+  it("keeps inline media stable when paragraph quote buttons are disabled", async () => {
+    setInlineMediaExpandedPreference(true);
+    const fetchMock = vi.fn(
+      async () => new Response(new Blob(["png"], { type: "image/png" })),
+    );
+    const observe = vi.fn();
+    class ResizeObserverMock {
+      observe = observe;
+      disconnect = vi.fn();
+    }
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(
+      <I18nProvider>
+        <TextBlock
+          text="[trajectory](/tmp/trajectory.png)"
+          augmentHtml={
+            '<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true" aria-label="Collapse image" aria-expanded="true" title="Collapse inline preview">-</button><a href="/api/local-image?path=%2Ftmp%2Ftrajectory.png" class="local-media-link" data-media-type="image">trajectory<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true"></span>'
+          }
+          onQuoteBlock={() => {}}
+          paragraphQuoteCirclesEnabled={false}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByAltText("trajectory.png")).toBeTruthy();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(observe).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /Quote this paragraph/ }),
+    ).toBeTruthy();
+  });
+
   it("keeps local media previews collapsed by default until expanded", async () => {
     setInlineMediaExpandedPreference(false);
     const fetchMock = vi.fn(

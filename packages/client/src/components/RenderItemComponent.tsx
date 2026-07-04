@@ -29,6 +29,7 @@ interface Props {
   onForkBeforeUserPrompt?: () => void;
   onQuoteTextBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
+  paragraphQuoteCirclesEnabled?: boolean;
   staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
   thinkingDurationMs?: number;
@@ -232,6 +233,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onForkBeforeUserPrompt,
   onQuoteTextBlock,
   alwaysShowQuoteCircle,
+  paragraphQuoteCirclesEnabled,
   staleNowMs,
   latestVisibleTimestampMs,
   thinkingDurationMs,
@@ -293,6 +295,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             augmentHtml={item.augmentHtml}
             onQuoteBlock={onQuoteTextBlock}
             alwaysShowQuoteCircle={alwaysShowQuoteCircle}
+            paragraphQuoteCirclesEnabled={paragraphQuoteCirclesEnabled}
           />
         );
 

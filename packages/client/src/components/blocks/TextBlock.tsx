@@ -61,6 +61,7 @@ interface Props {
   augmentHtml?: string;
   onQuoteBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
+  paragraphQuoteCirclesEnabled?: boolean;
 }
 
 export const TextBlock = memo(function TextBlock({
@@ -69,6 +70,7 @@ export const TextBlock = memo(function TextBlock({
   augmentHtml,
   onQuoteBlock,
   alwaysShowQuoteCircle = false,
+  paragraphQuoteCirclesEnabled = true,
 }: Props) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -220,7 +222,13 @@ export const TextBlock = memo(function TextBlock({
     void paragraphLayoutKey;
     const content = copySourceRef.current;
     const block = textBlockRef.current;
-    if (!onQuoteBlock || !content || !block || showStreamingContent) {
+    if (
+      !onQuoteBlock ||
+      !paragraphQuoteCirclesEnabled ||
+      !content ||
+      !block ||
+      showStreamingContent
+    ) {
       // Clear without churning state when already empty: the no-quote path must
       // render identically to a TextBlock without quote circles. A stray extra
       // render here disturbs other post-render content effects (inline media).
@@ -247,7 +255,12 @@ export const TextBlock = memo(function TextBlock({
     const observer = new ResizeObserver(measure);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [onQuoteBlock, paragraphLayoutKey, showStreamingContent]);
+  }, [
+    onQuoteBlock,
+    paragraphLayoutKey,
+    paragraphQuoteCirclesEnabled,
+    showStreamingContent,
+  ]);
 
   return (
     <div
@@ -256,7 +269,7 @@ export const TextBlock = memo(function TextBlock({
     >
       {onQuoteBlock && (
         <div className="text-block-quote-rail">
-          {paragraphTargets.length > 0 ? (
+          {paragraphQuoteCirclesEnabled && paragraphTargets.length > 0 ? (
             paragraphTargets.map((target, index) => (
               <button
                 key={index}

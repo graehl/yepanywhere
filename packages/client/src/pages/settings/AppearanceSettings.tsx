@@ -34,6 +34,7 @@ import {
 } from "../../hooks/useGeneratedTitleLength";
 import { useGeneratedTitleEnabled } from "../../hooks/useGeneratedTitleEnabled";
 import { useInlineMedia } from "../../hooks/useInlineMedia";
+import { useParagraphQuoteCirclesEnabled } from "../../hooks/useParagraphQuoteCirclesEnabled";
 import {
   DEFAULT_OUTPUT_FIXED_FONT_SIZE_OFFSET_PX,
   DEFAULT_OUTPUT_FONT_SIZE_PX,
@@ -199,6 +200,8 @@ export function AppearanceSettings() {
     useInlineMedia();
   const { alwaysShowQuoteCircles, setAlwaysShowQuoteCircles } =
     useAlwaysShowQuoteCircles();
+  const { paragraphQuoteCirclesEnabled, setParagraphQuoteCirclesEnabled } =
+    useParagraphQuoteCirclesEnabled();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -237,6 +240,7 @@ export function AppearanceSettings() {
       settingsIconStyle,
       inlineMediaExpandedByDefault,
       alwaysShowQuoteCircles,
+      paragraphQuoteCirclesEnabled,
       funPhrasesEnabled,
       floatingActionButtonEnabled,
       sidebarDuplicateHidingEnabled,
@@ -266,6 +270,7 @@ export function AppearanceSettings() {
       settingsIconStyle,
       inlineMediaExpandedByDefault,
       alwaysShowQuoteCircles,
+      paragraphQuoteCirclesEnabled,
       funPhrasesEnabled,
       floatingActionButtonEnabled,
       sidebarDuplicateHidingEnabled,
@@ -299,6 +304,7 @@ export function AppearanceSettings() {
       setSettingsIconStyle(snapshot.settingsIconStyle);
       setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
       setAlwaysShowQuoteCircles(snapshot.alwaysShowQuoteCircles);
+      setParagraphQuoteCirclesEnabled(snapshot.paragraphQuoteCirclesEnabled);
       setFunPhrasesEnabled(snapshot.funPhrasesEnabled);
       setFloatingActionButtonEnabled(snapshot.floatingActionButtonEnabled);
       setSidebarDuplicateHidingEnabled(snapshot.sidebarDuplicateHidingEnabled);
@@ -351,6 +357,7 @@ export function AppearanceSettings() {
       setSettingsIconStyle,
       setInlineMediaExpandedByDefault,
       setAlwaysShowQuoteCircles,
+      setParagraphQuoteCirclesEnabled,
       setFunPhrasesEnabled,
       setFloatingActionButtonEnabled,
       setSidebarDuplicateHidingEnabled,
@@ -890,6 +897,22 @@ export function AppearanceSettings() {
               type="checkbox"
               checked={alwaysShowQuoteCircles}
               onChange={(e) => setAlwaysShowQuoteCircles(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceParagraphQuoteCirclesTitle")}</strong>
+            <p>{t("appearanceParagraphQuoteCirclesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={paragraphQuoteCirclesEnabled}
+              onChange={(e) =>
+                setParagraphQuoteCirclesEnabled(e.target.checked)
+              }
             />
             <span className="toggle-slider" />
           </label>

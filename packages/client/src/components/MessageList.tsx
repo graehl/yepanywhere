@@ -25,6 +25,7 @@ import {
 } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
 import { useAlwaysShowQuoteCircles } from "../hooks/useAlwaysShowQuoteCircles";
+import { useParagraphQuoteCirclesEnabled } from "../hooks/useParagraphQuoteCirclesEnabled";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
@@ -859,6 +860,7 @@ export const MessageList = memo(function MessageList({
     left: number;
   } | null>(null);
   const { alwaysShowQuoteCircles } = useAlwaysShowQuoteCircles();
+  const { paragraphQuoteCirclesEnabled } = useParagraphQuoteCirclesEnabled();
   const { t } = useI18n();
   const nowMs = useRelativeNow();
 
@@ -3062,6 +3064,9 @@ export const MessageList = memo(function MessageList({
                         : undefined
                     }
                     alwaysShowQuoteCircle={alwaysShowQuoteCircles}
+                    paragraphQuoteCirclesEnabled={
+                      paragraphQuoteCirclesEnabled
+                    }
                     staleNowMs={assistantRow.staleNowMs}
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
                     thinkingDurationMs={assistantRow.thinkingDurationMs}

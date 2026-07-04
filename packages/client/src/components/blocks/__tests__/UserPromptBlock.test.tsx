@@ -145,6 +145,49 @@ describe("UserPromptBlock", () => {
     ]);
   });
 
+  it("marks an unconfirmed send with a margin tag whose tap explains it", () => {
+    render(
+      <I18nProvider>
+        <UserPromptBlock content="hello there" deliveryState="sent" />
+      </I18nProvider>,
+    );
+
+    const bubble = screen
+      .getByText("hello there")
+      .closest(".message-user-prompt");
+    expect(bubble?.classList.contains("user-prompt-unconfirmed")).toBe(true);
+
+    const marker = screen.getByRole("button", {
+      name: /waiting for the session to record it/i,
+    });
+    expect(marker.textContent).toBe("sent");
+    expect(marker.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("status")).toBeNull();
+
+    fireEvent.click(marker);
+    expect(marker.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("status").textContent).toMatch(
+      /isn't recorded in the session yet/,
+    );
+
+    fireEvent.click(marker);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("renders a confirmed send as the plain bubble with no marker", () => {
+    render(
+      <I18nProvider>
+        <UserPromptBlock content="hello there" deliveryState="confirmed" />
+      </I18nProvider>,
+    );
+
+    const bubble = screen
+      .getByText("hello there")
+      .closest(".message-user-prompt");
+    expect(bubble?.classList.contains("user-prompt-unconfirmed")).toBe(false);
+    expect(screen.queryByText("sent")).toBeNull();
+  });
+
   it("does not fetch uploaded image previews until opened", async () => {
     const remotePath =
       "/api/projects/proj/sessions/session/upload/123e4567-e89b-12d3-a456-426614174000_photo.jpg";

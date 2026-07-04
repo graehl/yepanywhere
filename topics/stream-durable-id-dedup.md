@@ -89,10 +89,12 @@ is impossible here: the CLI drops the supplied uuid on its queue path.
   postdates the anchor row. Re-sends merge idempotently by id client-side.
 - **Delivery-state feedback (landed, default-on).** The pairing doubles as
   the send-confirmation signal: a self-sent turn (tempId/messageMetadata on
-  the echo) renders fainter with a small ✓ while sdk-source-only —
+  the echo) renders fainter with a light "sent" tag in the bubble's right
+  margin (hover title + tap popover explain it) while sdk-source-only —
   server-accepted but not yet proven durable, exactly the copy a process kill
-  could lose — and flips to the ordinary bubble when the durable copy merges
-  (`lib/deliveryState.ts`, `UserPromptBlock`). Owned sessions normally skip
+  could lose — and flips to the ordinary unadorned bubble when the durable
+  copy merges (`lib/deliveryState.ts`, `UserPromptBlock`). A ✓ glyph was
+  rejected: it reads as confirmed/seen, the opposite of the state it marks. Owned sessions normally skip
   file-change fetches; while unconfirmed sends exist they fetch incrementally
   so confirmation lands mid-turn (`useSession.handleFileChange`).
 

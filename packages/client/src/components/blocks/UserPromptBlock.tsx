@@ -25,8 +25,9 @@ interface Props {
   extraActions?: ReactNode;
   /**
    * "sent" while the turn exists only as the optimistic echo (not yet proven
-   * in the durable transcript); rendered fainter with a ✓ marker. Absent or
-   * "confirmed" renders the normal bubble. See lib/deliveryState.ts.
+   * in the durable transcript); rendered fainter with a small "sent" tag in
+   * the bubble's right margin. Absent or "confirmed" renders the normal
+   * bubble. See lib/deliveryState.ts.
    */
   deliveryState?: UserPromptDeliveryState;
 }
@@ -449,9 +450,11 @@ function UserPromptActionButtons({
 }
 
 /**
- * Single small check while the turn is server-accepted but not yet proven in
- * the durable transcript; disappears entirely on confirmation so the steady
- * state stays unadorned.
+ * Small "sent" tag in the bubble's right margin while the turn is
+ * server-accepted but not yet proven in the durable transcript; disappears
+ * entirely on confirmation so the steady state stays unadorned. Hover shows
+ * the short explanation (title); click/tap toggles a popover with the full
+ * one, since touch devices never see the title.
  */
 function DeliveryStateMarker({
   deliveryState,
@@ -459,16 +462,30 @@ function DeliveryStateMarker({
   deliveryState?: UserPromptDeliveryState;
 }) {
   const { t } = useI18n();
+  const [showDetail, setShowDetail] = useState(false);
   if (deliveryState !== "sent") return null;
   return (
-    <span
-      className="user-prompt-delivery-marker"
-      role="img"
-      title={t("userPromptDeliverySent")}
-      aria-label={t("userPromptDeliverySent")}
-    >
-      ✓
-    </span>
+    <>
+      <button
+        type="button"
+        className="user-prompt-delivery-marker"
+        title={t("userPromptDeliverySent")}
+        aria-label={t("userPromptDeliverySent")}
+        aria-expanded={showDetail}
+        onClick={() => setShowDetail((open) => !open)}
+        onBlur={() => setShowDetail(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setShowDetail(false);
+        }}
+      >
+        {t("userPromptDeliverySentLabel")}
+      </button>
+      {showDetail && (
+        <span className="user-prompt-delivery-popover" role="status">
+          {t("userPromptDeliverySentDetail")}
+        </span>
+      )}
+    </>
   );
 }
 

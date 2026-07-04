@@ -54,6 +54,22 @@ function htmlToText(html: string): string {
   return template.content.textContent ?? "";
 }
 
+const RenderedHtmlIsland = memo(function RenderedHtmlIsland({
+  className,
+  html,
+}: {
+  className?: string;
+  html: string;
+}) {
+  return (
+    <div
+      className={className}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered or local trusted HTML
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+});
+
 interface Props {
   text: string;
   isStreaming?: boolean;
@@ -350,13 +366,11 @@ export const TextBlock = memo(function TextBlock({
         {/* Show fallback content when not actively streaming */}
         {!showStreamingContent &&
           (showRendered && augmentHtml ? (
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
+            <RenderedHtmlIsland html={augmentHtml} />
           ) : showRendered && localMathPreview.changed ? (
-            <div
+            <RenderedHtmlIsland
               className="text-block-local-rendered"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
-              dangerouslySetInnerHTML={{ __html: localMathPreview.html }}
+              html={localMathPreview.html}
             />
           ) : (
             <pre className="text-block-source">

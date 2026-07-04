@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -190,6 +191,55 @@ describe("TextBlock", () => {
     expect(
       screen.getByRole("button", { name: /Quote this paragraph/ }),
     ).toBeTruthy();
+  });
+
+  it("keeps inline media stable across paragraph quote measurements", async () => {
+    setInlineMediaExpandedPreference(true);
+    const fetchMock = vi.fn(
+      async () => new Response(new Blob(["png"], { type: "image/png" })),
+    );
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe = vi.fn();
+      disconnect = vi.fn();
+    }
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const { container } = render(
+      <I18nProvider>
+        <TextBlock
+          text="[trajectory](/tmp/trajectory.png)"
+          augmentHtml={
+            '<p><span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true" aria-label="Collapse image" aria-expanded="true" title="Collapse inline preview">-</button><a href="/api/local-image?path=%2Ftmp%2Ftrajectory.png" class="local-media-link" data-media-type="image">trajectory<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true"></span></p>'
+          }
+          onQuoteBlock={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByAltText("trajectory.png")).toBeTruthy();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(container.querySelector(".text-block-quote-paragraph")).toBeTruthy();
+    const preview = container.querySelector(".local-media-inline-preview");
+
+    await act(async () => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".local-media-inline-preview")).toBe(
+      preview,
+    );
   });
 
   it("keeps local media previews collapsed by default until expanded", async () => {

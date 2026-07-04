@@ -298,6 +298,10 @@ function isNearScrollBottom(container: HTMLElement): boolean {
 // Tolerance for "the last line is in view" — sub-pixel / zoom / high-DPI
 // rounding only, not a behavioural band.
 const FOLLOW_BOTTOM_TOLERANCE_PX = 4;
+// Scroll snapshots are warm-restore hints, not live state: capture involves a
+// full anchor walk (rect reads), so per-tick publishes coalesce to a trailing
+// capture; leave/settle paths still publish immediately.
+const SCROLL_SNAPSHOT_PUBLISH_DEBOUNCE_MS = 200;
 
 // "At bottom" for follow purposes = the last rendered line is in view (its
 // bottom edge at or above the viewport bottom), not that scrollTop reached the
@@ -1388,12 +1392,25 @@ export const MessageList = memo(function MessageList({
     [displayRenderItems, turnGroups],
   );
 
+  // Latest render data for scroll-time reads: the capture callback stays
+  // identity-stable so the scroll listener does not re-attach on every
+  // transcript change.
+  const displayRenderItemsRef = useRef(displayRenderItems);
+  displayRenderItemsRef.current = displayRenderItems;
+  const updateScrollPositionTimestampRef = useRef(
+    updateScrollPositionTimestamp,
+  );
+  updateScrollPositionTimestampRef.current = updateScrollPositionTimestamp;
+
   const captureScrollSnapshot = useCallback(
     (container: HTMLElement, content: HTMLDivElement) => {
       const atBottom = isAtScrollBottom(container, content);
       const anchor =
-        getFirstVisibleRenderAnchor(content, container, displayRenderItems) ??
-        undefined;
+        getFirstVisibleRenderAnchor(
+          content,
+          container,
+          displayRenderItemsRef.current,
+        ) ?? undefined;
       return {
         atBottom,
         scrollTop: container.scrollTop,
@@ -1403,7 +1420,7 @@ export const MessageList = memo(function MessageList({
         updatedAtMs: Date.now(),
       };
     },
-    [displayRenderItems],
+    [],
   );
 
   useEffect(() => {
@@ -1807,6 +1824,35 @@ export const MessageList = memo(function MessageList({
     if (!content || !container) return;
     onScrollSnapshotChange(captureScrollSnapshot(container, content));
   }, [captureScrollSnapshot, onScrollSnapshotChange]);
+
+  const scrollSnapshotPublishTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const clearScrollSnapshotPublishTimer = useCallback(() => {
+    if (scrollSnapshotPublishTimerRef.current !== null) {
+      clearTimeout(scrollSnapshotPublishTimerRef.current);
+      scrollSnapshotPublishTimerRef.current = null;
+    }
+  }, []);
+  const schedulePublishScrollSnapshot = useCallback(() => {
+    clearScrollSnapshotPublishTimer();
+    scrollSnapshotPublishTimerRef.current = setTimeout(() => {
+      scrollSnapshotPublishTimerRef.current = null;
+      publishScrollSnapshot();
+    }, SCROLL_SNAPSHOT_PUBLISH_DEBOUNCE_MS);
+  }, [clearScrollSnapshotPublishTimer, publishScrollSnapshot]);
+
+  // Leave-time capture: flush the pending trailing capture and publish once
+  // on unmount or on becoming inert — not on listener re-attachment.
+  useEffect(() => {
+    if (inert) {
+      return;
+    }
+    return () => {
+      clearScrollSnapshotPublishTimer();
+      publishScrollSnapshot();
+    };
+  }, [inert, clearScrollSnapshotPublishTimer, publishScrollSnapshot]);
 
   useEffect(() => {
     const wasSuppressed = previousScrollSnapshotWritesSuppressedRef.current;
@@ -2344,13 +2390,9 @@ export const MessageList = memo(function MessageList({
       clearForcedCurrentScrollTimers();
     }
     setIsScrolledToBottom(atBottom);
-    updateScrollPositionTimestamp({ atBottom });
-    publishScrollSnapshot();
-  }, [
-    clearForcedCurrentScrollTimers,
-    publishScrollSnapshot,
-    updateScrollPositionTimestamp,
-  ]);
+    updateScrollPositionTimestampRef.current({ atBottom });
+    schedulePublishScrollSnapshot();
+  }, [clearForcedCurrentScrollTimers, schedulePublishScrollSnapshot]);
 
   // Attach scroll listener to parent container
   useEffect(() => {
@@ -2363,10 +2405,9 @@ export const MessageList = memo(function MessageList({
     container.addEventListener("scroll", handleScroll);
 
     return () => {
-      publishScrollSnapshot();
       container.removeEventListener("scroll", handleScroll);
     };
-  }, [handleScroll, inert, publishScrollSnapshot]);
+  }, [handleScroll, inert]);
 
   // Cancel follow before browser scroll events when the user clearly tries to
   // move away from the live tail. Programmatic scroll bursts can otherwise keep

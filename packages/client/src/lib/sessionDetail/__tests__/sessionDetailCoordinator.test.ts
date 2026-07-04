@@ -480,6 +480,26 @@ describe("SessionDetailCoordinator", () => {
     });
   });
 
+  it("builds warm hydration reveal inputs from hook-supplied cursors", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(2);
+    const retainedScroll = scrollSnapshot(72);
+
+    expect(
+      detail.buildWarmHydrationRevealInput({
+        loadedSession: session(),
+        loadedPagination: responsePagination,
+        lastMessageId: "last-warm",
+        scrollSnapshot: retainedScroll,
+      }),
+    ).toEqual({
+      session: session(),
+      pagination: responsePagination,
+      lastMessageId: "last-warm",
+      scrollSnapshot: retainedScroll,
+    });
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

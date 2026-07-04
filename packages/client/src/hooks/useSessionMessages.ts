@@ -632,12 +632,12 @@ export function useSessionMessages(
     }): SessionDetailRevealSnapshotResult => {
       const reveal = readRevealSnapshotAfterStoreUpdate(
         options.diagnosticBoundary,
-        {
-          session: options.loadedSession,
-          pagination: options.loadedPagination,
+        coordinator.buildWarmHydrationRevealInput({
+          loadedSession: options.loadedSession,
+          loadedPagination: options.loadedPagination,
           lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
-        },
+        }),
       );
       const { snapshot } = reveal;
       completeInitialReveal({

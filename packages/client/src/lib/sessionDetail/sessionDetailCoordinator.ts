@@ -121,6 +121,13 @@ export interface SessionDetailInitialRevealCompletion {
   loadCompletePerfDetail: Record<string, unknown>;
 }
 
+export interface SessionDetailWarmHydrationRevealInputOptions {
+  loadedSession: GetSessionResult["session"];
+  loadedPagination?: GetSessionResult["pagination"];
+  lastMessageId?: string;
+  scrollSnapshot?: SessionRouteScrollSnapshot;
+}
+
 export interface SessionDetailLoadCompleteResult {
   session: GetSessionResult["session"];
   status: GetSessionResult["ownership"];
@@ -395,6 +402,20 @@ export class SessionDetailCoordinator {
         sourceMessageCount,
         { restoredFromSnapshot },
       ),
+    };
+  }
+
+  buildWarmHydrationRevealInput({
+    loadedSession,
+    loadedPagination,
+    lastMessageId,
+    scrollSnapshot,
+  }: SessionDetailWarmHydrationRevealInputOptions): SessionDetailRevealSnapshotInput {
+    return {
+      session: loadedSession,
+      pagination: loadedPagination,
+      lastMessageId,
+      scrollSnapshot,
     };
   }
 

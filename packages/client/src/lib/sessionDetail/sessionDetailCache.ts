@@ -289,8 +289,17 @@ export class SessionDetailCache {
     return evicted;
   }
 
+  /**
+   * Drop every unretained record — a warm-cache wipe. Retained entries
+   * belong to mounted consumers: deleting their record would strip retain()
+   * eviction protection and blank live transcript state, so they survive and
+   * are disposed of by their owner's unmount path instead.
+   */
   clear(): void {
     for (const entry of Array.from(this.entries.values())) {
+      if (entry.retainCount > 0) {
+        continue;
+      }
       entry.deleteRecord();
       this.deleteEntryIfIdle(entry);
     }

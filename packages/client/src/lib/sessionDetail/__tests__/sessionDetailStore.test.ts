@@ -358,6 +358,24 @@ describe("SessionDetailStore", () => {
     expect(store.readScrollSnapshot(storeKey)?.scrollTop).toBe(100);
   });
 
+  it("keeps retained entries through a warm-cache clear", () => {
+    const store = createSessionDetailStore();
+    const retainedKey = key("live-session");
+    const warmKey = key("warm-session");
+
+    store.writeRouteSnapshot(retainedKey, snapshot("live-session", ["msg-1"]));
+    store.writeRouteSnapshot(warmKey, snapshot("warm-session", ["msg-2"]));
+    const release = store.retain(retainedKey);
+
+    store.clear();
+
+    expect(store.readRouteSnapshot(warmKey)).toBeUndefined();
+    expect(store.readRouteSnapshot(retainedKey)?.lastMessageId).toBe("msg-1");
+    expect(store.getStats().entries[0]?.retainCount).toBe(1);
+
+    release();
+  });
+
   it("returns an identity-stable scroll snapshot between patches", () => {
     const store = createSessionDetailStore();
     const storeKey = key("session-a");

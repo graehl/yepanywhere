@@ -269,6 +269,47 @@ describe("SessionDetailCoordinator", () => {
     expect(detail.readRouteSnapshot()).toBeUndefined();
   });
 
+  it("applies explicit initial route snapshot cache policy", () => {
+    const detail = coordinator();
+
+    expect(detail.readInitialRouteSnapshot({ enabled: false })).toBeUndefined();
+    expect(
+      detail.writeInitialRouteSnapshot(routeSnapshot("disabled"), {
+        enabled: false,
+        retainScrollSnapshot: true,
+      }),
+    ).toBe(false);
+    expect(detail.readRouteSnapshot()).toBeUndefined();
+
+    expect(
+      detail.writeInitialRouteSnapshot(routeSnapshot("without-scroll"), {
+        enabled: true,
+        retainScrollSnapshot: false,
+      }),
+    ).toBe(true);
+    expect(detail.readInitialRouteSnapshot({ enabled: false })).toBeUndefined();
+    expect(
+      detail.readInitialRouteSnapshot({ enabled: true })?.lastMessageId,
+    ).toBe("without-scroll");
+    expect(
+      detail.readInitialRouteSnapshot({ enabled: true })?.scrollSnapshot,
+    ).toBeUndefined();
+
+    expect(
+      detail.writeInitialRouteSnapshot(routeSnapshot("with-scroll"), {
+        enabled: true,
+        retainScrollSnapshot: true,
+      }),
+    ).toBe(true);
+    expect(
+      detail.readInitialRouteSnapshot({ enabled: true })?.lastMessageId,
+    ).toBe("with-scroll");
+    expect(
+      detail.readInitialRouteSnapshot({ enabled: true })?.scrollSnapshot
+        ?.scrollTop,
+    ).toBe(12);
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

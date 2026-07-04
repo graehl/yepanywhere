@@ -170,26 +170,20 @@ interface StoreBackedSessionDetail {
 function readSessionLoadCache(
   coordinator: SessionDetailCoordinator,
 ): SessionRouteSnapshot | undefined {
-  if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
-    return undefined;
-  }
-  return coordinator.readRouteSnapshot();
+  return coordinator.readInitialRouteSnapshot({
+    enabled: getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
+  });
 }
 
 function writeSessionLoadCache(
   coordinator: SessionDetailCoordinator,
   entry: SessionRouteSnapshot,
 ): boolean {
-  if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
-    return false;
-  }
-  return coordinator.writeRouteSnapshot({
-    ...entry,
-    scrollSnapshot: shouldRetainSessionScrollMemory(
+  return coordinator.writeInitialRouteSnapshot(entry, {
+    enabled: getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
+    retainScrollSnapshot: shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
-    )
-      ? entry.scrollSnapshot
-      : undefined,
+    ),
   });
 }
 
@@ -317,11 +311,7 @@ export function useSessionMessages(
       coordinator,
       {
         ...snapshot,
-        scrollSnapshot: shouldRetainSessionScrollMemory(
-          getSessionScrollBehaviorMode(),
-        )
-          ? scrollSnapshotRef.current
-          : undefined,
+        scrollSnapshot: scrollSnapshotRef.current,
       },
     );
   }, [coordinator, readCurrentStoreRouteSnapshot]);

@@ -347,6 +347,134 @@ describe("Sessions API", () => {
     });
   });
 
+  describe("GET /api/projects/:projectId/sessions/:sessionId", () => {
+    const projectPath = "/home/user/myproject";
+
+    async function writeCompactedSession(name: string) {
+      const encodedPath = projectPath.replace(/[/\\:]/g, "-");
+      const sessionDir = join(testDir, "localhost", encodedPath);
+      const timestamp = (second: number) =>
+        `2026-01-01T00:00:${String(second).padStart(2, "0")}Z`;
+      const user = (uuid: string, parentUuid: string | null, second: number) =>
+        ({
+          type: "user",
+          cwd: projectPath,
+          sessionId: name,
+          uuid,
+          ...(parentUuid ? { parentUuid } : {}),
+          timestamp: timestamp(second),
+          message: { role: "user", content: uuid },
+        }) satisfies Record<string, unknown>;
+      const assistant = (
+        uuid: string,
+        parentUuid: string,
+        second: number,
+      ) =>
+        ({
+          type: "assistant",
+          cwd: projectPath,
+          sessionId: name,
+          uuid,
+          parentUuid,
+          timestamp: timestamp(second),
+          message: { role: "assistant", content: uuid },
+        }) satisfies Record<string, unknown>;
+      const compactBoundary = (
+        uuid: string,
+        logicalParentUuid: string,
+        second: number,
+      ) =>
+        ({
+          type: "system",
+          subtype: "compact_boundary",
+          cwd: projectPath,
+          sessionId: name,
+          uuid,
+          parentUuid: null,
+          logicalParentUuid,
+          timestamp: timestamp(second),
+          content: "Conversation compacted",
+          compactMetadata: { trigger: "auto", preTokens: 100000 + second },
+        }) satisfies Record<string, unknown>;
+
+      const entries = [
+        user("u1", null, 1),
+        assistant("a1", "u1", 2),
+        compactBoundary("cb1", "a1", 3),
+        user("u2", "cb1", 4),
+        assistant("a2", "u2", 5),
+        compactBoundary("cb2", "a2", 6),
+        user("u3", "cb2", 7),
+        assistant("a3", "u3", 8),
+        compactBoundary("cb3", "a3", 9),
+        user("u4", "cb3", 10),
+      ];
+
+      await writeFile(
+        join(sessionDir, `${name}.jsonl`),
+        `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      );
+    }
+
+    it("defaults no-query detail requests to a compact tail", async () => {
+      await writeCompactedSession("sess-compact-default");
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-compact-default`,
+        { headers: { "X-Yep-Anywhere": "true" } },
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
+        .toEqual(["cb2", "u3", "a3", "cb3", "u4"]);
+      expect(json.pagination).toMatchObject({
+        hasOlderMessages: true,
+        returnedMessageCount: 5,
+        totalCompactions: 3,
+        truncatedBeforeMessageId: "cb2",
+      });
+    });
+
+    it("returns full transcript only when fullHistory=1 is explicit", async () => {
+      await writeCompactedSession("sess-compact-full");
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-compact-full?fullHistory=1&fullHistoryReason=test`,
+        { headers: { "X-Yep-Anywhere": "true" } },
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
+        .toEqual(["u1", "a1", "cb1", "u2", "a2", "cb2", "u3", "a3", "cb3", "u4"]);
+      expect(json.pagination).toBeUndefined();
+    });
+
+    it("preserves explicit compact-tail bounds", async () => {
+      await writeCompactedSession("sess-compact-explicit");
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-compact-explicit?tailCompactions=1`,
+        { headers: { "X-Yep-Anywhere": "true" } },
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
+        .toEqual(["cb3", "u4"]);
+      expect(json.pagination).toMatchObject({
+        hasOlderMessages: true,
+        returnedMessageCount: 2,
+        totalCompactions: 3,
+        truncatedBeforeMessageId: "cb3",
+      });
+    });
+  });
+
   describe("POST /api/sessions/:sessionId/input", () => {
     it("returns 404 if no active process", async () => {
       const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });

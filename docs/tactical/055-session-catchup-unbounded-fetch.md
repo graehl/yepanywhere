@@ -6,7 +6,9 @@ Topic: session-liveness
 Status: Problem statement from the 2026-07-04 mobile freeze investigation.
 The first client-side mitigation makes catch-up fall back to a compact tail
 when the last-message cursor is missing, and requires client callers to mark
-intentional full-history reads explicitly.
+intentional full-history reads explicitly. The follow-up server mitigation
+defaults uncursored session-detail reads to a compact tail unless
+`fullHistory=1` is explicit.
 
 ## Problem
 
@@ -109,6 +111,87 @@ Background server churn was also present: the Codex JSONL session file was
 large, and the summary parser worker restarted around the same session. That
 may have increased latency, but it is not required to explain the browser
 freeze. The unbounded session-detail response is sufficient.
+
+## Endpoint Size Evidence
+
+Follow-up measurements on `2026-07-04` used the same session id,
+`019f28d9-2dff-7dd2-8326-4b0e6093aed4`, against the local dev server over
+HTTPS. Plain HTTP returned an empty reply because the local server listener was
+HTTPS; the endpoint measurements below are from successful HTTPS requests.
+
+Single compact-tail request:
+
+```text
+GET /api/projects/:projectId/sessions/:sessionId?tailCompactions=2
+
+curl gzip wire bytes: 618801
+curl gzip time_starttransfer: 0.735760s
+curl gzip time_total: 0.781609s
+inflated JSON bytes: 7503763
+inflated JSON MiB: 7.16
+messages returned: 1145-1178 in the sampled runs
+desktop Node JSON.parse: about 10ms
+```
+
+Matching server slow-log entry from the clean single compressed tail request:
+
+```text
+2026-07-04T19:20:33.108Z session_detail_slow
+tailCompactions=2
+returnedMessageCount=1178
+normalizedMessageCount=7234
+totalMs=711.9
+augmentMs=621.1
+normalizeMs=87.9
+readMs=2.6
+```
+
+Single unbounded full-history request:
+
+```text
+GET /api/projects/:projectId/sessions/:sessionId
+
+curl gzip wire bytes: 3832283
+curl gzip time_starttransfer: 2.932659s
+curl gzip time_total: 3.208717s
+raw uncompressed Content-Length: 41259321
+inflated JSON MiB: 39.35
+messages returned: 7206-7239 in the sampled runs
+desktop Node JSON.parse: about 59ms
+pagination: null
+```
+
+Matching server slow-log entry from the clean single compressed full request:
+
+```text
+2026-07-04T19:20:43.716Z session_detail_slow
+tailCompactions=null
+returnedMessageCount=7239
+normalizedMessageCount=7239
+totalMs=2814.5
+augmentMs=2738.3
+normalizeMs=73.8
+readMs=2.3
+```
+
+Earlier full-history measurements from the same session ranged up to
+`3492.8ms` server-side, with `2738.5ms` in augmentation and `680.6ms` in
+read time. The original incident full-history request was smaller but still
+expensive: `6631` messages, `2032.1ms` server time, and `1954.5ms` in
+augmentation.
+
+The server route is not semantically streaming the session detail response. It
+builds the response object and returns it with `c.json(...)`; the browser
+client consumes it with `res.json()`. HTTP may use gzip and chunked transfer,
+but the app-level contract still requires the client to receive, inflate,
+parse, store, preprocess, and render the complete JSON response.
+
+One parallel measurement also showed a compact-tail request delayed while an
+unbounded full-history request was running. In that run the tail request logged
+`totalMs=3595.1` and `readMs=2936.4`, compared with about `700ms` for a clean
+single tail request. This needs a targeted reproduction before assigning the
+mechanism, but it is enough to treat unbounded browser-originated detail reads
+as a server-side blast-radius problem, not only a client freeze problem.
 
 ## Likely Failure Shape
 
@@ -225,12 +308,12 @@ local invariant and prevents future accidental full-history reads.
 
 ### 3. Add a server-side defensive default
 
-The server route could default browser session-detail requests to
-`tailCompactions=2` unless an explicit full-history query flag is present.
+The server route defaults session-detail requests to `tailCompactions=2`
+unless a cursor/tail bound or explicit `fullHistory=1` query flag is present.
 
-This is a strong safety net, but it needs an API audit first. Some legitimate
-callers may currently depend on the no-query route returning the entire
-transcript, such as exports, share flows, or debugging tools.
+This is the server-side safety net for old accidental no-query calls, manual
+requests, and future client bugs. Legitimate full-transcript callers must be
+explicit so they remain easy to audit.
 
 ### 4. Audit direct full-history callers
 
@@ -288,7 +371,7 @@ Useful tests:
 - Do `/btw` aside sessions need full transcripts, or can they use compact
   tails?
 
-## First Slice
+## Implemented Slices
 
 The first client-side invariant is: `fetchNewMessages()` must not call session
 detail without either `afterMessageId` or a bounded tail option. If the cursor
@@ -300,5 +383,24 @@ source API boundary. Direct `api.getSession(projectId, sessionId)` callers in
 the session page now route through the source API with `fullHistory: true` and
 a caller reason.
 
-Remaining follow-up work is to decide whether the server route should also
-enforce a bounded default or log large unbounded browser-originated responses.
+The second server-side invariant is: uncursored session-detail reads default to
+`tailCompactions=2` unless the request includes `fullHistory=1`. The client
+source API maps explicit full-history calls to that query and passes the
+reason for logging. Route coverage checks default compact-tail behavior,
+explicit full-history behavior, and explicit compact-tail bounds.
+
+Remaining follow-up work is to decide whether full-history export/debug flows
+should move to a separate endpoint and whether the live endpoint needs byte or
+message-count caps beyond the compact-tail default.
+
+## Related Follow-Ups
+
+- `docs/tactical/056-summary-parser-coordination-and-session-detail-load.md`
+  tracks the adjacent server-side load problem: repeated large Codex parsing,
+  unbounded detail visibility, and the server guardrail work item for
+  session-detail loads.
+- `docs/tactical/041-cached-session-restore-performance.md` tracks the client
+  side of large transcript responsiveness once data is already local or cached.
+- `docs/tactical/052-session-detail-cache-admission.md` tracks the live
+  session-detail store versus warm-cache boundary for over-budget transcript
+  windows.

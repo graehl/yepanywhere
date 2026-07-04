@@ -513,6 +513,8 @@ export const api = {
       beforeMessageId?: string;
       tailTurns?: number;
       tailFrom?: string;
+      fullHistory?: boolean;
+      fullHistoryReason?: string;
     },
   ) => {
     const params = new URLSearchParams();
@@ -524,6 +526,9 @@ export const api = {
     if (options?.tailTurns !== undefined)
       params.set("tailTurns", String(options.tailTurns));
     if (options?.tailFrom) params.set("tailFrom", options.tailFrom);
+    if (options?.fullHistory) params.set("fullHistory", "1");
+    if (options?.fullHistoryReason)
+      params.set("fullHistoryReason", options.fullHistoryReason);
     const qs = params.toString();
     return fetchJSON<{
       session: SessionMetadata;

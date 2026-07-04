@@ -50,7 +50,15 @@ describe("source runtime session detail API", () => {
       fullHistoryReason: "test explicit full-history escape hatch",
     });
 
-    expect(apiMocks.getSession).toHaveBeenCalledWith("proj-1", "sess-1");
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        fullHistory: true,
+        fullHistoryReason: "test explicit full-history escape hatch",
+      },
+    );
   });
 
   it("rejects unbounded session-detail requests without explicit full history", () => {

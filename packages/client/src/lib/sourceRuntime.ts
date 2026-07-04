@@ -77,7 +77,10 @@ const currentSourceApiClient: SourceApiClient = {
       if (!input.fullHistoryReason.trim()) {
         throw new Error("Full-history session request requires a reason.");
       }
-      return api.getSession(projectId, sessionId);
+      return api.getSession(projectId, sessionId, undefined, {
+        fullHistory: true,
+        fullHistoryReason: input.fullHistoryReason,
+      });
     }
 
     const { afterMessageId, tailCompactions, beforeMessageId, tailTurns } =
@@ -89,6 +92,8 @@ const currentSourceApiClient: SourceApiClient = {
           beforeMessageId?: string;
           tailTurns?: number;
           tailFrom?: string;
+          fullHistory?: boolean;
+          fullHistoryReason?: string;
         }
       | undefined;
     const hasAfterMessageId = Boolean(afterMessageId);

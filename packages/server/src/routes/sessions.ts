@@ -118,6 +118,8 @@ import {
 import type { EventBus } from "../watcher/index.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
+const DEFAULT_SESSION_DETAIL_TAIL_COMPACTIONS = 2;
+const LARGE_FULL_HISTORY_MESSAGE_THRESHOLD = 1000;
 
 async function getSessionSlashCommands(
   process: Process | undefined,
@@ -2466,12 +2468,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   //   ?beforeMessageId=<id> - cursor for loading older chunks (used with tailCompactions)
   //   ?tailTurns=<n> - aggressive opt-in client memory cap by recent user turns
   //   ?tailFrom=<id> - aggressive opt-in client memory cap from a user message id
+  //   ?fullHistory=1 - explicit opt-in to the full transcript
   routes.get("/projects/:projectId/sessions/:sessionId", async (c) => {
     const requestStartMs = performance.now();
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
     const afterMessageId = c.req.query("afterMessageId");
     const publicShare = c.req.query("publicShare") === "1";
+    const fullHistory = c.req.query("fullHistory") === "1";
+    const fullHistoryReason = c.req.query("fullHistoryReason");
     const tailCompactionsParam = c.req.query("tailCompactions");
     const beforeMessageId = c.req.query("beforeMessageId");
     const tailTurnsParam = c.req.query("tailTurns");
@@ -2484,6 +2489,27 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       tailTurnsParam !== undefined
         ? Number.parseInt(tailTurnsParam, 10)
         : undefined;
+    const requestedTailCompactions =
+      tailCompactions !== undefined &&
+      !Number.isNaN(tailCompactions) &&
+      tailCompactions > 0
+        ? tailCompactions
+        : undefined;
+    const requestedTailTurns =
+      tailTurns !== undefined && !Number.isNaN(tailTurns) && tailTurns > 0
+        ? tailTurns
+        : undefined;
+    const defaultedToCompactTail =
+      !fullHistory &&
+      !afterMessageId &&
+      !tailFrom &&
+      requestedTailTurns === undefined &&
+      requestedTailCompactions === undefined;
+    const effectiveTailCompactions =
+      requestedTailCompactions ??
+      (defaultedToCompactTail
+        ? DEFAULT_SESSION_DETAIL_TAIL_COMPACTIONS
+        : undefined);
 
     // Validate projectId format at API boundary
     if (!isUrlProjectId(projectId)) {
@@ -2712,27 +2738,22 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     let paginationInfo: PaginationInfo | undefined;
     if (
       !afterMessageId &&
-      (tailFrom ||
-        (tailTurns !== undefined && !Number.isNaN(tailTurns) && tailTurns > 0))
+      (tailFrom || requestedTailTurns !== undefined)
     ) {
       const sliced = sliceAtUserTurnBoundary(
         session.messages,
-        tailTurns !== undefined && !Number.isNaN(tailTurns) && tailTurns > 0
-          ? tailTurns
-          : 20,
+        requestedTailTurns ?? 20,
         tailFrom,
       );
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
     } else if (
-      tailCompactions !== undefined &&
-      !Number.isNaN(tailCompactions) &&
-      tailCompactions > 0 &&
+      effectiveTailCompactions !== undefined &&
       !afterMessageId
     ) {
       const sliced = sliceAtCompactBoundaries(
         session.messages,
-        tailCompactions,
+        effectiveTailCompactions,
         beforeMessageId,
       );
       session = { ...session, messages: sliced.messages };
@@ -2805,12 +2826,72 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     const { messages: _messages, ...sessionMetadata } = session;
     const totalMs = performance.now() - requestStartMs;
+    if (
+      defaultedToCompactTail &&
+      normalizedMessageCount >= LARGE_FULL_HISTORY_MESSAGE_THRESHOLD
+    ) {
+      getLogger().warn(
+        {
+          beforeMessageId: beforeMessageId ?? null,
+          defaultTailCompactions: DEFAULT_SESSION_DETAIL_TAIL_COMPACTIONS,
+          event: "session_detail_unbounded_defaulted_to_tail",
+          normalizedMessageCount,
+          projectId: effectiveProjectId,
+          transcriptProjectId,
+          provider: session.provider,
+          publicShare,
+          returnedMessageCount: session.messages.length,
+          sessionId,
+          timings: {
+            augmentMs: roundedMs(augmentEndMs - sliceEndMs),
+            normalizeMs: roundedMs(normalizeEndMs - readEndMs),
+            projectMs: roundedMs(projectResolvedMs - requestStartMs),
+            readMs: roundedMs(readEndMs - projectResolvedMs),
+            routeMs: roundedMs(sliceEndMs - normalizeEndMs),
+            totalMs: roundedMs(totalMs),
+          },
+          totalMessageCount: session.messageCount,
+        },
+        "SESSION_DETAIL: defaulted unbounded request to compact tail",
+      );
+    }
+    if (
+      fullHistory &&
+      session.messages.length >= LARGE_FULL_HISTORY_MESSAGE_THRESHOLD
+    ) {
+      getLogger().warn(
+        {
+          event: "session_detail_full_history_large",
+          fullHistoryReason: fullHistoryReason ?? null,
+          normalizedMessageCount,
+          projectId: effectiveProjectId,
+          transcriptProjectId,
+          provider: session.provider,
+          publicShare,
+          returnedMessageCount: session.messages.length,
+          sessionId,
+          timings: {
+            augmentMs: roundedMs(augmentEndMs - sliceEndMs),
+            normalizeMs: roundedMs(normalizeEndMs - readEndMs),
+            projectMs: roundedMs(projectResolvedMs - requestStartMs),
+            readMs: roundedMs(readEndMs - projectResolvedMs),
+            routeMs: roundedMs(sliceEndMs - normalizeEndMs),
+            totalMs: roundedMs(totalMs),
+          },
+          totalMessageCount: session.messageCount,
+        },
+        "SESSION_DETAIL: large explicit full-history request",
+      );
+    }
     if (totalMs >= SESSION_DETAIL_SLOW_LOG_MS) {
       getLogger().warn(
         {
           afterMessageId: afterMessageId ?? null,
           beforeMessageId: beforeMessageId ?? null,
           event: "session_detail_slow",
+          defaultedToCompactTail,
+          fullHistory,
+          fullHistoryReason: fullHistoryReason ?? null,
           incrementalAnchorFound: afterMessageId
             ? incrementalAnchorFound
             : null,
@@ -2823,8 +2904,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           publicShare,
           returnedMessageCount: session.messages.length,
           sessionId,
-          tailCompactions: tailCompactions ?? null,
-          tailTurns: tailTurns ?? null,
+          tailCompactions: effectiveTailCompactions ?? null,
+          tailTurns: requestedTailTurns ?? null,
           timings: {
             augmentMs: roundedMs(augmentEndMs - sliceEndMs),
             normalizeMs: roundedMs(normalizeEndMs - readEndMs),

@@ -145,6 +145,11 @@ Summary parsing:
 - `packages/server/src/sessions/codex-reader.ts`
   - `CodexSessionReader.getSessionSummary()` sends summary parsing through a
     lazily reused `SummaryParserClient`.
+  - The current Codex summary stream reads every JSONL line because it computes
+    fields beyond title/head metadata: exact-ish message count, latest model,
+    token-count context usage, and dedupe-aware counts.
+  - Most routine callers likely only need a cheap head summary: `session_meta`,
+    first `turn_context`, first non-system user message, and file stat mtime.
   - `CodexSessionReader.getSession()` reads entries and derives summary from
     entries for full session detail; it does not use the summary worker.
 - `packages/server/src/sessions/summary-parser-worker-client.ts`
@@ -212,10 +217,23 @@ The unbounded detail request is a separate tactical issue:
 4. Server-side guardrails are still justified because the server can see the
    unbounded request and message count directly.
 
+Follow-up endpoint measurements on `2026-07-04` strengthened SPC-007. For the
+same large session, a clean compact-tail request returned about `7.16 MiB`
+inflated JSON and took about `712ms` server-side. A clean no-query
+full-history request returned about `39.35 MiB` inflated JSON, took about
+`2815ms` server-side, and spent about `2738ms` in augmentation. With browser
+gzip, the full response was still about `3.8 MB` on the wire, and the client
+still had to inflate and parse the full `39 MiB` JSON body. The route uses
+`c.json(...)` and the client uses `res.json()`, so this is not app-level
+streaming. See
+`docs/tactical/055-session-catchup-unbounded-fetch.md#endpoint-size-evidence`
+for the detailed measurements.
+
 ## Progress Checklist
 
 - [x] SPC-001: Make `SummaryParserClient` safe under concurrent `parse()` calls.
-- [ ] SPC-002: Coalesce same-file-version summary parses.
+- [ ] SPC-002A: Add cheap Codex head-summary reads for routine callers.
+- [ ] SPC-002B: Coalesce same-file-version full summary parses.
 - [ ] SPC-003: Route direct summary callers through the coordinated summary
   service path.
 - [ ] SPC-004: Reduce `ExternalSessionTracker` parse pressure for large live
@@ -224,9 +242,9 @@ The unbounded detail request is a separate tactical issue:
   coalescing, and active-request collisions.
 - [ ] SPC-006: Add low-noise observability for large detail reads and
   unbounded-detail requests.
-- [ ] SPC-007: Land server guardrails for unbounded session-detail loads.
-- [ ] SPC-008: Add regression tests for worker concurrency, coalescing, and
-  direct caller behavior.
+- [x] SPC-007: Land server guardrails for unbounded session-detail loads.
+- [ ] SPC-008: Add regression tests for worker concurrency, cheap summaries,
+  coalescing, and direct caller behavior.
 - [ ] SPC-009: Reproduce or instrument client-side large-detail behavior.
 - [ ] SPC-010: Re-check production-like logs after fixes for parse rate,
   crash-stop rate, and unbounded-detail frequency.
@@ -248,9 +266,61 @@ Regression coverage was added in
 worker, fires two concurrent parse calls against the same client, and asserts
 both complete on the same worker without a crash-status result.
 
-This does not yet coalesce same-version summary parses. It serializes duplicate
-work instead of killing the worker. `SPC-002` remains the next direct reduction
-in repeated reads of unchanged large JSONL files.
+This does not yet reduce full-file summary reads. It serializes duplicate work
+instead of killing the worker. `SPC-002A` is now the next focus because most
+routine callers should not need a full-file Codex summary scan at all.
+
+### `2026-07-04`: SPC-007 Session Detail Full-History Guard
+
+Implemented in `packages/server/src/routes/sessions.ts` and the client source
+runtime. Session-detail requests now default to a compact tail when they do not
+include `afterMessageId`, `tailCompactions`, `tailTurns`, `tailFrom`, or
+explicit `fullHistory=1`. Client full-history calls still exist, but the source
+API now sends `fullHistory=1` and a caller reason.
+
+Regression coverage in `packages/server/test/api/sessions.test.ts` checks that
+no-query detail reads are compact-tail bounded, `fullHistory=1` returns the
+whole synthetic transcript, and explicit compact-tail bounds still win.
+
+This does not remove full-history capability. It makes full history explicit
+and auditable. Remaining follow-up is to decide whether exports/debug flows
+should move to a separate endpoint and whether explicit full-history reads
+need hard message or byte caps.
+
+### Next Focus: SPC-002A Cheap Codex Summary Reads
+
+Prioritize cheap Codex summaries before generic same-version coalescing.
+Coalescing reduces simultaneous duplicate reads, but it still leaves routine
+background callers doing full scans of large live JSONL files. The stronger fix
+is to stop using the full summary parser when a caller only needs list/process
+metadata.
+
+Cheap Codex summary should be allowed to return from head metadata and file
+stats:
+
+- `session_meta` for id, created time, originator, CLI/source metadata, parent
+  session id, and provider hints.
+- First `turn_context` for early model and sandbox/approval metadata.
+- First non-system user message for title/full title.
+- File mtime for `updatedAt`.
+
+Full Codex summary should remain available when a caller explicitly needs:
+
+- Message count.
+- Latest model after model switches.
+- Token-count context usage.
+- Dedupe-aware full-file accounting.
+
+Acceptance for this next chunk:
+
+- Add an explicit code path or option that distinguishes cheap Codex summary
+  reads from full Codex summary scans.
+- Route routine list/index/process/tracker callers to the cheap path where their
+  required fields permit it.
+- Preserve a full-summary path for callers that need exact message count,
+  latest model, or context usage.
+- Tests cover a large JSONL where cheap summary stops after the required head
+  entries instead of reading the full file.
 
 ## Fix Tracks
 
@@ -273,19 +343,42 @@ Acceptance:
 - Tests cover two concurrent calls and a caller cancellation or timeout if the
   implementation supports either.
 
-### SPC-002: Same-Version Parse Coalescing
+### SPC-002A: Cheap Codex Summary Reads
 
 Authoritative fix:
 
-- Summary parsing should coalesce by file identity and version, for example
+- Split Codex summary reads into cheap head-summary and full-summary modes.
+- The cheap mode should stop once it has enough stable head metadata for routine
+  list/index/process/tracker surfaces.
+- The full mode should continue to scan the whole file when exact message count,
+  latest model, context usage, or dedupe accounting is required.
+- Caller code should state which summary fidelity it needs instead of silently
+  defaulting every summary read to full-file parsing.
+
+Acceptance:
+
+- Routine Codex summary callers can obtain title, created/updated timestamps,
+  provider/model hints, origin metadata, approval/sandbox metadata, and parent
+  session id without scanning the whole JSONL.
+- A fixture with many trailing lines proves cheap mode stops early.
+- Full mode still returns existing exact fields for callers that need them.
+- The tactical log for future incidents can distinguish cheap summary reads from
+  full summary scans.
+
+### SPC-002B: Same-Version Full-Parse Coalescing
+
+Authoritative fix:
+
+- Full summary parsing should coalesce by file identity and version, for example
   `{ provider, sessionId, filePath, mtimeMs, size }`.
-- Concurrent callers asking for the same version should share one parse result.
+- Concurrent callers asking for the same version should share one full-parse
+  result.
 - A changed file version should get a new parse.
 
 Acceptance:
 
-- Two concurrent summary requests for the same file version produce one worker
-  request.
+- Two concurrent full-summary requests for the same file version produce one
+  worker request.
 - A follow-up request for the same unchanged version reuses cache or in-flight
   work.
 - A request after append parses the new version once.
@@ -314,7 +407,7 @@ Authoritative fix:
 
 - Prevent the tracker from parsing a large live file repeatedly on noisy file
   changes.
-- Prefer shared cache/coalescing first.
+- Prefer cheap summaries first, then shared cache/coalescing for full summaries.
 - Add per-session debounce, quiet-period parsing for large files, or cheap
   metadata-only updates only where semantics stay intact.
 
@@ -382,6 +475,7 @@ Acceptance:
 Required tests:
 
 - `SummaryParserClient` concurrent parse calls.
+- Cheap Codex summary reads that stop before trailing bulk transcript lines.
 - Same-version parse coalescing.
 - A direct caller that formerly bypassed coordination now uses the coordinated
   path.
@@ -429,6 +523,10 @@ Success target:
 
 - Should the central summary coordination live inside `SessionIndexService`,
   inside `CodexSessionReader`, or in a provider-agnostic summary service?
+- Which existing summary callers truly need exact `messageCount`, latest model,
+  or context usage versus cheap head metadata?
+- Should cheap Codex summaries surface unknown/approximate values explicitly, or
+  omit fields that require a full scan?
 - How long should same-version summary cache entries live for active sessions?
 - What is the right large-file threshold for elevated logging: `5 MB`, `25 MB`,
   or derived from line count and parse cost?

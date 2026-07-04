@@ -1310,6 +1310,7 @@ export function useSessionMessages(
               type: "applyCatchupMessages",
               messages: data.messages,
               session: data.session,
+              pagination: data.pagination,
             });
           }
           const nextMessages = readMessagesAfterDispatch("catchup");

@@ -244,8 +244,11 @@ Implementation note:
 
 Status: Started. The coordinator skeleton owns entry/runtime references,
 stream buffering, the initial-load-complete gate, and incremental refresh
-coalescing. Initial REST load, reveal gating, scroll snapshot mutation,
-older-page loading, metadata refresh, and load progress remain hook-owned.
+coalescing. It also owns entry-scoped store/cache operations such as
+dispatch, selector reads/subscriptions, route snapshot read/write/replace,
+retention, deletion, and scroll snapshot patching. Initial REST load, reveal
+gating, scroll memory policy, older-page loading, metadata refresh, and load
+progress remain hook-owned.
 
 Intent:
 
@@ -307,6 +310,15 @@ Implementation note:
 - Added coordinator unit tests for stream buffering, reset behavior, and
   refresh coalescing. The next Phase 3 slice should move one additional
   concern, not the whole load protocol.
+- Moved entry-scoped store operations behind `SessionDetailCoordinator`:
+  `useSessionMessages` still decides React timing and cache/scroll policy, but
+  it no longer reaches through the entry key into the store for ordinary
+  dispatch, selector, retention, route snapshot, deletion, or scroll patch
+  work. Added coordinator coverage for those wrappers.
+- The next Phase 3 slice should move initial-load lifecycle bookkeeping one
+  step inward, likely a small `beginInitialLoad`/`completeInitialReveal`
+  helper that owns the coordinator reset and stream-gate transition while the
+  hook still performs the REST request and React state updates.
 
 ## Phase 4: Rename Public Cache Facade
 

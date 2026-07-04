@@ -1,51 +1,14 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
+import { createLocalStorageBoolean } from "../lib/localStorageBoolean";
 import { UI_KEYS } from "../lib/storageKeys";
 
-const listeners = new Set<() => void>();
-
-function loadAlwaysShowQuoteCircles(): boolean {
-  try {
-    return localStorage.getItem(UI_KEYS.alwaysShowQuoteCircles) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === UI_KEYS.alwaysShowQuoteCircles || event.key === null) {
-      listener();
-    }
-  };
-  window.addEventListener("storage", handleStorage);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", handleStorage);
-  };
-}
-
-function emitChange() {
-  for (const listener of listeners) {
-    listener();
-  }
-}
+const store = createLocalStorageBoolean(UI_KEYS.alwaysShowQuoteCircles, false);
 
 export function useAlwaysShowQuoteCircles() {
   const alwaysShowQuoteCircles = useSyncExternalStore(
-    subscribe,
-    loadAlwaysShowQuoteCircles,
-    () => false,
+    store.subscribe,
+    store.read,
+    store.read,
   );
-
-  const setAlwaysShowQuoteCircles = useCallback((enabled: boolean) => {
-    try {
-      localStorage.setItem(UI_KEYS.alwaysShowQuoteCircles, String(enabled));
-    } catch {
-      // Local display preference; in-memory subscribers still update.
-    }
-    emitChange();
-  }, []);
-
-  return { alwaysShowQuoteCircles, setAlwaysShowQuoteCircles };
+  return { alwaysShowQuoteCircles, setAlwaysShowQuoteCircles: store.set };
 }

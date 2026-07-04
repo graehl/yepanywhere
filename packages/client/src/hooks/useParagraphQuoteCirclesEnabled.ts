@@ -1,62 +1,20 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
+import { createLocalStorageBoolean } from "../lib/localStorageBoolean";
 import { UI_KEYS } from "../lib/storageKeys";
 
-const listeners = new Set<() => void>();
-
-function loadParagraphQuoteCirclesEnabled(): boolean {
-  try {
-    return (
-      localStorage.getItem(UI_KEYS.paragraphQuoteCirclesEnabled) !== "false"
-    );
-  } catch {
-    return true;
-  }
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  const handleStorage = (event: StorageEvent) => {
-    if (
-      event.key === UI_KEYS.paragraphQuoteCirclesEnabled ||
-      event.key === null
-    ) {
-      listener();
-    }
-  };
-  window.addEventListener("storage", handleStorage);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", handleStorage);
-  };
-}
-
-function emitChange() {
-  for (const listener of listeners) {
-    listener();
-  }
-}
+const store = createLocalStorageBoolean(
+  UI_KEYS.paragraphQuoteCirclesEnabled,
+  true,
+);
 
 export function useParagraphQuoteCirclesEnabled() {
   const paragraphQuoteCirclesEnabled = useSyncExternalStore(
-    subscribe,
-    loadParagraphQuoteCirclesEnabled,
-    () => true,
+    store.subscribe,
+    store.read,
+    store.read,
   );
-
-  const setParagraphQuoteCirclesEnabled = useCallback((enabled: boolean) => {
-    try {
-      localStorage.setItem(
-        UI_KEYS.paragraphQuoteCirclesEnabled,
-        String(enabled),
-      );
-    } catch {
-      // Local display preference; in-memory subscribers still update.
-    }
-    emitChange();
-  }, []);
-
   return {
     paragraphQuoteCirclesEnabled,
-    setParagraphQuoteCirclesEnabled,
+    setParagraphQuoteCirclesEnabled: store.set,
   };
 }

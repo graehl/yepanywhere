@@ -1,39 +1,10 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
+import { createLocalStorageBoolean } from "../lib/localStorageBoolean";
 import { UI_KEYS } from "../lib/storageKeys";
 
-type StreamingEnabledListener = () => void;
+const store = createLocalStorageBoolean(UI_KEYS.streamingEnabled, true);
 
-const listeners = new Set<StreamingEnabledListener>();
-
-function loadStreamingEnabled(): boolean {
-  const stored = localStorage.getItem(UI_KEYS.streamingEnabled);
-  // Default to enabled
-  if (stored === null) return true;
-  return stored === "true";
-}
-
-function saveStreamingEnabled(enabled: boolean) {
-  localStorage.setItem(UI_KEYS.streamingEnabled, String(enabled));
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-export function subscribeStreamingEnabled(
-  listener: StreamingEnabledListener,
-): () => void {
-  listeners.add(listener);
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === UI_KEYS.streamingEnabled || event.key === null) {
-      listener();
-    }
-  };
-  window.addEventListener("storage", handleStorage);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", handleStorage);
-  };
-}
+export const subscribeStreamingEnabled = store.subscribe;
 
 /**
  * Hook to manage streaming preference.
@@ -42,21 +13,14 @@ export function subscribeStreamingEnabled(
  */
 export function useStreamingEnabled() {
   const streamingEnabled = useSyncExternalStore(
-    subscribeStreamingEnabled,
-    getStreamingEnabled,
-    () => true,
+    store.subscribe,
+    store.read,
+    store.read,
   );
-
-  const setStreamingEnabled = useCallback((enabled: boolean) => {
-    saveStreamingEnabled(enabled);
-  }, []);
-
-  return { streamingEnabled, setStreamingEnabled };
+  return { streamingEnabled, setStreamingEnabled: store.set };
 }
 
 /**
  * Get streaming preference without React state (for non-component code).
  */
-export function getStreamingEnabled(): boolean {
-  return loadStreamingEnabled();
-}
+export const getStreamingEnabled = store.read;

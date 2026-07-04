@@ -1868,6 +1868,8 @@ export interface ServerSettings {
   clientLogCollectionRequested?: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled?: boolean;
+  /** Whether experimental workstream surfaces and APIs are enabled */
+  workstreamsEnabled?: boolean;
   /** Base URL for the hosted YA client */
   yaClientBaseUrl?: string | null;
   /** @deprecated Use yaClientBaseUrl. */

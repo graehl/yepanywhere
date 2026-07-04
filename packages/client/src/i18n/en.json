@@ -1462,6 +1462,8 @@
   "developmentDiagnosticsDescription": "Capture browser logs, uncaught errors, and lightweight telemetry for debugging.",
   "developmentServiceWorkerTitle": "Service Worker",
   "developmentServiceWorkerDescription": "Enable service worker for push notifications. Disabling can help with page reload issues during development. Requires restart.",
+  "developmentWorkstreamsTitle": "Workstreams",
+  "developmentWorkstreamsDescription": "Enable experimental workstream surfaces and APIs. This does not create worktrees, change Project Queue scheduling, or run Git commands yet.",
   "developmentSessionScrollMemoryTitle": "Session Scroll Memory",
   "developmentSessionScrollMemoryControlTitle": "Restore mode",
   "developmentSessionScrollMemoryDescription": "Browser-local debug setting for how reopened session transcripts restore scroll position. Include the selected mode in scroll bug reports.",

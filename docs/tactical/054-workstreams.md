@@ -2,9 +2,9 @@
 
 Topic: workstreams
 
-Status: First preparatory chunk landed. Workstreams remain hidden/no-op by
-default; no experimental gate, metadata service, scheduler change, Git
-worktree creation, or landing action has landed yet.
+Status: First two preparatory chunks landed. Workstreams remain hidden/no-op by
+default; no metadata service, scheduler change, Git worktree creation, or
+landing action has landed yet.
 
 Product rationale and the target user workflow live in
 [`topics/workstreams.md`](../../topics/workstreams.md). This tactical document
@@ -56,7 +56,7 @@ before they mutate Git or change Project Queue scheduling.
 ## Progress
 
 - [x] WS-001: Extract Project Queue response assembly.
-- [ ] WS-002: Add default-off experimental workstreams gate.
+- [x] WS-002: Add default-off experimental workstreams gate.
 - [ ] WS-003: Add shared workstream types and server metadata service.
 - [ ] WS-004: Add read-only workstream API behind the gate.
 - [ ] WS-005: Add hidden Workstreams page shell.
@@ -117,17 +117,27 @@ Verified 2026-07-04 with the commands above.
 
 ### WS-002: Add Default-Off Experimental Gate
 
-Status: proposed.
+Status: done.
+
+Implemented:
+
+- Added a persisted server setting named `workstreamsEnabled`, defaulting to
+  `false`.
+- Added a Development settings UI toggle for the server setting. This is a
+  developer-only UI surface, not an env var or deployment default.
+- Allowed `PUT /api/settings` to update the setting when the request body
+  supplies a boolean.
+- Added client/server setting types and focused tests for the default, route,
+  and UI visibility.
 
 Goal: introduce the feature flag/config surface before any user-visible or
 scheduler-visible behavior exists.
 
 Likely change:
 
-- Add a server setting/env gate, for example `workstreamsEnabled` /
-  `YEP_WORKSTREAMS=1`.
-- Add a `workstreams` capability only when enabled, or otherwise make client
-  fetches conditional on a settings response that reports the feature disabled.
+- Add a server setting named `workstreamsEnabled`.
+- Expose that setting through the existing dev-only Development settings UI.
+- Do not add an env-var override.
 - Keep the default false.
 - When disabled:
   - no Workstreams page/link;
@@ -139,18 +149,24 @@ Likely change:
 
 Open decision:
 
-- Whether `/api/version` should always list the capability and let settings say
-  disabled, or only advertise `workstreams` when the experimental gate is on.
-  The safer early behavior is to hide the capability unless enabled.
+- Deferred to the first real API/UI chunk: whether `/api/version` should expose
+  a `workstreams` capability, or whether the client should treat
+  `workstreamsEnabled` as the sole early gate.
 
 Suggested verification:
 
 ```bash
-pnpm --filter @yep-anywhere/shared build
 pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/client exec tsc --noEmit
-node scripts/biome.cjs lint packages/server/src packages/client/src packages/shared/src
+pnpm --filter @yep-anywhere/server test -- test/services/ServerSettingsService.test.ts test/routes/settings.test.ts
+pnpm --filter @yep-anywhere/client test -- src/pages/settings/__tests__/DevelopmentSettings.test.tsx
+pnpm i18n:scan
+node scripts/biome.cjs lint packages/server/src/services/ServerSettingsService.ts packages/server/src/routes/settings.ts packages/server/test/services/ServerSettingsService.test.ts packages/server/test/routes/settings.test.ts packages/client/src/api/client.ts packages/client/src/pages/settings/DevelopmentSettings.tsx packages/client/src/pages/settings/__tests__/DevelopmentSettings.test.tsx packages/client/src/i18n/en.json docs/tactical/054-workstreams.md
 ```
+
+Verified 2026-07-04 with the commands above. `pnpm i18n:scan` reported three
+pre-existing advisory raw-copy warnings in `packages/client/src/main.tsx`; no
+new i18n warning was introduced by this chunk. Also ran `pnpm lint`.
 
 ### WS-003: Add Shared Types And Server Metadata Service
 

@@ -55,6 +55,8 @@ export interface ServerSettings {
   clientLogCollectionRequested: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled: boolean;
+  /** Whether experimental workstream surfaces and APIs are enabled */
+  workstreamsEnabled?: boolean;
   /** Base URL for the hosted YA client; remote login/share routes are appended */
   yaClientBaseUrl?: string;
   /** @deprecated Use yaClientBaseUrl. Kept to migrate older settings files. */
@@ -146,6 +148,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   persistRemoteSessionsToDisk: false,
   clientLogCollectionRequested: false,
   publicSharesEnabled: false,
+  workstreamsEnabled: false,
   heartbeatTurnsAfterMinutes: 15,
   heartbeatTurnText: DEFAULT_HEARTBEAT_TURN_TEXT,
   speechAudioRetention: {

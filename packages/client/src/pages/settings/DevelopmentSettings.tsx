@@ -78,6 +78,7 @@ export function DevelopmentSettings() {
             remoteLogCollectionEnabled,
             sessionScrollBehaviorMode,
             serviceWorkerEnabled: serverSettings.serviceWorkerEnabled ?? true,
+            workstreamsEnabled: serverSettings.workstreamsEnabled ?? false,
           }
         : null,
     [
@@ -95,6 +96,10 @@ export function DevelopmentSettings() {
       void updateServerSetting(
         "serviceWorkerEnabled",
         snapshot.serviceWorkerEnabled,
+      );
+      void updateServerSetting(
+        "workstreamsEnabled",
+        snapshot.workstreamsEnabled,
       );
     },
     [
@@ -188,6 +193,22 @@ export function DevelopmentSettings() {
               checked={serverSettings?.serviceWorkerEnabled ?? true}
               onChange={(e) =>
                 updateServerSetting("serviceWorkerEnabled", e.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("developmentWorkstreamsTitle")}</strong>
+            <p>{t("developmentWorkstreamsDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={serverSettings?.workstreamsEnabled ?? false}
+              onChange={(e) =>
+                updateServerSetting("workstreamsEnabled", e.target.checked)
               }
             />
             <span className="toggle-slider" />

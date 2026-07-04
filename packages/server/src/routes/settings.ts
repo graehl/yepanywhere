@@ -1196,6 +1196,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if (typeof body.publicSharesEnabled === "boolean") {
       updates.publicSharesEnabled = body.publicSharesEnabled;
     }
+    if (typeof body.workstreamsEnabled === "boolean") {
+      updates.workstreamsEnabled = body.workstreamsEnabled;
+    }
     if (typeof body.composeAnchorsEnabled === "boolean") {
       updates.composeAnchorsEnabled = body.composeAnchorsEnabled;
     }

@@ -24,6 +24,14 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("heartbeatTurnText")).toBe("continue");
   });
 
+  it("keeps experimental workstreams disabled by default", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("workstreamsEnabled")).toBe(false);
+  });
+
   it.each([
     "heartbeat",
     "yepanywhere heartbeat",

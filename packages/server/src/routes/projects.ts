@@ -26,7 +26,10 @@ import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ProjectQueueService } from "../services/ProjectQueueService.js";
-import { applyRecapOverlayToSummary } from "../sessions/recap-overlays.js";
+import {
+  applyRecapOverlayToSummary,
+  hasUnreadProviderContent,
+} from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Process } from "../supervisor/Process.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -289,14 +292,13 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
           )
         : session;
 
-      // Get last seen and unread status. Unread tracks provider content
-      // only: recap overlays bump updatedAt for list freshness, so compare
-      // pre-overlay.
       const lastSeenEntry = deps.notificationService?.getLastSeen(session.id);
       const lastSeenAt = lastSeenEntry?.timestamp;
-      const hasUnread = deps.notificationService
-        ? deps.notificationService.hasUnread(session.id, session.updatedAt)
-        : undefined;
+      const hasUnread = hasUnreadProviderContent(
+        deps.notificationService,
+        session.id,
+        session.updatedAt,
+      );
 
       const customTitle = metadata?.customTitle;
       const isArchived = metadata?.isArchived;

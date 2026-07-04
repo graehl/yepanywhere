@@ -1,4 +1,5 @@
 import type { DurableRecapMessage } from "@yep-anywhere/shared";
+import type { NotificationService } from "../notifications/index.js";
 import type { SDKMessage } from "../sdk/types.js";
 import type { Message, Session, SessionSummary } from "../supervisor/types.js";
 import { formatAgentRecapExcerpt } from "./agent-excerpt.js";
@@ -194,4 +195,20 @@ export function applyRecapOverlayToSession<T extends Session>(
     ...summary,
     messages: mergeRecapMessages(session.messages, recaps),
   };
+}
+
+/**
+ * Unread tracks provider content only: recap overlays bump `updatedAt` for
+ * list freshness (see applyRecapOverlayToSummary), so every unread
+ * computation compares lastSeen against the pre-overlay provider-transcript
+ * timestamp.
+ */
+export function hasUnreadProviderContent(
+  notificationService: NotificationService | undefined,
+  sessionId: string,
+  preOverlayUpdatedAt: string,
+): boolean | undefined {
+  return notificationService
+    ? notificationService.hasUnread(sessionId, preOverlayUpdatedAt)
+    : undefined;
 }

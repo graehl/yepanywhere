@@ -21,7 +21,10 @@ import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js"
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
-import { applyRecapOverlayToSummary } from "../sessions/recap-overlays.js";
+import {
+  applyRecapOverlayToSummary,
+  hasUnreadProviderContent,
+} from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
@@ -241,11 +244,12 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const executor = metadata?.executor;
 
-        // Unread tracks provider content only: recap overlays bump
-        // updatedAt for list freshness, so compare pre-overlay.
-        const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
-          : false;
+        const hasUnread =
+          hasUnreadProviderContent(
+            deps.notificationService,
+            session.id,
+            session.updatedAt,
+          ) ?? false;
 
         if (isArchived) {
           stats.archivedCount++;
@@ -386,11 +390,11 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           metadata?.initialPrompt ?? overlaidSession.fullTitle;
         const executor = metadata?.executor;
 
-        // Get unread status. Unread tracks provider content only: recap
-        // overlays bump updatedAt for list freshness, so compare pre-overlay.
-        const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
-          : undefined;
+        const hasUnread = hasUnreadProviderContent(
+          deps.notificationService,
+          session.id,
+          session.updatedAt,
+        );
 
         // Skip archived sessions unless explicitly requested
         if (isArchived && !includeArchived) continue;

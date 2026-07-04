@@ -65,6 +65,7 @@ import {
   applyRecapOverlayToSession,
   applyRecapOverlayToSummary,
   hasEquivalentRecapMessage,
+  hasUnreadProviderContent,
   latestRecapMessage,
   mergeRecapMessages,
 } from "../sessions/recap-overlays.js";
@@ -2653,16 +2654,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    // Calculate hasUnread if we have session summary. Unread tracks
-    // provider content only: recap overlays bump updatedAt for list
-    // freshness, so compare pre-overlay.
-    const hasUnread =
-      deps.notificationService && rawSessionSummary
-        ? deps.notificationService.hasUnread(
-            sessionId,
-            rawSessionSummary.updatedAt,
-          )
-        : undefined;
+    const hasUnread = rawSessionSummary
+      ? hasUnreadProviderContent(
+          deps.notificationService,
+          sessionId,
+          rawSessionSummary.updatedAt,
+        )
+      : undefined;
 
     const response = {
       session: {
@@ -3202,8 +3200,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         },
       });
     }
-    // Unread tracks provider content only: recap overlays bump updatedAt
-    // for list freshness, so capture the pre-overlay timestamp.
+    // The overlay reassigns `session` below; hasUnreadProviderContent needs
+    // the pre-overlay timestamp.
     const preRecapUpdatedAt = session.updatedAt;
     if (!beforeMessageId) {
       session = applyRecapOverlayToSession(session, recapMessages);
@@ -3221,9 +3219,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
     const augmentEndMs = performance.now();
 
-    const hasUnread = deps.notificationService
-      ? deps.notificationService.hasUnread(sessionId, preRecapUpdatedAt)
-      : undefined;
+    const hasUnread = hasUnreadProviderContent(
+      deps.notificationService,
+      sessionId,
+      preRecapUpdatedAt,
+    );
 
     // Override context usage with SDK-reported context window from live process
     // The reader uses hardcoded defaults; the process captures the real value at runtime

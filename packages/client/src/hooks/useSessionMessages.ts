@@ -54,11 +54,9 @@ import {
   defaultSessionDetailStore,
   getSessionDetailEntryKey,
   type SessionDetailEntryKeyInput,
+  type SessionDetailStore,
 } from "../lib/sessionDetail/sessionDetailStore";
-import type {
-  GetSessionResult,
-  SessionDetailMemoryCache,
-} from "../lib/sourceRuntime";
+import type { GetSessionResult } from "../lib/sourceRuntime";
 import type {
   AgentContextUsage,
   SessionDetailAction,
@@ -189,7 +187,7 @@ interface StoreBackedSessionDetail {
 }
 
 function readSessionLoadCache(
-  cache: SessionDetailMemoryCache,
+  cache: SessionDetailStore,
   input: SessionDetailEntryKeyInput,
 ): SessionRouteSnapshot | undefined {
   if (!getSessionTranscriptCacheEnabled() || typeof window === "undefined") {
@@ -199,7 +197,7 @@ function readSessionLoadCache(
 }
 
 function writeSessionLoadCache(
-  cache: SessionDetailMemoryCache,
+  cache: SessionDetailStore,
   input: SessionDetailEntryKeyInput,
   entry: SessionRouteSnapshot,
 ): boolean {
@@ -272,7 +270,7 @@ export function useSessionMessages(
   const snapshotKeyString = getSessionDetailEntryKey(snapshotKey);
   const cachedLoadRef = useRef<{
     key: string;
-    cache: SessionDetailMemoryCache;
+    cache: SessionDetailStore;
     load: SessionRouteSnapshot | undefined;
   } | null>(null);
   if (

@@ -33,10 +33,8 @@ export interface SourceApiClient {
   ): Promise<GetSessionMetadataResult>;
 }
 
-export type SessionDetailMemoryCache = SessionDetailStore;
-
 export interface SessionDetailRuntime {
-  cache: SessionDetailMemoryCache;
+  cache: SessionDetailStore;
 }
 
 export interface YaSourceRuntime {

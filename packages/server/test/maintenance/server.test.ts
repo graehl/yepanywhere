@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import * as http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -6,15 +7,32 @@ import {
 } from "../../src/maintenance/server.js";
 
 describe("Maintenance Server", () => {
-  const port = 13401; // Use high port to avoid conflicts
-  let server: ReturnType<typeof startMaintenanceServer>;
+  let port = 0;
+  let server: ReturnType<typeof startMaintenanceServer> | undefined;
 
-  beforeAll(() => {
-    server = startMaintenanceServer({ port, mainServerPort: 3400 });
+  beforeAll(async () => {
+    server = startMaintenanceServer({ port: 0, mainServerPort: 3400 });
+    await once(server.server, "listening");
+    const address = server.server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Maintenance test server did not expose a TCP port");
+    }
+    port = address.port;
   });
 
-  afterAll(() => {
-    server.stop();
+  afterAll(async () => {
+    if (!server) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      server.server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
   });
 
   const fetch = async (

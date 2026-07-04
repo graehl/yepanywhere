@@ -93,10 +93,11 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
   server: http.Server;
 } {
   const { port, portFile, host = "localhost", mainServerPort } = options;
+  let actualPort = port;
   const startTime = Date.now();
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url || "/", `http://localhost:${port}`);
+    const url = new URL(req.url || "/", `http://localhost:${actualPort}`);
     const path = url.pathname;
     const method = req.method || "GET";
 
@@ -109,7 +110,7 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
         JSON.stringify({
           error: "Forbidden",
           message: "Maintenance server only accepts loopback Host headers.",
-          hint: `curl http://localhost:${port}${path}`,
+          hint: `curl http://localhost:${actualPort}${path}`,
         }),
       );
       return;
@@ -124,8 +125,8 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
     if (origin) {
       // Check if it's a same-origin request
       const isSameOrigin =
-        origin === `http://localhost:${port}` ||
-        origin === `http://127.0.0.1:${port}`;
+        origin === `http://localhost:${actualPort}` ||
+        origin === `http://127.0.0.1:${actualPort}`;
 
       // Check Sec-Fetch-Site header (modern browsers)
       const isAllowedSecFetch =
@@ -138,7 +139,7 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
             error: "Forbidden",
             message:
               "Cross-origin requests not allowed. Use curl or access directly.",
-            hint: `curl http://localhost:${port}${path}`,
+            hint: `curl http://localhost:${actualPort}${path}`,
           }),
         );
         return;
@@ -210,7 +211,7 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
   server.listen(port, host, () => {
     // Get actual port (important when binding to port 0)
     const addr = server.address();
-    const actualPort = typeof addr === "object" && addr ? addr.port : port;
+    actualPort = typeof addr === "object" && addr ? addr.port : port;
 
     // Write port to file if requested (for test harnesses)
     if (portFile) {

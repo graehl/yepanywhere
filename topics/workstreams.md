@@ -182,10 +182,63 @@ Useful start preflights include:
 - no active provider turn in the target workstream;
 - no setup/cleanup/integration operation running in that workstream;
 - no Git sequencer state in the target checkout;
-- optional "target checkout must be clean" policy.
+- a clean tracked-file checkout — default-on for YA-managed worktree lanes,
+  opt-in for the main lane;
+- declared rule gates from the optional `.workstream` config (up to date
+  with the base branch, mandatory-pass commands such as tests).
+
+Session idle state alone is not a "chunk finished" signal. A structured
+waiting-input state blocks promotion, but whether a pause is expressed that
+way is a provider implementation detail: an agent that ends its turn with a
+prose question reads as idle while its work sits uncommitted. A clean
+tracked checkout is the mechanical proxy for "the chunk actually finished"
+that needs no text interpretation. It defaults on for managed lanes because
+only agents work there — between chunks, a dirty tree is always evidence of
+an unfinished chunk — while the main lane is the user's interactive
+checkout and legitimately dirty, so the same gate is opt-in there.
+Untracked files never count against cleanliness (task notes, logs, and
+generated artifacts must not wedge a lane), and a per-lane or per-item
+"promote anyway" override belongs next to the gate. One residual is
+accepted deliberately: an agent that commits and then asks a prose question
+promotes the next item past the question. The commit makes that a valid
+boundary, and closing the gap would mean interpreting agent text —
+question-shaped heuristics belong to display surfaces like the inbox, never
+to scheduling gates.
+
+Lane readiness is rule-based, not only activity-based. Beyond agent
+idleness, a lane unblocks only when its declared rules hold: built-in
+mechanical facts YA checks itself (up to date with the base branch, clean
+checkout) and mandatory-pass commands (tests) that must exit zero. Rules
+live in an optional per-project `.workstream` config file; with no file,
+only the built-in defaults above apply. A possible shape:
+
+```jsonc
+{
+  "unblock": {
+    "upToDateWithBase": true,
+    "checks": [{ "name": "tests", "run": "pnpm test" }]
+  }
+}
+```
+
+Check runs happen in the lane checkout at an agent-idle boundary; YA owns
+their logs and status (the same principle as setup scripts), surfaces a
+failed check as the lane's visible blocker, and should cache pass results
+by commit so an unchanged lane is not re-tested on every promotion
+attempt. Because the file is repository content that YA executes, honoring
+it needs an explicit trust step (see [security](security.md)). YA has no
+project-scoped settings surface today, and `.workstream` does not create
+one: it is ordinary repository content, versioned with the code it gates —
+each lane evaluates the rules as of its own branch, the same model as
+in-repo CI config. Hard-scripting every possible policy into YA is a
+non-goal —
+judgment-shaped work belongs to the agent under the user's standing agent
+instructions, and the core product want here is multiple project queues,
+not custom Git machinery.
 
 The key rule is: do not pop a queue item and then discover the lane cannot
-start. Preflight first; keep blocked work visible and retryable.
+start. Preflight first; keep blocked work visible and retryable (a
+clean-checkout block names the dirty files).
 
 ## Worktree Setup
 
@@ -240,6 +293,10 @@ The page should expose:
 - open status/diff/log details;
 - land locally when preconditions allow.
 
+Archived and landed lanes hide by default behind a show-hidden toggle (the
+stable set of active lanes should stay small), and they drop out of the
+project-level clear rollup.
+
 Session headers should show the workstream identity in compact form, for
 example:
 
@@ -269,10 +326,34 @@ If rebase or landing fails, YA should stop, preserve the state, surface the log,
 and offer an "ask agent to resolve" action in that workstream session. It
 should not silently choose merge commits or hidden conflict resolution.
 
-After a different workstream lands, idle workstreams may become behind main.
-Before their next queued turn, YA can safely fast-forward/sync them only when
-they have no unlanded commits. If they do have unlanded commits, the workstream
-must be rebased or left visible as behind-main.
+After a workstream lands, every other lane should be synced to the new main
+head as soon as that is safe. "Safe" means the lane is agent-idle: moving a
+checkout under an active provider turn is never allowed — it fails the
+agent's in-flight edits and invalidates files it has already read — so the
+sync is automatic but deferred to each lane's next agent-idle boundary.
+This leans on YA's existing session idle tracking
+([session-liveness](session-liveness.md)).
+
+Lanes with no unlanded commits fast-forward silently; there is nothing for
+an agent to drive. A lane that cannot fast-forward gets a system-originated
+turn in its session stating the facts — main moved to a given commit, the
+lane has N unlanded commits, catch-up needs a rebase or merge, these paths
+would conflict — and nothing more. YA never parks the checkout in sequencer
+state as a handoff: it detects conflicts without mutating the checkout (or
+aborts its own failed attempt), so an idle lane always presents a clean
+checkout and the repair turn passes the activity and cleanliness
+preflights. Rule gates are different: a system-originated repair turn is
+by construction exempt from the declared rule it exists to repair — a
+catch-up turn cannot be blocked by up-to-date-with-base, nor a test-fix
+turn by the test gate — while agent-idle, no-sequencer-state, and clean
+tree still hold. The agent
+drives the resolution from that clean state, free to choose rebase, merge,
+or another strategy; whether it acts autonomously or discusses with the
+user first is governed by the user's standing agent instructions
+(project/global agent boot files), not by YA prompt text — which is why the
+injected turn must stay factual rather than prescriptive. A visible
+transcript turn is consistent with the no-hidden-prompt-framing non-goal;
+it is the hiding that is banned.
 
 ## Relationship To Existing Project Queue
 
@@ -293,6 +374,11 @@ This preserves today's behavior for users who never enable workstreams while
 allowing advanced users to run known-independent topics without having one
 active project session block every prepared queue item.
 
+Project-level status rolls up from lanes: a project is clear when every
+non-archived lane is clear (agent-idle with its gates passing). With only
+the implicit main lane, this degenerates to exactly today's project-idle
+behavior.
+
 ## Non-Goals
 
 - Do not make PRs required for the local workflow.
@@ -303,6 +389,47 @@ active project session block every prepared queue item.
   overlap, but the user owns the decision that two topics are independent.
 - Do not silently rewrite queued prompts or add hidden prompt framing.
 - Do not require setup-script support for the first useful workstream slice.
+
+## Design Decisions
+
+- **Lanes are first-class under one YA project** (vs. independent YA
+  projects per checkout, optionally tagged as mapping to one logical
+  project): the grouping tag is only display-deep. Queue targeting, idle
+  scoping, landing, post-land sync, pause-all, and overlap warnings are
+  cross-lane semantics; each would need the tag threaded through it as a
+  special case, reinventing workstreams as scattered conditionals. The
+  useful residue of the rejected alternative is an import affordance:
+  detect sibling checkouts/worktrees of one repository and offer to import
+  them as lanes. (2026-07-04)
+- **Managed-lane promotion gates on a clean tracked checkout by default**
+  (vs. trusting session idle / waiting-input): structured waiting-input is
+  a provider implementation artifact and prose-question pauses read as
+  idle, so committed state is the only mechanical "chunk finished" signal.
+  The accepted residual (commit-then-ask promotes past the question) is
+  recorded above so it is not later "fixed" with text heuristics in the
+  scheduler. The main lane keeps the gate opt-in. (2026-07-04)
+- **Lane readiness is rule-based, not only activity-based** (vs. unblocking
+  on agent idleness alone): a lane unblocks only when its declared rules
+  hold — up to date with the base branch, mandatory-pass commands succeed —
+  declared per project in the optional `.workstream` config. (2026-07-04)
+- **Post-land fast-forward is automatic but deferred to agent-idle** (vs.
+  immediate sync): moving a checkout under an active provider turn fails
+  the agent's in-flight edits and cannot be allowed to happen; the deferral
+  leans on existing session idle tracking. (2026-07-04)
+- **Non-fast-forward catch-up is agent-driven via a factual injected turn**
+  (vs. YA hard-scripting merge policy): resolving a non-ff upstream is well
+  handled by standing agent instructions; the default expectation is the
+  agent figures it out and follows project policy to prepare the lane's
+  next commit. Hard-scripting everything possible into YA would be a
+  mistake. (2026-07-04)
+- **YA never hands off a checkout in sequencer state** (vs. leaving a
+  conflicted rebase in progress as the most informative handoff): YA
+  detects conflicts without mutating the checkout, or aborts its own failed
+  attempt, and names the conflicted paths in the factual turn instead. This
+  keeps the idle-lane-means-clean-checkout invariant — repair turns pass
+  normal preflights — and leaves the strategy choice (rebase, merge, other)
+  to the agent and user rather than baking it into inherited sequencer
+  state. Cost: one re-run of a mechanical command. (2026-07-04)
 
 ## Open Questions
 
@@ -317,3 +444,34 @@ active project session block every prepared queue item.
   false promise of semantic safety?
 - Should imported non-YA worktrees be read-only until the user explicitly
   marks them managed?
+- Should YA auto-apply a rebase it has verified conflict-free (same class
+  as the automatic fast-forward, but it rewrites unlanded commit SHAs), or
+  always hand non-ff catch-up to the agent?
+- `.workstream` format details: file name and syntax, the split between
+  built-in rules and command checks, pass-result caching keyed by commit,
+  and composition with `.worktreeinclude`.
+- Trust model for executing repo-declared `.workstream` commands
+  (first-use approval, hash-pinned re-approval on change — the first-party
+  harness hook-approval precedent).
+- Do declared `.workstream` rules apply to the implicit main lane by
+  default, or only to managed lanes unless main explicitly opts in?
+  Leaning: explicit opt-in that brings the clean-checkout gate along with
+  it — a rule check against a dirty interactive checkout tests a state
+  that is no commit.
+- Eager checks: should declared checks also run automatically whenever a
+  lane reaches a clean, agent-idle state — warming the promotion gate
+  during user think time instead of paying test latency at unblock — with
+  a run canceled when the tree goes dirty, since a run over a mutating
+  checkout no longer describes any commit? Leaning: yes, default-on when
+  checks are declared. Same mechanism as the promotion gate (it only adds
+  a trigger that populates the per-commit result cache), running in the
+  lane checkout where deps and build state are warm; an isolated run
+  worktree would remove the cancel-on-dirty need but reimports the
+  worktree setup problem. On completion, a failing result is injected as
+  a factual repair turn (commit, check name, log tail) so the lane heals
+  without waiting for the user to notice the blocker; a passing result is
+  consumed silently by the gate and surfaces only in lane status —
+  injecting green results would spend a provider turn on information that
+  requires no action. Failure injection is the first place YA would
+  autonomously start a provider turn with no user action in the loop, so
+  it stays a visible, configurable default rather than an implicit one.

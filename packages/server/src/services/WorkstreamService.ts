@@ -337,9 +337,12 @@ export class WorkstreamService {
       if (droppedCount > 0) {
         throw new WorkstreamValidationError("workstreams contain duplicates");
       }
+      const previousProjectIds = this.state.workstreams.map(
+        (workstream) => workstream.projectId,
+      );
       this.state.workstreams = normalized;
       await this.save();
-      this.emitAllProjectChanges("replaced");
+      this.emitAllProjectChanges("replaced", previousProjectIds);
       return this.listStored();
     });
   }
@@ -404,10 +407,16 @@ export class WorkstreamService {
     });
   }
 
-  private emitAllProjectChanges(reason: WorkstreamsChangedReason): void {
-    for (const projectId of [
-      ...new Set(this.state.workstreams.map((workstream) => workstream.projectId)),
-    ]) {
+  // Include pre-mutation project ids so a project whose last workstream was
+  // removed still hears about the change.
+  private emitAllProjectChanges(
+    reason: WorkstreamsChangedReason,
+    previousProjectIds: UrlProjectId[] = [],
+  ): void {
+    for (const projectId of new Set([
+      ...this.state.workstreams.map((workstream) => workstream.projectId),
+      ...previousProjectIds,
+    ])) {
       this.emitChange(projectId, reason);
     }
   }

@@ -250,6 +250,26 @@ describe("WorkstreamService", () => {
     ]);
   });
 
+  it("emits change events for projects emptied by replaceAll", async () => {
+    const eventBus = new EventBus();
+    const listener = vi.fn();
+    eventBus.subscribe((event) => {
+      if (event.type === "workstreams-changed") {
+        listener(`${event.reason}:${event.projectId}`);
+      }
+    });
+    const service = await createService(eventBus);
+    await service.upsertWorkstream(makeWorkstream());
+    listener.mockClear();
+
+    await service.replaceAll([]);
+
+    expect(listener.mock.calls.map((call) => call[0])).toEqual([
+      `replaced:${projectId}`,
+    ]);
+    expect(service.listStored()).toEqual([]);
+  });
+
   it("rejects invalid caller mutations without changing current state", async () => {
     const service = await createService();
     await service.upsertWorkstream(makeWorkstream());

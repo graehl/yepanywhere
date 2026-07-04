@@ -120,7 +120,10 @@ is impossible here: the CLI drops the supplied uuid on its queue path.
 Residual gaps: two identical busy sends >60s apart whose CLI enqueue lagged
 that far (pairing misses; duplicate returns), and pre-delivery steers show
 "sent" until the CLI delivers them (the enqueue row exists but the reader
-only surfaces delivered entries).
+only surfaces delivered entries). The dequeue pairing adds one more: its
+exact-text match can absorb the stranded echo of a steer the CLI *lost*
+into a later identical-text direct send's durable row — the text still
+renders once, but the visible evidence that a send went missing is gone.
 
 ## OpenCode
 

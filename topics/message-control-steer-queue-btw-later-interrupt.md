@@ -204,9 +204,10 @@ advance it past never-fetched connector rows.
 
 ## Deferred queue reconciliation note (known desync)
 
-Delivered-turn bubbles now carry this contract's spirit: a self-sent turn
-renders as "sent" (faint + ✓) until its durable transcript copy merges in,
-then confirms. Mechanism and the Claude queue-operation pairing behind it:
+Delivered-turn bubbles now carry this contract's spirit: a self-sent
+turn renders as "sent" — fainter, with a margin "sent" tag — until its
+durable transcript copy merges in, then confirms. Mechanism and the
+Claude queue-operation pairing behind it:
 [stream-durable-id-dedup.md](stream-durable-id-dedup.md) §Claude.
 
 A delivered steering turn renders at its delivery point, not its send

@@ -261,6 +261,16 @@ export class SessionDetailCoordinator {
     );
   }
 
+  cleanupCurrentRouteSnapshot(
+    policy: SessionDetailCurrentRouteSnapshotWritePolicy,
+  ): boolean {
+    if (this.writeCurrentRouteSnapshot(policy)) {
+      return true;
+    }
+    this.deleteEntry();
+    return false;
+  }
+
   replaceRouteSnapshot(snapshot: SessionRouteSnapshot): boolean {
     return this.cache.replaceRouteSnapshot(this.entryKey, snapshot);
   }

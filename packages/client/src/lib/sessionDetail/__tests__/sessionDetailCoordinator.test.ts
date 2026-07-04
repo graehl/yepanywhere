@@ -352,6 +352,40 @@ describe("SessionDetailCoordinator", () => {
     expect(detail.readRouteSnapshot()?.scrollSnapshot).toBeUndefined();
   });
 
+  it("cleans route snapshots by persisting or deleting the entry", () => {
+    const detail = coordinator();
+
+    expect(
+      detail.cleanupCurrentRouteSnapshot({
+        enabled: true,
+        retainScrollSnapshot: true,
+        scrollSnapshot: scrollSnapshot(24),
+      }),
+    ).toBe(false);
+    expect(detail.readRouteSnapshot()).toBeUndefined();
+
+    expect(detail.replaceRouteSnapshot(routeSnapshot("persisted"))).toBe(true);
+    expect(
+      detail.cleanupCurrentRouteSnapshot({
+        enabled: true,
+        retainScrollSnapshot: true,
+        scrollSnapshot: scrollSnapshot(36),
+      }),
+    ).toBe(true);
+    expect(detail.readRouteSnapshot()?.lastMessageId).toBe("persisted");
+    expect(detail.readRouteSnapshot()?.scrollSnapshot?.scrollTop).toBe(36);
+
+    expect(detail.replaceRouteSnapshot(routeSnapshot("deleted"))).toBe(true);
+    expect(
+      detail.cleanupCurrentRouteSnapshot({
+        enabled: false,
+        retainScrollSnapshot: true,
+        scrollSnapshot: scrollSnapshot(48),
+      }),
+    ).toBe(false);
+    expect(detail.readRouteSnapshot()).toBeUndefined();
+  });
+
   it("loads a cold persisted transcript for initial load", () => {
     const detail = coordinator();
     const responsePagination = pagination(2);

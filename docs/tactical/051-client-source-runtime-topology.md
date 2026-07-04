@@ -261,7 +261,8 @@ reveal input shaping is coordinator-owned while cursor and scroll reads remain
 hook-owned, and reveal cache-write orchestration is coordinator-owned while
 cache enablement and scroll-retention decisions remain hook-owned. Current
 route snapshot persistence is coordinator-owned with explicit hook-supplied
-cache and scroll policy.
+cache and scroll policy. The route-exit persist-vs-delete cleanup decision is
+also coordinator-owned while byte telemetry remains hook-owned.
 
 Intent:
 
@@ -412,9 +413,14 @@ Implementation note:
   scroll snapshot ref, while the coordinator now reads the current route
   snapshot, attaches the hook-supplied scroll snapshot, and applies the
   explicit write policy.
+- Moved the route-exit persist-vs-delete cleanup decision into
+  `SessionDetailCoordinator`. The hook still records entry byte telemetry and
+  supplies cache/scroll policy, while the coordinator now attempts to persist
+  the current route snapshot and deletes the entry when persistence is not
+  allowed or no snapshot is available.
 - The next Phase 3 slice should likely move another small initial-load helper,
-  such as the route-exit persist-vs-delete cleanup decision, while leaving
-  React state timing, byte telemetry, and user preference reads in the hook.
+  such as provider runtime-status notification payload shaping, while leaving
+  React state timing, side-effect calls, and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

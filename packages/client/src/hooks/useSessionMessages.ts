@@ -280,8 +280,8 @@ export function useSessionMessages(
     [coordinator],
   );
 
-  const persistCurrentStoreRouteSnapshot = useCallback(() => {
-    return coordinator.writeCurrentRouteSnapshot({
+  const cleanupCurrentStoreRouteSnapshot = useCallback(() => {
+    return coordinator.cleanupCurrentRouteSnapshot({
       enabled:
         getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
       retainScrollSnapshot: shouldRetainSessionScrollMemory(
@@ -461,17 +461,12 @@ export function useSessionMessages(
 
   useEffect(() => {
     return () => {
-      if (persistCurrentStoreRouteSnapshot()) {
-        recordCurrentEntryBytes();
-        return;
-      }
       recordCurrentEntryBytes();
-      coordinator.deleteEntry();
+      cleanupCurrentStoreRouteSnapshot();
     };
   }, [
-    persistCurrentStoreRouteSnapshot,
+    cleanupCurrentStoreRouteSnapshot,
     recordCurrentEntryBytes,
-    coordinator,
   ]);
 
   // Process a stream message event.

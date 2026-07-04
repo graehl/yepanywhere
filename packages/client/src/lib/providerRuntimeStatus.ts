@@ -1,0 +1,89 @@
+import type { useI18n } from "../i18n";
+import { getProvider } from "../providers/registry";
+import type { ProviderRuntimeStatus } from "../types";
+import { parseTimestampMs } from "./messageAge";
+
+type Translate = ReturnType<typeof useI18n>["t"];
+
+export type ProviderRuntimeTone = "warn" | "danger";
+
+export interface ProviderRuntimeDisplay {
+  label: string;
+  summary: string;
+  retryAtMs: number | null;
+  tone: ProviderRuntimeTone;
+  title: string;
+}
+
+export function getProviderRuntimeReasonLabel(
+  status: Exclude<ProviderRuntimeStatus, null>,
+  t: Translate,
+): string {
+  switch (status.reason) {
+    case "rate_limit":
+      return t("providerRuntimeReasonRateLimit");
+    case "overloaded":
+      return t("providerRuntimeReasonOverloaded");
+    case "server_error":
+      return t("providerRuntimeReasonServerError");
+    case "network":
+      return t("providerRuntimeReasonNetwork");
+    case "unknown":
+      return t("providerRuntimeReasonUnknown");
+  }
+}
+
+function formatRetryClockTime(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function describeProviderRuntimeStatus(
+  status: ProviderRuntimeStatus,
+  t: Translate,
+): ProviderRuntimeDisplay | null {
+  if (!status) {
+    return null;
+  }
+
+  const provider = getProvider(status.provider).displayName;
+  const label =
+    status.reason === "rate_limit"
+      ? t("toolbarProviderRuntimeRateLimited", { provider })
+      : t("toolbarProviderRuntimeRetrying", { provider });
+  const retryAtMs = parseTimestampMs(status.retryAt);
+  const summary =
+    retryAtMs !== null
+      ? t("toolbarProviderRuntimeRetryAt", {
+          label,
+          time: formatRetryClockTime(retryAtMs),
+        })
+      : label;
+  const title = [
+    summary,
+    t("providerRuntimeReasonTitle", {
+      reason: getProviderRuntimeReasonLabel(status, t),
+    }),
+    status.httpStatus !== undefined
+      ? t("providerRuntimeHttpStatusTitle", { status: status.httpStatus })
+      : null,
+    status.lastSeenAt
+      ? t("providerRuntimeLastSeenTitle", { time: status.lastSeenAt })
+      : null,
+    status.source
+      ? t("providerRuntimeSourceTitle", { source: status.source })
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    label,
+    summary,
+    retryAtMs,
+    tone: status.reason === "server_error" ? "danger" : "warn",
+    title,
+  };
+}

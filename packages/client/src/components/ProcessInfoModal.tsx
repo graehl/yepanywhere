@@ -10,6 +10,7 @@ import { api } from "../api/client";
 import { useActivityBusState } from "../hooks/useActivityBusState";
 import type { ProcessState } from "../hooks/useSession";
 import { useI18n } from "../i18n";
+import { getProviderRuntimeReasonLabel } from "../lib/providerRuntimeStatus";
 import type { SessionStatus } from "../types";
 import { Modal } from "./ui/Modal";
 
@@ -106,24 +107,6 @@ function formatMsDuration(ms: number): string {
     return `${minutes}m`;
   }
   return `${Math.round(ms / 1000)}s`;
-}
-
-function formatProviderRuntimeReason(
-  status: Exclude<ProviderRuntimeStatus, null>,
-  t: (key: string) => string,
-): string {
-  switch (status.reason) {
-    case "rate_limit":
-      return t("providerRuntimeReasonRateLimit");
-    case "overloaded":
-      return t("providerRuntimeReasonOverloaded");
-    case "server_error":
-      return t("providerRuntimeReasonServerError");
-    case "network":
-      return t("providerRuntimeReasonNetwork");
-    case "unknown":
-      return t("providerRuntimeReasonUnknown");
-  }
 }
 
 function formatTimeAgo(
@@ -385,7 +368,7 @@ export function ProcessInfoBody({
           />
           <InfoRow
             label={t("processInfoLabelRuntimeReason")}
-            value={formatProviderRuntimeReason(providerRuntimeStatus, tr)}
+            value={getProviderRuntimeReasonLabel(providerRuntimeStatus, t)}
           />
           <InfoRow
             label={t("processInfoLabelRuntimeHttpStatus")}

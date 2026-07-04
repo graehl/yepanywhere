@@ -55,6 +55,10 @@ import {
   parseTimestampMs,
 } from "../lib/messageAge";
 import { normalizeProviderKey } from "../lib/modelIndicatorText";
+import {
+  describeProviderRuntimeStatus,
+  type ProviderRuntimeDisplay,
+} from "../lib/providerRuntimeStatus";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
@@ -323,14 +327,6 @@ export interface LivenessDisplay {
   title: string;
 }
 
-interface ProviderRuntimeDisplay {
-  label: string;
-  summary: string;
-  retryAtMs: number | null;
-  tone: LivenessTone;
-  title: string;
-}
-
 function describeSessionLiveness(
   snapshot: SessionLivenessSnapshot,
   t: ToolbarTranslate,
@@ -432,96 +428,6 @@ function describeLivenessSummary(
     state: display.prefix,
     age: formatLivenessAge(t, display.timestampMs, nowMs),
   });
-}
-
-function getProviderRuntimeProviderLabel(status: ProviderRuntimeStatus): string {
-  switch (status?.provider) {
-    case "claude":
-      return "Claude";
-    case "codex":
-      return "Codex";
-    case "codex-oss":
-      return "Codex OSS";
-    case "gemini":
-      return "Gemini";
-    case "opencode":
-      return "OpenCode";
-    default:
-      return status?.provider ?? "Provider";
-  }
-}
-
-function getProviderRuntimeReasonLabel(
-  status: Exclude<ProviderRuntimeStatus, null>,
-  t: ToolbarTranslate,
-): string {
-  switch (status.reason) {
-    case "rate_limit":
-      return t("providerRuntimeReasonRateLimit");
-    case "overloaded":
-      return t("providerRuntimeReasonOverloaded");
-    case "server_error":
-      return t("providerRuntimeReasonServerError");
-    case "network":
-      return t("providerRuntimeReasonNetwork");
-    case "unknown":
-      return t("providerRuntimeReasonUnknown");
-  }
-}
-
-function formatRetryClockTime(timestampMs: number): string {
-  return new Date(timestampMs).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function describeProviderRuntimeStatus(
-  status: ProviderRuntimeStatus,
-  t: ToolbarTranslate,
-): ProviderRuntimeDisplay | null {
-  if (!status) {
-    return null;
-  }
-
-  const provider = getProviderRuntimeProviderLabel(status);
-  const label =
-    status.reason === "rate_limit"
-      ? t("toolbarProviderRuntimeRateLimited", { provider })
-      : t("toolbarProviderRuntimeRetrying", { provider });
-  const retryAtMs = parseTimestampMs(status.retryAt);
-  const summary =
-    retryAtMs !== null
-      ? t("toolbarProviderRuntimeRetryAt", {
-          label,
-          time: formatRetryClockTime(retryAtMs),
-        })
-      : label;
-  const title = [
-    summary,
-    t("providerRuntimeReasonTitle", {
-      reason: getProviderRuntimeReasonLabel(status, t),
-    }),
-    status.httpStatus !== undefined
-      ? t("providerRuntimeHttpStatusTitle", { status: status.httpStatus })
-      : null,
-    status.lastSeenAt
-      ? t("providerRuntimeLastSeenTitle", { time: status.lastSeenAt })
-      : null,
-    status.source
-      ? t("providerRuntimeSourceTitle", { source: status.source })
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  return {
-    label,
-    summary,
-    retryAtMs,
-    tone: status.reason === "server_error" ? "danger" : "warn",
-    title,
-  };
 }
 
 function getBtwTitle(mode: BtwToolbarMode, t: ToolbarTranslate): string {

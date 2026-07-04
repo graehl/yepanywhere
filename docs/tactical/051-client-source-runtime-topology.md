@@ -268,6 +268,12 @@ reporting side effect remains hook-owned. Incremental refresh reducer-action
 selection is coordinator-owned while the fetch, status-reporting side effect,
 metadata update, and diagnostics timing remain hook-owned.
 
+Pruning note: `buildRevealInput`, `buildWarmHydrationRevealInput`, and
+`buildInitialLoadStartPerfDetail` are pure identity/renaming wrappers
+today, kept only as landing spots for future slices. A slice that does not
+grow real shaping behavior into one of them should delete it and pass the
+literal instead of keeping the indirection.
+
 Intent:
 
 - Move the non-React session lifecycle logic out of `useSessionMessages` into a

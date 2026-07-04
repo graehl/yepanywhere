@@ -51,9 +51,7 @@ export const UI_KEYS = {
   sessionHoverCardMaxHeightPx: "yep-anywhere-session-hover-card-max-height-px",
   sessionGeneratedTitleEnabled: "yep-anywhere-session-generated-title-enabled",
   sessionGeneratedTitleLength: "yep-anywhere-session-generated-title-length",
-  alwaysShowQuoteCircles: "yep-anywhere-always-show-quote-circles",
-  paragraphQuoteCirclesEnabled:
-    "yep-anywhere-paragraph-quote-circles-enabled",
+  quoteReplyButtonMode: "yep-anywhere-quote-reply-button-mode",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",

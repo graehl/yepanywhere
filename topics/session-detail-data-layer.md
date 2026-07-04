@@ -15,6 +15,9 @@ surfaces. The tactical implementation plan starts in
 For the higher-level source/runtime boundary above this transcript data layer,
 see
 [`client-source-runtime-topology.md`](client-source-runtime-topology.md).
+For transcript image/blob payloads that should become server-served handles
+before entering retained client state, see
+[`session-media-handles.md`](session-media-handles.md).
 
 ## Problem
 

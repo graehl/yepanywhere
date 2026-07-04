@@ -21,7 +21,6 @@ import {
 } from "../../hooks/useHoverCardAppearance";
 import { estimateHoverCardPromptLines } from "../../components/sessionHoverCardLines";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
-import { useAlwaysShowQuoteCircles } from "../../hooks/useAlwaysShowQuoteCircles";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
@@ -34,7 +33,6 @@ import {
 } from "../../hooks/useGeneratedTitleLength";
 import { useGeneratedTitleEnabled } from "../../hooks/useGeneratedTitleEnabled";
 import { useInlineMedia } from "../../hooks/useInlineMedia";
-import { useParagraphQuoteCirclesEnabled } from "../../hooks/useParagraphQuoteCirclesEnabled";
 import {
   DEFAULT_OUTPUT_FIXED_FONT_SIZE_OFFSET_PX,
   DEFAULT_OUTPUT_FONT_SIZE_PX,
@@ -69,6 +67,11 @@ import {
   OUTPUT_VERTICAL_SPACING_STEP_PERCENT,
   useOutputAppearance,
 } from "../../hooks/useOutputAppearance";
+import {
+  QUOTE_REPLY_BUTTON_MODES,
+  type QuoteReplyButtonMode,
+  useQuoteReplyButtonMode,
+} from "../../hooks/useQuoteReplyButtonMode";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
@@ -135,6 +138,20 @@ function getSettingsIconStyleLabel(
       return translate("appearanceSettingsIconStyleFlatWhite");
     case "emoji":
       return translate("appearanceSettingsIconStyleEmoji");
+  }
+}
+
+function getQuoteReplyButtonModeLabel(
+  value: QuoteReplyButtonMode,
+  translate: (key: string) => string,
+): string {
+  switch (value) {
+    case "block":
+      return translate("appearanceQuoteReplyButtonsBlock");
+    case "paragraph-hover":
+      return translate("appearanceQuoteReplyButtonsParagraphHover");
+    case "paragraph-always":
+      return translate("appearanceQuoteReplyButtonsParagraphAlways");
   }
 }
 
@@ -220,10 +237,8 @@ export function AppearanceSettings() {
   const { settingsIconStyle, setSettingsIconStyle } = useSettingsIconStyle();
   const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
     useInlineMedia();
-  const { alwaysShowQuoteCircles, setAlwaysShowQuoteCircles } =
-    useAlwaysShowQuoteCircles();
-  const { paragraphQuoteCirclesEnabled, setParagraphQuoteCirclesEnabled } =
-    useParagraphQuoteCirclesEnabled();
+  const { quoteReplyButtonMode, setQuoteReplyButtonMode } =
+    useQuoteReplyButtonMode();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -295,8 +310,7 @@ export function AppearanceSettings() {
     undoEntry(theme, setTheme),
     undoEntry(settingsIconStyle, setSettingsIconStyle),
     undoEntry(inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault),
-    undoEntry(alwaysShowQuoteCircles, setAlwaysShowQuoteCircles),
-    undoEntry(paragraphQuoteCirclesEnabled, setParagraphQuoteCirclesEnabled),
+    undoEntry(quoteReplyButtonMode, setQuoteReplyButtonMode),
     undoEntry(funPhrasesEnabled, setFunPhrasesEnabled),
     undoEntry(floatingActionButtonEnabled, setFloatingActionButtonEnabled),
     undoEntry(sidebarDuplicateHidingEnabled, setSidebarDuplicateHidingEnabled),
@@ -833,35 +847,32 @@ export function AppearanceSettings() {
             <span className="toggle-slider" />
           </label>
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
-            <strong>{t("appearanceAlwaysShowQuoteCirclesTitle")}</strong>
-            <p>{t("appearanceAlwaysShowQuoteCirclesDescription")}</p>
+            <strong>{t("appearanceQuoteReplyButtonsTitle")}</strong>
+            <p>{t("appearanceQuoteReplyButtonsDescription")}</p>
           </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={alwaysShowQuoteCircles}
-              onChange={(e) => setAlwaysShowQuoteCircles(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceParagraphQuoteCirclesTitle")}</strong>
-            <p>{t("appearanceParagraphQuoteCirclesDescription")}</p>
+          <div
+            className="font-size-selector"
+            role="radiogroup"
+            aria-label={t("appearanceQuoteReplyButtonsTitle")}
+          >
+            {QUOTE_REPLY_BUTTON_MODES.map((mode) => {
+              const selected = quoteReplyButtonMode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`font-size-option ${selected ? "active" : ""}`}
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setQuoteReplyButtonMode(mode)}
+                >
+                  {getQuoteReplyButtonModeLabel(mode, translate)}
+                </button>
+              );
+            })}
           </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={paragraphQuoteCirclesEnabled}
-              onChange={(e) =>
-                setParagraphQuoteCirclesEnabled(e.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

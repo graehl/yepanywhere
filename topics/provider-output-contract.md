@@ -168,8 +168,10 @@ payload at true weight, which contains the damage but does not fix the
 representation. The intended client seam is the session-detail ingest
 boundary once the store-authoritative migration completes, consuming the
 server-served refs above (which also cut transcript transfer to mobile
-clients). When it lands, resume/replay and the offline Zod validation
-paths must reconstitute or tolerate handles.
+clients). [`session-media-handles.md`](session-media-handles.md) records
+the problem statement, measured local evidence, and a possible opaque
+media-id lookup model. When it lands, resume/replay and the offline Zod
+validation paths must reconstitute or tolerate handles.
 
 ## Status
 

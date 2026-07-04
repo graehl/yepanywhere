@@ -269,13 +269,13 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/serv
 
 ### SRR-006: Move Claude Resume API-Error Guard
 
-Status: proposed.
+Status: done.
 
 Destination: new file
 `packages/server/src/routes/session-claude-resume-guard.ts`.
 
-Estimated line delta: about `-95` to `-115` lines from `sessions.ts`, with a
-similar-size helper module added.
+Line delta: `-76` lines from `sessions.ts`, `+82` lines in the Claude resume
+guard module.
 
 Problem:
 
@@ -291,6 +291,14 @@ Likely change:
   `getClaudeResumeBlockerFromReader(...)` into a small helper module;
 - keep the route's existing log messages and response shape unchanged;
 - import only `getClaudeResumeBlockerFromReader(...)` in `sessions.ts`.
+
+Implemented:
+
+- moved the Claude API-error tail detector and reader wrapper into
+  `session-claude-resume-guard.ts`;
+- removed the Claude transcript DAG dependency from `sessions.ts`;
+- kept the resume route's logging, `resumeSessionAt` handling, and 409
+  response shape in place.
 
 Value:
 
@@ -313,15 +321,14 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/serv
 
 ### SRR-007: Move Worker Queue Routes
 
-Status: proposed.
+Status: done.
 
 Destination: new file
-`packages/server/src/routes/worker-queue.ts` or
-`packages/server/src/routes/supervisor-queue.ts`; `sessions.ts` would mount it
-with `routes.route("/", createWorkerQueueRoutes(deps.supervisor))`.
+`packages/server/src/routes/supervisor-queue.ts`; `app.ts` mounts it at
+`/api` before the sessions route.
 
-Estimated line delta: about `-35` to `-45` lines from `sessions.ts`, with a
-small new route module added.
+Line delta: `-42` lines from `sessions.ts`, `+59` lines in the supervisor
+queue route module.
 
 Problem:
 
@@ -334,6 +341,14 @@ Likely change:
 - extract the four worker queue route registrations;
 - pass only `deps.supervisor` to the new route factory;
 - preserve the current public paths.
+
+Implemented:
+
+- moved the four Supervisor queue/status handlers to
+  `createSupervisorQueueRoutes(supervisor)`;
+- mounted that route factory at `/api` from `app.ts`, preserving the public
+  `/api/status/workers`, `/api/queue`, and `/api/queue/:queueId` paths;
+- added route tests that assert the preserved `/api` paths and 404 behavior.
 
 Value:
 
@@ -350,19 +365,19 @@ Suggested verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
-node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/worker-queue.ts
+pnpm --filter @yep-anywhere/server test -- test/routes/supervisor-queue.test.ts test/routes/sessions-metadata.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/supervisor-queue.ts packages/server/src/app.ts packages/server/test/routes/supervisor-queue.test.ts
 ```
 
 ### SRR-008: Move Compact Threshold Lookup Helpers
 
-Status: proposed.
+Status: done.
 
 Destination: new file
 `packages/server/src/routes/session-compact-thresholds.ts`.
 
-Estimated line delta: about `-40` to `-55` lines from `sessions.ts`, with a
-small helper module added. Tests would import from the new helper, or
-`sessions.ts` could temporarily re-export for compatibility.
+Line delta: `-36` lines from `sessions.ts`, `+42` lines in the compact
+threshold module.
 
 Problem:
 
@@ -374,6 +389,13 @@ Likely change:
 
 - move those two helpers and their comments to a compact-threshold module;
 - update `sessions.ts` and the two focused tests to import from that module.
+
+Implemented:
+
+- moved both helpers to `session-compact-thresholds.ts`;
+- updated `sessions.ts` to import them;
+- updated the focused compact-threshold tests to import the small module
+  instead of the large route module.
 
 Value:
 

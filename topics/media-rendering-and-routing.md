@@ -16,6 +16,9 @@ See also:
   *displayed* (compacted to project-relative) across these surfaces.
 - [`attachment-storage.md`](attachment-storage.md) — where uploaded attachments
   live and the allow-list behind `/api/local-image` and `/api/local-file`.
+- [`session-media-handles.md`](session-media-handles.md) — proposed transcript
+  media handles for inline base64 provider payloads that should be fetched
+  lazily instead of retained in session JSON.
 - [`relay-origin-and-share-gating.md`](relay-origin-and-share-gating.md) — why
   the relay origin has no API, and the public-share serving path.
 - `docs/tactical/009-local-resource-link-routing.md` — the working log of the

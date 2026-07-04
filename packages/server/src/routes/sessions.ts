@@ -6,7 +6,6 @@ import {
   PROMPT_SUGGESTION_MODES,
   type PromptSuggestionMode,
   type ProviderName,
-  type ClaudeSessionEntry,
   type RecapMode,
   type SessionMetadataResponse,
   type SessionQueuedMessageSummary,
@@ -52,7 +51,6 @@ import type {
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
-import { buildDag } from "../sessions/dag.js";
 import { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
@@ -109,12 +107,17 @@ import {
   parseOptionalExecutor,
   parseOptionalResumeMode,
 } from "./session-request-helpers.js";
+import {
+  resolveCompactPercent,
+  resolveCompactWindow,
+} from "./session-compact-thresholds.js";
+import {
+  type ClaudeResumeApiErrorBlocker,
+  getClaudeResumeBlockerFromReader,
+} from "./session-claude-resume-guard.js";
 import type { EventBus } from "../watcher/index.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
-const CLAUDE_RESUME_API_ERROR_RECOVERY = "handoff-required";
-const CLAUDE_RESUME_API_ERROR_MESSAGE =
-  "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
 
 async function getSessionSlashCommands(
   process: Process | undefined,
@@ -153,81 +156,6 @@ function isQueueFullResponse(
   result: Process | QueuedResponse | QueueFullResponse,
 ): result is QueueFullResponse {
   return "error" in result && result.error === "queue_full";
-}
-
-interface ClaudeResumeApiErrorBlocker {
-  error: string;
-  recovery: typeof CLAUDE_RESUME_API_ERROR_RECOVERY;
-  messageId?: string;
-  apiErrorStatus?: unknown;
-  /**
-   * Transcript UUID of the last assistant message before the API-error tail.
-   * When present, the session is recoverable by resuming up to this message
-   * (SDK `resumeSessionAt`) instead of requiring a handoff.
-   */
-  resumeAtMessageId?: string;
-}
-
-function getClaudeResumeApiErrorBlocker(
-  messages: ClaudeSessionEntry[],
-): ClaudeResumeApiErrorBlocker | null {
-  const { activeBranch } = buildDag(messages);
-
-  for (let i = activeBranch.length - 1; i >= 0; i--) {
-    const raw = activeBranch[i]?.raw;
-    if (raw?.type !== "assistant") {
-      continue;
-    }
-
-    if (raw.isApiErrorMessage !== true) {
-      return null;
-    }
-
-    const apiError = raw as ClaudeSessionEntry & {
-      apiErrorStatus?: unknown;
-    };
-    // Walk further back past the API-error tail for the last good assistant
-    // message; its transcript uuid is a safe prefix-resume point.
-    let resumeAtMessageId: string | undefined;
-    for (let j = i - 1; j >= 0; j--) {
-      const prior = activeBranch[j]?.raw;
-      if (prior?.type !== "assistant") {
-        continue;
-      }
-      if (prior.isApiErrorMessage === true) {
-        continue;
-      }
-      resumeAtMessageId = prior.uuid;
-      break;
-    }
-    return {
-      error: CLAUDE_RESUME_API_ERROR_MESSAGE,
-      recovery: CLAUDE_RESUME_API_ERROR_RECOVERY,
-      messageId: raw.message.id,
-      apiErrorStatus: apiError.apiErrorStatus,
-      resumeAtMessageId,
-    };
-  }
-
-  return null;
-}
-
-async function getClaudeResumeBlockerFromReader(
-  reader: ISessionReader,
-  sessionId: string,
-  projectId: UrlProjectId,
-): Promise<ClaudeResumeApiErrorBlocker | null> {
-  const session = await reader.getSession(sessionId, projectId);
-  if (!session) {
-    return null;
-  }
-  if (
-    session.data.provider !== "claude" &&
-    session.data.provider !== "claude-ollama"
-  ) {
-    return null;
-  }
-  return getClaudeResumeApiErrorBlocker(session.data.session.messages);
 }
 
 function isCodexProviderName(
@@ -740,46 +668,6 @@ function isAutoCompactModel(model: string | undefined): boolean {
   return AUTO_COMPACT_MODEL_PREFIXES.some((prefix) =>
     normalized.startsWith(prefix),
   );
-}
-
-/**
- * Per-model compact-early percent (task 029): a direct lookup of the resolved YA
- * model id in the client-defaults map. The id is resolved upstream (the requested
- * launch alias, else the alias persisted at launch, else the provider's
- * reported→YA-id helper for sessions YA didn't start), so per-model settings key
- * by the same YA id the slider stored — no family fallback. "default" is the
- * runtime holdout and never carries a stored threshold. Out-of-range values are
- * ignored by the consumer. See topics/provider-abstraction.md.
- */
-export function resolveCompactPercent(
-  map: Record<string, number> | undefined,
-  yaModelId: string | undefined,
-): number | undefined {
-  if (!map || !yaModelId || yaModelId === "default") return undefined;
-  const value = map[yaModelId];
-  return typeof value === "number" ? value : undefined;
-}
-
-/**
- * Effective context window for the compaction threshold (task 029): the first
- * candidate identifier with a known window. Provider-specific window quirks
- * (Claude opus is always-1M even when its id resolves to "claude-opus-4-8")
- * now come from `contextWindow` itself — ModelInfoService delegates to the
- * provider's `contextWindowFor` — so this special-cases no model. See
- * topics/provider-abstraction.md.
- */
-export function resolveCompactWindow(
-  provider: ProviderName | undefined,
-  candidates: (string | undefined)[],
-  contextWindow: (model: string | undefined, provider?: ProviderName) => number,
-): number | undefined {
-  for (const m of candidates) {
-    if (m && m !== "default") {
-      const w = contextWindow(m, provider);
-      if (w > 0) return w;
-    }
-  }
-  return undefined;
 }
 
 function isAutoCompactEligibleMessage(message: string): boolean {
@@ -6196,48 +6084,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         error instanceof Error ? error.message : "Failed to clone session";
       return c.json({ error: message }, 500);
     }
-  });
-
-  // ============ Worker Queue Endpoints ============
-
-  // GET /api/status/workers - Get worker activity for safe restart indicator
-  routes.get("/status/workers", (c) => {
-    const activity = deps.supervisor.getWorkerActivity();
-    return c.json(activity);
-  });
-
-  // GET /api/queue - Get all queued requests
-  routes.get("/queue", (c) => {
-    const queue = deps.supervisor.getQueueInfo();
-    const poolStatus = deps.supervisor.getWorkerPoolStatus();
-    return c.json({ queue, ...poolStatus });
-  });
-
-  // GET /api/queue/:queueId - Get specific queue entry position
-  routes.get("/queue/:queueId", (c) => {
-    const queueId = c.req.param("queueId");
-    const position = deps.supervisor.getQueuePosition(queueId);
-
-    if (position === undefined) {
-      return c.json({ error: "Queue entry not found" }, 404);
-    }
-
-    return c.json({ queueId, position });
-  });
-
-  // DELETE /api/queue/:queueId - Cancel a queued request
-  routes.delete("/queue/:queueId", (c) => {
-    const queueId = c.req.param("queueId");
-
-    const cancelled = deps.supervisor.cancelQueuedRequest(queueId);
-    if (!cancelled) {
-      return c.json(
-        { error: "Queue entry not found or already processed" },
-        404,
-      );
-    }
-
-    return c.json({ cancelled: true });
   });
 
   return routes;

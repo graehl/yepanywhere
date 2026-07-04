@@ -17,6 +17,7 @@ import { useConnection } from "../hooks/useConnection";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
+import { isRemoteMode } from "../lib/connection";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
@@ -509,6 +510,18 @@ export const FileViewer = memo(function FileViewer({
   );
   const fileName = getPathBasename(filePath);
   const language = getLanguageFromPath(filePath);
+  const loadedIsImage = fileData
+    ? isImageFile(fileData.metadata.mimeType)
+    : false;
+  const rawFileUrl = fileData
+    ? (source.getRawFileUrl?.(projectId, filePath, false) ?? fileData.rawUrl)
+    : null;
+  const imageOpenUrl = loadedIsImage
+    ? !isRemoteMode() && rawFileUrl
+      ? rawFileUrl
+      : (imageObjectUrl ?? (!source.fetchRawFileBlob ? rawFileUrl : null))
+    : null;
+  const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
 
   const handleDownload = useCallback(() => {
     if (!fileData) return;
@@ -534,8 +547,12 @@ export const FileViewer = memo(function FileViewer({
   }, [connection, fileData, fileName, filePath, projectId, source]);
 
   const handleOpenInNewTab = useCallback(() => {
+    if (imageOpenUrl) {
+      window.open(imageOpenUrl, "_blank", "noopener");
+      return;
+    }
     if (openInNewTabUrl) {
-      window.open(openInNewTabUrl, "_blank");
+      window.open(openInNewTabUrl, "_blank", "noopener");
       return;
     }
     const searchParams = new URLSearchParams({ path: filePath });
@@ -551,13 +568,14 @@ export const FileViewer = memo(function FileViewer({
     const url = toBrowserAppHref(
       `${basePath}/projects/${projectId}/file?${searchParams}`,
     );
-    window.open(url, "_blank");
+    window.open(url, "_blank", "noopener");
   }, [
     basePath,
     projectId,
     filePath,
     lineNumber,
     lineEnd,
+    imageOpenUrl,
     openInNewTabUrl,
     viewMode,
   ]);
@@ -584,10 +602,8 @@ export const FileViewer = memo(function FileViewer({
     );
   }
 
-  const { metadata, content, rawUrl } = fileData;
-  const isImage = isImageFile(metadata.mimeType);
-  const rawFileUrl =
-    source.getRawFileUrl?.(projectId, filePath, false) ?? rawUrl;
+  const { metadata, content } = fileData;
+  const isImage = loadedIsImage;
   const canDownload = Boolean(source.fetchRawFileBlob || rawFileUrl);
   const hasMarkdownPreview =
     content !== undefined &&
@@ -599,10 +615,20 @@ export const FileViewer = memo(function FileViewer({
     // Image files
     if (isImage) {
       const imageUrl = source.fetchRawFileBlob ? imageObjectUrl : rawFileUrl;
+      const imageLinkUrl = imageOpenUrl ?? imageUrl;
       return (
         <div className="file-viewer-image">
-          {imageUrl ? (
-            <img src={imageUrl} alt={fileName} />
+          {imageUrl && imageLinkUrl ? (
+            <a
+              className="file-viewer-image-link"
+              href={imageLinkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={openImageInNewTabLabel}
+              aria-label={openImageInNewTabLabel}
+            >
+              <img src={imageUrl} alt={fileName} />
+            </a>
           ) : (
             <div className="file-viewer-loading">
               {t("fileViewerLoading" as never, { name: fileName })}
@@ -806,7 +832,11 @@ export const FileViewer = memo(function FileViewer({
             type="button"
             className="file-viewer-action"
             onClick={handleOpenInNewTab}
-            title={t("fileViewerOpenNewTab" as never)}
+            title={
+              imageOpenUrl
+                ? openImageInNewTabLabel
+                : t("fileViewerOpenNewTab" as never)
+            }
           >
             <ExternalLinkIcon />
           </button>

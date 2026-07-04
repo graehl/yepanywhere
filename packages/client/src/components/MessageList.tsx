@@ -24,8 +24,7 @@ import {
   getDraftQuoteLineSignatures,
 } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
-import { useAlwaysShowQuoteCircles } from "../hooks/useAlwaysShowQuoteCircles";
-import { useParagraphQuoteCirclesEnabled } from "../hooks/useParagraphQuoteCirclesEnabled";
+import { useQuoteReplyButtonMode } from "../hooks/useQuoteReplyButtonMode";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
@@ -114,6 +113,8 @@ import { LinkifiedText } from "./ui/LinkifiedText";
 const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
 const SELECTION_QUOTE_BUTTON_SIZE_PX = 30;
 const SELECTION_QUOTE_BUTTON_GAP_PX = 8;
+const TRANSCRIPT_SELECTION_ACTIVE_CLASS =
+  "session-transcript-selection-active";
 const PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET = 120;
 const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
@@ -121,6 +122,30 @@ const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function rangeIntersectsNode(range: Range, node: Node): boolean {
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return false;
+  }
+}
+
+function selectionIntersectsElement(
+  selection: Selection | null,
+  element: HTMLElement,
+): boolean {
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return false;
+  }
+
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    if (rangeIntersectsNode(selection.getRangeAt(index), element)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isCtrlKeyShortcut(
@@ -859,8 +884,10 @@ export const MessageList = memo(function MessageList({
     top: number;
     left: number;
   } | null>(null);
-  const { alwaysShowQuoteCircles } = useAlwaysShowQuoteCircles();
-  const { paragraphQuoteCirclesEnabled } = useParagraphQuoteCirclesEnabled();
+  const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
+  const alwaysShowQuoteCircles =
+    quoteReplyButtonMode === "paragraph-always";
+  const paragraphQuoteCirclesEnabled = quoteReplyButtonMode !== "block";
   const { t } = useI18n();
   const nowMs = useRelativeNow();
 
@@ -1462,6 +1489,66 @@ export const MessageList = memo(function MessageList({
 
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
+  }, [inert]);
+
+  useEffect(() => {
+    if (inert) {
+      return;
+    }
+
+    let activeSessionPage: HTMLElement | null = null;
+    let activeBody: HTMLElement | null = null;
+
+    const setTranscriptSelectionActive = (active: boolean) => {
+      const root = containerRef.current;
+      const sessionPage = root?.closest<HTMLElement>(".session-page") ?? null;
+      const body = root?.ownerDocument.body ?? null;
+      if (activeSessionPage && activeSessionPage !== sessionPage) {
+        activeSessionPage.classList.remove(TRANSCRIPT_SELECTION_ACTIVE_CLASS);
+      }
+      if (activeBody && activeBody !== body) {
+        activeBody.classList.remove(TRANSCRIPT_SELECTION_ACTIVE_CLASS);
+      }
+
+      activeSessionPage = sessionPage;
+      activeBody = body;
+      sessionPage?.classList.toggle(TRANSCRIPT_SELECTION_ACTIVE_CLASS, active);
+      body?.classList.toggle(
+        TRANSCRIPT_SELECTION_ACTIVE_CLASS,
+        active && sessionPage !== null,
+      );
+    };
+
+    const updateTranscriptSelectionActive = () => {
+      const root = containerRef.current;
+      if (!root) {
+        setTranscriptSelectionActive(false);
+        return;
+      }
+      setTranscriptSelectionActive(
+        selectionIntersectsElement(root.ownerDocument.getSelection(), root),
+      );
+    };
+
+    const root = containerRef.current;
+    const doc = root?.ownerDocument ?? document;
+    const win = doc.defaultView ?? window;
+    doc.addEventListener("selectionchange", updateTranscriptSelectionActive);
+    doc.addEventListener("pointerup", updateTranscriptSelectionActive, true);
+    doc.addEventListener("keyup", updateTranscriptSelectionActive, true);
+    win.addEventListener("blur", updateTranscriptSelectionActive);
+
+    return () => {
+      doc.removeEventListener(
+        "selectionchange",
+        updateTranscriptSelectionActive,
+      );
+      doc.removeEventListener("pointerup", updateTranscriptSelectionActive, true);
+      doc.removeEventListener("keyup", updateTranscriptSelectionActive, true);
+      win.removeEventListener("blur", updateTranscriptSelectionActive);
+      activeSessionPage?.classList.remove(TRANSCRIPT_SELECTION_ACTIVE_CLASS);
+      activeBody?.classList.remove(TRANSCRIPT_SELECTION_ACTIVE_CLASS);
+    };
   }, [inert]);
 
   useEffect(() => {

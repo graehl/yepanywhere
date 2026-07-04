@@ -25,6 +25,18 @@ const originalScrollTopDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "scrollTop",
 );
+const originalCreateObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
+  URL,
+  "createObjectURL",
+);
+const originalRevokeObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
+  URL,
+  "revokeObjectURL",
+);
+const originalWindowOpenDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "open",
+);
 
 function restorePrototypeProperty(
   name: keyof HTMLElement,
@@ -34,6 +46,18 @@ function restorePrototypeProperty(
     Object.defineProperty(HTMLElement.prototype, name, descriptor);
   } else {
     Reflect.deleteProperty(HTMLElement.prototype, name);
+  }
+}
+
+function restoreObjectProperty(
+  target: object,
+  name: PropertyKey,
+  descriptor: PropertyDescriptor | undefined,
+) {
+  if (descriptor) {
+    Object.defineProperty(target, name, descriptor);
+  } else {
+    Reflect.deleteProperty(target, name);
   }
 }
 
@@ -67,6 +91,17 @@ describe("FileViewer", () => {
     restorePrototypeProperty("clientHeight", originalClientHeightDescriptor);
     restorePrototypeProperty("scrollHeight", originalScrollHeightDescriptor);
     restorePrototypeProperty("scrollTop", originalScrollTopDescriptor);
+    restoreObjectProperty(
+      URL,
+      "createObjectURL",
+      originalCreateObjectUrlDescriptor,
+    );
+    restoreObjectProperty(
+      URL,
+      "revokeObjectURL",
+      originalRevokeObjectUrlDescriptor,
+    );
+    restoreObjectProperty(window, "open", originalWindowOpenDescriptor);
   });
 
   it("shows project-relative headers for Windows absolute project paths", async () => {
@@ -348,5 +383,71 @@ describe("FileViewer", () => {
     expect(
       container.querySelector(".markdown-preview-span-start"),
     ).toBeTruthy();
+  });
+
+  it("opens image previews as raw image tabs", async () => {
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: "screenshots/result.png",
+        size: 128,
+        mimeType: "image/png",
+        isText: false,
+      },
+      rawUrl:
+        "/api/projects/project-id/files/raw?path=screenshots%2Fresult.png",
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+      fetchRawFileBlob: vi.fn(
+        async () => new Blob(["png"], { type: "image/png" }),
+      ),
+    };
+    const openMock = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:file-viewer-image"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(window, "open", {
+      configurable: true,
+      value: openMock,
+    });
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="screenshots/result.png"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    const imageLink = await screen.findByRole("link", {
+      name: "Open image in new tab",
+    });
+    expect(imageLink.getAttribute("href")).toBe(
+      "/api/projects/project-id/files/raw?path=screenshots%2Fresult.png",
+    );
+    expect(imageLink.getAttribute("target")).toBe("_blank");
+    expect(imageLink.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(
+      screen.getByRole("img", { name: "result.png" }).getAttribute("src"),
+    ).toBe("blob:file-viewer-image");
+
+    const openButton = container.querySelector<HTMLButtonElement>(
+      '.file-viewer-actions .file-viewer-action[title="Open image in new tab"]',
+    );
+    expect(openButton).not.toBeNull();
+    fireEvent.click(openButton as HTMLButtonElement);
+
+    expect(openMock).toHaveBeenCalledWith(
+      "/api/projects/project-id/files/raw?path=screenshots%2Fresult.png",
+      "_blank",
+      "noopener",
+    );
   });
 });

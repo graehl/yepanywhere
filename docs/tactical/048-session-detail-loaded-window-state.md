@@ -16,9 +16,10 @@ The reducer now enforces the loaded-window boundary invariant directly:
 - `replaceTailWindow` is the explicit action for the one incremental-response
   case that may move the window start: an `afterMessageId` request whose anchor
   missed and whose server response is a compacted tail re-slice.
-- Warm-refresh preparation no longer reconciles pagination in hook/helper code;
-  it only prepares merged-message counts for progress. Window metadata is a
-  reducer concern.
+- Warm-refresh preparation no longer reconciles pagination in hook/helper code.
+  (2026-07-04: the prepare step was then removed entirely — progress counts
+  read from post-dispatch reducer state, and the `warmRefresh` module and its
+  tests are gone.) Window metadata is a reducer concern.
 
 The `SessionDetailLoadedWindow` wrapper proposed below is still a naming/design
 follow-up, not part of this slice.
@@ -267,7 +268,7 @@ Recommendation: design separately before implementation.
 
 Run at minimum:
 
-- `pnpm --filter @yep-anywhere/client test -- src/lib/sessionDetail/__tests__/transcriptReducer.test.ts src/lib/sessionDetail/__tests__/warmRefresh.test.ts src/lib/sessionDetail/__tests__/revealSnapshot.test.ts src/lib/sessionDetail/__tests__/sessionDetailStore.test.ts src/hooks/__tests__/useSessionMessages.cache.test.tsx`
+- `pnpm --filter @yep-anywhere/client test -- src/lib/sessionDetail/__tests__/transcriptReducer.test.ts src/lib/sessionDetail/__tests__/revealSnapshot.test.ts src/lib/sessionDetail/__tests__/sessionDetailStore.test.ts src/hooks/__tests__/useSessionMessages.cache.test.tsx`
 - `pnpm lint`
 - `pnpm typecheck`
 

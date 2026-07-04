@@ -92,7 +92,7 @@ export function tagJsonlMessages(messages: readonly Message[]): Message[] {
   }));
 }
 
-export function mergePersistedMessagesForProvider(
+function mergePersistedMessagesForProvider(
   baseMessages: Message[],
   taggedMessages: Message[],
   provider: string | undefined,
@@ -155,13 +155,6 @@ function maybeReconcileApprox(
   return usesQueueOperationEchoDedup(provider)
     ? reconcileClaudeQueueOperationEchoes(approx)
     : approx;
-}
-
-export function reconcilePersistedMessagesForProvider(
-  messages: Message[],
-  provider: string | undefined,
-): Message[] {
-  return maybeReconcileApprox(messages, provider);
 }
 
 function maxOptionalNumber(

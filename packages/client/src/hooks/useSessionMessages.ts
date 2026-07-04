@@ -10,10 +10,6 @@ import type { DeferredQueueMessage, PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
 import {
-  prepareWarmRefreshAfterHydration,
-  prepareWarmRefreshBeforeHydration,
-} from "../lib/sessionDetail/warmRefresh";
-import {
   buildSessionDetailRevealSnapshot,
   getCacheableSessionDetailRevealSnapshot,
   type SessionDetailRevealSnapshotFallback,
@@ -776,7 +772,6 @@ export function useSessionMessages(
 
     const applyWarmRefreshAction = (
       data: GetSessionResult,
-      latestSnapshot?: Pick<SessionRouteSnapshot, "messages">,
     ): {
       messageCount: number;
       pagination?: PaginationInfo;
@@ -818,27 +813,16 @@ export function useSessionMessages(
         };
       }
 
-      const warmRefresh = latestSnapshot
-        ? prepareWarmRefreshAfterHydration({
-            warmLoad,
-            latestSnapshot,
-            refreshMessages: data.messages,
-            refreshSession: data.session,
-          })
-        : prepareWarmRefreshBeforeHydration({
-            warmLoad,
-            refreshMessages: data.messages,
-            refreshSession: data.session,
-          });
       dispatchSessionDetailAction({
         type: "applyCatchupMessages",
         session: data.session,
         messages: data.messages,
       });
+      const merged = readSelectorBackedRuntimeSnapshot();
       return {
-        messageCount: warmRefresh.mergedMessages.length,
-        pagination: readSelectorBackedRuntimeSnapshot()?.pagination,
-        sourceMessageCount: warmRefresh.taggedMessages.length,
+        messageCount: merged?.messages.length ?? data.messages.length,
+        pagination: merged?.pagination,
+        sourceMessageCount: data.messages.length,
       };
     };
 
@@ -895,8 +879,7 @@ export function useSessionMessages(
         restoredFromSnapshot: true,
         appliedAfterSnapshotHydration: true,
       });
-      const latestSnapshot = readCurrentStoreRouteSnapshot();
-      const applied = applyWarmRefreshAction(data, latestSnapshot);
+      const applied = applyWarmRefreshAction(data);
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
         {
@@ -1084,7 +1067,6 @@ export function useSessionMessages(
     flushBuffer,
     resetSessionDetailState,
     dispatchSessionDetailAction,
-    readCurrentStoreRouteSnapshot,
     readStoreLastMessageId,
     readSelectorBackedRuntimeSnapshot,
     sessionDetailCache,

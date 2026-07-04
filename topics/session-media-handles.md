@@ -204,6 +204,18 @@ fixed bounded placeholder that will not jump.
 Collapsed media chips should render from metadata only. Expanded media should
 fetch the blob lazily and render an object URL.
 
+Stable transcript media handles would also unlock durable client UI state for
+inline preview expansion. The 2026-07-04 inline-media regression showed that
+DOM-only expansion state (`data-expanded`, mounted preview children, and object
+URLs owned by the rendered-markdown post-processing effect) is vulnerable when
+React legitimately remounts rendered transcript HTML. The immediate fix was to
+keep identical rendered HTML in a stable island so unrelated quote-button
+measurement does not remount inline media. Media handles would address the
+next layer: expansion/collapse state and any bounded blob/object-URL cache
+could be keyed by stable media identity, so route restores, transcript cache
+eviction, changed HTML, or other legitimate remounts can recreate an expanded
+preview intentionally without refetch flicker.
+
 The existing "inline media expanded by default" setting defaults off. If this
 setting is applied to transcript media handles later, it must respect the
 layout-stability rule from `packages/client/RENDERING_PERFORMANCE.md`: old

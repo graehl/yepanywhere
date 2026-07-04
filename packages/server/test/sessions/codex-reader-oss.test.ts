@@ -364,6 +364,129 @@ describe("CodexSessionReader - OSS Support", () => {
     });
   });
 
+  it("can read a cheap head summary without scanning trailing transcript", async () => {
+    const sessionId = "cheap-summary-session";
+    const now = new Date().toISOString();
+    const trailingMessages = Array.from({ length: 250 }, (_, index) =>
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: `bulk ${index}` }],
+        },
+      }),
+    );
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: {
+          cwd: "/test/project",
+          approval_policy: "never",
+          model: "gpt-5",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "user_message",
+          message: "cheap summary title",
+        },
+      }),
+      ...trailingMessages,
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: {
+          cwd: "/test/project",
+          model: "late-model",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "token_count",
+          info: {
+            last_token_usage: {
+              input_tokens: 900,
+              cached_input_tokens: 0,
+              output_tokens: 10,
+              total_tokens: 910,
+            },
+            model_context_window: 1000,
+          },
+        },
+      }),
+    ];
+
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    const cheap = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+      { readMode: "head" },
+    );
+
+    expect(cheap).toMatchObject({
+      id: sessionId,
+      title: "cheap summary title",
+      fullTitle: "cheap summary title",
+      messageCount: 1,
+      provider: "codex",
+      model: "gpt-5",
+      approvalPolicy: "never",
+    });
+    expect(cheap?.contextUsage).toBeUndefined();
+    expect(reader.getLastSummaryStreamMetrics()).toMatchObject({
+      event: "codex_summary_stream",
+      readMode: "head",
+      lineCount: 3,
+      parsedEntries: 3,
+      stoppedEarly: true,
+      stopReason: "head_complete",
+    });
+
+    const full = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(full).toMatchObject({
+      title: "cheap summary title",
+      messageCount: 251,
+      model: "late-model",
+      contextUsage: {
+        inputTokens: 900,
+        percentage: 90,
+        contextWindow: 1000,
+      },
+    });
+    expect(reader.getLastSummaryStreamMetrics()).toMatchObject({
+      event: "codex_summary_stream",
+      readMode: "full",
+      lineCount: lines.length,
+      stoppedEarly: false,
+      stopReason: "eof",
+    });
+  });
+
   itIfNativeZstd("loads zstd-compressed rollout files", async () => {
     const sessionId = "zstd-rollout";
     const now = new Date().toISOString();

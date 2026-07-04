@@ -106,6 +106,62 @@ describe("ExternalSessionTracker", () => {
     }
   });
 
+  it("requests head summaries for owned Codex file changes", async () => {
+    const eventBus = new EventBus();
+    const projectId = encodeProjectId("/tmp/codex-project");
+    const sessionId = "019f28d9-2dff-7dd2-8326-4b0e6093aed4";
+    const supervisor = {
+      getProcessForSession: vi.fn((candidate: string) =>
+        candidate === sessionId
+          ? { projectId, state: { type: "in-turn" } }
+          : undefined,
+      ),
+    } as unknown as Supervisor;
+    const scanner = {
+      getProjectBySessionDirSuffix: vi.fn(),
+    } as unknown as ProjectScanner;
+    const getSessionSummary = vi.fn(async () => ({
+      id: sessionId,
+      projectId,
+      title: "Codex title",
+      fullTitle: "Codex title",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      updatedAt: "2026-07-04T00:00:01.000Z",
+      messageCount: 1,
+      ownership: { owner: "none" as const },
+      provider: "codex" as const,
+    }));
+
+    const tracker = new ExternalSessionTracker({
+      eventBus,
+      supervisor,
+      scanner,
+      decayMs: 100,
+      getSessionSummary,
+    });
+
+    try {
+      eventBus.emit({
+        type: "file-change",
+        provider: "codex",
+        path: `/tmp/codex/rollout-${sessionId}.jsonl`,
+        relativePath: `2026/07/04/rollout-${sessionId}.jsonl`,
+        changeType: "modify",
+        fileType: "session",
+        timestamp: new Date().toISOString(),
+      });
+
+      await vi.waitFor(() => {
+        expect(getSessionSummary).toHaveBeenCalledWith(sessionId, projectId, {
+          readMode: "head",
+        });
+      });
+      expect(tracker.isExternal(sessionId)).toBe(false);
+    } finally {
+      tracker.dispose();
+    }
+  });
+
   it("marks Pi sessions external from the JSONL header", async () => {
     const eventBus = new EventBus();
     const events: BusEvent[] = [];

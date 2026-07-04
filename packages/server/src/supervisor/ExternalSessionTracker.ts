@@ -13,6 +13,7 @@ import {
 import type { ProjectScanner } from "../projects/scanner.js";
 import { readFirstLine } from "../utils/jsonl.js";
 import { BatchProcessor } from "../watcher/BatchProcessor.js";
+import type { GetSessionSummaryOptions } from "../sessions/types.js";
 import type {
   BusEvent,
   EventBus,
@@ -60,6 +61,7 @@ export interface ExternalSessionTrackerOptions {
   getSessionSummary?: (
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ) => Promise<SessionSummary | null>;
 }
 
@@ -83,6 +85,7 @@ export class ExternalSessionTracker {
   private getSessionSummary?: (
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ) => Promise<SessionSummary | null>;
   /** Batches session parsing to prevent OOM from concurrent file reads */
   private sessionParser: BatchProcessor<SessionSummary | null>;
@@ -392,7 +395,7 @@ export class ExternalSessionTracker {
         const getSessionSummary = this.getSessionSummary;
         const projectId = process.projectId;
         this.sessionParser.enqueue(sessionId, async () => {
-          return getSessionSummary(sessionId, projectId);
+          return getSessionSummary(sessionId, projectId, { readMode: "head" });
         });
       }
       return;
@@ -457,7 +460,7 @@ export class ExternalSessionTracker {
         const getSessionSummary = this.getSessionSummary;
         const projectId = process.projectId;
         this.sessionParser.enqueue(sessionId, async () => {
-          return getSessionSummary(sessionId, projectId);
+          return getSessionSummary(sessionId, projectId, { readMode: "head" });
         });
       }
       return;
@@ -568,7 +571,7 @@ export class ExternalSessionTracker {
         const getSessionSummary = this.getSessionSummary;
         const projectId = process.projectId;
         this.sessionParser.enqueue(meta.id, async () => {
-          return getSessionSummary(meta.id, projectId);
+          return getSessionSummary(meta.id, projectId, { readMode: "head" });
         });
       }
       return;
@@ -675,7 +678,9 @@ export class ExternalSessionTracker {
         this.sessionParser.enqueue(sessionId, async () => {
           const project = await this.resolveProjectForSession(info);
           if (!project) return null;
-          return getSessionSummary(sessionId, project.id as UrlProjectId);
+          return getSessionSummary(sessionId, project.id as UrlProjectId, {
+            readMode: "head",
+          });
         });
       }
     } else {
@@ -696,7 +701,9 @@ export class ExternalSessionTracker {
         this.sessionParser.enqueue(sessionId, async () => {
           const project = await this.resolveProjectForSession(externalInfo);
           if (!project) return null;
-          return getSessionSummary(sessionId, project.id as UrlProjectId);
+          return getSessionSummary(sessionId, project.id as UrlProjectId, {
+            readMode: "head",
+          });
         });
       }
 

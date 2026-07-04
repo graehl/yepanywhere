@@ -144,7 +144,10 @@ import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import type { SummaryParserWorkerMode } from "./sessions/summary-parser-worker-protocol.js";
-import type { ISessionReader } from "./sessions/types.js";
+import type {
+  GetSessionSummaryOptions,
+  ISessionReader,
+} from "./sessions/types.js";
 import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
 import {
   Supervisor,
@@ -585,7 +588,11 @@ export function createApp(options: AppOptions): AppResult {
           projectPath,
         }),
     );
-  const getSessionSummary = async (sessionId: string, projectId: string) => {
+  const getSessionSummary = async (
+    sessionId: string,
+    projectId: string,
+    summaryOptions?: GetSessionSummaryOptions,
+  ) => {
     const project = await scanner.getProject(projectId);
     if (!project) return null;
     const resolved = await findSessionSummaryAcrossProviders(
@@ -607,6 +614,7 @@ export function createApp(options: AppOptions): AppResult {
         claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
       },
       options.sessionMetadataService?.getProvider(sessionId),
+      summaryOptions,
     );
     const summary = resolved?.summary ?? null;
     if (!summary) return null;

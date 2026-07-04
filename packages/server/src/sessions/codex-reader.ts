@@ -50,9 +50,11 @@ import type {
   SummaryParserWorkerRequest,
 } from "./summary-parser-worker-protocol.js";
 import type {
+  GetSessionSummaryOptions,
   GetSessionOptions,
   ISessionReader,
   LoadedSession,
+  SessionSummaryReadMode,
 } from "./types.js";
 
 export interface CodexSessionReaderOptions {
@@ -85,6 +87,8 @@ interface CodexSessionFile {
 
 const CODEX_SCAN_CACHE_TTL_MS = 5000;
 const DEFAULT_SLOW_LOG_THRESHOLD_MS = 250;
+const CODEX_HEAD_SUMMARY_MAX_LINES = 200;
+const CODEX_HEAD_SUMMARY_MAX_BYTES = 1024 * 1024;
 const LOG_ENTRY_READS = process.env.CODEX_READER_LOG_PARSE === "true";
 
 function isCompressedCodexSessionFile(filePath: string): boolean {
@@ -184,6 +188,7 @@ interface CodexEntryReadMetrics {
 
 export interface CodexSummaryStreamMetrics {
   event: "codex_summary_stream";
+  readMode: SessionSummaryReadMode;
   sessionsDir: string;
   projectPath?: string;
   sessionId: string;
@@ -198,6 +203,8 @@ export interface CodexSummaryStreamMetrics {
   dedupedEntries: number;
   skippedDuplicateEntries: number;
   maxLineLength: number;
+  stoppedEarly: boolean;
+  stopReason: "eof" | "head_complete" | "line_budget" | "byte_budget";
   heapUsedBefore: number;
   heapUsedAfter: number;
   rssBefore: number;
@@ -237,6 +244,9 @@ interface CodexSummaryStreamRead {
   skippedDuplicateEntries: number;
   maxLineLength: number;
   parseMs: number;
+  readMode: SessionSummaryReadMode;
+  stoppedEarly: boolean;
+  stopReason: CodexSummaryStreamMetrics["stopReason"];
 }
 
 function parseCodexJsonlChunk(
@@ -459,7 +469,9 @@ export class CodexSessionReader implements ISessionReader {
         continue;
       }
 
-      const summary = await this.getSessionSummary(session.id, projectId);
+      const summary = await this.getSessionSummary(session.id, projectId, {
+        readMode: "head",
+      });
       if (summary) {
         summaries.push(summary);
       }
@@ -477,6 +489,7 @@ export class CodexSessionReader implements ISessionReader {
   async getSessionSummary(
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null> {
     const sessionFile = await this.findSessionFile(sessionId);
     if (!sessionFile) return null;
@@ -487,9 +500,13 @@ export class CodexSessionReader implements ISessionReader {
           sessionId,
           projectId,
           sessionFile.filePath,
+          options,
         );
 
-      if (this.summaryParserWorkerMode === "off") {
+      if (
+        options?.readMode === "head" ||
+        this.summaryParserWorkerMode === "off"
+      ) {
         return await inProcessParser();
       }
 
@@ -1028,17 +1045,29 @@ export class CodexSessionReader implements ISessionReader {
     sessionId: string,
     projectId: UrlProjectId,
     filePath: string,
+    options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null> {
-    return this.buildSessionSummaryFromStream(sessionId, projectId, filePath);
+    return this.buildSessionSummaryFromStream(
+      sessionId,
+      projectId,
+      filePath,
+      options,
+    );
   }
 
   private async buildSessionSummaryFromStream(
     sessionId: string,
     projectId: UrlProjectId,
     filePath: string,
+    options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null> {
     const stats = await stat(filePath);
-    const read = await this.readSummaryStream(sessionId, filePath, stats);
+    const read = await this.readSummaryStream(
+      sessionId,
+      filePath,
+      stats,
+      options?.readMode ?? "full",
+    );
     return this.buildSessionSummaryFromState(
       sessionId,
       projectId,
@@ -1058,6 +1087,7 @@ export class CodexSessionReader implements ISessionReader {
     sessionId: string,
     filePath: string,
     stats: Awaited<ReturnType<typeof stat>>,
+    readMode: SessionSummaryReadMode,
   ): Promise<CodexSummaryStreamRead> {
     const startedAt = Date.now();
     const memoryBefore = process.memoryUsage();
@@ -1072,18 +1102,51 @@ export class CodexSessionReader implements ISessionReader {
     let dedupedEntries = 0;
     let skippedDuplicateEntries = 0;
     let maxLineLength = 0;
+    let bytesRead = 0;
+    let stoppedEarly = false;
+    let stopReason: CodexSummaryStreamMetrics["stopReason"] = "eof";
 
     const parseStartedAt = Date.now();
+    const headBudgetStopReason = ():
+      | Exclude<CodexSummaryStreamMetrics["stopReason"], "eof">
+      | null => {
+      if (readMode !== "head") return null;
+      if (lineCount >= CODEX_HEAD_SUMMARY_MAX_LINES) {
+        return "line_budget";
+      }
+      if (bytesRead >= CODEX_HEAD_SUMMARY_MAX_BYTES) {
+        return "byte_budget";
+      }
+      return null;
+    };
+    const stopEarly = (
+      reason: Exclude<CodexSummaryStreamMetrics["stopReason"], "eof">,
+    ) => {
+      stoppedEarly = true;
+      stopReason = reason;
+    };
+
     for await (const line of iterateJsonlLines(filePath)) {
       lineCount += 1;
       maxLineLength = Math.max(maxLineLength, line.length);
+      bytesRead += Buffer.byteLength(line) + 1;
       const trimmed = line.trim();
       if (!trimmed) {
+        const budgetReason = headBudgetStopReason();
+        if (budgetReason) {
+          stopEarly(budgetReason);
+          break;
+        }
         continue;
       }
 
       const entry = parseCodexSessionEntry(trimmed);
       if (!entry) {
+        const budgetReason = headBudgetStopReason();
+        if (budgetReason) {
+          stopEarly(budgetReason);
+          break;
+        }
         continue;
       }
 
@@ -1099,6 +1162,15 @@ export class CodexSessionReader implements ISessionReader {
 
       dedupedEntries += 1;
       this.applySummaryEntry(state, entry);
+      if (readMode === "head" && this.hasHeadSummary(state)) {
+        stopEarly("head_complete");
+        break;
+      }
+      const budgetReason = headBudgetStopReason();
+      if (budgetReason) {
+        stopEarly(budgetReason);
+        break;
+      }
     }
     const parseMs = Date.now() - parseStartedAt;
 
@@ -1110,6 +1182,9 @@ export class CodexSessionReader implements ISessionReader {
       skippedDuplicateEntries,
       maxLineLength,
       parseMs,
+      readMode,
+      stoppedEarly,
+      stopReason,
     };
     this.recordSummaryStreamMetrics({
       startedAt,
@@ -1120,6 +1195,13 @@ export class CodexSessionReader implements ISessionReader {
       read,
     });
     return read;
+  }
+
+  private hasHeadSummary(state: CodexSummaryState): boolean {
+    return !!(
+      state.metaEntry &&
+      (state.firstResponseUserTitle || state.firstEventUserTitle)
+    );
   }
 
   private applySummaryEntry(
@@ -1452,6 +1534,9 @@ export class CodexSessionReader implements ISessionReader {
       dedupedEntries: options.read.dedupedEntries,
       skippedDuplicateEntries: options.read.skippedDuplicateEntries,
       maxLineLength: options.read.maxLineLength,
+      readMode: options.read.readMode,
+      stoppedEarly: options.read.stoppedEarly,
+      stopReason: options.read.stopReason,
       heapUsedBefore: options.memoryBefore.heapUsed,
       heapUsedAfter: memoryAfter.heapUsed,
       rssBefore: options.memoryBefore.rss,

@@ -322,6 +322,39 @@ Acceptance for this next chunk:
 - Tests cover a large JSONL where cheap summary stops after the required head
   entries instead of reading the full file.
 
+### `2026-07-04`: SPC-002A Initial Cheap Codex Summary Option
+
+Implemented the first cheap-summary slice in
+`packages/server/src/sessions/codex-reader.ts` and
+`packages/server/src/sessions/types.ts`.
+
+Codex summaries now accept an optional summary read mode. The default remains
+full. `readMode: "head"` bypasses the summary worker and streams only until the
+reader has stable head metadata: session metadata plus the first non-system
+user title. It preserves the existing `SessionSummary` shape for compatibility,
+uses a minimal compatible `messageCount` once content is found, and leaves
+tail-derived optional fields such as `contextUsage` unset unless they appeared
+before the head read completed.
+
+Initial cheap callers:
+
+- `CodexSessionReader.listSessions(...)`, for direct list reads without an
+  index cache.
+- `ExternalSessionTracker`, for owned/external file-change summary refreshes.
+
+Callers intentionally left on full summaries for now:
+
+- Supervisor auto-compact checks, because they may need fresh
+  `contextUsage.inputTokens`.
+- Session detail and metadata routes whose behavior still needs a caller-by-
+  caller audit.
+- Session index validation, which still owns exact cached summary state.
+
+Regression coverage now verifies that a large Codex JSONL can return a head
+summary after the first three lines while a full summary still sees trailing
+model/context/message-count data. Tracker coverage verifies owned Codex
+file-change refreshes request `readMode: "head"`.
+
 ## Fix Tracks
 
 ### SPC-001: Worker Client Serialization

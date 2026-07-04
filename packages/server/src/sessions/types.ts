@@ -16,6 +16,20 @@ export interface GetSessionOptions {
   includeOrphans?: boolean;
 }
 
+export type SessionSummaryReadMode = "full" | "head";
+
+/**
+ * Options for reading summary metadata.
+ */
+export interface GetSessionSummaryOptions {
+  /**
+   * `head` permits a provider to stop after stable head metadata. It preserves
+   * the SessionSummary wire shape but may omit tail-derived optional fields
+   * such as contextUsage and may use a minimal compatible messageCount.
+   */
+  readMode?: SessionSummaryReadMode;
+}
+
 // Return type that includes both the computed summary and the raw provider data
 export interface LoadedSession {
   summary: SessionSummary;
@@ -48,6 +62,7 @@ export interface ISessionReader {
   getSessionSummary(
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null>;
 
   /**

@@ -16,7 +16,7 @@ import { OPENCODE_STORAGE_DIR } from "./opencode-reader.js";
 import { PiSessionReader } from "./pi-reader.js";
 import { ClaudeSessionReader } from "./reader.js";
 import type { SummaryParserWorkerMode } from "./summary-parser-worker-protocol.js";
-import type { ISessionReader } from "./types.js";
+import type { GetSessionSummaryOptions, ISessionReader } from "./types.js";
 
 type ProviderGroup = "claude" | "codex" | "gemini" | "opencode" | "grok" | "pi";
 
@@ -392,6 +392,7 @@ export async function findSessionSummaryAcrossProviders(
   projectId: UrlProjectId,
   deps: ProviderResolutionDeps,
   preferredProvider?: ProviderName | string,
+  options?: GetSessionSummaryOptions,
 ): Promise<ResolvedSessionSummary | null> {
   for (const source of getSessionSources(project, deps, preferredProvider)) {
     const summary = deps.sessionIndexService
@@ -401,7 +402,9 @@ export async function findSessionSummaryAcrossProviders(
           sessionId,
           source.reader,
         )
-      : await source.reader.getSessionSummary(sessionId, projectId);
+      : options
+        ? await source.reader.getSessionSummary(sessionId, projectId, options)
+        : await source.reader.getSessionSummary(sessionId, projectId);
     if (summary) {
       return { source, summary };
     }

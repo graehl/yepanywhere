@@ -1975,19 +1975,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
   };
 
-  const getProviderResolutionDeps = () => ({
-    readerFactory: deps.readerFactory,
-    codexSessionsDir: deps.codexSessionsDir,
-    codexReaderFactory: deps.codexReaderFactory,
-    geminiSessionsDir: deps.geminiSessionsDir,
-    geminiReaderFactory: deps.geminiReaderFactory,
-    geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-    grokSessionsDir: deps.grokSessionsDir,
-    grokReaderFactory: deps.grokReaderFactory,
-    piSessionsDir: deps.piSessionsDir,
-    piReaderFactory: deps.piReaderFactory,
-  });
-
   const loadProviderSession = async (
     project: Project,
     sessionId: string,
@@ -1998,7 +1985,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   ): Promise<LoadedSession | null> => {
     for (const source of getSessionSources(
       project,
-      getProviderResolutionDeps(),
+      providerResolutionDeps(deps),
       preferredProvider,
     )) {
       const loaded = await source.reader.getSession(
@@ -2026,7 +2013,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project,
       sessionId,
       projectId,
-      getProviderResolutionDeps(),
+      providerResolutionDeps(deps),
       preferredProvider,
     );
 
@@ -2314,18 +2301,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       transcriptProject,
       sessionId,
       transcriptProjectId,
-      {
-        readerFactory: deps.readerFactory,
-        codexSessionsDir: deps.codexSessionsDir,
-        codexReaderFactory: deps.codexReaderFactory,
-        geminiSessionsDir: deps.geminiSessionsDir,
-        geminiReaderFactory: deps.geminiReaderFactory,
-        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-        grokSessionsDir: deps.grokSessionsDir,
-        grokReaderFactory: deps.grokReaderFactory,
-        piSessionsDir: deps.piSessionsDir,
-        piReaderFactory: deps.piReaderFactory,
-      },
+      providerResolutionDeps(deps),
       metadataProvider ?? process?.provider,
     );
     const rawSessionSummary = sessionSummaryResult?.summary ?? null;
@@ -2474,7 +2450,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         transcriptProject,
         sessionId,
         transcriptProjectId,
-        getProviderResolutionDeps(),
+        providerResolutionDeps(deps),
         metadataProvider,
       );
       if (!summary) {
@@ -2553,7 +2529,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           transcriptProject,
           sessionId,
           transcriptProjectId,
-          getProviderResolutionDeps(),
+          providerResolutionDeps(deps),
           metadataProvider,
         );
         if (summaryResult?.summary) {
@@ -3512,18 +3488,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         project,
         sessionId,
         projectId as UrlProjectId,
-        {
-          readerFactory: deps.readerFactory,
-          codexSessionsDir: deps.codexSessionsDir,
-          codexReaderFactory: deps.codexReaderFactory,
-          geminiSessionsDir: deps.geminiSessionsDir,
-          geminiReaderFactory: deps.geminiReaderFactory,
-          geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-          grokSessionsDir: deps.grokSessionsDir,
-          grokReaderFactory: deps.grokReaderFactory,
-          piSessionsDir: deps.piSessionsDir,
-          piReaderFactory: deps.piReaderFactory,
-        },
+        providerResolutionDeps(deps),
         metadataProvider ?? body.provider,
       );
       const sessionSummary = sessionSummaryResult?.summary ?? null;
@@ -4282,18 +4247,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project,
       sessionId,
       projectId,
-      {
-        readerFactory: deps.readerFactory,
-        codexSessionsDir: deps.codexSessionsDir,
-        codexReaderFactory: deps.codexReaderFactory,
-        geminiSessionsDir: deps.geminiSessionsDir,
-        geminiReaderFactory: deps.geminiReaderFactory,
-        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-        grokSessionsDir: deps.grokSessionsDir,
-        grokReaderFactory: deps.grokReaderFactory,
-        piSessionsDir: deps.piSessionsDir,
-        piReaderFactory: deps.piReaderFactory,
-      },
+      providerResolutionDeps(deps),
       sourceProcess?.provider ?? metadataProvider,
     );
     const sessionSummary = sessionSummaryResult?.summary ?? null;
@@ -4452,18 +4406,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project,
       sessionId,
       projectId,
-      {
-        readerFactory: deps.readerFactory,
-        codexSessionsDir: deps.codexSessionsDir,
-        codexReaderFactory: deps.codexReaderFactory,
-        geminiSessionsDir: deps.geminiSessionsDir,
-        geminiReaderFactory: deps.geminiReaderFactory,
-        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-        grokSessionsDir: deps.grokSessionsDir,
-        grokReaderFactory: deps.grokReaderFactory,
-        piSessionsDir: deps.piSessionsDir,
-        piReaderFactory: deps.piReaderFactory,
-      },
+      providerResolutionDeps(deps),
       liveSourceProcess?.provider ?? metadataProvider,
     );
     const sessionSummary = sessionSummaryResult?.summary ?? null;

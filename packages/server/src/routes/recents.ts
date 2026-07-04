@@ -84,6 +84,8 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
           piSessionsDir: deps.piSessionsDir,
           piReaderFactory: deps.piReaderFactory,
         },
+        undefined,
+        { readMode: "head" },
       );
       if (!resolved) {
         continue;

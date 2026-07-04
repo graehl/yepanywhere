@@ -668,6 +668,7 @@ export function createApp(options: AppOptions): AppResult {
           project.id,
           providerResolutionDeps,
           metadata.provider,
+          { readMode: "head" },
         );
         if (!resolved) {
           continue;

@@ -232,7 +232,7 @@ for the detailed measurements.
 ## Progress Checklist
 
 - [x] SPC-001: Make `SummaryParserClient` safe under concurrent `parse()` calls.
-- [ ] SPC-002A: Add cheap Codex head-summary reads for routine callers.
+- [x] SPC-002A: Add cheap Codex head-summary reads for routine callers.
 - [ ] SPC-002B: Coalesce same-file-version full summary parses.
 - [ ] SPC-003: Route direct summary callers through the coordinated summary
   service path.
@@ -354,6 +354,38 @@ Regression coverage now verifies that a large Codex JSONL can return a head
 summary after the first three lines while a full summary still sees trailing
 model/context/message-count data. Tracker coverage verifies owned Codex
 file-change refreshes request `readMode: "head"`.
+
+### `2026-07-04`: SPC-002A Direct Cheap Caller Conversion
+
+Converted additional direct summary lookups that only need identity, provider,
+or title data to request `readMode: "head"`.
+
+Converted paths:
+
+- Recents enrichment.
+- Project Queue existing-session target title enrichment when it bypasses the
+  index cache.
+- Session reader/provider resolution helpers used by agent-content loading,
+  restart-source loading, working-project validation, resume provider fallback,
+  fork provider/title fallback, retitle provider fallback, and clone
+  title/provider fallback.
+- Heartbeat candidate preflight before the subsequent full `getSession()` read.
+
+Callers intentionally left on full summaries:
+
+- Session metadata responses, because they return `messageCount`, `model`,
+  `contextUsage`, origin/source fields, and other full-summary fields.
+- Process enrichment, because it explicitly populates `model` and
+  `contextUsage`.
+- Session index validation and single-summary cache misses, because the cache
+  schema stores exact summary fields and emits events containing exact
+  `messageCount`, `model`, `contextUsage`, and `lastAgentText`.
+- Recap preview summary overlay, because it may need `lastAgentText` for
+  providers whose summary path supplies it.
+
+Regression coverage now pins head-mode propagation for recents, Project Queue
+direct title enrichment, working-project validation, retitle provider
+fallback, and Codex clone title/provider fallback.
 
 ## Fix Tracks
 

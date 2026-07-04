@@ -1454,6 +1454,7 @@ describe("Sessions metadata route", () => {
       expect(reader.getSessionSummary).toHaveBeenCalledWith(
         "sess-1",
         transcriptProject.id,
+        { readMode: "head" },
       );
       expect(reader.getSession).toHaveBeenCalledWith(
         "sess-1",
@@ -2662,10 +2663,12 @@ describe("Sessions metadata route", () => {
     expect(primaryReader.getSessionSummary).toHaveBeenCalledWith(
       "sess-1",
       project.id,
+      { readMode: "head" },
     );
     expect(codexReader.getSessionSummary).toHaveBeenCalledWith(
       "sess-1",
       project.id,
+      { readMode: "head" },
     );
   });
 

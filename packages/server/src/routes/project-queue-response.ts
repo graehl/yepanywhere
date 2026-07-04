@@ -187,6 +187,7 @@ async function enrichProjectQueueItem(
       project.id,
       buildProviderResolutionDeps(deps),
       item.target.provider,
+      { readMode: "head" },
     );
     return {
       ...item,

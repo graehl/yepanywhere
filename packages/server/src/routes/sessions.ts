@@ -362,6 +362,7 @@ async function resolveSessionReaderForAgentContent({
     projectId,
     providerResolutionDeps(deps),
     metadataProvider,
+    { readMode: "head" },
   );
 
   return resolved?.source.reader ?? deps.readerFactory(project);
@@ -1905,6 +1906,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId,
       providerResolutionDeps(deps),
       preferredProvider,
+      { readMode: "head" },
     );
 
     if (resolved) {
@@ -2342,6 +2344,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         transcriptProjectId,
         providerResolutionDeps(deps),
         metadataProvider,
+        { readMode: "head" },
       );
       if (!summary) {
         return c.json({ error: "Session not found" }, 404);
@@ -3459,6 +3462,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         projectId as UrlProjectId,
         providerResolutionDeps(deps),
         metadataProvider ?? body.provider,
+        { readMode: "head" },
       );
       const sessionSummary = sessionSummaryResult?.summary ?? null;
       providerName =
@@ -4218,6 +4222,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId,
       providerResolutionDeps(deps),
       sourceProcess?.provider ?? metadataProvider,
+      { readMode: "head" },
     );
     const sessionSummary = sessionSummaryResult?.summary ?? null;
     const providerName =
@@ -4241,7 +4246,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       try {
         const summary = await deps
           .readerFactory(project)
-          .getSessionSummary(sessionId, projectId);
+          .getSessionSummary(sessionId, projectId, { readMode: "head" });
         baseTitle = normalizeRestartTitleCandidate(summary?.title);
       } catch {
         // Title is cosmetic; fall through to the provider default.
@@ -4377,6 +4382,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId,
       providerResolutionDeps(deps),
       liveSourceProcess?.provider ?? metadataProvider,
+      { readMode: "head" },
     );
     const sessionSummary = sessionSummaryResult?.summary ?? null;
     const providerName =
@@ -6097,6 +6103,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       let originalSession = await reader.getSessionSummary(
         sessionId,
         projectId,
+        { readMode: "head" },
       );
       let cloneProvider: ProviderName = project.provider;
 
@@ -6119,7 +6126,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
         originalSession =
           originalSession ??
-          (await codexReader.getSessionSummary(sessionId, projectId)) ??
+          (await codexReader.getSessionSummary(sessionId, projectId, {
+            readMode: "head",
+          })) ??
           null;
         cloneProvider =
           originalSession?.provider ??

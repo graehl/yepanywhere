@@ -349,6 +349,38 @@ describe("Project Queue Routes", () => {
     });
   });
 
+  it("uses head summaries for direct existing-session target titles", async () => {
+    await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first queued item" },
+      },
+    });
+    const summary = makeSessionSummary("session-1", "Target session title");
+    const getSessionSummary = vi.fn(async () => summary);
+    const reader = {
+      ...makeReader(),
+      getSessionSummary,
+    };
+
+    const routes = createRoutes({
+      readerFactory: vi.fn(() => reader),
+    });
+    const response = await routes.request(`/${projectId}/queue`);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.items[0]).toMatchObject({
+      targetTitle: "Target session title",
+      targetFullTitle: "Full Target session title",
+    });
+    expect(getSessionSummary).toHaveBeenCalledWith("session-1", project.id, {
+      readMode: "head",
+    });
+  });
+
   it("prefers custom titles for existing-session targets", async () => {
     await service.createItem({
       projectId,

@@ -836,18 +836,6 @@ export function useSessionMessages(
         hasOlderMessages: data.pagination?.hasOlderMessages,
         restoredFromSnapshot: true,
       });
-      setSessionLoadProgress(
-        createSessionLoadProgressForWindow("loaded", {
-          messageCount: data.messages.length,
-          pagination: data.pagination,
-        }),
-      );
-      setSessionLoadProgress(
-        createSessionLoadProgressForWindow("preparing", {
-          messageCount: data.messages.length,
-          pagination: data.pagination,
-        }),
-      );
       const applied = applyWarmRefreshAction(data);
       setSessionLoadProgress(
         createSessionLoadProgressForWindow("rendering", {
@@ -981,19 +969,6 @@ export function useSessionMessages(
           totalMessages: data.pagination?.totalMessageCount,
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
-        setSessionLoadProgress(
-          createSessionLoadProgressForWindow("loaded", {
-            messageCount: data.messages.length,
-            pagination: data.pagination,
-          }),
-        );
-
-        setSessionLoadProgress(
-          createSessionLoadProgressForWindow("preparing", {
-            messageCount: data.messages.length,
-            pagination: data.pagination,
-          }),
-        );
         setSessionLoadProgress(
           createSessionLoadProgressForWindow("rendering", {
             messageCount: data.messages.length,

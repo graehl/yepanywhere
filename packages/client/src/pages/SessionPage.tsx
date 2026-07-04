@@ -799,12 +799,6 @@ function getSessionLoadingProgressText(
   switch (progress.stage) {
     case "fetching":
       return null;
-    case "loaded":
-      return t("sessionLoadingLoadedMessages", {
-        count: progress.messageCount ?? 0,
-      });
-    case "preparing":
-      return t("sessionLoadingPreparingTranscript");
     case "rendering":
       return t("sessionLoadingRenderingTranscript", {
         count: progress.messageCount ?? 0,

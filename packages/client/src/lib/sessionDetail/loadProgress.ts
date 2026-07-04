@@ -3,8 +3,6 @@ import type { PaginationInfo } from "../../api/client";
 export type SessionLoadProgressStage =
   | "idle"
   | "fetching"
-  | "loaded"
-  | "preparing"
   | "rendering"
   | "complete"
   | "error";

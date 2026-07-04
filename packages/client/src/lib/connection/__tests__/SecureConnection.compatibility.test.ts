@@ -70,9 +70,7 @@ describe("SecureConnection protocol compatibility", () => {
       "ws://localhost:3400/api/ws",
       "test-user",
       "test-password",
-      undefined,
-      undefined,
-      onAuthenticated,
+      { onAuthenticated },
     ) as unknown as {
       ws: {
         readyState: number;
@@ -193,9 +191,7 @@ describe("SecureConnection protocol compatibility", () => {
       "ws://localhost:3400/api/ws",
       "test-user",
       "test-password",
-      undefined,
-      undefined,
-      onAuthenticated,
+      { onAuthenticated },
     ) as unknown as {
       ws: { readyState: number; send: ReturnType<typeof vi.fn> };
       srpSession: {
@@ -263,7 +259,7 @@ describe("SecureConnection protocol compatibility", () => {
       "ws://localhost:3400/api/ws",
       "test-user",
       "test-password",
-      vi.fn(),
+      { onSessionEstablished: vi.fn() },
     ) as unknown as {
       ws: { readyState: number; send: ReturnType<typeof vi.fn> };
       srpSession: {
@@ -523,9 +519,7 @@ describe("SecureConnection protocol compatibility", () => {
       "ws://localhost:3400/api/ws",
       "test-user",
       "",
-      onSessionEstablished,
-      undefined,
-      onAuthenticated,
+      { onSessionEstablished, onAuthenticated },
     ) as unknown as {
       ws: {
         readyState: number;
@@ -608,9 +602,7 @@ describe("SecureConnection protocol compatibility", () => {
       "ws://localhost:3400/api/ws",
       "test-user",
       "test-password",
-      undefined,
-      undefined,
-      onAuthenticated,
+      { onAuthenticated },
     ) as unknown as {
       ws: {
         readyState: number;

@@ -361,14 +361,13 @@ export function RemoteConnectionProvider({ children }: Props) {
         }
 
         // Create and authenticate connection
-        const conn = new SecureConnection(
-          wsUrl,
-          username,
-          password,
-          rememberMe ? handleSessionEstablished : undefined,
-          handleDisconnect,
-          handleAuthenticated,
-        );
+        const conn = new SecureConnection(wsUrl, username, password, {
+          onSessionEstablished: rememberMe
+            ? handleSessionEstablished
+            : undefined,
+          onDisconnect: handleDisconnect,
+          onAuthenticated: handleAuthenticated,
+        });
 
         // Test the connection by making a simple request
         // This triggers the SRP handshake and verifies auth
@@ -408,9 +407,11 @@ export function RemoteConnectionProvider({ children }: Props) {
         const conn = SecureConnection.fromStoredSession(
           currentStored.session,
           password,
-          handleSessionEstablished,
-          handleDisconnect,
-          handleAuthenticated,
+          {
+            onSessionEstablished: handleSessionEstablished,
+            onDisconnect: handleDisconnect,
+            onAuthenticated: handleAuthenticated,
+          },
         );
 
         // Test the connection - this will try resume, fall back to SRP if needed
@@ -541,20 +542,28 @@ export function RemoteConnectionProvider({ children }: Props) {
           conn = await SecureConnection.forResumeOnlyWithSocket(
             ws,
             session,
-            rememberMe ? handleSessionEstablished : undefined,
+            {
+              onSessionEstablished: rememberMe
+                ? handleSessionEstablished
+                : undefined,
+              onDisconnect: handleDisconnect,
+              onAuthenticated: handleAuthenticated,
+            },
             { relayUrl, relayUsername },
-            handleDisconnect,
-            handleAuthenticated,
           );
         } else {
           conn = await SecureConnection.connectWithExistingSocket(
             ws,
             srpUsername,
             srpPassword,
-            rememberMe ? handleSessionEstablished : undefined,
+            {
+              onSessionEstablished: rememberMe
+                ? handleSessionEstablished
+                : undefined,
+              onDisconnect: handleDisconnect,
+              onAuthenticated: handleAuthenticated,
+            },
             { relayUrl, relayUsername },
-            handleDisconnect,
-            handleAuthenticated,
           );
         }
 
@@ -715,20 +724,21 @@ export function RemoteConnectionProvider({ children }: Props) {
           conn = await SecureConnection.forResumeOnlyWithSocket(
             ws,
             storedSession,
-            handleSessionEstablished,
+            {
+              onSessionEstablished: handleSessionEstablished,
+              onDisconnect: handleDisconnect,
+              onAuthenticated: handleAuthenticated,
+            },
             { relayUrl, relayUsername },
-            handleDisconnect,
-            handleAuthenticated,
           );
         } else {
           setCurrentDirectUrl(currentStored.wsUrl);
           // Direct mode: just create connection and resume
-          conn = SecureConnection.forResumeOnly(
-            storedSession,
-            handleSessionEstablished,
-            handleDisconnect,
-            handleAuthenticated,
-          );
+          conn = SecureConnection.forResumeOnly(storedSession, {
+            onSessionEstablished: handleSessionEstablished,
+            onDisconnect: handleDisconnect,
+            onAuthenticated: handleAuthenticated,
+          });
         }
 
         // Test the connection - this will try resume only

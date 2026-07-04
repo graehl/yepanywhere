@@ -107,6 +107,15 @@ interface RelayConnectionConfig {
   channel?: RelayChannel;
 }
 
+export interface SecureConnectionCallbacks {
+  /** Session established (for storing session data). */
+  onSessionEstablished?: (session: StoredSession) => void;
+  /** Connection lost (for UI state updates). */
+  onDisconnect?: (error: Error) => void;
+  /** SRP authentication or resumption succeeded. */
+  onAuthenticated?: () => void;
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) {
@@ -184,16 +193,14 @@ export class SecureConnection implements Connection {
     wsUrl: string,
     username: string,
     password: string,
-    onSessionEstablished?: (session: StoredSession) => void,
-    onDisconnect?: (error: Error) => void,
-    onAuthenticated?: () => void,
+    callbacks: SecureConnectionCallbacks = {},
   ) {
     this.wsUrl = wsUrl;
     this.username = username;
     this.password = password;
-    this.onSessionEstablished = onSessionEstablished;
-    this.onDisconnect = onDisconnect;
-    this.onAuthenticated = onAuthenticated;
+    this.onSessionEstablished = callbacks.onSessionEstablished;
+    this.onDisconnect = callbacks.onDisconnect;
+    this.onAuthenticated = callbacks.onAuthenticated;
 
     this.protocol = new RelayProtocol(
       {
@@ -233,17 +240,13 @@ export class SecureConnection implements Connection {
   static fromStoredSession(
     storedSession: StoredSession,
     password: string,
-    onSessionEstablished?: (session: StoredSession) => void,
-    onDisconnect?: (error: Error) => void,
-    onAuthenticated?: () => void,
+    callbacks: SecureConnectionCallbacks = {},
   ): SecureConnection {
     const conn = new SecureConnection(
       storedSession.wsUrl,
       storedSession.username,
       password,
-      onSessionEstablished,
-      onDisconnect,
-      onAuthenticated,
+      callbacks,
     );
     conn.storedSession = storedSession;
     conn.minimumResumeProtocolVersion =
@@ -258,17 +261,13 @@ export class SecureConnection implements Connection {
    */
   static forResumeOnly(
     storedSession: StoredSession,
-    onSessionEstablished?: (session: StoredSession) => void,
-    onDisconnect?: (error: Error) => void,
-    onAuthenticated?: () => void,
+    callbacks: SecureConnectionCallbacks = {},
   ): SecureConnection {
     const conn = new SecureConnection(
       storedSession.wsUrl,
       storedSession.username,
       "", // No password - resume only
-      onSessionEstablished,
-      onDisconnect,
-      onAuthenticated,
+      callbacks,
     );
     conn.storedSession = storedSession;
     conn.password = null; // Mark as resume-only
@@ -285,18 +284,14 @@ export class SecureConnection implements Connection {
   static async forResumeOnlyWithSocket(
     ws: WebSocket,
     storedSession: StoredSession,
-    onSessionEstablished?: (session: StoredSession) => void,
+    callbacks: SecureConnectionCallbacks = {},
     relayConfig?: RelayConnectionConfig,
-    onDisconnect?: (error: Error) => void,
-    onAuthenticated?: () => void,
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
       "", // No URL needed - socket already connected
       storedSession.username,
       "", // No password - resume only
-      onSessionEstablished,
-      onDisconnect,
-      onAuthenticated,
+      callbacks,
     );
     conn.ws = ws;
     conn.storedSession = storedSession;
@@ -1425,13 +1420,12 @@ export class SecureConnection implements Connection {
     const connection = await SecureConnection.forResumeOnlyWithSocket(
       ws,
       this.storedSession,
-      undefined,
+      { onDisconnect: (error) => socket?.handleDisconnect(error) },
       {
         relayUrl: this.relayUrl,
         relayUsername: this.relayUsername,
         channel: SPEECH_RELAY_CHANNEL,
       },
-      (error) => socket?.handleDisconnect(error),
     );
     socket = new SecureConnectionSpeechSocket(connection);
     return socket;
@@ -1666,18 +1660,14 @@ export class SecureConnection implements Connection {
     ws: WebSocket,
     username: string,
     password: string,
-    onSessionEstablished?: (session: StoredSession) => void,
+    callbacks: SecureConnectionCallbacks = {},
     relayConfig?: RelayConnectionConfig,
-    onDisconnect?: (error: Error) => void,
-    onAuthenticated?: () => void,
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
       "", // No URL needed - socket already connected
       username,
       password,
-      onSessionEstablished,
-      onDisconnect,
-      onAuthenticated,
+      callbacks,
     );
     conn.ws = ws;
     conn.isRelayConnection = true;

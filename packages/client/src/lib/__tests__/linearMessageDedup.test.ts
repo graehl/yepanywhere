@@ -711,4 +711,161 @@ describe("reconcileClaudeQueueOperationEchoes", () => {
     const input = [echo, plain];
     expect(reconcileClaudeQueueOperationEchoes(input)).toBe(input);
   });
+
+  // Interrupt/dequeue-path delivery: the CLI writes one real user row joining
+  // the dequeued texts with "\n" and no queue-operation row is served, so the
+  // echoes must pair against the durable turn itself (see the
+  // reconcileDequeueDeliveredTurns comment in linearMessageDedup.ts).
+  describe("dequeue-delivered turns", () => {
+    const STEER_1 = "ok, i suppose a fine tune with a large set of items";
+    const STEER_2 = "we would ALSO benefit from FTing on our prompt format";
+
+    function steerEcho(
+      overrides: Partial<Message> & { timestamp: string; uuid: string },
+    ): Message {
+      return {
+        type: "user",
+        tempId: `temp-${overrides.uuid}`,
+        _source: "sdk",
+        message: { role: "user", content: STEER_1 },
+        ...overrides,
+      } as Message;
+    }
+
+    function interruptMarker(timestamp: string): Message {
+      return {
+        uuid: "marker-1",
+        type: "user",
+        timestamp,
+        _source: "jsonl",
+        message: {
+          role: "user",
+          content: "[Request interrupted by user for tool use]",
+        },
+      };
+    }
+
+    function deliveredRow(
+      overrides: Partial<Message> & { timestamp: string },
+    ): Message {
+      return {
+        uuid: "cli-user-uuid-1",
+        type: "user",
+        parentUuid: "marker-1",
+        _source: "jsonl",
+        message: { role: "user", content: STEER_1 },
+        ...overrides,
+      } as Message;
+    }
+
+    it("relocates stranded echoes into the concatenated post-interrupt row", () => {
+      const echo1 = steerEcho({
+        uuid: "ya-uuid-1",
+        timestamp: "2026-07-04T04:59:17.000Z",
+      });
+      const echo2 = steerEcho({
+        uuid: "ya-uuid-2",
+        timestamp: "2026-07-04T05:02:42.000Z",
+        message: { role: "user", content: STEER_2 },
+      });
+      const marker = interruptMarker("2026-07-04T05:02:50.293Z");
+      const row = deliveredRow({
+        timestamp: "2026-07-04T05:02:50.302Z",
+        message: { role: "user", content: `${STEER_1}\n${STEER_2}` },
+      });
+
+      const result = reconcileClaudeQueueOperationEchoes([
+        echo1,
+        echo2,
+        marker,
+        row,
+      ]);
+      expect(result).toHaveLength(2);
+      expect(result[0]?.uuid).toBe("marker-1");
+      expect(result[1]?.uuid).toBe("cli-user-uuid-1");
+      expect(result[1]?._source).toBe("jsonl");
+      expect(result[1]?.tempIds).toEqual(["temp-ya-uuid-1", "temp-ya-uuid-2"]);
+    });
+
+    it("pairs a single-echo delivery by exact text", () => {
+      const echo = steerEcho({
+        uuid: "ya-uuid-1",
+        timestamp: "2026-07-04T05:33:46.000Z",
+      });
+      const marker = interruptMarker("2026-07-04T05:34:10.000Z");
+      const row = deliveredRow({ timestamp: "2026-07-04T05:34:10.100Z" });
+
+      const result = reconcileClaudeQueueOperationEchoes([echo, marker, row]);
+      expect(result).toHaveLength(2);
+      expect(result[1]?.uuid).toBe("cli-user-uuid-1");
+      expect(result[1]?.tempId).toBe("temp-ya-uuid-1");
+    });
+
+    it("leaves echoes alone when the row text is not their concatenation", () => {
+      const echo = steerEcho({
+        uuid: "ya-uuid-1",
+        timestamp: "2026-07-04T05:33:46.000Z",
+      });
+      const row = deliveredRow({
+        timestamp: "2026-07-04T05:34:10.100Z",
+        message: { role: "user", content: `${STEER_1} plus trailing extra` },
+      });
+
+      const result = reconcileClaudeQueueOperationEchoes([echo, row]);
+      expect(result).toHaveLength(2);
+      expect(result[0]?._source ?? "sdk").toBe("sdk");
+    });
+
+    it("ignores provider stream copies without a self-send marker", () => {
+      const streamCopy: Message = {
+        uuid: "cli-user-uuid-1",
+        type: "user",
+        timestamp: "2026-07-04T05:34:10.100Z",
+        _source: "sdk",
+        message: { role: "user", content: STEER_1 },
+      };
+      const row = deliveredRow({ timestamp: "2026-07-04T05:34:10.100Z" });
+
+      const input = [streamCopy, row];
+      expect(reconcileClaudeQueueOperationEchoes(input)).toBe(input);
+    });
+
+    it("does not consume an echo composed after the delivery", () => {
+      const lateEcho = steerEcho({
+        uuid: "ya-uuid-late",
+        timestamp: "2026-07-04T06:00:00.000Z",
+      });
+      const row = deliveredRow({ timestamp: "2026-07-04T05:34:10.100Z" });
+
+      const result = reconcileClaudeQueueOperationEchoes([row, lateEcho]);
+      expect(result).toHaveLength(2);
+    });
+
+    it("backtracks when a shorter echo shadows the matching one", () => {
+      const shortEcho = steerEcho({
+        uuid: "ya-uuid-short",
+        timestamp: "2026-07-04T05:33:40.000Z",
+        message: { role: "user", content: "deploy" },
+      });
+      const longEcho = steerEcho({
+        uuid: "ya-uuid-long",
+        timestamp: "2026-07-04T05:33:46.000Z",
+        message: { role: "user", content: "deploy\nthen verify" },
+      });
+      const row = deliveredRow({
+        timestamp: "2026-07-04T05:34:10.100Z",
+        message: { role: "user", content: "deploy\nthen verify" },
+      });
+
+      const result = reconcileClaudeQueueOperationEchoes([
+        shortEcho,
+        longEcho,
+        row,
+      ]);
+      expect(result).toHaveLength(2);
+      const remaining = result.map((m) => m.uuid);
+      expect(remaining).toContain("ya-uuid-short");
+      expect(remaining).not.toContain("ya-uuid-long");
+    });
+  });
 });

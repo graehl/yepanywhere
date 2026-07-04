@@ -1,4 +1,5 @@
 import type { Message } from "../types";
+import { isUnconfirmedSelfSend } from "./deliveryState";
 import { getMessageContent, mergeMessage } from "./mergeMessages";
 
 // A human does not send two semantically identical turns within this window,
@@ -379,6 +380,10 @@ function getComparableUserText(message: Message): string | null {
 export function reconcileClaudeQueueOperationEchoes(
   messages: Message[],
 ): Message[] {
+  return reconcileDequeueDeliveredTurns(reconcileQueueOperationRows(messages));
+}
+
+function reconcileQueueOperationRows(messages: Message[]): Message[] {
   const startIndex = Math.max(0, messages.length - MAX_SCAN_MESSAGES);
 
   interface Candidate {
@@ -453,6 +458,152 @@ export function reconcileClaudeQueueOperationEchoes(
       typeof rowUuid === "string" ? { ...merged, uuid: rowUuid } : merged,
     );
     droppedIndices.add(Math.max(echoIndex, rowIndex));
+  }
+  if (droppedIndices.size === 0) {
+    return messages;
+  }
+
+  const result: Message[] = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    if (droppedIndices.has(i)) continue;
+    const message = mergedByIndex.get(i) ?? messages[i];
+    if (message) result.push(message);
+  }
+  return result;
+}
+
+// The CLI has a second busy-send delivery shape the pairing above cannot see:
+// on interrupt (and some end-of-turn deliveries) it *dequeues* every pending
+// queued message — content-less queue-operation dequeue rows the reader never
+// surfaces — and writes one real user row (its own uuid, parented on the
+// interrupt marker) whose text is the dequeued texts joined by "\n". With no
+// queue-operation row to pair against and YA's uuid dropped, the optimistic
+// echoes strand as perpetual "sent ✓" copies at their send positions above
+// the interrupt while the durable turn renders again below it. Pair each such
+// durable row with the in-order echo run whose concatenation reproduces its
+// text exactly; the durable position wins, so the turn reads at its delivery
+// point (immediately after the interrupt marker) just like remove-path
+// deliveries. The exact-concatenation requirement plus the self-send marker
+// (tempId/messageMetadata — provider stream copies carry neither) is what
+// keeps this safe without a tight timestamp window: enqueue-to-delivery can
+// span a long-running tool, so the only time constraint is that no consumed
+// echo postdates the delivery by more than clock skew.
+
+function isDurableDeliveredUserRow(message: Message): boolean {
+  return (
+    (message._source ?? "sdk") === "jsonl" &&
+    (message as { deferredSource?: unknown }).deferredSource === undefined &&
+    isPlainUserTurn(message)
+  );
+}
+
+interface DequeueCandidate {
+  index: number;
+  timestampMs: number;
+  text: string;
+}
+
+/**
+ * Find the in-order run of unconsumed echoes whose texts, joined by
+ * whitespace, exactly reproduce `rowText`. Backtracks so a shorter echo
+ * cannot shadow a longer one that also prefixes the remainder.
+ */
+function matchEchoRun(
+  rowText: string,
+  rowTimestampMs: number,
+  echoes: DequeueCandidate[],
+  consumed: Set<number>,
+): DequeueCandidate[] | null {
+  const usable = echoes.filter(
+    (echo) =>
+      !consumed.has(echo.index) &&
+      echo.timestampMs <= rowTimestampMs + QUEUE_OPERATION_ECHO_WINDOW_MS,
+  );
+
+  const consume = (
+    remainder: string,
+    startIndex: number,
+  ): DequeueCandidate[] | null => {
+    if (remainder.length === 0) return [];
+    for (let i = startIndex; i < usable.length; i += 1) {
+      const echo = usable[i];
+      if (!echo || !remainder.startsWith(echo.text)) continue;
+      let rest = remainder.slice(echo.text.length);
+      if (rest.length > 0) {
+        const stripped = rest.replace(/^\s+/, "");
+        // No separator at the boundary means this echo only matched a text
+        // prefix, not a whole dequeued segment.
+        if (stripped.length === rest.length) continue;
+        rest = stripped;
+      }
+      const tail = consume(rest, i + 1);
+      if (tail) return [echo, ...tail];
+    }
+    return null;
+  };
+
+  const run = consume(rowText, 0);
+  return run && run.length > 0 ? run : null;
+}
+
+function reconcileDequeueDeliveredTurns(messages: Message[]): Message[] {
+  const startIndex = Math.max(0, messages.length - MAX_SCAN_MESSAGES);
+
+  let rows: DequeueCandidate[] | null = null;
+  let echoes: DequeueCandidate[] | null = null;
+  for (let i = startIndex; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (!message) continue;
+    const isRow = isDurableDeliveredUserRow(message);
+    const isEcho =
+      !isRow && isOptimisticUserEcho(message) && isUnconfirmedSelfSend(message);
+    if (!isRow && !isEcho) continue;
+    const timestampMs = getMessageTimestampMs(message);
+    const text = getComparableUserText(message);
+    if (timestampMs === null || !text) continue;
+    const candidate: DequeueCandidate = { index: i, timestampMs, text };
+    if (isRow) {
+      rows ??= [];
+      rows.push(candidate);
+    } else {
+      echoes ??= [];
+      echoes.push(candidate);
+    }
+  }
+  if (!rows || !echoes) {
+    return messages;
+  }
+
+  const mergedByIndex = new Map<number, Message>();
+  const droppedIndices = new Set<number>();
+  for (const row of rows) {
+    const run = matchEchoRun(row.text, row.timestampMs, echoes, droppedIndices);
+    if (!run) continue;
+    const rowMessage = messages[row.index];
+    const firstEcho = run[0] && messages[run[0].index];
+    if (!rowMessage || !firstEcho) continue;
+
+    // Mirror the queue-operation pairing: durable row is authoritative for
+    // identity and shared fields; echo-only fields (tempId, metadata)
+    // survive. All consumed echoes' tempIds ride along so chip clearing and
+    // per-chunk affordances see the whole batch.
+    const { uuid: _echoUuid, ...merged } = mergeMessage(
+      firstEcho,
+      rowMessage,
+      "jsonl",
+    );
+    const rowUuid = (rowMessage as { uuid?: unknown }).uuid;
+    const tempIds = run
+      .map((echo) => (messages[echo.index] as { tempId?: unknown }).tempId)
+      .filter((tempId): tempId is string => typeof tempId === "string");
+    mergedByIndex.set(row.index, {
+      ...merged,
+      ...(typeof rowUuid === "string" ? { uuid: rowUuid } : {}),
+      ...(tempIds.length > 0 ? { tempIds } : {}),
+    });
+    for (const echo of run) {
+      droppedIndices.add(echo.index);
+    }
   }
   if (droppedIndices.size === 0) {
     return messages;

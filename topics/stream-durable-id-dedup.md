@@ -80,6 +80,25 @@ is impossible here: the CLI drops the supplied uuid on its queue path.
   general backstop must stay at 2s. The merged message keeps the **row's**
   identity (`queue-operation-…` id, not the echo uuid) so later durable
   fetches keep deduping by id; echo-only fields (tempId, metadata) survive.
+- **Dequeue-path pairing (landed 2026-07-04).** The CLI has a second delivery
+  shape the row pairing cannot see. On interrupt (verified on ac165df3: user
+  rejects a long-running tool with steers pending) — and on some end-of-turn
+  deliveries — it *dequeues* every pending queued message: content-less
+  `queue-operation`/`dequeue` rows the reader never surfaces, plus **one real
+  user row** (its own uuid, parented on the `[Request interrupted by user…]`
+  marker) whose text is the dequeued texts joined by `"\n"`. With no
+  queue-op row to pair against, the echoes stranded as perpetual "sent"
+  copies above the interrupt while the durable turn rendered again below it —
+  so the post-interrupt response appeared to follow the interrupt with its
+  actual prompt sitting misplaced above. `reconcileDequeueDeliveredTurns`
+  (same entry point, same capability) pairs a durable plain user row with the
+  in-order run of unconfirmed self-send echoes (tempId/messageMetadata
+  required — provider stream copies carry neither) whose concatenation
+  reproduces its text exactly. The **durable position wins**: the turn reads
+  at its delivery point, immediately after the interrupt marker, matching how
+  remove-path deliveries read. Exact-concatenation matching replaces a tight
+  timestamp window (enqueue→delivery can span a long tool run); the only time
+  constraint is that no consumed echo postdates delivery beyond 60s skew.
 - **Late-delivered entries vs incremental fetch (landed).** The normalized
   queue entry keeps its enqueue *position* but only becomes visible at
   delivery, so a purely positional `afterMessageId` slice can sit past it and

@@ -209,6 +209,15 @@ renders as "sent" (faint + ✓) until its durable transcript copy merges in,
 then confirms. Mechanism and the Claude queue-operation pairing behind it:
 [stream-durable-id-dedup.md](stream-durable-id-dedup.md) §Claude.
 
+A delivered steering turn renders at its delivery point, not its send
+point. In particular, when pending steers are delivered by an interrupt
+(Claude rejects the running tool and consumes the queue), the turn must
+read immediately after the `[Request interrupted…]` marker — one turn, no
+stale "sent" copy left above the interrupt — so the reader can see what
+the agent's next response is responding to (2026-07-04 request; dequeue
+pairing in [stream-durable-id-dedup.md](stream-durable-id-dedup.md)
+§Claude).
+
 Deferred rows should be treated as optimistic until the provider proves delivery.
 For both Claude and Codex, there are observed cases where local queue state drifts:
 

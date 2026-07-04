@@ -9,6 +9,9 @@ Topic: workstreams
 
 Status: proposed.
 
+Implementation progress is tracked in
+[`docs/tactical/054-workstreams.md`](../docs/tactical/054-workstreams.md).
+
 ## Motivation
 
 Project Queue is useful for a single active checkout: it lets a user prepare

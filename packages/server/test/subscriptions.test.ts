@@ -237,7 +237,11 @@ describe("createSessionSubscription", () => {
   });
 
   it("emits provider runtime status on status updates", async () => {
-    const { process, fireEvent } = createMockProcess();
+    // Process assigns the new status before emitting the change event, so
+    // the subscription reads it back off the process at emit time.
+    const { process, fireEvent } = createMockProcess({
+      getProviderRuntimeStatus: vi.fn(() => MOCK_PROVIDER_RUNTIME_STATUS),
+    });
     const { emit, events } = collectEmit();
 
     createSessionSubscription(process, emit);

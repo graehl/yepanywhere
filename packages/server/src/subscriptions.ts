@@ -127,6 +127,16 @@ export function createSessionSubscription(
     return augmenter;
   };
 
+  const emitStatus = (state: Process["state"]) => {
+    emit("status", {
+      sessionId: process.sessionId,
+      state: state.type,
+      liveness: process.getLivenessSnapshot(),
+      providerRuntimeStatus: process.getProviderRuntimeStatus(),
+      ...(state.type === "waiting-input" ? { request: state.request } : {}),
+    });
+  };
+
   // Heartbeat
   const heartbeatInterval = setInterval(() => {
     try {
@@ -199,44 +209,15 @@ export function createSessionSubscription(
         }
 
         case "state-change":
-          emit("status", {
-            sessionId: process.sessionId,
-            state: event.state.type,
-            liveness: process.getLivenessSnapshot(),
-            providerRuntimeStatus: process.getProviderRuntimeStatus(),
-            ...(event.state.type === "waiting-input"
-              ? { request: event.state.request }
-              : {}),
-          });
+          emitStatus(event.state);
           break;
 
-        case "liveness-update": {
-          const currentState = process.state;
-          emit("status", {
-            sessionId: process.sessionId,
-            state: currentState.type,
-            liveness: process.getLivenessSnapshot(),
-            providerRuntimeStatus: process.getProviderRuntimeStatus(),
-            ...(currentState.type === "waiting-input"
-              ? { request: currentState.request }
-              : {}),
-          });
+        // Both refresh the same status payload from current process state;
+        // the changed value is read back off the process at emit time.
+        case "liveness-update":
+        case "provider-runtime-status-change":
+          emitStatus(process.state);
           break;
-        }
-
-        case "provider-runtime-status-change": {
-          const currentState = process.state;
-          emit("status", {
-            sessionId: process.sessionId,
-            state: currentState.type,
-            liveness: process.getLivenessSnapshot(),
-            providerRuntimeStatus: event.status,
-            ...(currentState.type === "waiting-input"
-              ? { request: currentState.request }
-              : {}),
-          });
-          break;
-        }
 
         case "mode-change":
           emit("mode-change", {

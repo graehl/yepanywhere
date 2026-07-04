@@ -7,6 +7,7 @@ import type { GetSessionResult, YaSourceRuntime } from "../sourceRuntime";
 import { selectSessionDetailRuntimeSnapshot } from "./selectors";
 import {
   buildSessionDetailRevealSnapshot,
+  getCacheableSessionDetailRevealSnapshot,
   type SessionDetailRevealSnapshotFallback,
   type SessionDetailRevealSnapshotResult,
 } from "./revealSnapshot";
@@ -243,6 +244,12 @@ export class SessionDetailCoordinator {
           selected?.maxPersistedTimestampMs ?? Number.NEGATIVE_INFINITY,
       },
     });
+  }
+
+  getCacheableRevealSnapshot(
+    reveal: SessionDetailRevealSnapshotResult,
+  ): SessionRouteSnapshot | undefined {
+    return getCacheableSessionDetailRevealSnapshot(reveal);
   }
 
   buildLoadCompleteResult(

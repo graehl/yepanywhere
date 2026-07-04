@@ -251,7 +251,8 @@ gating, scroll memory policy, older-page loading, metadata refresh, and load
 progress remain hook-owned, but the stream-gate part of initial-load lifecycle
 now starts through `beginInitialLoad`, and warm-refresh reducer action
 selection, reveal-snapshot construction, and initial-load callback payload
-construction run through the coordinator.
+construction run through the coordinator. Cacheable reveal snapshot selection is
+also coordinator-owned, while cache policy and writes remain hook-owned.
 
 Intent:
 
@@ -355,6 +356,13 @@ Implementation note:
   coordinator coverage for that payload.
 - The next Phase 3 slice should likely move cacheable reveal snapshot handling
   closer to the coordinator without moving cache/scroll policy out of the hook.
+- Moved cacheable reveal snapshot selection into `SessionDetailCoordinator`.
+  The hook still owns transcript-cache enablement, scroll-retention policy,
+  and the actual warm-cache write, while the coordinator now decides that only
+  store-backed reveal snapshots are eligible to cache.
+- The next Phase 3 slice should likely move a small remaining initial-load
+  helper, such as read/write route snapshot policy wrappers, only if it can be
+  done without hiding React timing or user preference decisions.
 
 ## Phase 4: Rename Public Cache Facade
 

@@ -361,6 +361,7 @@ describe("SessionDetailCoordinator", () => {
     ]);
     expect(reveal.snapshot.lastMessageId).toBe("stored");
     expect(reveal.snapshot.scrollSnapshot?.scrollTop).toBe(12);
+    expect(detail.getCacheableRevealSnapshot(reveal)).toBe(reveal.snapshot);
   });
 
   it("builds fallback reveal snapshots when store state is missing", () => {
@@ -382,6 +383,7 @@ describe("SessionDetailCoordinator", () => {
       Number.NEGATIVE_INFINITY,
     );
     expect(reveal.snapshot.scrollSnapshot).toBe(fallbackScroll);
+    expect(detail.getCacheableRevealSnapshot(reveal)).toBeUndefined();
   });
 
   it("builds load-complete callback payloads from session results", () => {

@@ -9,10 +9,7 @@ import {
 import type { PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
-import {
-  getCacheableSessionDetailRevealSnapshot,
-  type SessionDetailRevealSnapshotResult,
-} from "../lib/sessionDetail/revealSnapshot";
+import type { SessionDetailRevealSnapshotResult } from "../lib/sessionDetail/revealSnapshot";
 import {
   createSessionLoadProgress,
   createSessionLoadProgressForWindow,
@@ -599,8 +596,7 @@ export function useSessionMessages(
     const writeRevealSnapshotToLoadCache = (
       reveal: SessionDetailRevealSnapshotResult,
     ) => {
-      const cacheableSnapshot =
-        getCacheableSessionDetailRevealSnapshot(reveal);
+      const cacheableSnapshot = coordinator.getCacheableRevealSnapshot(reveal);
       if (!cacheableSnapshot) {
         return false;
       }

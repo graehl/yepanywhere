@@ -5717,6 +5717,94 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ? process.state.type
       : "idle";
 
+  // Shared prologue for the recovered-queue resume/steer routes: resolve the
+  // target and the recovered group composed before it, refuse while newer
+  // live patient entries exist, and ensure a live process. The newer-entries
+  // guard runs again after the ensure — its await is a window for new
+  // arrivals, and recovered context must never jump a newer patient entry.
+  const resolveRecoveredGroupForDelivery = async (
+    sessionId: string,
+    queueId: string,
+    refusal: string,
+  ): Promise<
+    | {
+        ok: true;
+        process: Process;
+        group: PersistedSessionQueuedMessage[];
+      }
+    | {
+        ok: false;
+        status: 400 | 404 | 409 | 503;
+        body: Record<string, unknown>;
+      }
+  > => {
+    if (!deps.sessionQueuePersistenceService) {
+      return {
+        ok: false,
+        status: 503,
+        body: { error: "Session queue persistence unavailable" },
+      };
+    }
+    const recoveredItems = recoveredPatientQueueItems(deps, sessionId);
+    const targetIndex = recoveredItems.findIndex(
+      (candidate) => candidate.id === queueId,
+    );
+    const target = recoveredItems[targetIndex];
+    if (!target) {
+      return {
+        ok: false,
+        status: 404,
+        body: { error: "Recovered queued message not found" },
+      };
+    }
+    const group = recoveredItems.slice(0, targetIndex + 1);
+
+    let process = deps.supervisor.getProcessForSession(sessionId);
+    if (process?.isTerminated) {
+      process = undefined;
+    }
+    const refuseIfNewerEntries = (candidate: Process | undefined) =>
+      livePatientEntriesNewerThan(candidate, target.queuedAt) > 0
+        ? {
+            ok: false as const,
+            status: 409 as const,
+            body: {
+              error: refusal,
+              headQueueId: target.id,
+              deferredMessages: sessionQueueSummaries(
+                deps,
+                sessionId,
+                candidate,
+              ),
+            },
+          }
+        : null;
+    const refusedBefore = refuseIfNewerEntries(process);
+    if (refusedBefore) {
+      return refusedBefore;
+    }
+
+    const ensured = await ensureProcessForRecoveredItem(
+      sessionId,
+      target,
+      process,
+    );
+    if ("error" in ensured) {
+      return {
+        ok: false,
+        status: ensured.status,
+        body: { error: ensured.error },
+      };
+    }
+    process = ensured.process;
+    const refusedAfter = refuseIfNewerEntries(process);
+    if (refusedAfter) {
+      return refusedAfter;
+    }
+
+    return { ok: true, process, group };
+  };
+
   // POST /api/sessions/:sessionId/recovered-queue/:queueId/resume - Move
   // restart-paused patient queue entries back into the live patient queue,
   // through the requested entry: resuming a non-head entry also resumes every
@@ -5726,58 +5814,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     async (c) => {
       const sessionId = c.req.param("sessionId");
       const queueId = c.req.param("queueId");
-      const service = deps.sessionQueuePersistenceService;
-      if (!service) {
-        return c.json({ error: "Session queue persistence unavailable" }, 503);
-      }
-
-      const recoveredItems = recoveredPatientQueueItems(deps, sessionId);
-      const targetIndex = recoveredItems.findIndex(
-        (candidate) => candidate.id === queueId,
-      );
-      const target = recoveredItems[targetIndex];
-      if (!target) {
-        return c.json({ error: "Recovered queued message not found" }, 404);
-      }
-      const group = recoveredItems.slice(0, targetIndex + 1);
-
-      let process = deps.supervisor.getProcessForSession(sessionId);
-      if (process?.isTerminated) {
-        process = undefined;
-      }
-      if (livePatientEntriesNewerThan(process, target.queuedAt) > 0) {
-        return c.json(
-          {
-            error:
-              "Drain or cancel newer queued messages before resuming recovered work.",
-            headQueueId: target.id,
-            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
-          },
-          409,
-        );
-      }
-
-      const ensured = await ensureProcessForRecoveredItem(
+      const resolved = await resolveRecoveredGroupForDelivery(
         sessionId,
-        target,
-        process,
+        queueId,
+        "Drain or cancel newer queued messages before resuming recovered work.",
       );
-      if ("error" in ensured) {
-        return c.json({ error: ensured.error }, ensured.status);
+      if (!resolved.ok) {
+        return c.json(resolved.body, resolved.status);
       }
-      process = ensured.process;
-
-      if (livePatientEntriesNewerThan(process, target.queuedAt) > 0) {
-        return c.json(
-          {
-            error:
-              "Drain or cancel newer queued messages before resuming recovered work.",
-            headQueueId: target.id,
-            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
-          },
-          409,
-        );
-      }
+      const { process, group } = resolved;
 
       const { last, error } = await resumeRecoveredGroup(process, group, {
         promoteIfReady: true,
@@ -5820,46 +5865,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     async (c) => {
       const sessionId = c.req.param("sessionId");
       const queueId = c.req.param("queueId");
-      const service = deps.sessionQueuePersistenceService;
-      if (!service) {
-        return c.json({ error: "Session queue persistence unavailable" }, 503);
-      }
-
-      const recoveredItems = recoveredPatientQueueItems(deps, sessionId);
-      const targetIndex = recoveredItems.findIndex(
-        (candidate) => candidate.id === queueId,
-      );
-      const target = recoveredItems[targetIndex];
-      if (!target) {
-        return c.json({ error: "Recovered queued message not found" }, 404);
-      }
-      const group = recoveredItems.slice(0, targetIndex + 1);
-
-      let process = deps.supervisor.getProcessForSession(sessionId);
-      if (process?.isTerminated) {
-        process = undefined;
-      }
-      if (livePatientEntriesNewerThan(process, target.queuedAt) > 0) {
-        return c.json(
-          {
-            error:
-              "Drain or cancel newer queued messages before steering recovered work.",
-            headQueueId: target.id,
-            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
-          },
-          409,
-        );
-      }
-
-      const ensured = await ensureProcessForRecoveredItem(
+      const resolved = await resolveRecoveredGroupForDelivery(
         sessionId,
-        target,
-        process,
+        queueId,
+        "Drain or cancel newer queued messages before steering recovered work.",
       );
-      if ("error" in ensured) {
-        return c.json({ error: ensured.error }, ensured.status);
+      if (!resolved.ok) {
+        return c.json(resolved.body, resolved.status);
       }
-      process = ensured.process;
+      const { process, group } = resolved;
 
       const { lastMessage, error } = await resumeRecoveredGroup(
         process,

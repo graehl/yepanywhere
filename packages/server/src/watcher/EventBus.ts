@@ -13,6 +13,7 @@ import type {
   SafeRestartChangedEvent,
   TranscriptDisplayObject,
   UrlProjectId,
+  WorkstreamsChangedEvent,
 } from "@yep-anywhere/shared";
 import type { SessionOwnership, SessionSummary } from "../supervisor/types.js";
 
@@ -295,7 +296,8 @@ export type BusEvent =
   | NetworkBindingChangedEvent
   | BrowserTabConnectedEvent
   | BrowserTabDisconnectedEvent
-  | CacheMissBillingEvent;
+  | CacheMissBillingEvent
+  | WorkstreamsChangedEvent;
 
 export type EventHandler<T = BusEvent> = (event: T) => void;
 

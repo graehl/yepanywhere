@@ -236,6 +236,18 @@ export {
 } from "./project-queue.js";
 
 export type {
+  ProjectWorkstreamsResponse,
+  StoredWorkstream,
+  Workstream,
+  WorkstreamId,
+  WorkstreamKind,
+  WorkstreamStatus,
+  WorkstreamsChangedEvent,
+  WorkstreamsChangedReason,
+} from "./workstreams.js";
+export { isWorkstreamId, mainWorkstreamId } from "./workstreams.js";
+
+export type {
   StagedAttachmentRef,
   UploadedFile,
   UploadStartMessage,

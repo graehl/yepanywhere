@@ -2,9 +2,9 @@
 
 Topic: workstreams
 
-Status: First two preparatory chunks landed. Workstreams remain hidden/no-op by
-default; no metadata service, scheduler change, Git worktree creation, or
-landing action has landed yet.
+Status: First three preparatory chunks landed. Workstreams remain hidden/no-op
+by default; no route, scheduler change, Git worktree creation, or landing
+action has landed yet.
 
 Product rationale and the target user workflow live in
 [`topics/workstreams.md`](../../topics/workstreams.md). This tactical document
@@ -57,7 +57,7 @@ before they mutate Git or change Project Queue scheduling.
 
 - [x] WS-001: Extract Project Queue response assembly.
 - [x] WS-002: Add default-off experimental workstreams gate.
-- [ ] WS-003: Add shared workstream types and server metadata service.
+- [x] WS-003: Add shared workstream types and server metadata service.
 - [ ] WS-004: Add read-only workstream API behind the gate.
 - [ ] WS-005: Add hidden Workstreams page shell.
 - [ ] WS-006: Associate sessions with workstreams.
@@ -170,7 +170,22 @@ new i18n warning was introduced by this chunk. Also ran `pnpm lint`.
 
 ### WS-003: Add Shared Types And Server Metadata Service
 
-Status: proposed.
+Status: done.
+
+Implemented:
+
+- Added shared workstream types, including `Workstream`, `StoredWorkstream`,
+  `WorkstreamId`, `WorkstreamStatus`, `ProjectWorkstreamsResponse`, and the
+  `workstreams-changed` event shape.
+- Added `mainWorkstreamId(projectId)` so implicit main lanes have deterministic
+  per-project identity instead of colliding as a plain `main` id.
+- Added `WorkstreamService`, backed by `{dataDir}/workstreams.json`, for
+  stored non-main workstreams.
+- Synthesized the implicit `main` workstream at read time. The main lane is not
+  persisted to disk.
+- Added defensive load-time normalization, duplicate filtering, atomic temp-file
+  saves, serialized mutations, and change events for future route/UI consumers.
+- Exported the service from the server service barrel.
 
 Goal: add durable identity for workstreams without touching Project Queue
 scheduling.
@@ -207,19 +222,26 @@ Likely server change:
 
 Out of scope:
 
+- no route mounting or app startup wiring;
+- no Workstreams page;
+- no Project Queue target metadata;
 - no Git worktree creation;
 - no queue targeting;
 - no scheduler changes;
-- no client UI beyond tests or API scaffolding.
+- no client UI beyond tests or API scaffolding;
+- no Git commands.
 
 Suggested verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build
 pnpm --filter @yep-anywhere/server exec tsc --noEmit
-pnpm --filter @yep-anywhere/server test -- test/services/workstreams.test.ts
-node scripts/biome.cjs lint packages/server/src/services packages/shared/src
+pnpm --filter @yep-anywhere/server test -- test/services/WorkstreamService.test.ts
+node scripts/biome.cjs lint packages/shared/src/workstreams.ts packages/shared/src/index.ts packages/server/src/services/WorkstreamService.ts packages/server/src/services/index.ts packages/server/src/watcher/EventBus.ts packages/server/test/services/WorkstreamService.test.ts docs/tactical/054-workstreams.md
 ```
+
+Verified 2026-07-04 with the commands above. Also ran `pnpm lint` and
+`pnpm --filter @yep-anywhere/client exec tsc --noEmit`.
 
 ### WS-004: Add Read-Only Workstream API Behind The Gate
 

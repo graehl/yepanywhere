@@ -128,6 +128,13 @@ export interface SessionDetailWarmHydrationRevealInputOptions {
   scrollSnapshot?: SessionRouteScrollSnapshot;
 }
 
+export interface SessionDetailRevealInputOptions {
+  session: GetSessionResult["session"];
+  pagination?: GetSessionResult["pagination"];
+  lastMessageId?: string;
+  scrollSnapshot?: SessionRouteScrollSnapshot;
+}
+
 export interface SessionDetailLoadCompleteResult {
   session: GetSessionResult["session"];
   status: GetSessionResult["ownership"];
@@ -411,9 +418,23 @@ export class SessionDetailCoordinator {
     lastMessageId,
     scrollSnapshot,
   }: SessionDetailWarmHydrationRevealInputOptions): SessionDetailRevealSnapshotInput {
-    return {
+    return this.buildRevealInput({
       session: loadedSession,
       pagination: loadedPagination,
+      lastMessageId,
+      scrollSnapshot,
+    });
+  }
+
+  buildRevealInput({
+    session,
+    pagination,
+    lastMessageId,
+    scrollSnapshot,
+  }: SessionDetailRevealInputOptions): SessionDetailRevealSnapshotInput {
+    return {
+      session,
+      pagination,
       lastMessageId,
       scrollSnapshot,
     };

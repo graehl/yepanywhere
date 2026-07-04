@@ -500,6 +500,26 @@ describe("SessionDetailCoordinator", () => {
     });
   });
 
+  it("builds reveal inputs from hook-supplied cursors", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(2);
+    const retainedScroll = scrollSnapshot(80);
+
+    expect(
+      detail.buildRevealInput({
+        session: session(),
+        pagination: responsePagination,
+        lastMessageId: "last-load",
+        scrollSnapshot: retainedScroll,
+      }),
+    ).toEqual({
+      session: session(),
+      pagination: responsePagination,
+      lastMessageId: "last-load",
+      scrollSnapshot: retainedScroll,
+    });
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

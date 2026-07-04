@@ -694,12 +694,12 @@ export function useSessionMessages(
       });
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
-        {
+        coordinator.buildRevealInput({
           session: data.session,
           pagination: applied.pagination,
           lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
-        },
+        }),
       );
       const { snapshot } = reveal;
       applyRevealSnapshot(snapshot);
@@ -795,12 +795,12 @@ export function useSessionMessages(
         const applied = coordinator.applyInitialLoad(data);
         const reveal = readRevealSnapshotAfterStoreUpdate(
           "initial-load",
-          {
+          coordinator.buildRevealInput({
             session: data.session,
             pagination: applied.pagination,
             lastMessageId: readStoreLastMessageId(),
             scrollSnapshot: scrollSnapshotRef.current,
-          },
+          }),
         );
         const { snapshot } = reveal;
         completeInitialReveal({

@@ -256,7 +256,7 @@ Cacheable reveal snapshot selection is also coordinator-owned, and initial
 route snapshot reads/writes now pass through coordinator policy wrappers.
 Initial-load progress and perf detail value construction are also
 coordinator-owned, as is the initial reveal completion value bundle. User
-preference and browser-environment decisions remain hook-owned. Warm-hydration
+preference and browser-environment decisions remain hook-owned. Initial-load
 reveal input shaping is coordinator-owned while cursor and scroll reads remain
 hook-owned.
 
@@ -394,9 +394,14 @@ Implementation note:
   warning on missing store-backed reveal state, and applying/cache-writing the
   reveal, while the coordinator now turns hook-supplied loaded session,
   pagination, cursor, and scroll values into the reveal fallback input.
+- Moved warm-delta and cold-load reveal input shaping into
+  `SessionDetailCoordinator`. The hook still owns reading the current store
+  cursor and scroll snapshot, warning on missing store-backed reveal state,
+  and applying/cache-writing reveals, while the coordinator now shapes the
+  fallback input for the remaining initial-load reveal paths.
 - The next Phase 3 slice should likely move another small initial-load helper,
-  such as warm-delta or cold-load reveal input shaping, while leaving React
-  state timing and user preference reads in the hook.
+  such as initial-load cache-write orchestration, while leaving React state
+  timing and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

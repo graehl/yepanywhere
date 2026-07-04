@@ -7,6 +7,7 @@ import {
 import { type MouseEvent, type RefObject, useEffect, useState } from "react";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
+import { useI18n } from "../i18n";
 import { getGlobalConnection, isRemoteMode } from "../lib/connection";
 import {
   getPathBasename,
@@ -386,10 +387,12 @@ export function LocalMediaModal({
   mediaSource,
   onClose,
 }: LocalMediaModalProps) {
+  const { t } = useI18n();
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fileName = getFileName(path);
+  const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
 
   useEffect(() => {
     let cancelled = false;
@@ -429,7 +432,16 @@ export function LocalMediaModal({
             // biome-ignore lint/a11y/useMediaCaption: user-generated local files, no captions available
             <video controls autoPlay className="local-media-player" src={url} />
           ) : (
-            <img className="local-media-image" src={url} alt={fileName} />
+            <a
+              className="local-media-image-link"
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={openImageInNewTabLabel}
+              aria-label={openImageInNewTabLabel}
+            >
+              <img className="local-media-image" src={url} alt={fileName} />
+            </a>
           ))}
       </div>
     </Modal>

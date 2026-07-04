@@ -148,59 +148,47 @@ function parseOptionalHelperSideModel(rawModel: unknown): {
   };
 }
 
-export function parseHelperSettings(body: {
-  recapMode?: unknown;
-  recapAfterSeconds?: unknown;
-  promptSuggestionMode?: unknown;
-  helperSideModel?: unknown;
-}): {
+interface ParsedHelperSettings {
   recapMode: RecapMode | undefined;
   recapAfterSeconds: number | undefined;
   promptSuggestionMode: PromptSuggestionMode | undefined;
   helperSideModel: string | undefined;
   error?: string;
-} {
+}
+
+function invalidHelperSettings(error: string): ParsedHelperSettings {
+  return {
+    recapMode: undefined,
+    recapAfterSeconds: undefined,
+    promptSuggestionMode: undefined,
+    helperSideModel: undefined,
+    error,
+  };
+}
+
+export function parseHelperSettings(body: {
+  recapMode?: unknown;
+  recapAfterSeconds?: unknown;
+  promptSuggestionMode?: unknown;
+  helperSideModel?: unknown;
+}): ParsedHelperSettings {
   const recap = parseOptionalRecapMode(body.recapMode);
   if (recap.error) {
-    return {
-      recapMode: undefined,
-      recapAfterSeconds: undefined,
-      promptSuggestionMode: undefined,
-      helperSideModel: undefined,
-      error: recap.error,
-    };
+    return invalidHelperSettings(recap.error);
   }
   const recapAfter = parseOptionalRecapAfterSeconds(body.recapAfterSeconds);
   if (recapAfter.error) {
-    return {
-      recapMode: undefined,
-      recapAfterSeconds: undefined,
-      promptSuggestionMode: undefined,
-      helperSideModel: undefined,
-      error: recapAfter.error,
-    };
+    return invalidHelperSettings(recapAfter.error);
   }
   const promptSuggestion = parseOptionalPromptSuggestionMode(
     body.promptSuggestionMode,
   );
   if (promptSuggestion.error) {
-    return {
-      recapMode: undefined,
-      recapAfterSeconds: undefined,
-      promptSuggestionMode: undefined,
-      helperSideModel: undefined,
-      error: promptSuggestion.error,
-    };
+    return invalidHelperSettings(promptSuggestion.error);
   }
   const helperModel = parseOptionalHelperSideModel(body.helperSideModel);
   if (helperModel.error) {
-    return {
-      recapMode: undefined,
-      recapAfterSeconds: undefined,
-      promptSuggestionMode: undefined,
-      helperSideModel: undefined,
-      error: helperModel.error,
-    };
+    return invalidHelperSettings(helperModel.error);
   }
   return {
     recapMode: recap.recapMode,

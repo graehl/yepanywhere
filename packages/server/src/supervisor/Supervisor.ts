@@ -29,6 +29,8 @@ import type {
 import { formatAgentRecapExcerpt } from "../sessions/agent-excerpt.js";
 import {
   isAwaySummaryMessage,
+  latestRecapMessage,
+  messageTimestampMs,
   toDurableRecapMessage,
 } from "../sessions/recap-overlays.js";
 import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
@@ -2179,6 +2181,23 @@ export class Supervisor {
     }
   }
 
+  /**
+   * Raise a recap's "summarize since" floor to the latest already-emitted
+   * recap for the session. A recap covers the transcript through (about) its
+   * own timestamp, so a second return event with no assistant output after
+   * the last recap has nothing new to say — regenerating the same summary
+   * from the same context is wasted work and stacks duplicate recap rows.
+   */
+  private recapFloorMs(sessionId: string, sinceMs: number | null): number | null {
+    const recaps = this.sessionMetadataService?.getRecapMessages(sessionId);
+    const latest = recaps ? latestRecapMessage(recaps) : undefined;
+    const lastRecapMs = latest ? messageTimestampMs(latest) : null;
+    if (lastRecapMs === null) {
+      return sinceMs;
+    }
+    return sinceMs === null ? lastRecapMs : Math.max(sinceMs, lastRecapMs);
+  }
+
   private async requestForkedRecap(
     process: Process,
     provider: AgentProvider,
@@ -2192,6 +2211,7 @@ export class Supervisor {
         reason: "provider does not support recaps",
       };
     }
+    sinceMs = this.recapFloorMs(process.sessionId, sinceMs);
     if (typeof provider.forkSession !== "function") {
       return process.requestTailedRecapFallback(provider, { sinceMs });
     }
@@ -3240,7 +3260,13 @@ export class Supervisor {
             options?.sinceMs ?? null,
             { revived: options?.revived === true },
           )
-        : await process.requestRecap(provider, options);
+        : await process.requestRecap(provider, {
+            ...options,
+            sinceMs: this.recapFloorMs(
+              process.sessionId,
+              options?.sinceMs ?? null,
+            ),
+          });
     await this.handleRecapResult(process, result);
     const { syntheticMessage: _syntheticMessage, ...publicResult } = result;
     return publicResult;

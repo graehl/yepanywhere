@@ -159,6 +159,94 @@ describe("recap overlays", () => {
     ]);
   });
 
+  it("supersedes an older overlay recap with no provider content after it", () => {
+    const merged = mergeRecapMessages(
+      [
+        providerMessage({
+          uuid: "provider-1",
+          timestamp: "2026-06-24T12:00:00.000Z",
+        }),
+      ],
+      [
+        recap({
+          uuid: "recap-old",
+          content: "First recap.",
+          timestamp: "2026-06-24T12:00:10.000Z",
+        }),
+        recap({
+          uuid: "recap-new",
+          content: "Second recap.",
+          timestamp: "2026-06-24T12:02:00.000Z",
+        }),
+      ],
+    );
+
+    expect(merged.map((message) => message.uuid)).toEqual([
+      "provider-1",
+      "recap-new",
+    ]);
+  });
+
+  it("keeps an older overlay recap when provider content follows it", () => {
+    const merged = mergeRecapMessages(
+      [
+        providerMessage({
+          uuid: "provider-1",
+          timestamp: "2026-06-24T12:00:00.000Z",
+        }),
+        providerMessage({
+          uuid: "provider-2",
+          timestamp: "2026-06-24T12:01:00.000Z",
+        }),
+      ],
+      [
+        recap({
+          uuid: "recap-old",
+          content: "First recap.",
+          timestamp: "2026-06-24T12:00:10.000Z",
+        }),
+        recap({
+          uuid: "recap-new",
+          content: "Second recap.",
+          timestamp: "2026-06-24T12:02:00.000Z",
+        }),
+      ],
+    );
+
+    expect(merged.map((message) => message.uuid)).toEqual([
+      "provider-1",
+      "recap-old",
+      "provider-2",
+      "recap-new",
+    ]);
+  });
+
+  it("never removes a provider-emitted recap row when superseding", () => {
+    const merged = mergeRecapMessages(
+      [
+        providerMessage({
+          uuid: "native-recap",
+          type: "system",
+          subtype: "away_summary",
+          content: "Native recap text.",
+          timestamp: "2026-06-24T12:00:10.000Z",
+        }),
+      ],
+      [
+        recap({
+          uuid: "overlay-recap",
+          content: "Different overlay recap.",
+          timestamp: "2026-06-24T12:02:00.000Z",
+        }),
+      ],
+    );
+
+    expect(merged.map((message) => message.uuid)).toEqual([
+      "native-recap",
+      "overlay-recap",
+    ]);
+  });
+
   it("updates summary freshness and excerpt only for fresher valid recaps", () => {
     const base = summary({
       updatedAt: "2026-06-24T12:00:00.000Z",

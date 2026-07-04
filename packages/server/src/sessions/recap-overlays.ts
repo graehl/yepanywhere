@@ -117,6 +117,13 @@ export function mergeRecapMessages(
     (a, b) => (messageTimestampMs(a) ?? 0) - (messageTimestampMs(b) ?? 0),
   );
 
+  // Overlay recaps inserted by this merge, so a newer recap can supersede an
+  // older overlay row that has no provider content after it. An older recap
+  // only remains visible when real transcript content follows it (it then
+  // reads as a milestone marker at the point it covered); provider-emitted
+  // recap rows are never removed.
+  const insertedOverlays = new Set<Message>();
+
   for (const recap of sortedRecaps) {
     if (hasEquivalentRecapMessage(merged, recap)) {
       continue;
@@ -132,7 +139,14 @@ export function mergeRecapMessages(
         insertAt = laterIndex;
       }
     }
-    merged.splice(insertAt, 0, recap as Message);
+    const prior = insertAt > 0 ? merged[insertAt - 1] : undefined;
+    if (prior !== undefined && insertedOverlays.has(prior)) {
+      insertedOverlays.delete(prior);
+      merged.splice(insertAt - 1, 1, recap as Message);
+    } else {
+      merged.splice(insertAt, 0, recap as Message);
+    }
+    insertedOverlays.add(recap as Message);
   }
 
   return merged;

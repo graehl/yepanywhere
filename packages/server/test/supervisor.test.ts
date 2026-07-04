@@ -1208,6 +1208,151 @@ describe("Supervisor", () => {
 
       await process.abort();
     });
+
+    it("suppresses a recap with no assistant text since the last emitted recap", async () => {
+      const generateSummary = vi.fn(async (request) => ({
+        text: request.strategy === "fork" ? "forked summary" : "",
+      }));
+      const forkSession = vi.fn(async () => ({
+        sessionId: "since-last-recap-fork",
+      }));
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "since-last-recap",
+            };
+            yield {
+              type: "assistant" as const,
+              message: { content: "assistant after start" },
+            };
+            yield {
+              type: "result" as const,
+              session_id: options.resumeSessionId ?? "since-last-recap",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+            },
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "claude",
+        displayName: "Claude",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: false,
+        supportsRecaps: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+        generateSummary,
+        forkSession,
+      };
+      // Only the recap floor and the fork-archival path touch the metadata
+      // service here; back the stub with a swappable recap row list.
+      let persistedRecaps: unknown[] = [];
+      const metadataStub = {
+        getRecapMessages: () => [...persistedRecaps],
+        updateMetadata: async () => {},
+        setProvider: async () => {},
+        setExecutor: async () => {},
+        setRequestedModel: async () => {},
+        addRecapMessage: async () => {},
+      } as unknown as ConstructorParameters<
+        typeof Supervisor
+      >[0]["sessionMetadataService"];
+      const supervisorWithMetadata = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+        sessionMetadataService: metadataStub,
+      });
+
+      const process = await supervisorWithMetadata.startSession(
+        "/tmp/test",
+        { text: "hi" },
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+      if (!("id" in process)) {
+        throw new Error("expected immediate process");
+      }
+      await vi.waitFor(() => expect(process.state.type).toBe("idle"));
+
+      const callForked = () =>
+        (
+          supervisorWithMetadata as unknown as {
+            requestForkedRecap: (
+              p: typeof process,
+              prov: AgentProvider,
+              since: number | null,
+            ) => Promise<{
+              supported: boolean;
+              emitted: boolean;
+              reason?: string;
+            }>;
+          }
+        ).requestForkedRecap(process, provider, null);
+
+      // A persisted recap newer than all buffered assistant text raises the
+      // floor past the buffer: nothing new to say, so no second recap.
+      persistedRecaps = [
+        {
+          type: "system",
+          subtype: "away_summary",
+          content: "Already recapped.",
+          timestamp: new Date(Date.now() + 60_000).toISOString(),
+          uuid: "recap-after",
+          id: "recap-after",
+          yaRecapSource: "ya-synthetic",
+        },
+      ];
+      await expect(callForked()).resolves.toMatchObject({
+        supported: true,
+        emitted: false,
+        reason: "no recent assistant activity to summarize",
+      });
+      expect(forkSession).not.toHaveBeenCalled();
+
+      // A recap older than the buffered assistant text does not block a new one.
+      persistedRecaps = [
+        {
+          type: "system",
+          subtype: "away_summary",
+          content: "Stale recap.",
+          timestamp: new Date(Date.now() - 60_000).toISOString(),
+          uuid: "recap-before",
+          id: "recap-before",
+          yaRecapSource: "ya-synthetic",
+        },
+      ];
+      await expect(callForked()).resolves.toMatchObject({
+        supported: true,
+        emitted: true,
+        text: "forked summary",
+      });
+      expect(forkSession).toHaveBeenCalled();
+
+      await process.abort();
+    });
   });
 
   describe("prompt suggestion options", () => {

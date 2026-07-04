@@ -68,9 +68,18 @@ cancellation on activity) and the current trigger/threshold gaps.
 - One recap per "return event". Repeated visibility flips within a
   short window collapse to a single trigger; the user should not see a
   stack of recaps after wiggling focus.
-- A recap with no new agent work to describe (no assistant turns since
-  the user left) is suppressed. An empty or near-empty recap is worse
-  than no recap.
+- A recap with no new agent work to describe is suppressed. The freshness
+  floor is the *later* of the user's leave time and the last emitted recap
+  for the session (`Supervisor.recapFloorMs`): a return event with no
+  assistant output since the last recap would regenerate the same summary
+  from the same context — wasted work and a duplicate row. An empty or
+  near-empty recap is worse than no recap.
+- At most one recap row per transcript position. A newer recap supersedes
+  an older YA-overlay recap that has no provider content after it
+  (`mergeRecapMessages`); an older recap stays visible only when real
+  transcript content follows it, where it reads as a milestone marker at
+  the point it covered. Provider-emitted recap rows are never removed by
+  this supersede.
 - Recap text length is bounded by the provider's prompt (under ~40
   words for Claude-shape recaps); YA must not pad, decorate, or attach
   follow-up tool affordances that would invite further interaction with
@@ -237,6 +246,11 @@ Remaining probes:
   most one recap.
 - A recap fired against a session that has had no assistant output
   since the user left does not surface in the message list.
+- A second return event with no assistant output since the last emitted
+  recap does not generate or surface a second recap.
+- Two persisted overlay recaps with no provider content between them
+  render as one row (the newest); with provider content between them,
+  both render, the older inline at the point it covered.
 - The trailing ` (disable recaps in /config)` text is stripped from
   rendered content but the rest of the text is preserved verbatim.
 - Recap rendering does not expose retry or recap-specific action chrome; the

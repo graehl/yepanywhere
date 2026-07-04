@@ -67,7 +67,12 @@ supervisor must uphold:
    (`Supervisor.ts` catch in `requestForkedRecap`).
 
 4. **Suppress empty recaps.** No recent assistant text since the user
-   left ⇒ no recap (`getRecentAssistantText`). **Exception:** a process
+   left ⇒ no recap (`getRecentAssistantText`). The floor is raised to the
+   latest persisted recap for the session (`recapFloorMs`, applied at
+   `requestForkedRecap` entry and at the tailed dispatch in
+   `Supervisor.requestRecap`), so a second return event with no assistant
+   output since the last emitted recap is also suppressed rather than
+   regenerating the same summary. **Exception:** a process
    revived for this recap (`{revived:true}`) has an empty in-memory buffer
    even though its transcript has content, so the revived path skips both the
    native wait and this emptiness gate and forks straight from the transcript;
@@ -166,6 +171,22 @@ The server *does* track per-session last activity — `updatedAt` from JSONL
   `system/away_summary`, session detail returned it with `messageCount: 3`,
   the global list returned the same text in `lastAgentText`, and verify-only
   reads after `reyep` returned the same detail/list recap.
+- **Done:** since-last-recap suppression + display supersede
+  (2026-07-04, after a live double-recap: a hide during a long turn
+  deferred one recap to turn-end, a second hide near turn-end fired
+  another 103 s later, and both summarized the same finished work).
+  `recapFloorMs` raises the gate floor to the latest persisted recap,
+  and `mergeRecapMessages` collapses an older overlay recap that has no
+  provider content after it — which also cleans up already-persisted
+  duplicate pairs at read time.
+- **Gap — revived path bypasses the since-last-recap gate.** The
+  `{revived:true}` fork skips the emptiness gate (empty buffer), so a
+  cold fork-mode session revived twice with no new content can still
+  duplicate a recap across server restarts. Closing it needs a reliable
+  last-provider-content timestamp for a cold session; the index's
+  `updatedAt` is JSONL mtime, which YA sidecar rows (ai-title,
+  queue-operation) also bump, so it over-reports freshness. The display
+  supersede masks the duplicate row meanwhile.
 - **Gap — server-driven trigger (optional, not comprehensive).** YA is
   explicitly allowed to leave unattended sessions alone instead of trying to
   generate a recap for every stale session. If a server idle trigger is ever
@@ -228,6 +249,8 @@ waiting for idle and then using `process.sessionId` for detail/list assertions.
 - A parent turn starting mid-generation aborts the generator turn (no
   late `away_summary` emitted after the new turn began).
 - A recap with no assistant output since the user left emits nothing.
+- A recap with no assistant output since the last emitted recap emits
+  nothing, even when the away window reaches back before that recap.
 - If a native `away_summary` arrives before the fallback emits, tailed/forked
   use the native text and do not run/commit the synthetic fallback.
 - A synthetic recap survives server restart/session reopen through the YA

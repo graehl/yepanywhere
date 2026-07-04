@@ -1,5 +1,6 @@
 import { fetchJSON } from "../../api/client";
 import { connectionManager } from "../connection";
+import { getSessionTranscriptMemoryStats } from "../sessionDetail/sessionDetailStore";
 import { generateUUID } from "../uuid";
 import {
   countEntries,
@@ -262,6 +263,9 @@ export class ClientLogCollector {
               toolRows: document.querySelectorAll(".tool-row").length,
             }
           : null,
+      // Attributes multi-day heap growth to transcript-store retention vs
+      // DOM/other without needing a live heap snapshot from the device.
+      transcriptMemory: getSessionTranscriptMemoryStats(),
     };
     this._writeEntry(
       "info",

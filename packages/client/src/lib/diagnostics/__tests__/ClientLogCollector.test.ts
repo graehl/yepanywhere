@@ -73,6 +73,32 @@ describe("ClientLogCollector", () => {
     ).toBe(true);
   });
 
+  it("samples transcript-store memory in telemetry entries", async () => {
+    await collector.start();
+    await new Promise((r) => setTimeout(r, 10));
+
+    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 2 });
+    await collector.flush();
+
+    const body = JSON.parse(
+      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
+    );
+    const telemetry = body.entries.find(
+      (e: { prefix: string }) => e.prefix === "[ClientTelemetry]",
+    );
+    expect(telemetry).toBeDefined();
+    const payload = JSON.parse(
+      (telemetry.message as string).replace("[ClientTelemetry] ", ""),
+    );
+    expect(payload.transcriptMemory).toMatchObject({
+      totalBytes: expect.any(Number),
+      liveRetainedBytes: expect.any(Number),
+      liveRetainedEntryCount: expect.any(Number),
+      warmCacheBytes: expect.any(Number),
+      warmCacheEntryCount: expect.any(Number),
+    });
+  });
+
   it("restores console on stop", async () => {
     await collector.start();
     expect(console.log).not.toBe(origLog);

@@ -23,3 +23,27 @@ export function createSessionDetailStore(): SessionDetailCache {
 
 export const defaultSessionDetailStore: SessionDetailCache =
   createSessionDetailStore();
+
+export interface SessionTranscriptMemoryStats {
+  totalBytes: number;
+  liveRetainedBytes: number;
+  liveRetainedEntryCount: number;
+  warmCacheBytes: number;
+  warmCacheEntryCount: number;
+}
+
+/**
+ * Default-store byte usage in the Performance panel's vocabulary: deduped
+ * totals split into live retained entries vs warm cache. Shared by the
+ * settings display and client telemetry sampling.
+ */
+export function getSessionTranscriptMemoryStats(): SessionTranscriptMemoryStats {
+  const stats = defaultSessionDetailStore.getStats();
+  return {
+    totalBytes: stats.dedupedApproxBytes,
+    liveRetainedBytes: stats.retainedDedupedApproxBytes,
+    liveRetainedEntryCount: stats.retainedEntryCount,
+    warmCacheBytes: stats.warmCacheDedupedApproxBytes,
+    warmCacheEntryCount: stats.warmCacheEntryCount,
+  };
+}

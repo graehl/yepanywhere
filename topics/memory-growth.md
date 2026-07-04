@@ -27,6 +27,13 @@
   three-entry default cap, 24 MiB total byte cap, least-recently-used eviction,
   retained delta cursor, and retained scroll anchor. It is meant to work in
   development, production builds, and hosted/relay clients.
+- Growth attribution is sampled, not reconstructed: when client log
+  collection is active, `[ClientTelemetry]` entries (15 s cadence) carry JS
+  heap size, DOM/row counts, and the session-detail store's deduped
+  live-retained vs warm-cache byte aggregates
+  (`getSessionTranscriptMemoryStats`, also shown in Performance settings).
+  A multi-day tab that balloons should be explained from those samples
+  before anyone reaches for a live heap snapshot.
 - Any future client-side transcript cache beyond `SessionRouteSnapshot` needs
   an explicit design note before it ships: what user-visible behavior it
   changes, what data it retains, its eviction policy, memory/entry limits,

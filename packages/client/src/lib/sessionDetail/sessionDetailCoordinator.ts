@@ -110,6 +110,17 @@ export interface SessionDetailMessagesQueuedPerfOptions
   provider?: string;
 }
 
+export interface SessionDetailInitialRevealCompletionInput
+  extends SessionDetailMessagesQueuedPerfOptions,
+    SessionDetailLoadProgressOptions {}
+
+export interface SessionDetailInitialRevealCompletion {
+  snapshot: SessionRouteSnapshot;
+  messagesQueuedPerfDetail: Record<string, unknown>;
+  loadCompleteProgress: SessionLoadProgress;
+  loadCompletePerfDetail: Record<string, unknown>;
+}
+
 export interface SessionDetailLoadCompleteResult {
   session: GetSessionResult["session"];
   status: GetSessionResult["ownership"];
@@ -357,6 +368,33 @@ export class SessionDetailCoordinator {
     return {
       message: error instanceof Error ? error.message : String(error),
       ...(options.restoredFromSnapshot && { restoredFromSnapshot: true }),
+    };
+  }
+
+  buildInitialRevealCompletion({
+    snapshot,
+    sourceMessageCount,
+    provider,
+    restoredFromSnapshot,
+    nowMs,
+  }: SessionDetailInitialRevealCompletionInput): SessionDetailInitialRevealCompletion {
+    return {
+      snapshot,
+      messagesQueuedPerfDetail: this.buildInitialMessagesQueuedPerfDetail({
+        snapshot,
+        sourceMessageCount,
+        provider,
+        restoredFromSnapshot,
+      }),
+      loadCompleteProgress: this.buildRouteSnapshotLoadProgress(
+        "complete",
+        snapshot,
+        { nowMs },
+      ),
+      loadCompletePerfDetail: this.buildInitialLoadCompletePerfDetail(
+        sourceMessageCount,
+        { restoredFromSnapshot },
+      ),
     };
   }
 

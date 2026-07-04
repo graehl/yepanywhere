@@ -446,6 +446,40 @@ describe("SessionDetailCoordinator", () => {
     });
   });
 
+  it("builds initial reveal completion bundles", () => {
+    const detail = coordinator();
+    const snapshot = routeSnapshot("completion");
+
+    expect(
+      detail.buildInitialRevealCompletion({
+        snapshot,
+        sourceMessageCount: 2,
+        provider: "claude",
+        restoredFromSnapshot: true,
+        nowMs: 14,
+      }),
+    ).toEqual({
+      snapshot,
+      messagesQueuedPerfDetail: {
+        messages: 2,
+        totalMessages: 1,
+        provider: "claude",
+        restoredFromSnapshot: true,
+      },
+      loadCompleteProgress: {
+        stage: "complete",
+        messageCount: 1,
+        totalMessageCount: 1,
+        hasOlderMessages: false,
+        updatedAtMs: 14,
+      },
+      loadCompletePerfDetail: {
+        messages: 2,
+        restoredFromSnapshot: true,
+      },
+    });
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

@@ -600,16 +600,12 @@ export function useSessionMessages(
       provider?: string;
       restoredFromSnapshot?: boolean;
     }) => {
-      const { snapshot } = options;
+      const completion = coordinator.buildInitialRevealCompletion(options);
+      const { snapshot } = completion;
       applyRevealSnapshot(snapshot);
       markReloadPerfPhase(
         "session_initial_messages_state_queued",
-        coordinator.buildInitialMessagesQueuedPerfDetail({
-          snapshot,
-          sourceMessageCount: options.sourceMessageCount,
-          provider: options.provider,
-          restoredFromSnapshot: options.restoredFromSnapshot,
-        }),
+        completion.messagesQueuedPerfDetail,
       );
 
       // Mark ready and flush buffered stream events after the reveal snapshot
@@ -620,15 +616,10 @@ export function useSessionMessages(
       });
 
       setLoading(false);
-      setSessionLoadProgress(
-        coordinator.buildRouteSnapshotLoadProgress("complete", snapshot),
-      );
+      setSessionLoadProgress(completion.loadCompleteProgress);
       markReloadPerfPhase(
         "session_initial_load_complete",
-        coordinator.buildInitialLoadCompletePerfDetail(
-          options.sourceMessageCount,
-          { restoredFromSnapshot: options.restoredFromSnapshot },
-        ),
+        completion.loadCompletePerfDetail,
       );
     };
 

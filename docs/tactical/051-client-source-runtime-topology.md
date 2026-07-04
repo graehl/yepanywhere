@@ -255,8 +255,8 @@ initial-load callback payload construction run through the coordinator.
 Cacheable reveal snapshot selection is also coordinator-owned, and initial
 route snapshot reads/writes now pass through coordinator policy wrappers.
 Initial-load progress and perf detail value construction are also
-coordinator-owned. User preference and browser-environment decisions remain
-hook-owned.
+coordinator-owned, as is the initial reveal completion value bundle. User
+preference and browser-environment decisions remain hook-owned.
 
 Intent:
 
@@ -382,9 +382,14 @@ Implementation note:
   `SessionDetailCoordinator`. The hook still owns when
   `markReloadPerfPhase(...)` is called, while the coordinator now builds the
   start, data-ready, queued, complete, and error detail records.
+- Moved initial reveal completion value bundling into
+  `SessionDetailCoordinator`. The hook still owns applying the reveal snapshot,
+  opening the stream gate, setting React loading/progress state, and marking
+  perf phases, while the coordinator now derives the queued perf detail,
+  completion progress, and completion perf detail from one input.
 - The next Phase 3 slice should likely move another small initial-load helper,
-  such as initial-load reveal/completion orchestration, while leaving React
-  state timing and user preference reads in the hook.
+  such as warm-hydration reveal input shaping, while leaving React state timing
+  and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

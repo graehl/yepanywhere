@@ -24,8 +24,7 @@ import {
   getDraftQuoteLineSignatures,
 } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
-import { useAlwaysShowQuoteCircles } from "../hooks/useAlwaysShowQuoteCircles";
-import { useParagraphQuoteCirclesEnabled } from "../hooks/useParagraphQuoteCirclesEnabled";
+import { useQuoteReplyButtonMode } from "../hooks/useQuoteReplyButtonMode";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
@@ -859,8 +858,10 @@ export const MessageList = memo(function MessageList({
     top: number;
     left: number;
   } | null>(null);
-  const { alwaysShowQuoteCircles } = useAlwaysShowQuoteCircles();
-  const { paragraphQuoteCirclesEnabled } = useParagraphQuoteCirclesEnabled();
+  const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
+  const alwaysShowQuoteCircles =
+    quoteReplyButtonMode === "paragraph-always";
+  const paragraphQuoteCirclesEnabled = quoteReplyButtonMode !== "block";
   const { t } = useI18n();
   const nowMs = useRelativeNow();
 

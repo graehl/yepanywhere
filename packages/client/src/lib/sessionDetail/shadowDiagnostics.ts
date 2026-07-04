@@ -29,12 +29,6 @@ interface CompactPagination {
   totalCompactions?: number;
 }
 
-interface CompactScrollSnapshot {
-  atBottom: boolean;
-  hasAnchor: boolean;
-  anchorId?: string;
-}
-
 interface CompactSessionDetail {
   sessionId?: string;
   provider?: string;
@@ -46,7 +40,6 @@ interface CompactSessionDetail {
   agentKeys: string[];
   agents: Record<string, CompactAgent>;
   toolUseToAgentEntries: Array<[string, string]>;
-  scrollSnapshot?: CompactScrollSnapshot;
 }
 
 export interface SessionDetailRuntimeStateInput {
@@ -55,7 +48,6 @@ export interface SessionDetailRuntimeStateInput {
   pagination?: SessionDetailRuntimeSnapshot["pagination"];
   agentContent: SessionDetailRuntimeSnapshot["agentContent"];
   toolUseToAgentEntries: SessionDetailRuntimeSnapshot["toolUseToAgentEntries"];
-  scrollSnapshot?: SessionDetailRuntimeSnapshot["scrollSnapshot"];
 }
 
 export interface SessionDetailStoreDivergenceInput {
@@ -148,19 +140,6 @@ function compactPagination(
   };
 }
 
-function compactScrollSnapshot(
-  scrollSnapshot: SessionDetailRuntimeSnapshot["scrollSnapshot"],
-): CompactScrollSnapshot | undefined {
-  if (!scrollSnapshot) {
-    return undefined;
-  }
-  return {
-    atBottom: scrollSnapshot.atBottom,
-    hasAnchor: scrollSnapshot.anchor !== undefined,
-    anchorId: scrollSnapshot.anchor?.id,
-  };
-}
-
 function compactAgent(
   agentContent: SessionDetailRuntimeSnapshot["agentContent"][string],
 ): CompactAgent {
@@ -198,7 +177,6 @@ function compactSessionDetail(
     agentKeys,
     agents,
     toolUseToAgentEntries,
-    scrollSnapshot: compactScrollSnapshot(input.scrollSnapshot),
   };
 }
 
@@ -212,7 +190,6 @@ function comparableCompact(input: CompactSessionDetail): string {
     agentKeys: input.agentKeys,
     agents: input.agents,
     toolUseToAgentEntries: input.toolUseToAgentEntries,
-    scrollSnapshot: input.scrollSnapshot,
   });
 }
 

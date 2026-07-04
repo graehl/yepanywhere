@@ -406,7 +406,6 @@ export function useSessionMessages(
         agentContent: livePatch.agentContent ?? store.agentContent,
         toolUseToAgentEntries:
           livePatch.toolUseToAgentEntries ?? store.toolUseToAgentEntries,
-        scrollSnapshot: livePatch.scrollSnapshot ?? scrollSnapshotRef.current,
       };
       reportSessionDetailStoreDivergence({
         boundary,
@@ -1298,11 +1297,8 @@ export function useSessionMessages(
       }
       scrollSnapshotRef.current = snapshot;
       sessionDetailCache.patchScrollSnapshot(snapshotKey, snapshot);
-      reportStoreDivergence("scroll-snapshot", {
-        scrollSnapshot: snapshot,
-      });
     },
-    [reportStoreDivergence, sessionDetailCache, snapshotKey],
+    [sessionDetailCache, snapshotKey],
   );
 
   // Fetch session metadata only

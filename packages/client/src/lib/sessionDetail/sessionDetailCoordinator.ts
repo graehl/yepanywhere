@@ -1,6 +1,11 @@
 import type { Message } from "../../types";
+import type {
+  SessionRouteScrollSnapshot,
+  SessionRouteSnapshot,
+} from "../sessionRouteSnapshots";
 import type { YaSourceRuntime } from "../sourceRuntime";
 import type { SessionDetailEntryKeyInput } from "./sessionDetailKey";
+import { getSessionDetailEntryKey } from "./sessionDetailKey";
 import {
   bufferSessionDetailStreamMessage,
   bufferSessionDetailStreamSubagentMessage,
@@ -8,6 +13,13 @@ import {
   drainSessionDetailStreamBuffer,
   resetSessionDetailStreamBuffer,
 } from "./streamBuffer";
+import type { SessionDetailAction, SessionDetailState } from "./types";
+import type {
+  SessionDetailEquality,
+  SessionDetailSelector,
+} from "./sessionDetailEntryStore";
+
+type SessionDetailReadSelector<T> = (state: SessionDetailState) => T;
 
 export interface SessionDetailCoordinatorInput {
   entryKey: SessionDetailEntryKeyInput;
@@ -36,6 +48,10 @@ export class SessionDetailCoordinator {
     return this.runtime.sourceKey;
   }
 
+  get entryKeyString() {
+    return getSessionDetailEntryKey(this.entryKey);
+  }
+
   get api() {
     return this.runtime.api;
   }
@@ -47,6 +63,60 @@ export class SessionDetailCoordinator {
   resetForInitialLoad(): void {
     this.initialLoadComplete = false;
     resetSessionDetailStreamBuffer(this.streamBuffer);
+  }
+
+  dispatch(action: SessionDetailAction): SessionDetailState | undefined {
+    return this.cache.dispatch(this.entryKey, action);
+  }
+
+  readSelected<T>(selector: SessionDetailReadSelector<T>): T | undefined {
+    return this.cache.readSelected(this.entryKey, selector);
+  }
+
+  readRouteSnapshot(): SessionRouteSnapshot | undefined {
+    return this.cache.readRouteSnapshot(this.entryKey);
+  }
+
+  writeRouteSnapshot(snapshot: SessionRouteSnapshot): boolean {
+    return this.cache.writeRouteSnapshot(this.entryKey, snapshot);
+  }
+
+  replaceRouteSnapshot(snapshot: SessionRouteSnapshot): boolean {
+    return this.cache.replaceRouteSnapshot(this.entryKey, snapshot);
+  }
+
+  resetEntryState(): void {
+    this.cache.resetEntryState(this.entryKey);
+  }
+
+  retain(): () => void {
+    return this.cache.retain(this.entryKey);
+  }
+
+  subscribe<T>(
+    selector: SessionDetailSelector<T>,
+    listener: () => void,
+    equality?: SessionDetailEquality<T>,
+  ): () => void {
+    return this.cache.subscribe(this.entryKey, selector, listener, equality);
+  }
+
+  readScrollSnapshot(): SessionRouteScrollSnapshot | undefined {
+    return this.cache.readScrollSnapshot(this.entryKey);
+  }
+
+  patchScrollSnapshot(snapshot: SessionRouteScrollSnapshot): void {
+    this.cache.patchScrollSnapshot(this.entryKey, snapshot);
+  }
+
+  deleteEntry(): boolean {
+    return this.cache.deleteEntry(this.entryKey);
+  }
+
+  getEntryApproxBytes(): number | undefined {
+    return this.cache
+      .getStats()
+      .entries.find((entry) => entry.key === this.entryKeyString)?.approxBytes;
   }
 
   completeInitialLoad(processors: SessionDetailStreamProcessors): void {

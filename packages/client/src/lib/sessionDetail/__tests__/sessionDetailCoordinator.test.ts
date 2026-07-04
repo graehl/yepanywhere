@@ -310,6 +310,26 @@ describe("SessionDetailCoordinator", () => {
     ).toBe(12);
   });
 
+  it("loads a cold persisted transcript for initial load", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(2);
+    const applied = detail.applyInitialLoad(
+      sessionResponse(
+        [message("cold-a"), message("cold-b")],
+        responsePagination,
+      ),
+    );
+
+    expect(applied).toEqual({
+      messageCount: 2,
+      pagination: responsePagination,
+      sourceMessageCount: 2,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["cold-a", "cold-b"]);
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

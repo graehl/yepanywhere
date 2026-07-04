@@ -67,6 +67,9 @@ export interface SessionDetailAppliedWarmRefresh {
   sourceMessageCount: number;
 }
 
+export type SessionDetailAppliedInitialLoad =
+  SessionDetailAppliedWarmRefresh;
+
 export interface SessionDetailLoadCompleteResult {
   session: GetSessionResult["session"];
   status: GetSessionResult["ownership"];
@@ -204,6 +207,21 @@ export class SessionDetailCoordinator {
     return this.cache
       .getStats()
       .entries.find((entry) => entry.key === this.entryKeyString)?.approxBytes;
+  }
+
+  applyInitialLoad(data: GetSessionResult): SessionDetailAppliedInitialLoad {
+    const sourceMessageCount = data.messages.length;
+    this.dispatch({
+      type: "loadPersistedTranscript",
+      messages: data.messages,
+      session: data.session,
+      pagination: data.pagination,
+    });
+    return {
+      messageCount: sourceMessageCount,
+      pagination: data.pagination,
+      sourceMessageCount,
+    };
   }
 
   applyWarmRefresh(

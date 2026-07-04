@@ -814,18 +814,12 @@ export function useSessionMessages(
         await yieldForSessionLoadingProgressPaint(detailedLoadingProgress);
         if (cancelled) return;
 
-        const nextPagination = data.pagination;
-        dispatchSessionDetailAction({
-          type: "loadPersistedTranscript",
-          messages: data.messages,
-          session: data.session,
-          pagination: nextPagination,
-        });
+        const applied = coordinator.applyInitialLoad(data);
         const reveal = readRevealSnapshotAfterStoreUpdate(
           "initial-load",
           {
             session: data.session,
-            pagination: nextPagination,
+            pagination: applied.pagination,
             lastMessageId: readStoreLastMessageId(),
             scrollSnapshot: scrollSnapshotRef.current,
           },
@@ -833,7 +827,7 @@ export function useSessionMessages(
         const { snapshot } = reveal;
         completeInitialReveal({
           snapshot,
-          sourceMessageCount: data.messages.length,
+          sourceMessageCount: applied.sourceMessageCount,
           provider: data.session.provider,
         });
 
@@ -876,7 +870,6 @@ export function useSessionMessages(
     onLoadError,
     coordinator,
     resetSessionDetailState,
-    dispatchSessionDetailAction,
     processStreamMessage,
     processStreamSubagentMessage,
     readStoreLastMessageId,

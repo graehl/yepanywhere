@@ -249,12 +249,12 @@ dispatch, selector reads/subscriptions, route snapshot read/write/replace,
 retention, deletion, and scroll snapshot patching. Initial REST load, reveal
 gating, scroll memory policy, older-page loading, metadata refresh, and load
 progress remain hook-owned, but the stream-gate part of initial-load lifecycle
-now starts through `beginInitialLoad`, and warm-refresh reducer action
-selection, reveal-snapshot construction, and initial-load callback payload
-construction run through the coordinator. Cacheable reveal snapshot selection is
-also coordinator-owned, and initial route snapshot reads/writes now pass through
-coordinator policy wrappers. User preference and browser-environment decisions
-remain hook-owned.
+now starts through `beginInitialLoad`, and cold initial-load reducer dispatch,
+warm-refresh reducer action selection, reveal-snapshot construction, and
+initial-load callback payload construction run through the coordinator.
+Cacheable reveal snapshot selection is also coordinator-owned, and initial
+route snapshot reads/writes now pass through coordinator policy wrappers. User
+preference and browser-environment decisions remain hook-owned.
 
 Intent:
 
@@ -366,9 +366,14 @@ Implementation note:
   `SessionDetailCoordinator`. The hook still computes transcript-cache
   enablement, browser availability, and scroll-retention policy, then passes
   those explicit decisions into the coordinator for the storage operation.
+- Moved cold initial-load transcript dispatch into
+  `SessionDetailCoordinator`. The hook still owns the REST request,
+  render-yield/progress timing, reveal warning boundary, cache write, and
+  completion callbacks, while the coordinator now applies the cold
+  `loadPersistedTranscript` action and returns the applied counts/pagination.
 - The next Phase 3 slice should likely move another small initial-load helper,
-  such as cold-load reducer dispatch or initial-load progress payload shaping,
-  while leaving React state timing and user preference reads in the hook.
+  such as initial-load progress payload shaping, while leaving React state
+  timing and user preference reads in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

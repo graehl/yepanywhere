@@ -148,6 +148,10 @@ function selectionIntersectsElement(
   return false;
 }
 
+function shouldShieldTranscriptSelection(win: Window): boolean {
+  return win.matchMedia?.("(pointer: coarse)").matches === true;
+}
+
 function isCtrlKeyShortcut(
   event: KeyboardEvent,
   key: string,
@@ -1496,6 +1500,13 @@ export const MessageList = memo(function MessageList({
       return;
     }
 
+    const root = containerRef.current;
+    const doc = root?.ownerDocument ?? document;
+    const win = doc.defaultView ?? window;
+    if (!shouldShieldTranscriptSelection(win)) {
+      return;
+    }
+
     let activeSessionPage: HTMLElement | null = null;
     let activeBody: HTMLElement | null = null;
 
@@ -1530,9 +1541,6 @@ export const MessageList = memo(function MessageList({
       );
     };
 
-    const root = containerRef.current;
-    const doc = root?.ownerDocument ?? document;
-    const win = doc.defaultView ?? window;
     doc.addEventListener("selectionchange", updateTranscriptSelectionActive);
     doc.addEventListener("pointerup", updateTranscriptSelectionActive, true);
     doc.addEventListener("keyup", updateTranscriptSelectionActive, true);

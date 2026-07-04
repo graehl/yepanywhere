@@ -63,6 +63,7 @@ vi.mock("../../i18n", () => ({
 }));
 
 const originalClipboard = navigator.clipboard;
+const originalMatchMedia = window.matchMedia;
 
 function userMessage(
   uuid: string,
@@ -168,6 +169,25 @@ function stubClipboardWriteText() {
   return writeText;
 }
 
+function mockPointerCoarse(matches: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string) => {
+      const mediaQueryList = {
+        matches: query === "(pointer: coarse)" ? matches : false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(() => false),
+      } as MediaQueryList;
+      return mediaQueryList;
+    }),
+  });
+}
+
 function SessionTranscriptHarness({ messages }: { messages: Message[] }) {
   return (
     <StreamingMarkdownProvider>
@@ -226,6 +246,10 @@ describe("MessageList", () => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: originalClipboard,
+    });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
     });
     cleanup();
     vi.useRealTimers();
@@ -1360,6 +1384,8 @@ describe("MessageList", () => {
   });
 
   it("shields session chrome while transcript text is selected", () => {
+    mockPointerCoarse(true);
+
     const activeClass = "session-transcript-selection-active";
     const { container, unmount } = render(
       <div className="session-page">
@@ -1402,6 +1428,37 @@ describe("MessageList", () => {
     expect((shell as HTMLElement).classList.contains(activeClass)).toBe(true);
 
     unmount();
+
+    expect((shell as HTMLElement).classList.contains(activeClass)).toBe(false);
+    expect(document.body.classList.contains(activeClass)).toBe(false);
+  });
+
+  it("does not shield session chrome for desktop pointer selection", () => {
+    mockPointerCoarse(false);
+
+    const activeClass = "session-transcript-selection-active";
+    const { container } = render(
+      <div className="session-page">
+        <MessageList
+          messages={[assistantMessage("assistant-1", "desktop selected text")]}
+        />
+      </div>,
+    );
+    const shell = container.querySelector(".session-page");
+    const selectedText = screen.getByText("desktop selected text").firstChild;
+    expect(shell).toBeInstanceOf(HTMLElement);
+    expect(selectedText).toBeTruthy();
+
+    const range = document.createRange();
+    range.setStart(selectedText as Node, 0);
+    range.setEnd(selectedText as Node, "desktop selected text".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
 
     expect((shell as HTMLElement).classList.contains(activeClass)).toBe(false);
     expect(document.body.classList.contains(activeClass)).toBe(false);

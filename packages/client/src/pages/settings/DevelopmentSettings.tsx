@@ -13,36 +13,36 @@ import {
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
-type SessionCursorModeDescriptionKey =
-  | "developmentSessionCursorModeLiveTailDescription"
-  | "developmentSessionCursorModeRememberPlaceDescription"
-  | "developmentSessionCursorModeManualFollowDescription"
-  | "developmentSessionCursorModeNoMemoryDescription";
+type SessionScrollMemoryModeDescriptionKey =
+  | "developmentSessionScrollMemoryModeLiveTailDescription"
+  | "developmentSessionScrollMemoryModeRememberPlaceDescription"
+  | "developmentSessionScrollMemoryModeManualFollowDescription"
+  | "developmentSessionScrollMemoryModeNoMemoryDescription";
 
-type SessionCursorModeLabelKey =
-  | "developmentSessionCursorModeLiveTail"
-  | "developmentSessionCursorModeRememberPlace"
-  | "developmentSessionCursorModeManualFollow"
-  | "developmentSessionCursorModeNoMemory";
+type SessionScrollMemoryModeLabelKey =
+  | "developmentSessionScrollMemoryModeLiveTail"
+  | "developmentSessionScrollMemoryModeRememberPlace"
+  | "developmentSessionScrollMemoryModeManualFollow"
+  | "developmentSessionScrollMemoryModeNoMemory";
 
-const sessionCursorModeDescriptionKeys: Record<
+const sessionScrollMemoryModeDescriptionKeys: Record<
   SessionScrollBehaviorMode,
-  SessionCursorModeDescriptionKey
+  SessionScrollMemoryModeDescriptionKey
 > = {
-  "live-tail": "developmentSessionCursorModeLiveTailDescription",
-  "remember-place": "developmentSessionCursorModeRememberPlaceDescription",
-  "manual-follow": "developmentSessionCursorModeManualFollowDescription",
-  "no-memory": "developmentSessionCursorModeNoMemoryDescription",
+  "live-tail": "developmentSessionScrollMemoryModeLiveTailDescription",
+  "remember-place": "developmentSessionScrollMemoryModeRememberPlaceDescription",
+  "manual-follow": "developmentSessionScrollMemoryModeManualFollowDescription",
+  "no-memory": "developmentSessionScrollMemoryModeNoMemoryDescription",
 };
 
-const sessionCursorModeLabelKeys: Record<
+const sessionScrollMemoryModeLabelKeys: Record<
   SessionScrollBehaviorMode,
-  SessionCursorModeLabelKey
+  SessionScrollMemoryModeLabelKey
 > = {
-  "live-tail": "developmentSessionCursorModeLiveTail",
-  "remember-place": "developmentSessionCursorModeRememberPlace",
-  "manual-follow": "developmentSessionCursorModeManualFollow",
-  "no-memory": "developmentSessionCursorModeNoMemory",
+  "live-tail": "developmentSessionScrollMemoryModeLiveTail",
+  "remember-place": "developmentSessionScrollMemoryModeRememberPlace",
+  "manual-follow": "developmentSessionScrollMemoryModeManualFollow",
+  "no-memory": "developmentSessionScrollMemoryModeNoMemory",
 };
 
 export function DevelopmentSettings() {
@@ -198,18 +198,18 @@ export function DevelopmentSettings() {
       <div className="settings-group">
         <details>
           <summary className="settings-hint">
-            <strong>{t("developmentSessionCursorTitle")}</strong>
+            <strong>{t("developmentSessionScrollMemoryTitle")}</strong>
           </summary>
           <div className="settings-item settings-item--wide-control">
             <div className="settings-item-info">
-              <strong>{t("developmentSessionCursorControlTitle")}</strong>
-              <p>{t("developmentSessionCursorDescription")}</p>
+              <strong>{t("developmentSessionScrollMemoryControlTitle")}</strong>
+              <p>{t("developmentSessionScrollMemoryDescription")}</p>
               <ul className="settings-option-description-list">
                 {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
                   <li key={mode}>
-                    <strong>{t(sessionCursorModeLabelKeys[mode])}</strong>
+                    <strong>{t(sessionScrollMemoryModeLabelKeys[mode])}</strong>
                     <span>
-                      {t(sessionCursorModeDescriptionKeys[mode])}
+                      {t(sessionScrollMemoryModeDescriptionKeys[mode])}
                     </span>
                   </li>
                 ))}
@@ -224,11 +224,11 @@ export function DevelopmentSettings() {
                     event.target.value as SessionScrollBehaviorMode,
                   )
                 }
-                aria-label={t("developmentSessionCursorControlTitle")}
+                aria-label={t("developmentSessionScrollMemoryControlTitle")}
               >
                 {SESSION_SCROLL_BEHAVIOR_MODES.map((mode) => (
                   <option key={mode} value={mode}>
-                    {t(sessionCursorModeLabelKeys[mode])}
+                    {t(sessionScrollMemoryModeLabelKeys[mode])}
                   </option>
                 ))}
               </select>

@@ -50,20 +50,20 @@ vi.mock("../../../i18n", () => ({
           developmentDiagnosticsDescription: "Capture browser logs",
           developmentServiceWorkerTitle: "Service Worker",
           developmentServiceWorkerDescription: "Enable service worker",
-          developmentSessionCursorTitle: "Session Cursor Behavior",
-          developmentSessionCursorControlTitle: "Restore mode",
-          developmentSessionCursorDescription: "Debug restore mode",
-          developmentSessionCursorModeLiveTail: "Live tail (default)",
-          developmentSessionCursorModeLiveTailDescription:
+          developmentSessionScrollMemoryTitle: "Session Scroll Memory",
+          developmentSessionScrollMemoryControlTitle: "Restore mode",
+          developmentSessionScrollMemoryDescription: "Debug restore mode",
+          developmentSessionScrollMemoryModeLiveTail: "Live tail (default)",
+          developmentSessionScrollMemoryModeLiveTailDescription:
             "Reopen at latest output",
-          developmentSessionCursorModeRememberPlace: "Remember place",
-          developmentSessionCursorModeRememberPlaceDescription:
+          developmentSessionScrollMemoryModeRememberPlace: "Remember place",
+          developmentSessionScrollMemoryModeRememberPlaceDescription:
             "Reopen at last viewed row",
-          developmentSessionCursorModeManualFollow: "Manual follow",
-          developmentSessionCursorModeManualFollowDescription:
+          developmentSessionScrollMemoryModeManualFollow: "Manual follow",
+          developmentSessionScrollMemoryModeManualFollowDescription:
             "Manual follow experiment",
-          developmentSessionCursorModeNoMemory: "No memory",
-          developmentSessionCursorModeNoMemoryDescription:
+          developmentSessionScrollMemoryModeNoMemory: "No memory",
+          developmentSessionScrollMemoryModeNoMemoryDescription:
             "Do not retain scroll snapshots",
           developmentRestartTitle: "Restart Server",
           developmentRestartDescription: "Restart the backend server",
@@ -99,7 +99,7 @@ describe("DevelopmentSettings", () => {
     expect(screen.getByText("Schema Validation")).toBeTruthy();
     expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
     expect(screen.getByText("Service Worker")).toBeTruthy();
-    expect(screen.getByText("Session Cursor Behavior")).toBeTruthy();
+    expect(screen.getByText("Session Scroll Memory")).toBeTruthy();
     expect(screen.queryByText("Store-Backed Session Detail")).toBeNull();
   });
 

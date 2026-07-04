@@ -51,3 +51,5 @@
 - Client source runtime topology (per-YA-server runtime boundary above summary/query/session-detail stores)
 - Session media handles (problem statement for lazy transcript image/blob
   payloads behind authenticated server media IDs)
+- Workstreams (lane-aware Project Queue using branch-backed worktrees and local
+  landing back to main)

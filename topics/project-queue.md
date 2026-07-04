@@ -8,6 +8,11 @@ Topic: project-queue
 It is project-scoped, not global across the YA install, and it is separate from
 the existing per-session queue.
 
+This topic describes the current single-lane model: one project/worktree/branch
+is treated as the scheduling unit. [`workstreams.md`](workstreams.md) describes
+a proposed lane-aware extension where Project Queue items can target a specific
+main or branch-backed worktree lane instead of waiting for the whole project.
+
 ## Core Semantics
 
 - Project Queue items are persisted on the server. Clients must not mirror the

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { createLocalStorageBoolean } from "../lib/localStorageBoolean";
+import { createLocalStorageBoolean } from "../lib/localStorageValue";
 import { UI_KEYS } from "../lib/storageKeys";
 
 // Opt-in: title generation uses the agent (and tokens), so default to off.

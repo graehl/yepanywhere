@@ -342,4 +342,45 @@ describe("SessionDetailCoordinator", () => {
       detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
     ).toEqual(["warm", "catchup"]);
   });
+
+  it("builds reveal snapshots from store-backed runtime state", () => {
+    const detail = coordinator();
+
+    detail.replaceRouteSnapshot(routeSnapshot("stored"));
+
+    const reveal = detail.buildRevealSnapshot({
+      session: session(),
+      pagination: pagination(1),
+      lastMessageId: "fallback",
+      scrollSnapshot: scrollSnapshot(96),
+    });
+
+    expect(reveal.storeBacked).toBe(true);
+    expect(reveal.snapshot.messages.map(({ uuid }) => uuid)).toEqual([
+      "stored",
+    ]);
+    expect(reveal.snapshot.lastMessageId).toBe("stored");
+    expect(reveal.snapshot.scrollSnapshot?.scrollTop).toBe(12);
+  });
+
+  it("builds fallback reveal snapshots when store state is missing", () => {
+    const detail = coordinator();
+    const fallbackScroll = scrollSnapshot(48);
+
+    const reveal = detail.buildRevealSnapshot({
+      session: session(),
+      pagination: pagination(1),
+      lastMessageId: "fallback",
+      scrollSnapshot: fallbackScroll,
+    });
+
+    expect(reveal.storeBacked).toBe(false);
+    expect(reveal.snapshot.messages).toEqual([]);
+    expect(reveal.snapshot.session).toEqual(session());
+    expect(reveal.snapshot.lastMessageId).toBe("fallback");
+    expect(reveal.snapshot.maxPersistedTimestampMs).toBe(
+      Number.NEGATIVE_INFINITY,
+    );
+    expect(reveal.snapshot.scrollSnapshot).toBe(fallbackScroll);
+  });
 });

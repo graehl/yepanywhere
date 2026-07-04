@@ -10,9 +10,7 @@ import type { DeferredQueueMessage, PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
 import {
-  buildSessionDetailRevealSnapshot,
   getCacheableSessionDetailRevealSnapshot,
-  type SessionDetailRevealSnapshotFallback,
   type SessionDetailRevealSnapshotResult,
 } from "../lib/sessionDetail/revealSnapshot";
 import {
@@ -24,6 +22,7 @@ import {
 import {
   createSessionDetailCoordinator,
   type SessionDetailCoordinator,
+  type SessionDetailRevealSnapshotInput,
 } from "../lib/sessionDetail/sessionDetailCoordinator";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
@@ -412,22 +411,6 @@ export function useSessionMessages(
     [dispatchSessionDetailAction, readStoreSession, reportStoreDivergence],
   );
 
-  const readSelectorBackedRuntimeSnapshot = useCallback(
-    () => {
-      const selected = coordinator.readSelected(
-        selectSessionDetailRuntimeSnapshot,
-      );
-      if (!selected) {
-        return undefined;
-      }
-      return {
-        ...selected,
-        scrollSnapshot: coordinator.readScrollSnapshot(),
-      };
-    },
-    [coordinator],
-  );
-
   const warnSessionDetailStore = useCallback(
     (payload: Record<string, unknown>) => {
       if (!import.meta.env.DEV) {
@@ -603,20 +586,11 @@ export function useSessionMessages(
 
     const readRevealSnapshotAfterStoreUpdate = (
       boundary: string,
-      fallback: Omit<
-        SessionDetailRevealSnapshotFallback,
-        "maxPersistedTimestampMs"
-      >,
+      fallback: SessionDetailRevealSnapshotInput,
     ): SessionDetailRevealSnapshotResult => {
-      const selected = readSelectorBackedRuntimeSnapshot();
-      const reveal = buildSessionDetailRevealSnapshot({
-        selected,
-        fallback: {
-          ...fallback,
-          maxPersistedTimestampMs:
-            selected?.maxPersistedTimestampMs ?? Number.NEGATIVE_INFINITY,
-          scrollSnapshot: fallback.scrollSnapshot ?? scrollSnapshotRef.current,
-        },
+      const reveal = coordinator.buildRevealSnapshot({
+        ...fallback,
+        scrollSnapshot: fallback.scrollSnapshot ?? scrollSnapshotRef.current,
       });
       if (!reveal.storeBacked) {
         warnSessionDetailStore({
@@ -935,7 +909,6 @@ export function useSessionMessages(
     processStreamMessage,
     processStreamSubagentMessage,
     readStoreLastMessageId,
-    readSelectorBackedRuntimeSnapshot,
     snapshotKeyString,
     sourceApi,
     warnSessionDetailStore,

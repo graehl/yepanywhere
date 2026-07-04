@@ -5,6 +5,11 @@ import type {
 } from "../sessionRouteSnapshots";
 import type { GetSessionResult, YaSourceRuntime } from "../sourceRuntime";
 import { selectSessionDetailRuntimeSnapshot } from "./selectors";
+import {
+  buildSessionDetailRevealSnapshot,
+  type SessionDetailRevealSnapshotFallback,
+  type SessionDetailRevealSnapshotResult,
+} from "./revealSnapshot";
 import type { SessionDetailEntryKeyInput } from "./sessionDetailKey";
 import { getSessionDetailEntryKey } from "./sessionDetailKey";
 import {
@@ -51,6 +56,11 @@ export interface SessionDetailAppliedWarmRefresh {
   pagination: GetSessionResult["pagination"];
   sourceMessageCount: number;
 }
+
+export type SessionDetailRevealSnapshotInput = Omit<
+  SessionDetailRevealSnapshotFallback,
+  "maxPersistedTimestampMs"
+>;
 
 export class SessionDetailCoordinator {
   readonly entryKey: SessionDetailEntryKeyInput;
@@ -206,6 +216,25 @@ export class SessionDetailCoordinator {
       pagination: merged?.pagination,
       sourceMessageCount,
     };
+  }
+
+  buildRevealSnapshot(
+    fallback: SessionDetailRevealSnapshotInput,
+  ): SessionDetailRevealSnapshotResult {
+    const selected = this.readSelected(selectSessionDetailRuntimeSnapshot);
+    return buildSessionDetailRevealSnapshot({
+      selected: selected
+        ? {
+            ...selected,
+            scrollSnapshot: this.readScrollSnapshot(),
+          }
+        : undefined,
+      fallback: {
+        ...fallback,
+        maxPersistedTimestampMs:
+          selected?.maxPersistedTimestampMs ?? Number.NEGATIVE_INFINITY,
+      },
+    });
   }
 
   private completeInitialReveal(

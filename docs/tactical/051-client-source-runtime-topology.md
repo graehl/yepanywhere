@@ -249,7 +249,8 @@ dispatch, selector reads/subscriptions, route snapshot read/write/replace,
 retention, deletion, and scroll snapshot patching. Initial REST load, reveal
 gating, scroll memory policy, older-page loading, metadata refresh, and load
 progress remain hook-owned, but the stream-gate part of initial-load lifecycle
-now starts through `beginInitialLoad`.
+now starts through `beginInitialLoad`, and warm-refresh reducer action
+selection runs through the coordinator.
 
 Intent:
 
@@ -329,6 +330,15 @@ Implementation note:
   of the hook, such as the warm-refresh action decision (`loadPersistedTranscript`
   vs `replaceTailWindow` vs `applyCatchupMessages`) or a read-only
   reveal-snapshot builder wrapper.
+- Moved the warm-refresh action decision into `SessionDetailCoordinator`.
+  `useSessionMessages` still owns fetch/progress/reveal timing, but the
+  coordinator now chooses and dispatches `loadPersistedTranscript`,
+  `replaceTailWindow`, or `applyCatchupMessages` and returns the applied
+  message counts/pagination. Added branch coverage for the full-reload,
+  tail-window replacement, and catch-up paths.
+- The next Phase 3 slice should likely extract a read-only reveal-snapshot
+  helper around `buildSessionDetailRevealSnapshot`, keeping warnings and React
+  state updates in the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

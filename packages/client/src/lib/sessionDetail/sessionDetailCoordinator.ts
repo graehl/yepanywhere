@@ -3,7 +3,8 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
-import type { YaSourceRuntime } from "../sourceRuntime";
+import type { GetSessionResult, YaSourceRuntime } from "../sourceRuntime";
+import { selectSessionDetailRuntimeSnapshot } from "./selectors";
 import type { SessionDetailEntryKeyInput } from "./sessionDetailKey";
 import { getSessionDetailEntryKey } from "./sessionDetailKey";
 import {
@@ -38,6 +39,17 @@ export interface SessionDetailBeginInitialLoadOptions {
 export interface SessionDetailInitialLoadLifecycle {
   readonly restoredFromSnapshot: boolean;
   completeReveal(processors: SessionDetailStreamProcessors): boolean;
+}
+
+export interface SessionDetailWarmRefreshOptions {
+  warmSnapshot?: SessionRouteSnapshot;
+  initialAfterMessageId?: string;
+}
+
+export interface SessionDetailAppliedWarmRefresh {
+  messageCount: number;
+  pagination: GetSessionResult["pagination"];
+  sourceMessageCount: number;
 }
 
 export class SessionDetailCoordinator {
@@ -140,6 +152,60 @@ export class SessionDetailCoordinator {
     return this.cache
       .getStats()
       .entries.find((entry) => entry.key === this.entryKeyString)?.approxBytes;
+  }
+
+  applyWarmRefresh(
+    data: GetSessionResult,
+    options: SessionDetailWarmRefreshOptions,
+  ): SessionDetailAppliedWarmRefresh {
+    const sourceMessageCount = data.messages.length;
+    if (!options.warmSnapshot) {
+      return {
+        messageCount: sourceMessageCount,
+        pagination: data.pagination,
+        sourceMessageCount,
+      };
+    }
+
+    if (options.initialAfterMessageId === undefined) {
+      this.dispatch({
+        type: "loadPersistedTranscript",
+        messages: data.messages,
+        session: data.session,
+        pagination: data.pagination,
+      });
+      return {
+        messageCount: sourceMessageCount,
+        pagination: data.pagination,
+        sourceMessageCount,
+      };
+    }
+
+    if (data.pagination) {
+      this.dispatch({
+        type: "replaceTailWindow",
+        messages: data.messages,
+        session: data.session,
+        pagination: data.pagination,
+      });
+      return {
+        messageCount: sourceMessageCount,
+        pagination: data.pagination,
+        sourceMessageCount,
+      };
+    }
+
+    this.dispatch({
+      type: "applyCatchupMessages",
+      session: data.session,
+      messages: data.messages,
+    });
+    const merged = this.readSelected(selectSessionDetailRuntimeSnapshot);
+    return {
+      messageCount: merged?.messages.length ?? sourceMessageCount,
+      pagination: merged?.pagination,
+      sourceMessageCount,
+    };
   }
 
   private completeInitialReveal(

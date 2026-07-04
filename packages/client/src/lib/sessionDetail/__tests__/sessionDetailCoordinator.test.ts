@@ -14,11 +14,14 @@ import {
 import type { Message } from "../../../types";
 import type { GetSessionResult, YaSourceRuntime } from "../../sourceRuntime";
 
-function message(uuid: string): Message {
+function message(
+  uuid: string,
+  timestamp = "2026-07-04T00:00:00.000Z",
+): Message {
   return {
     uuid,
     type: "assistant",
-    timestamp: "2026-07-04T00:00:00.000Z",
+    timestamp,
     message: { role: "assistant", content: uuid },
   };
 }
@@ -62,6 +65,33 @@ function routeSnapshot(uuid: string): SessionRouteSnapshot {
     lastMessageId: uuid,
     maxPersistedTimestampMs: Date.parse("2026-07-04T00:00:00.000Z"),
     scrollSnapshot: scrollSnapshot(12),
+  };
+}
+
+function pagination(returnedMessageCount: number) {
+  return {
+    hasOlderMessages: false,
+    totalMessageCount: returnedMessageCount,
+    returnedMessageCount,
+    totalCompactions: 0,
+  };
+}
+
+function sessionResponse(
+  messages: Message[],
+  responsePagination?: GetSessionResult["pagination"],
+): GetSessionResult {
+  const metadata = {
+    ...session(),
+    messageCount: messages.length,
+  };
+  return {
+    session: metadata,
+    messages,
+    ownership: metadata.ownership,
+    pendingInputRequest: null,
+    slashCommands: null,
+    ...(responsePagination && { pagination: responsePagination }),
   };
 }
 
@@ -237,5 +267,79 @@ describe("SessionDetailCoordinator", () => {
 
     expect(detail.deleteEntry()).toBe(true);
     expect(detail.readRouteSnapshot()).toBeUndefined();
+  });
+
+  it("loads a full persisted transcript when warm refresh has no cursor", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(1);
+    const applied = detail.applyWarmRefresh(
+      sessionResponse([message("full")], responsePagination),
+      {
+        warmSnapshot: routeSnapshot("warm"),
+      },
+    );
+
+    expect(applied).toEqual({
+      messageCount: 1,
+      pagination: responsePagination,
+      sourceMessageCount: 1,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["full"]);
+  });
+
+  it("replaces the tail window when warm refresh returns pagination", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(1);
+
+    detail.replaceRouteSnapshot(routeSnapshot("warm"));
+
+    const applied = detail.applyWarmRefresh(
+      sessionResponse([message("tail")], responsePagination),
+      {
+        warmSnapshot: routeSnapshot("warm"),
+        initialAfterMessageId: "warm",
+      },
+    );
+
+    expect(applied).toEqual({
+      messageCount: 1,
+      pagination: responsePagination,
+      sourceMessageCount: 1,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["tail"]);
+  });
+
+  it("merges catch-up messages when warm refresh has no pagination", () => {
+    const detail = coordinator();
+
+    detail.replaceRouteSnapshot(routeSnapshot("warm"));
+
+    const applied = detail.applyWarmRefresh(
+      sessionResponse([
+        message("catchup", "2026-07-04T00:00:01.000Z"),
+      ]),
+      {
+        warmSnapshot: routeSnapshot("warm"),
+        initialAfterMessageId: "warm",
+      },
+    );
+
+    expect(applied).toEqual({
+      messageCount: 2,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 2,
+        returnedMessageCount: 2,
+        totalCompactions: 0,
+      },
+      sourceMessageCount: 1,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["warm", "catchup"]);
   });
 });

@@ -712,62 +712,6 @@ export function useSessionMessages(
       return reveal;
     };
 
-    const applyWarmRefreshAction = (
-      data: GetSessionResult,
-    ): {
-      messageCount: number;
-      pagination?: PaginationInfo;
-      sourceMessageCount: number;
-    } => {
-      if (!warmLoad) {
-        return {
-          messageCount: data.messages.length,
-          pagination: data.pagination,
-          sourceMessageCount: data.messages.length,
-        };
-      }
-
-      if (initialAfterMessageId === undefined) {
-        dispatchSessionDetailAction({
-          type: "loadPersistedTranscript",
-          messages: data.messages,
-          session: data.session,
-          pagination: data.pagination,
-        });
-        return {
-          messageCount: data.messages.length,
-          pagination: data.pagination,
-          sourceMessageCount: data.messages.length,
-        };
-      }
-
-      if (data.pagination) {
-        dispatchSessionDetailAction({
-          type: "replaceTailWindow",
-          messages: data.messages,
-          session: data.session,
-          pagination: data.pagination,
-        });
-        return {
-          messageCount: data.messages.length,
-          pagination: data.pagination,
-          sourceMessageCount: data.messages.length,
-        };
-      }
-
-      dispatchSessionDetailAction({
-        type: "applyCatchupMessages",
-        session: data.session,
-        messages: data.messages,
-      });
-      const merged = readSelectorBackedRuntimeSnapshot();
-      return {
-        messageCount: merged?.messages.length ?? data.messages.length,
-        pagination: merged?.pagination,
-        sourceMessageCount: data.messages.length,
-      };
-    };
-
     const applyWarmDataBeforeHydration = (
       data: GetSessionResult,
     ) => {
@@ -779,7 +723,10 @@ export function useSessionMessages(
         hasOlderMessages: data.pagination?.hasOlderMessages,
         restoredFromSnapshot: true,
       });
-      const applied = applyWarmRefreshAction(data);
+      const applied = coordinator.applyWarmRefresh(data, {
+        warmSnapshot: warmLoad,
+        initialAfterMessageId,
+      });
       setSessionLoadProgress(
         createSessionLoadProgressForWindow("rendering", {
           messageCount: applied.messageCount,
@@ -809,7 +756,10 @@ export function useSessionMessages(
         restoredFromSnapshot: true,
         appliedAfterSnapshotHydration: true,
       });
-      const applied = applyWarmRefreshAction(data);
+      const applied = coordinator.applyWarmRefresh(data, {
+        warmSnapshot: warmLoad,
+        initialAfterMessageId,
+      });
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
         {

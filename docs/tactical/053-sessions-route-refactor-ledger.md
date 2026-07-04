@@ -22,6 +22,13 @@ boundaries, not necessarily fewer total repository lines.
 
 - Prefer behavior-preserving extraction over redesign.
 - Keep each implementation small enough to review in one pass.
+- Do not create generic "helpers" buckets. A new file should have a narrow
+  domain name and ownership boundary, such as `session-metadata-patch.ts` or
+  `session-compact-thresholds.ts`; otherwise prefer a same-file helper or
+  defer the refactor.
+- Treat line-count reduction as supporting evidence, not the reason to move
+  code. A move is worthwhile only when it removes duplication, improves a
+  route/test boundary, or isolates provider-specific behavior.
 - Do not reshape `Process`, `Supervisor`, WebSocket streaming, replay buffers,
   or provider protocol behavior as part of this ledger.
 - Run focused sessions-route tests and server typecheck for code changes.
@@ -172,9 +179,11 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts
 
 Status: proposed.
 
-Destination: small slices can go into
-`packages/server/src/routes/session-request-helpers.ts`; a larger combined
-builder would deserve a new `session-launch-options.ts`.
+Destination: same file unless the extracted piece is pure request-boundary
+parsing, in which case `session-request-helpers.ts` may be appropriate. A
+larger cohesive builder would deserve a domain-named
+`session-launch-options.ts`; do not grow `session-request-helpers.ts` into a
+general launch/process helper bucket.
 
 Estimated line delta: about `-30` to `-60` lines for a narrow first slice,
 depending on which axis is extracted. A broad all-in-one launch builder is not

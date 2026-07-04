@@ -28,6 +28,14 @@ export type {
 interface UseFileActivityOptions {
   /** Maximum number of events to keep in buffer (default: 500) */
   maxEvents?: number;
+  /**
+   * Buffer file-change events into `events` for display (default: false).
+   * Buffering is a setState per fleet-wide file event, so callback-only
+   * consumers (every session page via useSession) must not pay that
+   * re-render for every file save by every agent in every project. Only
+   * the surface that renders the buffer (ActivityPage) opts in.
+   */
+  bufferEvents?: boolean;
   /** Whether to connect on mount (default: true) - ignored, bus is always connected */
   autoConnect?: boolean;
   /** Callback when a file change occurs */
@@ -57,6 +65,7 @@ const DEFAULT_MAX_EVENTS = 500;
 export function useFileActivity(options: UseFileActivityOptions = {}) {
   const {
     maxEvents = DEFAULT_MAX_EVENTS,
+    bufferEvents = false,
     onFileChange,
     onSessionStatusChange,
     onSessionCreated,
@@ -91,6 +100,8 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
   onReconnectRef.current = onReconnect;
   const maxEventsRef = useRef(maxEvents);
   maxEventsRef.current = maxEvents;
+  const bufferEventsRef = useRef(bufferEvents);
+  bufferEventsRef.current = bufferEvents;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
@@ -103,8 +114,8 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
       activityBus.on("file-change", (data) => {
         onFileChangeRef.current?.(data);
 
-        // Add to events buffer (unless paused)
-        if (!pausedRef.current) {
+        // Add to events buffer (only for opted-in consumers, unless paused)
+        if (bufferEventsRef.current && !pausedRef.current) {
           setEvents((prev) => {
             const next = [data, ...prev];
             return next.slice(0, maxEventsRef.current);

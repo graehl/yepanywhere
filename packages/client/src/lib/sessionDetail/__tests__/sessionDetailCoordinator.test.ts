@@ -330,6 +330,55 @@ describe("SessionDetailCoordinator", () => {
     ).toEqual(["cold-a", "cold-b"]);
   });
 
+  it("builds initial load progress values without owning timing", () => {
+    const detail = coordinator();
+    const responsePagination = pagination(2);
+    const response = sessionResponse(
+      [message("progress-a"), message("progress-b")],
+      responsePagination,
+    );
+    const applied = {
+      messageCount: 3,
+      pagination: responsePagination,
+      sourceMessageCount: 2,
+    };
+
+    expect(detail.buildLoadProgress("fetching", { nowMs: 10 })).toEqual({
+      stage: "fetching",
+      updatedAtMs: 10,
+    });
+    expect(
+      detail.buildDataLoadProgress("rendering", response, { nowMs: 11 }),
+    ).toEqual({
+      stage: "rendering",
+      messageCount: 2,
+      totalMessageCount: 2,
+      hasOlderMessages: false,
+      updatedAtMs: 11,
+    });
+    expect(
+      detail.buildAppliedLoadProgress("rendering", applied, { nowMs: 12 }),
+    ).toEqual({
+      stage: "rendering",
+      messageCount: 3,
+      totalMessageCount: 2,
+      hasOlderMessages: false,
+      updatedAtMs: 12,
+    });
+    expect(
+      detail.buildRouteSnapshotLoadProgress("complete", routeSnapshot("snap"), {
+        messageCount: 1,
+        nowMs: 13,
+      }),
+    ).toEqual({
+      stage: "complete",
+      messageCount: 1,
+      totalMessageCount: 1,
+      hasOlderMessages: false,
+      updatedAtMs: 13,
+    });
+  });
+
   it("loads a full persisted transcript when warm refresh has no cursor", () => {
     const detail = coordinator();
     const responsePagination = pagination(1);

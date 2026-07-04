@@ -4,6 +4,12 @@ import type {
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
 import type { GetSessionResult, YaSourceRuntime } from "../sourceRuntime";
+import {
+  createSessionLoadProgress,
+  createSessionLoadProgressForWindow,
+  type SessionLoadProgress,
+  type SessionLoadProgressStage,
+} from "./loadProgress";
 import { selectSessionDetailRuntimeSnapshot } from "./selectors";
 import {
   buildSessionDetailRevealSnapshot,
@@ -69,6 +75,15 @@ export interface SessionDetailAppliedWarmRefresh {
 
 export type SessionDetailAppliedInitialLoad =
   SessionDetailAppliedWarmRefresh;
+
+export interface SessionDetailLoadProgressOptions {
+  nowMs?: number;
+}
+
+export interface SessionDetailRouteSnapshotLoadProgressOptions
+  extends SessionDetailLoadProgressOptions {
+  messageCount?: number;
+}
 
 export interface SessionDetailLoadCompleteResult {
   session: GetSessionResult["session"];
@@ -207,6 +222,49 @@ export class SessionDetailCoordinator {
     return this.cache
       .getStats()
       .entries.find((entry) => entry.key === this.entryKeyString)?.approxBytes;
+  }
+
+  buildLoadProgress(
+    stage: SessionLoadProgressStage,
+    options: SessionDetailLoadProgressOptions = {},
+  ): SessionLoadProgress {
+    return createSessionLoadProgress(stage, {}, options.nowMs);
+  }
+
+  buildDataLoadProgress(
+    stage: SessionLoadProgressStage,
+    data: GetSessionResult,
+    options: SessionDetailLoadProgressOptions = {},
+  ): SessionLoadProgress {
+    return createSessionLoadProgressForWindow(stage, {
+      messageCount: data.messages.length,
+      pagination: data.pagination,
+      nowMs: options.nowMs,
+    });
+  }
+
+  buildAppliedLoadProgress(
+    stage: SessionLoadProgressStage,
+    applied: SessionDetailAppliedWarmRefresh,
+    options: SessionDetailLoadProgressOptions = {},
+  ): SessionLoadProgress {
+    return createSessionLoadProgressForWindow(stage, {
+      messageCount: applied.messageCount,
+      pagination: applied.pagination,
+      nowMs: options.nowMs,
+    });
+  }
+
+  buildRouteSnapshotLoadProgress(
+    stage: SessionLoadProgressStage,
+    snapshot: SessionRouteSnapshot,
+    options: SessionDetailRouteSnapshotLoadProgressOptions = {},
+  ): SessionLoadProgress {
+    return createSessionLoadProgressForWindow(stage, {
+      messageCount: options.messageCount ?? snapshot.messages.length,
+      pagination: snapshot.pagination,
+      nowMs: options.nowMs,
+    });
   }
 
   applyInitialLoad(data: GetSessionResult): SessionDetailAppliedInitialLoad {

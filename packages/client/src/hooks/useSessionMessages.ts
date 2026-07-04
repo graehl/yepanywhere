@@ -10,11 +10,9 @@ import type { PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
 import type { SessionDetailRevealSnapshotResult } from "../lib/sessionDetail/revealSnapshot";
-import {
-  createSessionLoadProgress,
-  createSessionLoadProgressForWindow,
-  type SessionLoadProgress,
-  type SessionLoadProgressStage,
+import type {
+  SessionLoadProgress,
+  SessionLoadProgressStage,
 } from "../lib/sessionDetail/loadProgress";
 import {
   createSessionDetailCoordinator,
@@ -267,7 +265,7 @@ export function useSessionMessages(
     null,
   );
   const [sessionLoadProgress, setSessionLoadProgress] =
-    useState<SessionLoadProgress>(() => createSessionLoadProgress("idle"));
+    useState<SessionLoadProgress>(() => coordinator.buildLoadProgress("idle"));
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Store-authoritative fields come from reducer-owned state. The remaining ref
@@ -620,10 +618,7 @@ export function useSessionMessages(
 
       setLoading(false);
       setSessionLoadProgress(
-        createSessionLoadProgressForWindow("complete", {
-          messageCount: snapshot.messages.length,
-          pagination: snapshot.pagination,
-        }),
+        coordinator.buildRouteSnapshotLoadProgress("complete", snapshot),
       );
       markReloadPerfPhase("session_initial_load_complete", {
         messages: options.sourceMessageCount,
@@ -673,10 +668,7 @@ export function useSessionMessages(
         initialAfterMessageId,
       });
       setSessionLoadProgress(
-        createSessionLoadProgressForWindow("rendering", {
-          messageCount: applied.messageCount,
-          pagination: applied.pagination,
-        }),
+        coordinator.buildAppliedLoadProgress("rendering", applied),
       );
       const reveal = finishWarmHydration({
         loadedSession: data.session,
@@ -717,9 +709,8 @@ export function useSessionMessages(
       const { snapshot } = reveal;
       applyRevealSnapshot(snapshot);
       setSessionLoadProgress(
-        createSessionLoadProgressForWindow("complete", {
+        coordinator.buildRouteSnapshotLoadProgress("complete", snapshot, {
           messageCount: snapshot.pagination?.returnedMessageCount,
-          pagination: snapshot.pagination,
         }),
       );
       notifyLoadComplete(data);
@@ -742,18 +733,12 @@ export function useSessionMessages(
     if (warmLoad) {
       resetSessionDetailState(warmLoad);
       setSessionLoadProgress(
-        createSessionLoadProgressForWindow("fetching", {
-          messageCount: warmLoad.messages.length,
-          pagination: warmLoad.pagination,
-        }),
+        coordinator.buildRouteSnapshotLoadProgress("fetching", warmLoad),
       );
       setLoading(true);
       void (async () => {
         setSessionLoadProgress(
-          createSessionLoadProgressForWindow("rendering", {
-            messageCount: warmLoad.messages.length,
-            pagination: warmLoad.pagination,
-          }),
+          coordinator.buildRouteSnapshotLoadProgress("rendering", warmLoad),
         );
         await yieldForSessionLoadingProgressPaint(true);
         if (cancelled) return;
@@ -774,7 +759,7 @@ export function useSessionMessages(
         }
       })();
     } else {
-      setSessionLoadProgress(createSessionLoadProgress("fetching"));
+      setSessionLoadProgress(coordinator.buildLoadProgress("fetching"));
       resetSessionDetailState();
       setLoading(true);
     }
@@ -806,10 +791,7 @@ export function useSessionMessages(
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
         setSessionLoadProgress(
-          createSessionLoadProgressForWindow("rendering", {
-            messageCount: data.messages.length,
-            pagination: data.pagination,
-          }),
+          coordinator.buildDataLoadProgress("rendering", data),
         );
         await yieldForSessionLoadingProgressPaint(detailedLoadingProgress);
         if (cancelled) return;
@@ -853,7 +835,7 @@ export function useSessionMessages(
         markReloadPerfPhase("session_initial_load_error", {
           message: err instanceof Error ? err.message : String(err),
         });
-        setSessionLoadProgress(createSessionLoadProgress("error"));
+        setSessionLoadProgress(coordinator.buildLoadProgress("error"));
         setLoading(false);
         onLoadError?.(err);
       });

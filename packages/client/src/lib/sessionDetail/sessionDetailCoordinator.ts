@@ -534,6 +534,17 @@ export class SessionDetailCoordinator {
     return getCacheableSessionDetailRevealSnapshot(reveal);
   }
 
+  writeCacheableRevealSnapshot(
+    reveal: SessionDetailRevealSnapshotResult,
+    policy: SessionDetailRouteSnapshotWritePolicy,
+  ): boolean {
+    const cacheableSnapshot = this.getCacheableRevealSnapshot(reveal);
+    if (!cacheableSnapshot) {
+      return false;
+    }
+    return this.writeInitialRouteSnapshot(cacheableSnapshot, policy);
+  }
+
   buildLoadCompleteResult(
     data: GetSessionResult,
   ): SessionDetailLoadCompleteResult {

@@ -584,14 +584,13 @@ export function useSessionMessages(
     const writeRevealSnapshotToLoadCache = (
       reveal: SessionDetailRevealSnapshotResult,
     ) => {
-      const cacheableSnapshot = coordinator.getCacheableRevealSnapshot(reveal);
-      if (!cacheableSnapshot) {
-        return false;
-      }
-      return writeSessionLoadCache(
-        coordinator,
-        cacheableSnapshot,
-      );
+      return coordinator.writeCacheableRevealSnapshot(reveal, {
+        enabled:
+          getSessionTranscriptCacheEnabled() && typeof window !== "undefined",
+        retainScrollSnapshot: shouldRetainSessionScrollMemory(
+          getSessionScrollBehaviorMode(),
+        ),
+      });
     };
 
     const completeInitialReveal = (options: {

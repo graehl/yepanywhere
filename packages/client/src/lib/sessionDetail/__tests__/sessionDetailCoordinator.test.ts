@@ -615,6 +615,36 @@ describe("SessionDetailCoordinator", () => {
     expect(detail.getCacheableRevealSnapshot(reveal)).toBe(reveal.snapshot);
   });
 
+  it("writes cacheable reveal snapshots through explicit cache policy", () => {
+    const detail = coordinator();
+
+    detail.replaceRouteSnapshot(routeSnapshot("stored"));
+
+    const reveal = detail.buildRevealSnapshot({
+      session: session(),
+      pagination: pagination(1),
+      lastMessageId: "fallback",
+      scrollSnapshot: scrollSnapshot(96),
+    });
+
+    expect(
+      detail.writeCacheableRevealSnapshot(reveal, {
+        enabled: false,
+        retainScrollSnapshot: true,
+      }),
+    ).toBe(false);
+    expect(detail.readRouteSnapshot()?.scrollSnapshot?.scrollTop).toBe(12);
+
+    expect(
+      detail.writeCacheableRevealSnapshot(reveal, {
+        enabled: true,
+        retainScrollSnapshot: false,
+      }),
+    ).toBe(true);
+    expect(detail.readRouteSnapshot()?.lastMessageId).toBe("stored");
+    expect(detail.readRouteSnapshot()?.scrollSnapshot).toBeUndefined();
+  });
+
   it("builds fallback reveal snapshots when store state is missing", () => {
     const detail = coordinator();
     const fallbackScroll = scrollSnapshot(48);
@@ -635,6 +665,13 @@ describe("SessionDetailCoordinator", () => {
     );
     expect(reveal.snapshot.scrollSnapshot).toBe(fallbackScroll);
     expect(detail.getCacheableRevealSnapshot(reveal)).toBeUndefined();
+    expect(
+      detail.writeCacheableRevealSnapshot(reveal, {
+        enabled: true,
+        retainScrollSnapshot: true,
+      }),
+    ).toBe(false);
+    expect(detail.readRouteSnapshot()).toBeUndefined();
   });
 
   it("builds load-complete callback payloads from session results", () => {

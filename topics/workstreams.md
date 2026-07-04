@@ -1,13 +1,18 @@
 # Workstreams
 
 > Workstreams are YA-managed lanes for ongoing topic work in one repository:
-> each lane has its own queue, session lineage, and optionally a branch-backed
-> Git worktree, while the repository keeps one canonical main checkout for
-> interactive work and local integration.
+> each lane has its own queue, session lineage, and its own real checkout of
+> the repository (an ordinary local clone), while the repository keeps one
+> canonical main checkout for interactive work and integration.
 
 Topic: workstreams
 
 Status: proposed.
+
+The whole feature is an experiment judged on one metric: queued-work
+throughput. It can stay hidden behind the developer gate indefinitely, or
+be removed if its complexity outweighs that gain; machinery that does not
+serve the metric does not belong in the first version.
 
 Implementation progress is tracked in
 [`docs/tactical/054-workstreams.md`](../docs/tactical/054-workstreams.md).
@@ -43,18 +48,24 @@ under the same YA project instead of appearing as a duplicate project:
 /Users/kgraehl/code/yepanywhere
   canonical checkout, usually on main
 
-~/.yep-anywhere/worktrees/yepanywhere/xr-blink
-  workstream checkout, branch ya/xr-blink
+~/.yep-anywhere/checkouts/yepanywhere/xr-blink
+  workstream checkout, on main
 
-~/.yep-anywhere/worktrees/yepanywhere/world-crud
-  workstream checkout, branch ya/world-crud
+~/.yep-anywhere/checkouts/yepanywhere/world-crud
+  workstream checkout, on main
 ```
 
 Behaviorally, this is close to manually keeping
 `~/code/project`, `~/code/project-1`, and `~/code/project-2` in sync with a
-shared upstream. Git worktrees are the better implementation detail because
-they share Git object storage, make branch ownership explicit, and are easier
-for YA to create, list, clean up, and group under one project.
+shared upstream. That is exactly what a lane is — a real checkout, an
+ordinary local clone. YA's value over doing it by hand is grouping and
+lifecycle: the lanes appear under one project with one queue surface, and
+YA can create, list, and clean them up (see
+[Lane Checkouts and Branches](#lane-checkouts-and-branches)).
+
+The main lane is not another checkout: it is the canonical checkout itself,
+synthesized as a lane at read time (never stored) so queue targeting and
+status read uniformly across lanes.
 
 The canonical checkout remains important. Some projects can only be tested
 effectively from the user's normal checkout because dev servers, auto-reload,
@@ -78,7 +89,7 @@ The user-facing object is **workstream**, not "PR". A workstream includes:
 - a topic label;
 - one or more associated sessions;
 - a queue of pending chunks for that topic;
-- an execution checkout (`main` or a worktree path);
+- an execution checkout (the canonical checkout or a lane clone's path);
 - optional branch metadata;
 - pause/resume state;
 - landing state relative to the canonical main branch.
@@ -96,8 +107,9 @@ The smallest useful MVP is manual and lane-aware:
 2. Treat the existing project checkout as the implicit `main` workstream.
 3. Allow an opt-in queue target selector: `main`, an existing workstream, or
    `new workstream`.
-4. For `new workstream`, create a branch-backed Git worktree and start the
-   provider session in that worktree path.
+4. For `new workstream`, create a real lane checkout — an ordinary local
+   clone on main, origin the project's shared upstream — and start the
+   provider session in that path.
 5. Associate sessions with a workstream id.
 6. Promote Project Queue items by target workstream id instead of by whole
    project id when a queue item targets a workstream.
@@ -119,7 +131,7 @@ interface Workstream {
   id: string;
   projectId: string; // canonical YA project id for the main checkout
   label: string;
-  kind: "main" | "worktree";
+  kind: "main" | "checkout";
   path: string; // provider cwd for this lane
   branch: string | null;
   baseBranch: string;
@@ -165,9 +177,9 @@ A queued item can promote when its target workstream is idle and unpaused.
 ```
 
 For the implicit main workstream, this is equivalent to today's Project Queue
-behavior unless the user opts into additional workstreams. For a branch-backed
-workstream, YA checks that workstream's process/session/queue/liveness state
-instead of blocking on unrelated active sessions in the same repository.
+behavior unless the user opts into additional workstreams. For any other
+lane, YA checks that lane's process/session/queue/liveness state instead of
+blocking on unrelated active sessions in the same repository.
 
 The scheduler should still be conservative:
 
@@ -182,7 +194,7 @@ Useful start preflights include:
 - no active provider turn in the target workstream;
 - no setup/cleanup/integration operation running in that workstream;
 - no Git sequencer state in the target checkout;
-- a clean tracked-file checkout — default-on for YA-managed worktree lanes,
+- a clean tracked-file checkout — default-on for YA-managed lanes,
   opt-in for the main lane;
 - declared rule gates from the optional `.workstream` config (up to date
   with the base branch, mandatory-pass commands such as tests).
@@ -240,12 +252,14 @@ The key rule is: do not pop a queue item and then discover the lane cannot
 start. Preflight first; keep blocked work visible and retryable (a
 clean-checkout block names the dirty files).
 
-## Worktree Setup
+## Lane Checkout Setup
 
-Git worktrees themselves do not define setup scripts. Codex and Claude desktop
-both support `.worktreeinclude` for copying selected ignored files, but setup
-scripts, cleanup scripts, symlinked directories, and actions are product
-policy.
+A fresh lane checkout has none of the canonical checkout's ignored files —
+`.env` files, `node_modules`, local caches. Codex and Claude desktop
+address the same gap for their worktrees with `.worktreeinclude` (copy the
+listed ignored files into the new checkout); YA can honor that convention
+when seeding a lane clone. Setup scripts, cleanup scripts, symlinked
+directories, and actions are product policy.
 
 For YA:
 
@@ -258,28 +272,83 @@ For YA:
   `Retry`, `Skip`, and `Delete` actions.
 
 YA should own only workstreams it created or the user explicitly imported.
-Random Git worktrees created by an agent or by another tool may be detected
-read-only, but should not be automatically cleaned up, landed, or routed until
-the user imports them.
+Stray checkouts or worktrees created by an agent or another tool may be
+detected read-only, but should not be automatically cleaned up, landed, or
+routed until the user imports them.
+
+## Lane Checkouts and Branches
+
+A lane is a real checkout: an ordinary local clone of the repository, not
+a git worktree. Every stock git behavior — fetch, fast-forward merge,
+push, hooks, per-checkout config — works unmodified, with no worktree
+special cases for agents or tooling to trip on. Each lane's origin is the
+project's shared upstream.
+
+Two git facts anchor the clone choice. First, worktrees cannot express
+all-main lanes at all: git refuses to check out the same branch in two
+worktrees (`--force` overrides exist and are footguns), so several lanes
+sitting on main cannot be worktrees of one canonical checkout. Second,
+local clones are cheap: `git clone` from a local path hardlinks the files
+under `.git/objects/` by default (same filesystem; `--no-hardlinks`
+disables it). That sharing is safe by design — object files are
+write-once, created by temp-file-plus-rename and never modified in place,
+so clones sharing inodes cannot see each other's writes, and pruning in
+one clone merely unlinks its own directory entry. This is not the
+alternates mechanism (`--shared`/`--reference`) whose gc-corruption
+warning scares people off object sharing; hardlinks have no such
+coupling. Later gc/repack rewrites packs as new files, which erodes the
+disk savings over time but never correctness.
+
+The first version does not introduce branches. An unbranched lane sits on
+main and stays current the same way a second human contributor's checkout
+does — `git fetch`, fast-forward merge, `git push`. YA neither creates
+nor assumes branches. A session may still branch on its own (YA cannot
+know in advance), so the UI's branch field reports observed checkout
+state from a query cached while the lane is inactive, not YA-managed
+metadata.
+
+A branch mode remains a deferred option for lanes that need isolation
+from upstream churn or a reviewable local landing step. In that mode a
+lane clone runs on its own YA-named branch, created with its upstream set
+so ahead/behind facts and stock tooling work immediately. The branch is a
+mechanical convenience and a courtesy visibility signal, not a workflow
+statement: the name is YA-chosen, not user-chosen, and it carries no
+feature-branch workflow consequence on the shared (GitHub) upstream — no
+implied PR, no push; it reaches a remote only through an explicit push or
+the optional PR export. Branch-workflow preference — feature branches
+versus everything-in-main — is encoded today at the project AGENTS level,
+and workstreams must not silently depart from it: running lanes on
+YA-named branches in an all-in-main project takes both an explicit
+project/user AGENTS notice (so an agent knows a lane branch is YA
+plumbing, not a feature branch it chose) and UI visibility (the
+Workstreams page row and the session header's `project / lane / branch`
+line). Given that notice, the branch name doubles as passive
+discoverability: an agent can tell it is in a workstream lane from its
+repo state alone, without any injected turn.
 
 ## Workstreams Page
 
 The first product surface should be a project-level Workstreams page:
 
 ```text
-Workstream        Queue   State        Branch        Diff       Action
-main              3       running      main          clean      Pause
-xr blink          2       ready        ya/xr-blink   +14 -2     Land
-world CRUD        1       queued       ya/world      clean      Start
-tools cleanup     0       paused       ya/tools      +8 -1      Resume
+Workstream        #Queued   State        Branch             Diff       Action
+main              2         running      main               clean      Pause
+xr blink          5         ready        ya/xr-blink        +14 -2     Land
+world CRUD        1         queued       ya/world-crud      clean      Start
+tools cleanup     0         paused       ya/tools-cleanup   +8 -1      Resume
 ```
+
+`#Queued` is the count of items waiting in that lane's queue, not a
+position in any ordering.
 
 Each row should make the queue and integration blockers obvious:
 
 - associated active session or latest unread session;
 - queued item count;
 - active / idle / paused / setup-failed / ready-to-land state;
-- branch and worktree path;
+- observed branch (a cached-while-inactive query of the checkout's actual
+  state; typically main in the unbranched first version) and checkout
+  path;
 - clean/dirty/ahead/behind summary;
 - whether the workstream is behind the current main branch;
 - why it cannot start or land yet.
@@ -307,6 +376,14 @@ yepanywhere / xr blink / ya/xr-blink
 ## Landing Back To Main
 
 Execution can be parallel by lane. Integration into main is serialized.
+
+In the unbranched first version, integration flows through the shared
+upstream exactly as it does between human contributors: a lane commits on
+main and pushes; every other lane, including the canonical checkout,
+catches up by fetch and fast-forward at its next agent-idle boundary. A
+rejected push or a non-fast-forward fetch is the repair-turn case below.
+The guarded local landing sequence that follows applies to the deferred
+branch mode.
 
 The local landing operation should be deterministic and guarded:
 
@@ -401,6 +478,24 @@ behavior.
   useful residue of the rejected alternative is an import affordance:
   detect sibling checkouts/worktrees of one repository and offer to import
   them as lanes. (2026-07-04)
+- **Lanes are real checkouts — ordinary local clones — not git worktrees**
+  (vs. the branch-backed worktree implementation this document first
+  assumed): clones make every stock git behavior work unmodified for
+  agents (fetch, fast-forward merge, push, hooks, per-checkout config),
+  where worktrees cannot check out main twice and force branch or
+  detached-HEAD machinery agents fumble. Hardlinked object files keep
+  local clones cheap. The first version creates no branches: a lane syncs
+  like a second human contributor through the shared upstream, and the
+  UI's branch field is observed, cached-while-inactive checkout state.
+  (2026-07-04)
+- **The YA-named branch mode is deferred; if built, it is courtesy
+  visibility, not workflow** (vs. feature-branch process): the name is not
+  user-chosen and has no feature-branch consequence on the shared
+  upstream — no implied PR, no push, local by default. Branch-workflow
+  preference lives at the project AGENTS level; running lanes on branches
+  in an all-in-main project is a departure that requires an AGENTS notice
+  and UI visibility, which also makes lane membership self-discoverable
+  without injected turns. (2026-07-04)
 - **Managed-lane promotion gates on a clean tracked checkout by default**
   (vs. trusting session idle / waiting-input): structured waiting-input is
   a provider implementation artifact and prose-question pauses read as
@@ -435,15 +530,27 @@ behavior.
 
 - Should workstream creation live in the new-session composer, the Project
   Queue action menu, the Workstreams page, or all three?
-- What is the first branch naming pattern: `ya/<slug>`,
-  `ya/<date>-<slug>`, or user-configurable from the start?
+- (Deferred branch mode) What is the branch naming pattern: `ya/<slug>`,
+  `ya/<date>-<slug>`, `yaworkstream-<n>`, or user-configurable from the
+  start?
+- (Deferred branch mode) Lane branch upstream: the local main branch
+  (matches the local landing target; works offline) or the project's own
+  remote upstream (same as the host project's main; ahead/behind reads
+  shared truth and more stock git works unmodified, at the price of
+  splitting the tracking target from the local landing target when local
+  main lags the remote)? Maintainer leaning: the remote upstream. Either
+  way, a related option: attempt a fetch + fast-forward of local main
+  from its upstream on each workstream action, so the local landing
+  target does not go stale. In the unbranched first version this question
+  does not arise: a lane clone's branch is main and its upstream is the
+  shared upstream by construction.
 - Should a workstream have exactly one primary session, or a session lineage
   with forks/side sessions grouped under the same lane?
 - Should the first landing mode be fast-forward only, squash only, or both?
 - How should changed-file overlap warnings be displayed without becoming a
   false promise of semantic safety?
-- Should imported non-YA worktrees be read-only until the user explicitly
-  marks them managed?
+- Should imported non-YA checkouts or worktrees be read-only until the
+  user explicitly marks them managed?
 - Should YA auto-apply a rebase it has verified conflict-free (same class
   as the automatic fast-forward, but it rewrites unlanded commit SHAs), or
   always hand non-ff catch-up to the agent?
@@ -466,8 +573,8 @@ behavior.
   checks are declared. Same mechanism as the promotion gate (it only adds
   a trigger that populates the per-commit result cache), running in the
   lane checkout where deps and build state are warm; an isolated run
-  worktree would remove the cancel-on-dirty need but reimports the
-  worktree setup problem. On completion, a failing result is injected as
+  checkout would remove the cancel-on-dirty need but reimports the lane
+  checkout setup problem. On completion, a failing result is injected as
   a factual repair turn (commit, check name, log tail) so the lane heals
   without waiting for the user to notice the blocker; a passing result is
   consumed silently by the gate and surfaces only in lane status —

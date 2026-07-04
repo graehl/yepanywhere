@@ -26,7 +26,7 @@ describe("SessionIndexService", () => {
   let sessionDir: string;
   let service: SessionIndexService;
   let reader: SessionReader;
-  let projectId: string;
+  let projectId: UrlProjectId;
 
   beforeEach(async () => {
     testDir = join(tmpdir(), `claude-index-test-${randomUUID()}`);

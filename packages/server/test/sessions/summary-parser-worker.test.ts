@@ -222,6 +222,89 @@ describe("summary parser worker harness", () => {
     expect(second.response?.metrics.recycleRecommended).toBeUndefined();
   });
 
+  itIfSourceWorker("serializes concurrent parses on one child", async () => {
+    const warmSessionId = "serialized-worker-session-warm";
+    const firstSessionId = "serialized-worker-session-a";
+    const secondSessionId = "serialized-worker-session-b";
+    const warmPath = join(testDir, `${warmSessionId}.jsonl`);
+    const firstPath = join(testDir, `${firstSessionId}.jsonl`);
+    const secondPath = join(testDir, `${secondSessionId}.jsonl`);
+    await writeClaudeSummaryFixture({
+      filePath: warmPath,
+      message: "Warm worker parse",
+    });
+    await writeClaudeSummaryFixture({
+      filePath: firstPath,
+      message: "First concurrent parse",
+    });
+    await writeClaudeSummaryFixture({
+      filePath: secondPath,
+      message: "Second concurrent parse",
+    });
+    const events: SummaryParserClientEvent[] = [];
+    client = new SummaryParserClient({
+      mode: "required",
+      cwd: packageRoot,
+      entrypoint: sourceEntrypoint(),
+      onEvent: (event) => events.push(event),
+      timeoutMs: 15_000,
+      launchTimeoutMs: 10_000,
+    });
+    const projectId = "worker-project" as UrlProjectId;
+    const warm = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: warmPath,
+      sessionId: warmSessionId,
+      projectId,
+      stats: await fileStats(warmPath),
+    });
+    expect(warm.status).toBe("ok");
+
+    const firstRequest: SummaryParserWorkerRequest = {
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: firstPath,
+      sessionId: firstSessionId,
+      projectId,
+      stats: await fileStats(firstPath),
+    };
+    const secondRequest: SummaryParserWorkerRequest = {
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: secondPath,
+      sessionId: secondSessionId,
+      projectId,
+      stats: await fileStats(secondPath),
+    };
+
+    const [first, second] = await Promise.all([
+      client.parse(firstRequest),
+      client.parse(secondRequest),
+    ]);
+
+    expect(first.status).toBe("ok");
+    expect(second.status).toBe("ok");
+    expect(first.response?.metrics.workerPid).toBe(
+      warm.response?.metrics.workerPid,
+    );
+    expect(second.response?.metrics.workerPid).toBe(
+      warm.response?.metrics.workerPid,
+    );
+    expect(first.response?.metrics.workerParsedFiles).toBe(2);
+    expect(second.response?.metrics.workerParsedFiles).toBe(3);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "summary_parser_worker_result" &&
+          event.status === "crash",
+      ),
+    ).toEqual([]);
+  });
+
   itIfSourceWorker("recycles the child after a large-line parse", async () => {
     const largeSessionId = "large-line-worker-session";
     const nextSessionId = "after-large-line-worker-session";

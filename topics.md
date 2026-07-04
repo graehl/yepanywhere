@@ -81,6 +81,9 @@
   rollout.
 - codex-session-index-memory - Codex summary-index cold parse memory spikes,
   entry cache retention, and instrumentation.
+- summary-parser-worker-isolation - Worker child-process lifecycle,
+  parent-side parse coordination, and duplicate large transcript parse
+  reduction.
 - project-queue-reorder-and-titles - Project Queue project-local
   reprioritization and cache-backed target session display titles.
 - session-dom-linger-speedup - Bounded hidden-DOM linger for immediate

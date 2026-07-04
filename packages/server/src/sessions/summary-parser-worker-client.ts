@@ -144,6 +144,7 @@ export class SummaryParserClient {
   private childParsedFiles = 0;
   private childParsedBytes = 0;
   private activeRequestId: string | null = null;
+  private workerParseQueue: Promise<void> = Promise.resolve();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly options: SummaryParserClientOptions = {}) {
@@ -182,71 +183,73 @@ export class SummaryParserClient {
       return this.handleSetupFailure(request, entrypoint.reason, inProcessParser);
     }
 
-    try {
-      const requestWithLimits = this.applyDefaultLimits(request);
-      const response = await this.parseWithWorker(
-        requestWithLimits,
-        entrypoint,
-      );
-      const recycleReason = this.applyRecyclePolicy(
-        requestWithLimits,
-        response,
-      );
-      const status = clientStatusFromResponse(response);
-      const event: SummaryParserClientEvent = {
-        event: "summary_parser_worker_result",
-        provider: requestWithLimits.provider,
-        sessionId: requestWithLimits.sessionId,
-        filePath: requestWithLimits.filePath,
-        mode: this.mode,
-        status,
-        workerPid: response.metrics.workerPid,
-        workerGeneration: response.metrics.workerGeneration,
-        ...(response.error ? { error: response.error } : {}),
-      };
-      this.emitEvent(event);
-      this.logResult(event, response);
-      if (recycleReason) {
-        await this.recycleChild(response, recycleReason);
-      }
-      return {
-        summary: response.summary,
-        status,
-        source: "worker",
-        response,
-        ...(response.error ? { error: response.error } : {}),
-      };
-    } catch (error) {
-      if (error instanceof SummaryParserWorkerSetupError) {
-        return this.handleSetupFailure(
-          request,
-          error.message,
-          inProcessParser,
+    return this.withWorkerParseSlot(async () => {
+      try {
+        const requestWithLimits = this.applyDefaultLimits(request);
+        const response = await this.parseWithWorker(
+          requestWithLimits,
+          entrypoint,
         );
+        const recycleReason = this.applyRecyclePolicy(
+          requestWithLimits,
+          response,
+        );
+        const status = clientStatusFromResponse(response);
+        const event: SummaryParserClientEvent = {
+          event: "summary_parser_worker_result",
+          provider: requestWithLimits.provider,
+          sessionId: requestWithLimits.sessionId,
+          filePath: requestWithLimits.filePath,
+          mode: this.mode,
+          status,
+          workerPid: response.metrics.workerPid,
+          workerGeneration: response.metrics.workerGeneration,
+          ...(response.error ? { error: response.error } : {}),
+        };
+        this.emitEvent(event);
+        this.logResult(event, response);
+        if (recycleReason) {
+          await this.recycleChild(response, recycleReason);
+        }
+        return {
+          summary: response.summary,
+          status,
+          source: "worker",
+          response,
+          ...(response.error ? { error: response.error } : {}),
+        };
+      } catch (error) {
+        if (error instanceof SummaryParserWorkerSetupError) {
+          return this.handleSetupFailure(
+            request,
+            error.message,
+            inProcessParser,
+          );
+        }
+        const sanitized = sanitizeSummaryParserError(error);
+        await this.stopChild("crash");
+        const event: SummaryParserClientEvent = {
+          event: "summary_parser_worker_result",
+          provider: request.provider,
+          sessionId: request.sessionId,
+          filePath: request.filePath,
+          mode: this.mode,
+          status: "crash",
+          error: sanitized,
+        };
+        this.emitEvent(event);
+        getLogger().warn(
+          event,
+          "SUMMARY_PARSER_WORKER: parse failed after worker crash",
+        );
+        return {
+          summary: null,
+          status: "crash",
+          source: "worker",
+          error: sanitized,
+        };
       }
-      const sanitized = sanitizeSummaryParserError(error);
-      await this.stopChild("crash");
-      const event: SummaryParserClientEvent = {
-        event: "summary_parser_worker_result",
-        provider: request.provider,
-        sessionId: request.sessionId,
-        filePath: request.filePath,
-        mode: this.mode,
-        status: "crash",
-        error: sanitized,
-      };
-      this.emitEvent(event);
-      getLogger().warn(
-        event,
-        "SUMMARY_PARSER_WORKER: parse failed after worker crash",
-      );
-      return {
-        summary: null,
-        status: "crash",
-        source: "worker",
-        error: sanitized,
-      };
-    }
+    });
   }
 
   async close(): Promise<void> {
@@ -426,6 +429,21 @@ export class SummaryParserClient {
       if (this.activeRequestId) return;
       void this.stopChild("idle_timeout");
     }, this.idleTimeoutMs);
+  }
+
+  private async withWorkerParseSlot<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.workerParseQueue;
+    let release!: () => void;
+    this.workerParseQueue = new Promise<void>((resolveQueue) => {
+      release = resolveQueue;
+    });
+
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 
   private async parseWithWorker(

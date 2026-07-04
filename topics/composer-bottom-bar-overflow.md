@@ -21,6 +21,12 @@ they can reach a control.
 
 ## Contract
 
+- Collapse/restore obeys the repo-wide fixed-order rule: widening restores
+  controls in exactly the reverse order narrowing removed them, with the same
+  width always yielding the same set
+  ([`ui-architecture.md`](ui-architecture.md) § Narrowing/Widening Stability
+  Principle). The tier ladder in `useMeasuredComposerOverflow` satisfies it by
+  construction.
 - Bottom-row controls should be represented as one ordered responsive control
   list with shared spacing and collapse rules, including shortcut help (`?`) and
   context percentage circle/text. The visual layout may still have left and

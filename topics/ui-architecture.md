@@ -29,6 +29,37 @@ Preferred order:
 4. Use post-render rewriting only as a small containment bridge, with the rule
    named and scoped so it cannot silently become the architecture.
 
+## Narrowing/Widening Stability Principle
+
+Any UI surface that sheds items as space narrows and restores them as space
+widens must behave with a fixed order in both directions: widening brings
+items back in exactly the reverse order narrowing removed them, and the same
+width always yields the same set. Two acceptable constructions:
+
+1. **Provably fixed-order algorithm** (preferred — simpler): the shed/restore
+   decision is a deterministic, monotone function of available space over a
+   fixed removal order, so reverse-order restore holds by construction and no
+   history is needed.
+2. **Tracked removal order**: record the actual order items were removed
+   (fine to compute in advance, e.g. width cutoffs) and replay it in reverse
+   on widen.
+
+What this bans: unordered recomputation — e.g. bin-packing by measured item
+widths, or iteration-order-dependent selection — where widening can restore a
+different set or sequence than narrowing removed, or where a boundary width
+oscillates. Near-equality thresholds also need slack/hysteresis so measured
+feedback (an item returning changes the measurement) cannot latch or
+flip-flop; see the compact-signal traps in
+[`composer-bottom-bar-overflow.md`](composer-bottom-bar-overflow.md).
+
+Worked instance: the composer bottom-bar overflow engine
+(`useMeasuredComposerOverflow` in `MessageInputToolbar.tsx`) walks a fixed
+tier ladder (`none → early → medium → late`) one step at a time while
+measured demand exceeds available width, and on any >1px widening resets to
+`none` and re-escalates from scratch. The result at a given (layout, width)
+is history-free and identical from either direction, so restore is
+reverse-of-removal by construction — form 1 above.
+
 ## Public Share Example
 
 Public shares have a valid reason for an independent unauthenticated top-level

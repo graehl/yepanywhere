@@ -1502,6 +1502,74 @@ describe("useSessionMessages cache", () => {
     expect(reactCrossUpdateErrorCalls(error)).toHaveLength(0);
   });
 
+  it("uses compact tail fallback when catch-up has no last message cursor", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(readStoreMessageIds()).toEqual([]);
+
+    apiMocks.getSession.mockClear();
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "assistant",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "assistant", content: "tail fallback" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    await act(async () => {
+      await result.current.fetchNewMessages();
+    });
+
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      undefined,
+      { tailCompactions: 2 },
+    );
+    expect(result.current.messages.map((message) => message.uuid)).toEqual([
+      "msg-1",
+    ]);
+  });
+
   it("keeps store-selected messages authoritative across older-page prepend", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

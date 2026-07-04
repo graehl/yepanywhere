@@ -915,11 +915,19 @@ export function useSessionMessages(
     return coordinator.runExclusiveFetchNewMessages(async () => {
       try {
         const afterMessageId = readStoreLastMessageId();
-        const data = await sourceApi.getSession({
-          projectId,
-          sessionId,
-          afterMessageId,
-        });
+        const data = await sourceApi.getSession(
+          afterMessageId
+            ? {
+                projectId,
+                sessionId,
+                afterMessageId,
+              }
+            : {
+                projectId,
+                sessionId,
+                tailCompactions: 2,
+              },
+        );
         reportProviderRuntimeStatusSnapshot(
           sourceKey,
           coordinator.buildProviderRuntimeStatusSnapshot(data),

@@ -55,6 +55,7 @@ import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import {
   StreamingMarkdownProvider,
   useStreamingMarkdownContext,
@@ -831,6 +832,7 @@ function SessionPageContent({
   const { projects } = useProjects();
   const activeProjectSessionIds = useActiveProjectSessionIds(projectId);
   const clientSummarySourceKey = useClientSummarySourceKey();
+  const sourceApi = useCurrentSourceRuntime().api;
   const sessionDraftReference = useMemo(
     () => ({
       sourceKey: clientSummarySourceKey,
@@ -3294,7 +3296,12 @@ function SessionPageContent({
       const poll = async () => {
         polls += 1;
         try {
-          const result = await api.getSession(projectId, asideSessionId);
+          const result = await sourceApi.getSession({
+            projectId,
+            sessionId: asideSessionId,
+            fullHistory: true,
+            fullHistoryReason: "/btw aside poll",
+          });
           const nextStatus: BtwAsideStatus =
             result.ownership.owner === "none" ? "complete" : "running";
           updateBtwAside(asideId, (aside) => {
@@ -3342,7 +3349,7 @@ function SessionPageContent({
 
       window.setTimeout(poll, BTW_ASIDE_POLL_MS);
     },
-    [projectId, updateBtwAside],
+    [projectId, sourceApi, updateBtwAside],
   );
 
   const runBtwAsideTurn = useCallback(
@@ -3530,7 +3537,12 @@ function SessionPageContent({
     let cancelled = false;
     void (async () => {
       try {
-        const result = await api.getSession(projectId, requestedBtwSessionId);
+        const result = await sourceApi.getSession({
+          projectId,
+          sessionId: requestedBtwSessionId,
+          fullHistory: true,
+          fullHistoryReason: "/btw aside hydrate",
+        });
         if (cancelled) {
           return;
         }
@@ -3585,7 +3597,7 @@ function SessionPageContent({
     return () => {
       cancelled = true;
     };
-  }, [projectId, requestedBtwSessionId, sessionId, showToast]);
+  }, [projectId, requestedBtwSessionId, sessionId, showToast, sourceApi]);
 
   const handleFocusedBtwSend = useCallback(
     (text: string) => {

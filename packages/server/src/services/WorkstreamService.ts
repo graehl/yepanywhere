@@ -106,8 +106,8 @@ function normalizeStoredWorkstream(raw: unknown): StoredWorkstream {
   if (!isRecord(raw)) {
     throw new WorkstreamValidationError("workstream must be an object");
   }
-  if (raw.kind !== "worktree") {
-    throw new WorkstreamValidationError("kind must be worktree");
+  if (raw.kind !== "checkout") {
+    throw new WorkstreamValidationError("kind must be checkout");
   }
   const projectId = normalizeProjectId(raw.projectId);
   const id = normalizeWorkstreamId(raw.id);
@@ -118,7 +118,7 @@ function normalizeStoredWorkstream(raw: unknown): StoredWorkstream {
     id,
     projectId,
     label: requiredString(raw.label, "label"),
-    kind: "worktree",
+    kind: "checkout",
     path: requiredString(raw.path, "path"),
     branch: optionalStringOrNull(raw.branch, "branch"),
     baseBranch: requiredString(raw.baseBranch, "baseBranch"),
@@ -285,7 +285,7 @@ export class WorkstreamService {
       id: randomUUID() as WorkstreamId,
       projectId: input.projectId,
       label: input.label,
-      kind: "worktree",
+      kind: "checkout",
       path: input.path,
       branch,
       baseBranch: input.baseBranch?.trim() || DEFAULT_BASE_BRANCH,

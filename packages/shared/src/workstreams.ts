@@ -2,7 +2,7 @@ import type { UrlProjectId } from "./projectId.js";
 
 export type WorkstreamId = string & { readonly __brand: "WorkstreamId" };
 
-export type WorkstreamKind = "main" | "worktree";
+export type WorkstreamKind = "main" | "checkout";
 
 export type WorkstreamStatus = "active" | "archived" | "landed";
 
@@ -23,7 +23,7 @@ export interface Workstream {
 }
 
 export interface StoredWorkstream extends Workstream {
-  kind: "worktree";
+  kind: "checkout";
 }
 
 export type WorkstreamsChangedReason =

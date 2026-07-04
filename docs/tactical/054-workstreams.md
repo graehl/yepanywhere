@@ -3,7 +3,7 @@
 Topic: workstreams
 
 Status: First three preparatory chunks landed. Workstreams remain hidden/no-op
-by default; no route, scheduler change, Git worktree creation, or landing
+by default; no route, scheduler change, lane checkout creation, or landing
 action has landed yet.
 
 Product rationale and the target user workflow live in
@@ -15,9 +15,10 @@ current Project Queue default behavior.
 
 Add an experimental, default-off workstreams mode where Project Queue can target
 separate topic lanes under one YA project. A lane may be the canonical main
-checkout or a branch-backed Git worktree. Workstreams should let prepared,
-known-independent topics make progress without one active main/project session
-blocking every queued item.
+checkout or a separate real checkout — an ordinary local clone, not a git
+worktree (see `topics/workstreams.md` "Lane Checkouts and Branches").
+Workstreams should let prepared, known-independent topics make progress
+without one active main/project session blocking every queued item.
 
 The first implementation slices should make the model visible and testable
 before they mutate Git or change Project Queue scheduling.
@@ -27,13 +28,13 @@ before they mutate Git or change Project Queue scheduling.
 - Workstreams are hidden/no-op by default.
 - Existing Project Queue behavior is unchanged unless the experimental gate is
   explicitly enabled.
-- The first useful slices do not run `git worktree add`, setup scripts, rebase,
-  merge, cleanup, or landing operations.
+- The first useful slices do not create lane checkouts or run setup scripts,
+  rebase, merge, cleanup, or landing operations.
 - Queue items must not be popped before start preflights pass.
 - YA URL session ids remain the public/session-facing ids. Provider-native ids
   must not replace them in URLs, metadata, API payloads, or UI copy.
 - Main checkout branch switching is never part of workstream execution. If a
-  branch-backed lane is needed, create or import a separate worktree.
+  branch-backed lane is needed, create or import a separate checkout.
 - PR creation is optional export, not the required local workflow.
 
 ## Relevant Context
@@ -63,7 +64,7 @@ before they mutate Git or change Project Queue scheduling.
 - [ ] WS-006: Associate sessions with workstreams.
 - [ ] WS-007: Add Project Queue target metadata without scheduler changes.
 - [ ] WS-008: Make Project Queue scheduling workstream-aware.
-- [ ] WS-009: Add YA-managed branch+worktree creation.
+- [ ] WS-009: Add YA-managed lane checkout creation.
 - [ ] WS-010: Add local landing actions.
 
 ## Chunk Details
@@ -197,7 +198,7 @@ interface Workstream {
   id: string;
   projectId: string;
   label: string;
-  kind: "main" | "worktree";
+  kind: "main" | "checkout";
   path: string;
   branch: string | null;
   baseBranch: string;
@@ -225,7 +226,7 @@ Out of scope:
 - no route mounting or app startup wiring;
 - no Workstreams page;
 - no Project Queue target metadata;
-- no Git worktree creation;
+- no lane checkout creation;
 - no queue targeting;
 - no scheduler changes;
 - no client UI beyond tests or API scaffolding;
@@ -242,6 +243,12 @@ node scripts/biome.cjs lint packages/shared/src/workstreams.ts packages/shared/s
 
 Verified 2026-07-04 with the commands above. Also ran `pnpm lint` and
 `pnpm --filter @yep-anywhere/client exec tsc --noEmit`.
+
+Amendment (2026-07-04, later): the stored `kind` literal shipped as
+`"worktree"` and was renamed to `"checkout"` when the lane model dropped
+git worktrees in favor of real checkouts (`topics/workstreams.md`, "Lane
+Checkouts and Branches"). The service was still unmounted with no
+persisted data, so no migration was needed.
 
 ### WS-004: Add Read-Only Workstream API Behind The Gate
 
@@ -295,7 +302,7 @@ Likely change:
 
 Out of scope:
 
-- no worktree creation UI;
+- no lane checkout creation UI;
 - no landing buttons;
 - no scheduler state;
 - no queue target picker.
@@ -401,7 +408,7 @@ Likely change:
 
 Out of scope:
 
-- no Git worktree creation;
+- no lane checkout creation;
 - no landing;
 - no auto-resolving conflicts.
 
@@ -414,39 +421,45 @@ pnpm --filter @yep-anywhere/server test -- test/routes/project-queue.test.ts
 pnpm --filter @yep-anywhere/server test -- test/services/project-queue-scheduler.test.ts
 ```
 
-### WS-009: Add YA-Managed Branch+Worktree Creation
+### WS-009: Add YA-Managed Lane Checkout Creation
 
 Status: deferred.
 
-Goal: let YA create a branch-backed lane under the canonical project.
+Goal: let YA create a lane checkout under the canonical project.
 
 Likely behavior:
 
-- create branch+worktree from the selected base branch;
-- copy `.worktreeinclude` ignored files if present;
+- create the lane checkout as an ordinary local clone on main (hardlinked
+  objects), then point its origin at the project's shared upstream;
+- copy `.worktreeinclude` ignored files if present (a fresh clone has the
+  same seeding gap that convention addresses for worktrees);
 - store metadata only after creation succeeds;
 - do not run setup scripts in the first creation slice;
-- do not symlink directories by default.
+- do not symlink directories by default;
+- create no branch — that belongs to the deferred branch mode.
 
 Preconditions:
 
 - experimental gate enabled;
 - canonical project is a Git repository;
-- branch name is available;
-- worktree destination is available;
+- checkout destination is available;
 - no concurrent YA git operation for the same canonical project.
 
 Out of scope:
 
 - no setup/cleanup scripts;
 - no local landing;
-- no automatic import of arbitrary external worktrees.
+- no automatic import of arbitrary external checkouts or worktrees.
 
 ### WS-010: Add Local Landing Actions
 
 Status: deferred.
 
 Goal: provide guarded local integration back to the canonical main checkout.
+This applies to the deferred branch mode only; in the unbranched first
+version, integration flows through the shared upstream (a lane pushes main,
+other lanes fetch + fast-forward at agent-idle), so no local landing
+operation exists.
 
 Required reading before implementation:
 
@@ -474,10 +487,13 @@ Out of scope:
 
 - Gate shape: version capability only when enabled, or capability always
   present with settings reporting disabled?
-- First branch naming pattern: `ya/<slug>`, `ya/<date>-<slug>`, or
-  user-configurable from the first creation slice?
-- Should manual import of existing worktrees land before YA-managed creation?
+- (Deferred branch mode) branch naming pattern: `ya/<slug>`,
+  `ya/<date>-<slug>`, `yaworkstream-<n>`, or user-configurable from the
+  first creation slice?
+- Should manual import of existing checkouts or worktrees land before
+  YA-managed creation?
 - Should the first Workstreams page live under Projects, Settings, or both?
-- Should the first landing mode be fast-forward only, squash only, or both?
+- (Deferred branch mode) Should the first landing mode be fast-forward
+  only, squash only, or both?
 - Should workstream queue pause be global state in `WorkstreamService`, or live
   inside Project Queue dispatch state once scheduling is lane-aware?

@@ -41,7 +41,7 @@ describe("WorkstreamService", () => {
       id: "ws-tools" as WorkstreamId,
       projectId,
       label: "tools cleanup",
-      kind: "worktree",
+      kind: "checkout",
       path: "/tmp/workstreams-project-tools",
       branch: "ya/tools-cleanup",
       baseBranch: "main",
@@ -112,7 +112,7 @@ describe("WorkstreamService", () => {
     ]);
     expect(workstreams[1]).toMatchObject({
       label: "tools cleanup",
-      kind: "worktree",
+      kind: "checkout",
       path: "/tmp/workstreams-project-tools",
       branch: "ya/tools-cleanup",
       managedByYa: true,
@@ -124,7 +124,7 @@ describe("WorkstreamService", () => {
     };
     expect(saved.version).toBe(1);
     expect(saved.workstreams).toHaveLength(1);
-    expect(saved.workstreams[0]?.kind).toBe("worktree");
+    expect(saved.workstreams[0]?.kind).toBe("checkout");
     expect(saved.workstreams[0]?.id).toBe("ws-tools");
   });
 
@@ -174,7 +174,7 @@ describe("WorkstreamService", () => {
     expect(created).toMatchObject({
       projectId,
       label: "world CRUD",
-      kind: "worktree",
+      kind: "checkout",
       path: "/tmp/workstreams-project-world",
       branch: "ya/world-crud",
       baseBranch: "main",

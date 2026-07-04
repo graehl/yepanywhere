@@ -113,3 +113,7 @@
   provider streams into YA process/session UI state.
 - client-source-runtime-topology - Source-runtime context and session-detail
   coordinator extraction for client data-flow cleanup.
+- workstreams - YA-managed lanes for topic work in one repository: per-lane
+  queues over real checkouts syncing through the shared upstream.
+- session-media-handles - Server-owned media handles replacing inline base64
+  transcript payloads in retained client state.

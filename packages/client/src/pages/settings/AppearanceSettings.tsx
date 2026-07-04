@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThinkingText } from "../../components/ThinkingText";
 import { renderFixedFontMath } from "../../components/ui/FixedFontMathToggle";
@@ -100,6 +100,28 @@ const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
 
 function formatNumberSetting(value: number): string {
   return Number.isInteger(value) ? String(value) : String(value);
+}
+
+interface UndoEntry {
+  value: unknown;
+  restore: (value: unknown) => void;
+}
+
+// Pairs a live settings value with its restore path. The cast inside is
+// safe because construction guarantees value and setter share one T.
+function undoEntry<T>(
+  value: T,
+  set: (value: T) => void,
+  syncDraft?: (value: T) => void,
+): UndoEntry {
+  return {
+    value,
+    restore: (raw) => {
+      const restored = raw as T;
+      set(restored);
+      syncDraft?.(restored);
+    },
+  };
 }
 
 function getSettingsIconStyleLabel(
@@ -215,157 +237,81 @@ export function AppearanceSettings() {
     [],
   );
   // Header undo: snapshot every appearance value at pane open; restore sets
-  // each preference and re-syncs the numeric draft fields.
-  const undoState = useMemo(
-    () => ({
-      locale,
-      fontSize,
-      outputFont,
-      outputUiFont,
-      outputFontSizePx,
-      outputFixedFont,
+  // each preference and re-syncs its draft field where one exists. Each row
+  // pairs a value with its setter so the snapshot, change detection, and
+  // restore cannot drift apart; a new setting is one row here.
+  const undoEntries = [
+    undoEntry(locale, setLocale),
+    undoEntry(fontSize, setFontSize),
+    undoEntry(outputFont, setOutputFont),
+    undoEntry(outputUiFont, setOutputUiFont),
+    undoEntry(outputFontSizePx, setOutputFontSizePx, (value) =>
+      setOutputFontSizeDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(outputFixedFont, setOutputFixedFont),
+    undoEntry(
       outputFixedFontSizeOffsetPx,
-      outputThinkingFontSizeOffsetPx,
-      outputMathFontSizeOffsetPx,
-      outputLineSpacingPercent,
-      outputVerticalSpacingPercent,
-      outputToolPreviewLineCount,
-      tabSize,
-      contentMaxWidth,
-      hoverCardShowDelayMs,
-      hoverCardMaxHeightPx,
-      generatedTitleEnabled,
-      generatedTitleLength,
-      theme,
-      settingsIconStyle,
-      inlineMediaExpandedByDefault,
-      alwaysShowQuoteCircles,
-      paragraphQuoteCirclesEnabled,
-      funPhrasesEnabled,
-      floatingActionButtonEnabled,
-      sidebarDuplicateHidingEnabled,
-      tabTitleActivityEnabled,
-      showConnectionBars,
-    }),
-    [
-      locale,
-      fontSize,
-      outputFont,
-      outputUiFont,
-      outputFontSizePx,
-      outputFixedFont,
-      outputFixedFontSizeOffsetPx,
-      outputThinkingFontSizeOffsetPx,
-      outputMathFontSizeOffsetPx,
-      outputLineSpacingPercent,
-      outputVerticalSpacingPercent,
-      outputToolPreviewLineCount,
-      tabSize,
-      contentMaxWidth,
-      hoverCardShowDelayMs,
-      hoverCardMaxHeightPx,
-      generatedTitleEnabled,
-      generatedTitleLength,
-      theme,
-      settingsIconStyle,
-      inlineMediaExpandedByDefault,
-      alwaysShowQuoteCircles,
-      paragraphQuoteCirclesEnabled,
-      funPhrasesEnabled,
-      floatingActionButtonEnabled,
-      sidebarDuplicateHidingEnabled,
-      tabTitleActivityEnabled,
-      showConnectionBars,
-    ],
-  );
-  const restoreUndoState = useCallback(
-    (snapshot: typeof undoState) => {
-      setLocale(snapshot.locale);
-      setFontSize(snapshot.fontSize);
-      setOutputFont(snapshot.outputFont);
-      setOutputUiFont(snapshot.outputUiFont);
-      setOutputFontSizePx(snapshot.outputFontSizePx);
-      setOutputFixedFont(snapshot.outputFixedFont);
-      setOutputFixedFontSizeOffsetPx(snapshot.outputFixedFontSizeOffsetPx);
-      setOutputThinkingFontSizeOffsetPx(
-        snapshot.outputThinkingFontSizeOffsetPx,
-      );
-      setOutputMathFontSizeOffsetPx(snapshot.outputMathFontSizeOffsetPx);
-      setOutputLineSpacingPercent(snapshot.outputLineSpacingPercent);
-      setOutputVerticalSpacingPercent(snapshot.outputVerticalSpacingPercent);
-      setOutputToolPreviewLineCount(snapshot.outputToolPreviewLineCount);
-      setTabSize(snapshot.tabSize);
-      setContentMaxWidth(snapshot.contentMaxWidth);
-      setHoverCardShowDelayMs(snapshot.hoverCardShowDelayMs);
-      setHoverCardMaxHeightPx(snapshot.hoverCardMaxHeightPx);
-      setGeneratedTitleEnabled(snapshot.generatedTitleEnabled);
-      setGeneratedTitleLength(snapshot.generatedTitleLength);
-      setTheme(snapshot.theme);
-      setSettingsIconStyle(snapshot.settingsIconStyle);
-      setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
-      setAlwaysShowQuoteCircles(snapshot.alwaysShowQuoteCircles);
-      setParagraphQuoteCirclesEnabled(snapshot.paragraphQuoteCirclesEnabled);
-      setFunPhrasesEnabled(snapshot.funPhrasesEnabled);
-      setFloatingActionButtonEnabled(snapshot.floatingActionButtonEnabled);
-      setSidebarDuplicateHidingEnabled(snapshot.sidebarDuplicateHidingEnabled);
-      setTabTitleActivityEnabled(snapshot.tabTitleActivityEnabled);
-      setShowConnectionBars(snapshot.showConnectionBars);
-      setContentMaxWidthDraft(String(snapshot.contentMaxWidth));
-      setHoverCardDelayDraft(String(snapshot.hoverCardShowDelayMs));
-      setHoverCardHeightDraft(String(snapshot.hoverCardMaxHeightPx));
-      setGeneratedTitleLengthDraft(String(snapshot.generatedTitleLength));
-      setOutputFontSizeDraft(formatNumberSetting(snapshot.outputFontSizePx));
-      setOutputFixedFontSizeOffsetDraft(
-        formatNumberSetting(snapshot.outputFixedFontSizeOffsetPx),
-      );
-      setOutputThinkingFontSizeOffsetDraft(
-        formatNumberSetting(snapshot.outputThinkingFontSizeOffsetPx),
-      );
-      setOutputMathFontSizeOffsetDraft(
-        formatNumberSetting(snapshot.outputMathFontSizeOffsetPx),
-      );
-      setOutputLineSpacingDraft(
-        formatNumberSetting(snapshot.outputLineSpacingPercent),
-      );
-      setOutputVerticalSpacingDraft(
-        formatNumberSetting(snapshot.outputVerticalSpacingPercent),
-      );
-      setOutputToolPreviewLineCountDraft(
-        formatNumberSetting(snapshot.outputToolPreviewLineCount),
-      );
-    },
-    [
-      setLocale,
-      setFontSize,
-      setOutputFont,
-      setOutputUiFont,
-      setOutputFontSizePx,
-      setOutputFixedFont,
       setOutputFixedFontSizeOffsetPx,
+      (value) => setOutputFixedFontSizeOffsetDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(
+      outputThinkingFontSizeOffsetPx,
       setOutputThinkingFontSizeOffsetPx,
+      (value) =>
+        setOutputThinkingFontSizeOffsetDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(
+      outputMathFontSizeOffsetPx,
       setOutputMathFontSizeOffsetPx,
-      setOutputLineSpacingPercent,
+      (value) => setOutputMathFontSizeOffsetDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(outputLineSpacingPercent, setOutputLineSpacingPercent, (value) =>
+      setOutputLineSpacingDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(
+      outputVerticalSpacingPercent,
       setOutputVerticalSpacingPercent,
+      (value) => setOutputVerticalSpacingDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(
+      outputToolPreviewLineCount,
       setOutputToolPreviewLineCount,
-      setTabSize,
-      setContentMaxWidth,
-      setHoverCardShowDelayMs,
-      setHoverCardMaxHeightPx,
-      setGeneratedTitleEnabled,
-      setGeneratedTitleLength,
-      setTheme,
-      setSettingsIconStyle,
-      setInlineMediaExpandedByDefault,
-      setAlwaysShowQuoteCircles,
-      setParagraphQuoteCirclesEnabled,
-      setFunPhrasesEnabled,
-      setFloatingActionButtonEnabled,
-      setSidebarDuplicateHidingEnabled,
-      setTabTitleActivityEnabled,
-      setShowConnectionBars,
-    ],
-  );
-  useSettingsUndoBaseline(undoState, restoreUndoState);
+      (value) => setOutputToolPreviewLineCountDraft(formatNumberSetting(value)),
+    ),
+    undoEntry(tabSize, setTabSize),
+    undoEntry(contentMaxWidth, setContentMaxWidth, (value) =>
+      setContentMaxWidthDraft(String(value)),
+    ),
+    undoEntry(hoverCardShowDelayMs, setHoverCardShowDelayMs, (value) =>
+      setHoverCardDelayDraft(String(value)),
+    ),
+    undoEntry(hoverCardMaxHeightPx, setHoverCardMaxHeightPx, (value) =>
+      setHoverCardHeightDraft(String(value)),
+    ),
+    undoEntry(generatedTitleEnabled, setGeneratedTitleEnabled),
+    undoEntry(generatedTitleLength, setGeneratedTitleLength, (value) =>
+      setGeneratedTitleLengthDraft(String(value)),
+    ),
+    undoEntry(theme, setTheme),
+    undoEntry(settingsIconStyle, setSettingsIconStyle),
+    undoEntry(inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault),
+    undoEntry(alwaysShowQuoteCircles, setAlwaysShowQuoteCircles),
+    undoEntry(paragraphQuoteCirclesEnabled, setParagraphQuoteCirclesEnabled),
+    undoEntry(funPhrasesEnabled, setFunPhrasesEnabled),
+    undoEntry(floatingActionButtonEnabled, setFloatingActionButtonEnabled),
+    undoEntry(sidebarDuplicateHidingEnabled, setSidebarDuplicateHidingEnabled),
+    undoEntry(tabTitleActivityEnabled, setTabTitleActivityEnabled),
+    undoEntry(showConnectionBars, setShowConnectionBars),
+  ];
+  const undoEntriesRef = useRef(undoEntries);
+  undoEntriesRef.current = undoEntries;
+  const undoValues = undoEntries.map((entry) => entry.value);
+  const restoreUndoState = useCallback((snapshot: unknown[]) => {
+    undoEntriesRef.current.forEach((entry, index) => {
+      entry.restore(snapshot[index]);
+    });
+  }, []);
+  useSettingsUndoBaseline(undoValues, restoreUndoState);
 
   const translate = (key: string) => t(key as never);
 

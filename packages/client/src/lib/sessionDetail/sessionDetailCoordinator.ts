@@ -57,6 +57,14 @@ export interface SessionDetailAppliedWarmRefresh {
   sourceMessageCount: number;
 }
 
+export interface SessionDetailLoadCompleteResult {
+  session: GetSessionResult["session"];
+  status: GetSessionResult["ownership"];
+  pendingInputRequest?: GetSessionResult["pendingInputRequest"];
+  slashCommands?: GetSessionResult["slashCommands"];
+  deferredMessages?: GetSessionResult["deferredMessages"];
+}
+
 export type SessionDetailRevealSnapshotInput = Omit<
   SessionDetailRevealSnapshotFallback,
   "maxPersistedTimestampMs"
@@ -235,6 +243,18 @@ export class SessionDetailCoordinator {
           selected?.maxPersistedTimestampMs ?? Number.NEGATIVE_INFINITY,
       },
     });
+  }
+
+  buildLoadCompleteResult(
+    data: GetSessionResult,
+  ): SessionDetailLoadCompleteResult {
+    return {
+      session: data.session,
+      status: data.ownership,
+      pendingInputRequest: data.pendingInputRequest,
+      slashCommands: data.slashCommands,
+      deferredMessages: data.deferredMessages,
+    };
   }
 
   private completeInitialReveal(

@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { DeferredQueueMessage, PaginationInfo } from "../api/client";
+import type { PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
 import {
@@ -22,6 +22,7 @@ import {
 import {
   createSessionDetailCoordinator,
   type SessionDetailCoordinator,
+  type SessionDetailLoadCompleteResult,
   type SessionDetailRevealSnapshotInput,
 } from "../lib/sessionDetail/sessionDetailCoordinator";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
@@ -32,7 +33,7 @@ import {
 } from "./useSessionPerformanceSettings";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import { shouldRetainSessionScrollMemory } from "../lib/sessionScrollBehavior";
-import type { Message, SessionMetadata, SessionStatus } from "../types";
+import type { Message, SessionMetadata } from "../types";
 import { reportProviderRuntimeStatusSnapshot } from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
@@ -75,17 +76,7 @@ export interface AgentContent {
 export type AgentContentMap = Record<string, AgentContent>;
 
 /** Result from initial session load */
-export interface SessionLoadResult {
-  session: SessionMetadata;
-  status: SessionStatus;
-  pendingInputRequest?: unknown;
-  slashCommands?: Array<{
-    name: string;
-    description: string;
-    argumentHint?: string;
-  }> | null;
-  deferredMessages?: DeferredQueueMessage[];
-}
+export type SessionLoadResult = SessionDetailLoadCompleteResult;
 
 export type SessionMetadataUpdate =
   | SessionMetadata
@@ -575,13 +566,7 @@ export function useSessionMessages(
           providerRuntimeStatus: data.providerRuntimeStatus ?? null,
         },
       );
-      onLoadComplete?.({
-        session: data.session,
-        status: data.ownership,
-        pendingInputRequest: data.pendingInputRequest,
-        slashCommands: data.slashCommands,
-        deferredMessages: data.deferredMessages,
-      });
+      onLoadComplete?.(coordinator.buildLoadCompleteResult(data));
     };
 
     const readRevealSnapshotAfterStoreUpdate = (

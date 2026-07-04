@@ -250,7 +250,8 @@ retention, deletion, and scroll snapshot patching. Initial REST load, reveal
 gating, scroll memory policy, older-page loading, metadata refresh, and load
 progress remain hook-owned, but the stream-gate part of initial-load lifecycle
 now starts through `beginInitialLoad`, and warm-refresh reducer action
-selection and reveal-snapshot construction run through the coordinator.
+selection, reveal-snapshot construction, and initial-load callback payload
+construction run through the coordinator.
 
 Intent:
 
@@ -347,6 +348,13 @@ Implementation note:
 - The next Phase 3 slice should move another bounded non-React helper, likely
   the initial load result notification/runtime-status reporting shape or the
   cacheable reveal snapshot write helper.
+- Moved initial-load callback payload construction into
+  `SessionDetailCoordinator`. `useSessionMessages` still owns runtime-status
+  reporting and callback invocation, while the coordinator now turns
+  `GetSessionResult` into the exported `SessionLoadResult` shape. Added
+  coordinator coverage for that payload.
+- The next Phase 3 slice should likely move cacheable reveal snapshot handling
+  closer to the coordinator without moving cache/scroll policy out of the hook.
 
 ## Phase 4: Rename Public Cache Facade
 

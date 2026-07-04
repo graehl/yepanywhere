@@ -383,4 +383,17 @@ describe("SessionDetailCoordinator", () => {
     );
     expect(reveal.snapshot.scrollSnapshot).toBe(fallbackScroll);
   });
+
+  it("builds load-complete callback payloads from session results", () => {
+    const detail = coordinator();
+    const response = sessionResponse([message("loaded")], pagination(1));
+
+    expect(detail.buildLoadCompleteResult(response)).toEqual({
+      session: response.session,
+      status: response.ownership,
+      pendingInputRequest: response.pendingInputRequest,
+      slashCommands: response.slashCommands,
+      deferredMessages: response.deferredMessages,
+    });
+  });
 });

@@ -1769,6 +1769,28 @@ textarea {
   margin-left: 2px;
 }
 
+.session-page.session-transcript-selection-active .session-header,
+.session-page.session-transcript-selection-active .session-header *,
+.session-page.session-transcript-selection-active .session-input,
+.session-page.session-transcript-selection-active .session-input *,
+body.session-transcript-selection-active .reload-banner,
+body.session-transcript-selection-active .reload-banner * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.session-page.session-transcript-selection-active
+  .session-header
+  :is(button, a, input, textarea, select, [contenteditable="true"]),
+.session-page.session-transcript-selection-active
+  .session-input
+  :is(button, a, input, textarea, select, [contenteditable="true"]),
+body.session-transcript-selection-active
+  .reload-banner
+  :is(button, a, input, textarea, select, [contenteditable="true"]) {
+  pointer-events: none;
+}
+
 /* Sidebar Toggle Button (replaces back button) */
 .sidebar-toggle {
   display: flex;

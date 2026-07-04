@@ -1359,6 +1359,54 @@ describe("MessageList", () => {
     );
   });
 
+  it("shields session chrome while transcript text is selected", () => {
+    const activeClass = "session-transcript-selection-active";
+    const { container, unmount } = render(
+      <div className="session-page">
+        <MessageList
+          messages={[assistantMessage("assistant-1", "selected assistant text")]}
+        />
+      </div>,
+    );
+    const shell = container.querySelector(".session-page");
+    const selectedText = screen.getByText("selected assistant text").firstChild;
+    expect(shell).toBeInstanceOf(HTMLElement);
+    expect(selectedText).toBeTruthy();
+
+    const range = document.createRange();
+    range.setStart(selectedText as Node, 0);
+    range.setEnd(selectedText as Node, "selected assistant text".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    expect((shell as HTMLElement).classList.contains(activeClass)).toBe(true);
+    expect(document.body.classList.contains(activeClass)).toBe(true);
+
+    selection?.removeAllRanges();
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    expect((shell as HTMLElement).classList.contains(activeClass)).toBe(false);
+    expect(document.body.classList.contains(activeClass)).toBe(false);
+
+    selection?.addRange(range);
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    expect((shell as HTMLElement).classList.contains(activeClass)).toBe(true);
+
+    unmount();
+
+    expect((shell as HTMLElement).classList.contains(activeClass)).toBe(false);
+    expect(document.body.classList.contains(activeClass)).toBe(false);
+  });
+
   it("quotes recap selections through the reply pipeline", () => {
     const onQuoteSelection = vi.fn(() => "> Recap selected text\nx");
 

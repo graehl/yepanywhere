@@ -105,14 +105,18 @@ function collectLateDeliveredQueueEntries(
   const late: Message[] = [];
   for (let i = 0; i < anchorIndex; i += 1) {
     const message = messages[i];
-    const deliveredAt = (message as { queueDeliveredAt?: unknown })
-      ?.queueDeliveredAt;
+    if (!message) {
+      continue;
+    }
+    // Runtime guard despite the declared type: Message spreads raw JSONL, so
+    // a durable line could carry a non-string value under this key.
+    const deliveredAt = message.queueDeliveredAt;
     if (typeof deliveredAt !== "string") {
       continue;
     }
     const deliveredAtMs = Date.parse(deliveredAt);
     if (Number.isFinite(deliveredAtMs) && deliveredAtMs > anchorTimestamp) {
-      late.push(message as Message);
+      late.push(message);
     }
   }
   return late;

@@ -29,14 +29,22 @@ function hasQueueOperationContent(raw: ClaudeSessionEntry): boolean {
   return Array.isArray(raw.content) && raw.content.length > 0;
 }
 
+/**
+ * A queue-operation entry with the YA-computed delivery stamp that
+ * normalization spreads onto the served Message (Message.queueDeliveredAt).
+ */
+type StampedClaudeSessionEntry = ClaudeSessionEntry & {
+  queueDeliveredAt?: string;
+};
+
 function collectHistoricalQueueEntries(
   rawMessages: ClaudeSessionEntry[],
-): Array<{ lineIndex: number; raw: ClaudeSessionEntry }> {
+): Array<{ lineIndex: number; raw: StampedClaudeSessionEntry }> {
   const pendingEnqueues: Array<{ lineIndex: number; raw: ClaudeSessionEntry }> =
     [];
   const historicalEntries: Array<{
     lineIndex: number;
-    raw: ClaudeSessionEntry;
+    raw: StampedClaudeSessionEntry;
   }> = [];
 
   for (let lineIndex = 0; lineIndex < rawMessages.length; lineIndex++) {
@@ -67,10 +75,7 @@ function collectHistoricalQueueEntries(
           deliveredAt
             ? {
                 lineIndex: nextEntry.lineIndex,
-                raw: {
-                  ...nextEntry.raw,
-                  queueDeliveredAt: deliveredAt,
-                } as unknown as ClaudeSessionEntry,
+                raw: { ...nextEntry.raw, queueDeliveredAt: deliveredAt },
               }
             : nextEntry,
         );

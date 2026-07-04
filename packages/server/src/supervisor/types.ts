@@ -185,6 +185,14 @@ export interface Message {
   toolUseResult?: unknown;
   // Computed fields (added by SessionReader)
   orphanedToolUseIds?: string[];
+  /**
+   * YA-computed, Claude queue-operation rows only: when the queued message
+   * was delivered into the turn (the remove op's timestamp). The row keeps
+   * its enqueue-position lineIndex, so incremental afterMessageId slicing
+   * uses this to include rows that postdate a mid-turn anchor
+   * (sessions/pagination.ts).
+   */
+  queueDeliveredAt?: string;
   // Allow any additional fields from JSONL
   [key: string]: unknown;
 }

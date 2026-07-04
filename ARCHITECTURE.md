@@ -56,6 +56,9 @@ section below for what would have to change at higher fan-out.
   between provider stream/REST inputs and transcript DOM rendering; see the
   linked tactical plan before reshaping `useSession`, `useSessionMessages`,
   transcript augments, subagents, or same-tab message caches.
+- [`topics/session-media-handles.md`](topics/session-media-handles.md) —
+  problem statement and latent proposal for replacing transcript inline
+  base64 image/blob payloads with authenticated server media handles.
 - [`docs/project/connection-matrix.md`](docs/project/connection-matrix.md) —
   the four client transport modes (Direct / WS / SecureConnection /
   SecureConnection-via-relay) and which auth/encoding each uses.

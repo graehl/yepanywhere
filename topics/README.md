@@ -49,3 +49,5 @@
 - Turn-rail marker layout (hit targets sized to neighbor gaps; optional PAVA de-cluster spread behind one off-by-default constant)
 - Client global store (coarse normalized sessions/projects/project queues/inbox summary cache, not transcript state)
 - Client source runtime topology (per-YA-server runtime boundary above summary/query/session-detail stores)
+- Session media handles (problem statement for lazy transcript image/blob
+  payloads behind authenticated server media IDs)

@@ -8,7 +8,6 @@ import type { SessionRouteSnapshot } from "../../sessionRouteSnapshots";
 import {
   createSessionDetailStore,
   getSessionDetailEntryKey,
-  getSessionDetailStoreKey,
   type SessionDetailEntryKeyInput,
 } from "../sessionDetailStore";
 
@@ -73,9 +72,6 @@ describe("SessionDetailStore", () => {
     expect(store.readRouteSnapshot(key("session-a", SOURCE_B))).toBeUndefined();
     expect(getSessionDetailEntryKey(storeKey)).toBe(
       "host%3Aa:project-a:session-a",
-    );
-    expect(getSessionDetailStoreKey(storeKey)).toBe(
-      getSessionDetailEntryKey(storeKey),
     );
 
     const stats = store.getStats();

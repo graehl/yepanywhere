@@ -8,8 +8,6 @@ export interface SessionDetailEntryKeyInput {
   tailFrom?: string;
 }
 
-export type SessionDetailStoreKeyInput = SessionDetailEntryKeyInput;
-
 function encodeKeyPart(value: string): string {
   return encodeURIComponent(value);
 }
@@ -33,10 +31,4 @@ export function getSessionDetailEntryKey({
     .filter(Boolean)
     .join("&");
   return variant ? `${base}?${variant}` : base;
-}
-
-export function getSessionDetailStoreKey(
-  input: SessionDetailStoreKeyInput,
-): string {
-  return getSessionDetailEntryKey(input);
 }

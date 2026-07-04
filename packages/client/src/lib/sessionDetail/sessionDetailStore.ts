@@ -11,14 +11,8 @@ import type { SessionDetailRetentionOptions } from "./sessionDetailRetention";
 import type { SessionDetailAction, SessionDetailState } from "./types";
 
 export type { SessionDetailStoreEntryStats } from "./sessionDetailEntry";
-export type {
-  SessionDetailEntryKeyInput,
-  SessionDetailStoreKeyInput,
-} from "./sessionDetailKey";
-export {
-  getSessionDetailEntryKey,
-  getSessionDetailStoreKey,
-} from "./sessionDetailKey";
+export type { SessionDetailEntryKeyInput } from "./sessionDetailKey";
+export { getSessionDetailEntryKey } from "./sessionDetailKey";
 export type {
   SessionDetailRetentionDefaults,
   SessionDetailRetentionOptions,

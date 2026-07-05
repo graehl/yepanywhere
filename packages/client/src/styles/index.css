@@ -9535,7 +9535,7 @@ a.linkified-url:hover {
 
   .reload-banner-content {
     justify-content: flex-start;
-    gap: var(--space-1);
+    gap: 0;
     min-height: 26px;
   }
 

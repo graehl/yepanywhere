@@ -126,10 +126,14 @@ export function ReloadBanner({
     activeBlockers > 0 && queuedBlockers > 0
       ? t("reloadBannerStatusActiveAndQueuedCompact", {
           activeCount: activeBlockers,
+          activeSuffix: activeBlockers !== 1 ? "s" : "",
           queuedCount: queuedBlockers,
         })
       : activeBlockers > 0
-        ? t("reloadBannerStatusActiveCompact", { count: activeBlockers })
+        ? t("reloadBannerStatusActiveCompact", {
+            count: activeBlockers,
+            suffix: activeBlockers !== 1 ? "s" : "",
+          })
         : queuedBlockers > 0
           ? t("reloadBannerStatusQueuedCompact", { count: queuedBlockers })
           : null;
@@ -137,6 +141,7 @@ export function ReloadBanner({
     interruptibleSessionCount > 0 && queuedSessionMessageCount > 0
       ? t("reloadBannerStatusActiveAndQueuedCompact", {
           activeCount: interruptibleSessionCount,
+          activeSuffix: interruptibleSessionCount !== 1 ? "s" : "",
           queuedCount: queuedSessionMessageCount,
         })
       : queuedSessionMessageCount > 0
@@ -145,6 +150,7 @@ export function ReloadBanner({
           })
         : t("reloadBannerStatusActiveCompact", {
             count: interruptibleSessionCount,
+            suffix: interruptibleSessionCount !== 1 ? "s" : "",
           });
   const compactWarningStatus =
     safeRestartState?.status === "restarting"
@@ -153,7 +159,7 @@ export function ReloadBanner({
         ? (compactBlockerStatus ?? t("reloadBannerSafeRestartReadyCompact"))
         : compactImmediateRestartWarning;
   const primaryReloadLabel = showWarning
-    ? t("reloadBannerReloadAnyway")
+    ? t("reloadBannerReloadNow")
     : t("reloadBannerReloadTarget", { target: label });
   const isConfirmingImmediateReload =
     confirmingImmediateReloadLabel === primaryReloadLabel;
@@ -221,6 +227,7 @@ export function ReloadBanner({
                 : null}
             </span>
             <span className="reload-banner-status-compact">
+              {" · "}
               {compactWarningStatus}
             </span>
           </span>

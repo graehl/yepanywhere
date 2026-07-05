@@ -33,7 +33,7 @@ describe("ReloadBanner", () => {
       onReload,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload Now" }));
 
     expect(onReload).not.toHaveBeenCalled();
     expect(
@@ -56,15 +56,15 @@ describe("ReloadBanner", () => {
       onReload,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload Now" }));
 
     act(() => {
       vi.advanceTimersByTime(5000);
     });
 
-    expect(screen.getByRole("button", { name: "Reload Anyway" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload Now" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload Now" }));
 
     expect(onReload).not.toHaveBeenCalled();
   });
@@ -79,15 +79,15 @@ describe("ReloadBanner", () => {
       onRestartWhenSafe,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload Now" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Reload When Safe" }),
     );
 
     expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Reload Anyway" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload Now" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload Now" }));
 
     expect(onReload).not.toHaveBeenCalled();
   });

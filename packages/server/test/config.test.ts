@@ -1,6 +1,87 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CONFIG_ENV_VARS } from "./setup/config-env-vars.js";
+
+interface ConfigEnvReadReport {
+  names: string[];
+  dynamicReads: string[];
+}
+
+function collectConfigEnvReads(): ConfigEnvReadReport {
+  const configPath = fileURLToPath(new URL("../src/config.ts", import.meta.url));
+  const sourceText = fs.readFileSync(configPath, "utf8");
+  const sourceFile = ts.createSourceFile(
+    configPath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const names = new Set<string>();
+  const dynamicReads: string[] = [];
+
+  function isProcessEnv(node: ts.Expression): boolean {
+    return (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === "env" &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "process"
+    );
+  }
+
+  function addDynamicRead(node: ts.Node): void {
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+      node.getStart(sourceFile),
+    );
+    dynamicReads.push(
+      `${line + 1}:${character + 1} ${node.getText(sourceFile)}`,
+    );
+  }
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      isProcessEnv(node.expression)
+    ) {
+      names.add(node.name.text);
+    } else if (
+      ts.isElementAccessExpression(node) &&
+      isProcessEnv(node.expression)
+    ) {
+      const argument = node.argumentExpression;
+      if (
+        ts.isStringLiteral(argument) ||
+        ts.isNoSubstitutionTemplateLiteral(argument)
+      ) {
+        names.add(argument.text);
+      } else {
+        addDynamicRead(node);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return {
+    names: Array.from(names).sort(),
+    dynamicReads,
+  };
+}
+
+describe("hermetic config env setup", () => {
+  it("scrubs every direct config env read from unit tests", () => {
+    const { names, dynamicReads } = collectConfigEnvReads();
+    const scrubbed = new Set(CONFIG_ENV_VARS);
+
+    expect(dynamicReads).toEqual([]);
+    expect(names.filter((name) => !scrubbed.has(name))).toEqual([]);
+  });
+});
 
 describe("loadConfig codex paths", () => {
   afterEach(() => {

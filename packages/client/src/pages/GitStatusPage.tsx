@@ -361,12 +361,26 @@ function GitStatusContent({
     [previewableFiles, selectedFileKey],
   );
   const statusRevision = useMemo(() => getGitStatusRevision(status), [status]);
+  const previousStatusRevisionRef = useRef(statusRevision);
 
   useEffect(() => {
-    void statusRevision;
+    if (previousStatusRevisionRef.current === statusRevision) {
+      return;
+    }
+    previousStatusRevisionRef.current = statusRevision;
     setUntrackedFolderCache({});
     setExpandedUntrackedFolder(null);
   }, [statusRevision]);
+
+  const handleUntrackedFolderLoaded = useCallback(
+    (info: GitUntrackedFolderInfo) => {
+      setUntrackedFolderCache((current) => ({
+        ...current,
+        [info.path]: info,
+      }));
+    },
+    [],
+  );
 
   const retainSelectedFileKey = useCallback(
     (nextSelectedFileKey: string | null) => {
@@ -786,13 +800,10 @@ function GitStatusContent({
         <UntrackedFolderModal
           folder={expandedUntrackedFolder}
           projectId={projectId}
-          cachedInfo={untrackedFolderCache[expandedUntrackedFolder.path] ?? null}
-          onLoaded={(info) =>
-            setUntrackedFolderCache((current) => ({
-              ...current,
-              [info.path]: info,
-            }))
+          cachedInfo={
+            untrackedFolderCache[expandedUntrackedFolder.path] ?? null
           }
+          onLoaded={handleUntrackedFolderLoaded}
           onClose={() => setExpandedUntrackedFolder(null)}
           t={t}
         />

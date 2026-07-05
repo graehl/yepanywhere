@@ -41,6 +41,7 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
 const remoteCheckedAtByProjectPath = new Map<string, string>();
 const gitOperationsByProjectPath = new Set<string>();
 const UNTRACKED_FOLDER_FILE_LIMIT = 500;
+const GIT_DECODE_PATHS_ARGS = ["-c", "core.quotePath=false"];
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
@@ -815,6 +816,7 @@ async function collectUntrackedFolderFiles(
     const child = spawn("git", [
       "-C",
       projectPath,
+      ...GIT_DECODE_PATHS_ARGS,
       "status",
       "--porcelain=v2",
       "--untracked-files=all",
@@ -920,12 +922,26 @@ async function getGitStatus(
   // Run local read-only commands in parallel.
   const [statusResult, numstatUnstaged, numstatStaged, logResult] =
     await Promise.all([
-      runGit(projectPath, ["status", "--porcelain=v2", "--branch"]),
-      runGit(projectPath, ["diff", "--numstat"]).catch(() => ({
+      runGit(projectPath, [
+        ...GIT_DECODE_PATHS_ARGS,
+        "status",
+        "--porcelain=v2",
+        "--branch",
+      ]),
+      runGit(projectPath, [
+        ...GIT_DECODE_PATHS_ARGS,
+        "diff",
+        "--numstat",
+      ]).catch(() => ({
         stdout: "",
         stderr: "",
       })),
-      runGit(projectPath, ["diff", "--cached", "--numstat"]).catch(() => ({
+      runGit(projectPath, [
+        ...GIT_DECODE_PATHS_ARGS,
+        "diff",
+        "--cached",
+        "--numstat",
+      ]).catch(() => ({
         stdout: "",
         stderr: "",
       })),

@@ -174,6 +174,58 @@ describe("git-status routes", () => {
     });
   });
 
+  it("round-trips non-ASCII untracked folder paths", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await mkdir(join(repoDir, "fö"), { recursive: true });
+    await writeFile(join(repoDir, "fö", "naïve file.txt"), "hello\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const statusResponse = await routes.request(`/${projectId}/git`);
+    const statusBody = (await statusResponse.json()) as GitStatusInfo;
+
+    expect(statusResponse.status).toBe(200);
+    expect(statusBody.files).toContainEqual({
+      path: "fö/",
+      status: "?",
+      staged: false,
+      linesAdded: null,
+      linesDeleted: null,
+    });
+
+    const expandResponse = await routes.request(
+      `/${projectId}/git/untracked-folder?path=${encodeURIComponent("fö/")}`,
+    );
+    const expandBody = (await expandResponse.json()) as GitUntrackedFolderInfo;
+
+    expect(expandResponse.status).toBe(200);
+    expect(expandBody).toEqual({
+      path: "fö/",
+      files: ["fö/naïve file.txt"],
+      truncated: false,
+      limit: 500,
+    });
+  });
+
+  it("keeps line counts for non-ASCII changed files", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await mkdir(join(repoDir, "fö"), { recursive: true });
+    await commitFile(repoDir, "fö/naïve file.txt", "hello\n", "Add file");
+    await writeFile(join(repoDir, "fö", "naïve file.txt"), "hello\nagain\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git`);
+    const body = (await response.json()) as GitStatusInfo;
+
+    expect(response.status).toBe(200);
+    expect(body.files).toContainEqual({
+      path: "fö/naïve file.txt",
+      status: "M",
+      staged: false,
+      linesAdded: 1,
+      linesDeleted: 0,
+    });
+  });
+
   it("expands one untracked folder on demand", async () => {
     const repoDir = await createRepoWithUpstream();
     await mkdir(join(repoDir, "transport", "__tests__"), { recursive: true });

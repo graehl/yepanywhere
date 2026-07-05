@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { getGlobalConnection, isRemoteMode } from "../lib/connection";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
+import { toSourceTransportApiPath } from "../lib/sourceTransportPaths";
 
 interface RemoteImageResult {
   /** URL to use for the image src (either direct path or blob URL) */
@@ -35,31 +37,30 @@ export function useRemoteImage(
 
   // Use ref to track blob URL for cleanup without triggering re-renders
   const blobUrlRef = useRef<string | null>(null);
+  const transport = useCurrentSourceRuntime().transport;
+  const sameOriginUrls = transport.capabilities.sameOriginUrls;
 
-  // Check if we're in remote mode
-  const remoteMode = isRemoteMode();
-
-  // Fetch image via relay when in remote mode
+  // Fetch image through the transport when same-origin URLs cannot reach it.
   useEffect(() => {
-    if (!apiPath || !enabled) {
-      // Cleanup previous blob URL
+    const revokeCurrentBlobUrl = () => {
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
       }
+    };
+
+    if (!apiPath || !enabled) {
+      revokeCurrentBlobUrl();
       setBlobUrl(null);
       setError(null);
       return;
     }
 
-    if (!remoteMode) {
-      // Not in remote mode - no need to fetch, just use direct URL
-      return;
-    }
-
-    const connection = getGlobalConnection();
-    if (!connection) {
-      setError("No connection available");
+    if (sameOriginUrls) {
+      revokeCurrentBlobUrl();
+      setBlobUrl(null);
+      setLoading(false);
+      setError(null);
       return;
     }
 
@@ -67,15 +68,11 @@ export function useRemoteImage(
     setLoading(true);
     setError(null);
 
-    // Revoke previous blob URL before creating new one
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
-      setBlobUrl(null);
-    }
+    revokeCurrentBlobUrl();
+    setBlobUrl(null);
 
-    connection
-      .fetchBlob(apiPath)
+    transport
+      .fetchBlob(toSourceTransportApiPath(apiPath))
       .then((blob) => {
         if (cancelled) return;
         const url = URL.createObjectURL(blob);
@@ -92,25 +89,19 @@ export function useRemoteImage(
 
     return () => {
       cancelled = true;
-      // Cleanup blob URL on effect cleanup
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
+      revokeCurrentBlobUrl();
     };
-  }, [apiPath, remoteMode, enabled]);
+  }, [apiPath, sameOriginUrls, enabled, transport]);
 
-  // In direct mode, return the path directly; in remote mode, return blob URL
+  // If same-origin URLs reach this source, the browser can use the path.
   if (!apiPath) {
     return { url: null, loading: false, error: null };
   }
 
-  if (!remoteMode) {
-    // Direct mode: just use the API path as URL
+  if (sameOriginUrls) {
     return { url: apiPath, loading: false, error: null };
   }
 
-  // Remote mode: return blob URL (or null while loading)
   return { url: blobUrl, loading, error };
 }
 
@@ -129,15 +120,18 @@ export function useFetchedImage(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blobUrlRef = useRef<string | null>(null);
-
-  const remoteMode = isRemoteMode();
+  const transport = useCurrentSourceRuntime().transport;
 
   useEffect(() => {
-    if (!apiPath || !enabled) {
+    const revokeCurrentBlobUrl = () => {
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
       }
+    };
+
+    if (!apiPath || !enabled) {
+      revokeCurrentBlobUrl();
       setBlobUrl(null);
       setBlob(null);
       setError(null);
@@ -148,25 +142,11 @@ export function useFetchedImage(
     setLoading(true);
     setError(null);
 
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
-      setBlobUrl(null);
-    }
+    revokeCurrentBlobUrl();
+    setBlobUrl(null);
 
-    const fetchImage = remoteMode
-      ? (() => {
-          const connection = getGlobalConnection();
-          if (!connection)
-            return Promise.reject(new Error("No connection available"));
-          return connection.fetchBlob(apiPath);
-        })()
-      : fetch(apiPath, { credentials: "include" }).then((res) => {
-          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-          return res.blob();
-        });
-
-    fetchImage
+    transport
+      .fetchBlob(toSourceTransportApiPath(apiPath))
       .then((nextBlob) => {
         if (cancelled) return;
         const url = URL.createObjectURL(nextBlob);
@@ -184,12 +164,9 @@ export function useFetchedImage(
 
     return () => {
       cancelled = true;
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
+      revokeCurrentBlobUrl();
     };
-  }, [apiPath, remoteMode, enabled]);
+  }, [apiPath, enabled, transport]);
 
   if (!apiPath) {
     return { url: null, blob: null, loading: false, error: null };
@@ -208,16 +185,12 @@ export function useFetchedImage(
 export async function preloadRemoteImage(
   apiPath: string,
 ): Promise<string | null> {
-  if (!isRemoteMode()) {
-    // Direct mode: return path as-is
+  const transport = getSourceRuntimeRegistry().getCurrentSourceRuntime()
+    .transport;
+  if (transport.capabilities.sameOriginUrls) {
     return apiPath;
   }
 
-  const connection = getGlobalConnection();
-  if (!connection) {
-    throw new Error("No connection available");
-  }
-
-  const blob = await connection.fetchBlob(apiPath);
+  const blob = await transport.fetchBlob(toSourceTransportApiPath(apiPath));
   return URL.createObjectURL(blob);
 }

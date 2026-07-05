@@ -15,9 +15,9 @@ import {
   SPEECH_STATUS_LABELS,
   useSpeechRecognition,
 } from "../hooks/useSpeechRecognition";
-import { useConnection } from "../hooks/useConnection";
 import { useVersion } from "../hooks/useVersion";
 import { useViewportWidth } from "../hooks/useViewportWidth";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import {
@@ -125,7 +125,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
-  const connection = useConnection();
+  const transport = useCurrentSourceRuntime().transport;
   const basePath = useRemoteBasePath();
   const { keepMicWarm, micDeviceId } = useSpeechCaptureSettings();
   const serverVoiceEnabled =
@@ -155,12 +155,12 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     hasBrowserXaiSttApiKey,
     parakeetSpeechModel,
   ]);
-  const relayTransport = basePath !== "";
+  const relayTransport = !transport.capabilities.sameOriginUrls;
+  const speechTransport = transport.capabilities.speech;
   const openRelayedSpeechSocket = useMemo(() => {
-    const openSpeechSocket = connection.openSpeechSocket;
-    if (!relayTransport || !openSpeechSocket) return undefined;
-    return () => openSpeechSocket.call(connection);
-  }, [connection, relayTransport]);
+    if (!relayTransport || !speechTransport) return undefined;
+    return () => speechTransport.open();
+  }, [relayTransport, speechTransport]);
   const speechMethodServerRouted = isServerRoutedSpeechMethod(speechMethod);
   const serverStreaming = canSpeechMethodStream({
     methodId: speechMethod,

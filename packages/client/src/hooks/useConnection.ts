@@ -1,28 +1,55 @@
-import {
-  type Connection,
-  directConnection,
-  getGlobalConnection,
-} from "../lib/connection";
+import { useMemo } from "react";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import type { Connection } from "../lib/connection";
+import type { SourceTransport } from "../lib/transport";
 
 /**
- * Hook that provides the current connection to the server.
- *
- * Priority order:
- * 1. Global connection (SecureConnection in remote mode)
- * 2. DirectConnection (default — REST + upload via HTTP)
- *
- * Note: Subscriptions (session/activity streams) are handled separately
- * by useSSE and ActivityBus, which always use WebSocket.
- *
- * @returns The active Connection instance
+ * Deprecated compatibility shim. New feature code should use the current
+ * source runtime's transport directly.
  */
 export function useConnection(): Connection {
-  // Check for global connection first (remote mode with SecureConnection)
-  const globalConn = getGlobalConnection();
-  if (globalConn) {
-    return globalConn;
-  }
+  const runtime = useCurrentSourceRuntime();
+  return useMemo(
+    () => createConnectionShim(runtime.transport),
+    [runtime.transport],
+  );
+}
 
-  // Default: use direct connection (fetch + upload via HTTP)
-  return directConnection;
+function createConnectionShim(transport: SourceTransport): Connection {
+  return {
+    mode: transport.kind === "secure" ? "secure" : "direct",
+    fetch: (path, init) => transport.fetch(path, init),
+    fetchBlob: (path) => transport.fetchBlob(path),
+    subscribeSession: (sessionId, handlers, lastEventId, options) =>
+      transport.subscribeSession(sessionId, handlers, lastEventId, options),
+    subscribeActivity: (handlers) => transport.subscribeActivity(handlers),
+    subscribeSessionWatch: (sessionId, handlers, options) =>
+      transport.subscribeSessionWatch(sessionId, handlers, options),
+    upload: (projectId, sessionId, file, options) =>
+      transport.upload(projectId, sessionId, file, options),
+    uploadStagedAttachment: (file, options) =>
+      transport.uploadStagedAttachment(file, options),
+    forceReconnect: () => transport.reconnect(),
+    ...(transport.capabilities.device
+      ? {
+          sendMessage: (msg) => {
+            try {
+              const result = transport.capabilities.device?.send(msg);
+              if (result) {
+                void result.catch(() => {});
+              }
+            } catch {
+              // Legacy fire-and-forget shim.
+            }
+          },
+          onDeviceMessage: (handler) =>
+            transport.capabilities.device?.onMessage(handler) ?? (() => {}),
+        }
+      : {}),
+    ...(transport.capabilities.speech
+      ? {
+          openSpeechSocket: () => transport.capabilities.speech!.open(),
+        }
+      : {}),
+  };
 }

@@ -13,11 +13,10 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
-import { useConnection } from "../hooks/useConnection";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
-import { isRemoteMode } from "../lib/connection";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
@@ -240,10 +239,8 @@ const DEFAULT_FILE_VIEWER_SOURCE: FileViewerSource = {
     api.getFile(projectId, filePath, highlight, lineNumber, lineEnd, viewMode),
   getRawFileUrl: (projectId, filePath, download) =>
     api.getFileRawUrl(projectId, filePath, download),
-  // Fetch raw bytes through the active connection so images and downloads work
-  // in remote (relay) mode. A direct <img src="/api/..."> hits the static relay
-  // origin and 404s; fetchMediaBlob routes through connection.fetchBlob when
-  // remote and a credentialed fetch when direct.
+  // Fetch raw bytes through the active source transport so images and downloads
+  // work when same-origin /api URLs cannot address the source.
   fetchRawFileBlob: (fileData, _filePath, download) => {
     const { rawUrl } = fileData;
     if (!rawUrl) {
@@ -316,7 +313,8 @@ export const FileViewer = memo(function FileViewer({
   viewMode = "full",
 }: FileViewerProps) {
   const { t } = useI18n();
-  const connection = useConnection();
+  const transport = useCurrentSourceRuntime().transport;
+  const sameOriginUrls = transport.capabilities.sameOriginUrls;
   const basePath = useRemoteBasePath();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -517,7 +515,7 @@ export const FileViewer = memo(function FileViewer({
     ? (source.getRawFileUrl?.(projectId, filePath, false) ?? fileData.rawUrl)
     : null;
   const imageOpenUrl = loadedIsImage
-    ? !isRemoteMode() && rawFileUrl
+    ? sameOriginUrls && rawFileUrl
       ? rawFileUrl
       : (imageObjectUrl ?? (!source.fetchRawFileBlob ? rawFileUrl : null))
     : null;
@@ -536,7 +534,7 @@ export const FileViewer = memo(function FileViewer({
     }
 
     const params = new URLSearchParams({ path: filePath, download: "true" });
-    void connection
+    void transport
       .fetchBlob(`/projects/${projectId}/files/raw?${params}`)
       .then((blob) => downloadBlob(blob, fileName))
       .catch((err) => {
@@ -544,7 +542,7 @@ export const FileViewer = memo(function FileViewer({
           err instanceof Error ? err.message : "Failed to download file",
         );
       });
-  }, [connection, fileData, fileName, filePath, projectId, source]);
+  }, [fileData, fileName, filePath, projectId, source, transport]);
 
   const handleOpenInNewTab = useCallback(() => {
     if (imageOpenUrl) {

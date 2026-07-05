@@ -1,6 +1,9 @@
 import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
 import type { DraftAttachmentState } from "./draftEnvelope";
-import type { Connection } from "./connection/types";
+
+interface DraftAttachmentTransport {
+  fetch<T>(path: string, init?: RequestInit): Promise<T>;
+}
 
 interface DraftAttachmentRefsResponse {
   refs: StagedAttachmentRef[];
@@ -19,10 +22,10 @@ function draftAttachmentBody(refs: readonly StagedAttachmentRef[]): string {
 }
 
 export async function validateDraftAttachmentRefs(
-  connection: Connection,
+  transport: DraftAttachmentTransport,
   state: DraftAttachmentState,
 ): Promise<StagedAttachmentRef[]> {
-  const response = await connection.fetch<DraftAttachmentRefsResponse>(
+  const response = await transport.fetch<DraftAttachmentRefsResponse>(
     `/attachments/staging/drafts/${encodeURIComponent(state.batchId)}/validate`,
     {
       method: "POST",
@@ -33,11 +36,11 @@ export async function validateDraftAttachmentRefs(
 }
 
 export async function deleteDraftAttachmentRef(
-  connection: Connection,
+  transport: DraftAttachmentTransport,
   batchId: string,
   attachmentId: string,
 ): Promise<boolean> {
-  const response = await connection.fetch<DeleteDraftAttachmentResponse>(
+  const response = await transport.fetch<DeleteDraftAttachmentResponse>(
     `/attachments/staging/drafts/${encodeURIComponent(batchId)}/${encodeURIComponent(
       attachmentId,
     )}`,
@@ -47,12 +50,12 @@ export async function deleteDraftAttachmentRef(
 }
 
 export async function materializeDraftAttachmentsForSession(
-  connection: Connection,
+  transport: DraftAttachmentTransport,
   projectId: string,
   sessionId: string,
   state: DraftAttachmentState,
 ): Promise<UploadedFile[]> {
-  const response = await connection.fetch<MaterializeDraftAttachmentsResponse>(
+  const response = await transport.fetch<MaterializeDraftAttachmentsResponse>(
     `/projects/${projectId}/sessions/${encodeURIComponent(
       sessionId,
     )}/attachments/staging/materialize`,

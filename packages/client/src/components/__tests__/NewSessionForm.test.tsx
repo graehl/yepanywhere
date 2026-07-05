@@ -232,15 +232,6 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("../../hooks/useConnection", () => ({
-  useConnection: () => ({
-    upload: mockUpload,
-    uploadStagedAttachment: mockUploadStagedAttachment,
-    fetch: mockConnectionFetch,
-    mode: "direct",
-  }),
-}));
-
 vi.mock("../../hooks/useDraftPersistence", () => ({
   useDraftPersistence: (key: string) => {
     draftKeys.push(key);
@@ -392,6 +383,12 @@ vi.mock("../../lib/clientSummaryStore", async (importOriginal) => {
 vi.mock("../../contexts/SourceRuntimeContext", () => ({
   useCurrentSourceRuntime: () => ({
     sourceKey: "host:test",
+    transport: {
+      capabilities: { sameOriginUrls: true },
+      fetch: mockConnectionFetch,
+      upload: mockUpload,
+      uploadStagedAttachment: mockUploadStagedAttachment,
+    },
     summary: {
       reportProjectQueueCollectionSnapshot:
         mockReportProjectQueueCollectionSnapshot,

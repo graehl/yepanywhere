@@ -6,7 +6,6 @@ import type {
   UploadStartMessage,
   UploadedFile,
 } from "@yep-anywhere/shared";
-import { connectionManager } from "../lib/connection/ConnectionManager";
 
 /** Default chunk size (64KB) - matches server progress interval */
 const DEFAULT_CHUNK_SIZE = 64 * 1024;
@@ -161,8 +160,7 @@ async function uploadChunksWithCompletion<T>(
   chunks: AsyncIterable<Uint8Array>,
   options: UploadOptions = {},
   createWebSocket: WebSocketFactory = (u) => new WebSocket(u) as WebSocketLike,
-  beginCriticalOperation: BeginCriticalOperation = (label) =>
-    connectionManager.beginCriticalOperation(label),
+  beginCriticalOperation: BeginCriticalOperation = () => () => {},
   resolveComplete: (msg: UploadServerMessage) => T,
 ): Promise<T> {
   const { onProgress, signal } = options;

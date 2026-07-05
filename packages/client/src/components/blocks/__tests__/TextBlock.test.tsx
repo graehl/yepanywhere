@@ -14,7 +14,10 @@ import {
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { setInlineMediaExpandedPreference } from "../../../hooks/useInlineMedia";
 import { I18nProvider } from "../../../i18n";
-import { type Connection, setGlobalConnection } from "../../../lib/connection";
+import { asClientSummarySourceKey } from "../../../lib/clientSummaryStore";
+import type { YaSourceRuntime } from "../../../lib/sourceRuntime";
+import { SourceRuntimeProvider } from "../../../lib/sourceRuntimeReact";
+import { FakeSourceTransport } from "../../../lib/transport";
 import { TextBlock } from "../TextBlock";
 
 function GlobalRenderModeButton() {
@@ -35,22 +38,19 @@ vi.mock("../../../api/client", () => ({
   api: apiMocks,
 }));
 
-function mockRemoteConnection(
-  fetchBlob = vi.fn(
-    async () => new Blob(["remote file"], { type: "text/plain" }),
-  ),
-): Connection {
+function createRuntime(transport: FakeSourceTransport): YaSourceRuntime {
   return {
-    mode: "secure",
-    fetch: vi.fn(),
-    fetchBlob,
-  } as unknown as Connection;
+    sourceKey: asClientSummarySourceKey("test:text-block"),
+    transport,
+    api: {} as YaSourceRuntime["api"],
+    summary: {} as YaSourceRuntime["summary"],
+    sessionDetails: {} as YaSourceRuntime["sessionDetails"],
+  };
 }
 
 describe("TextBlock", () => {
   afterEach(() => {
     cleanup();
-    setGlobalConnection(null);
     setInlineMediaExpandedPreference(false);
     apiMocks.getFile.mockReset();
     apiMocks.getFileRawUrl.mockReset();
@@ -426,7 +426,7 @@ describe("TextBlock", () => {
     expect(clickAllowed).toBe(false);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/local-file?path=%2Ftmp%2Fprobe.json",
-      { credentials: "include" },
+      { credentials: "include", headers: expect.any(Headers) },
     );
     expect(screen.getByRole("dialog").textContent).toContain("probe.json");
     expect(await screen.findByText(/"ok": true/)).toBeTruthy();
@@ -651,16 +651,24 @@ describe("TextBlock", () => {
     const fetchBlob = vi.fn(
       async () => new Blob(["remote file"], { type: "text/plain" }),
     );
-    setGlobalConnection(mockRemoteConnection(fetchBlob));
+    const runtime = createRuntime(
+      new FakeSourceTransport({
+        kind: "secure",
+        capabilities: { sameOriginUrls: false },
+        fetchBlob,
+      }),
+    );
 
     render(
       <I18nProvider>
-        <TextBlock
-          text="[probe json](C:/tmp/probe.json)"
-          augmentHtml={
-            '<p><a href="/api/local-file?path=C%3A%2Ftmp%2Fprobe.json">probe json</a></p>'
-          }
-        />
+        <SourceRuntimeProvider runtime={runtime}>
+          <TextBlock
+            text="[probe json](C:/tmp/probe.json)"
+            augmentHtml={
+              '<p><a href="/api/local-file?path=C%3A%2Ftmp%2Fprobe.json">probe json</a></p>'
+            }
+          />
+        </SourceRuntimeProvider>
       </I18nProvider>,
     );
 
@@ -670,7 +678,7 @@ describe("TextBlock", () => {
 
     expect(clickAllowed).toBe(false);
     expect(fetchBlob).toHaveBeenCalledWith(
-      "/api/local-file?path=C%3A%2Ftmp%2Fprobe.json",
+      "/local-file?path=C%3A%2Ftmp%2Fprobe.json",
     );
     expect(await screen.findByText("remote file")).toBeTruthy();
   });
@@ -679,16 +687,24 @@ describe("TextBlock", () => {
     const fetchBlob = vi.fn(async () => {
       throw new Error("API error: 403: Path not in allowed directories");
     });
-    setGlobalConnection(mockRemoteConnection(fetchBlob));
+    const runtime = createRuntime(
+      new FakeSourceTransport({
+        kind: "secure",
+        capabilities: { sameOriginUrls: false },
+        fetchBlob,
+      }),
+    );
 
     render(
       <I18nProvider>
-        <TextBlock
-          text="[probe json](C:/tmp/probe.json)"
-          augmentHtml={
-            '<p><a href="/api/local-file?path=C%3A%2Ftmp%2Fprobe.json">probe json</a></p>'
-          }
-        />
+        <SourceRuntimeProvider runtime={runtime}>
+          <TextBlock
+            text="[probe json](C:/tmp/probe.json)"
+            augmentHtml={
+              '<p><a href="/api/local-file?path=C%3A%2Ftmp%2Fprobe.json">probe json</a></p>'
+            }
+          />
+        </SourceRuntimeProvider>
       </I18nProvider>,
     );
 

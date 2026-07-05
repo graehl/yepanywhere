@@ -505,9 +505,8 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
     }
   }
 
-  private sendDeviceMessage(msg: RemoteClientMessage): void {
-    const connection = this.connection;
-    if (!connection) throw this.createNotReadyError();
+  private async sendDeviceMessage(msg: RemoteClientMessage): Promise<void> {
+    const connection = await this.waitForConnection();
     if (!connection.sendMessage) {
       throw new SourceTransportUnsupportedError({
         kind: this.kind,

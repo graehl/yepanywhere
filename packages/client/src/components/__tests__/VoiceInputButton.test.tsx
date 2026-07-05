@@ -5,13 +5,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UseSpeechRecognitionOptions } from "../../hooks/useSpeechRecognition";
 import { VoiceInputButton } from "../VoiceInputButton";
 
-const { connection, observedSpeechOptions, openSpeechSocket, speechState } =
+const {
+  observedSpeechOptions,
+  openSpeechSocket,
+  sourceTransport,
+  speechState,
+} =
   vi.hoisted(() => {
     const openSpeechSocket = vi.fn();
     return {
-      connection: { openSpeechSocket },
       observedSpeechOptions: [] as UseSpeechRecognitionOptions[],
       openSpeechSocket,
+      sourceTransport: {
+        capabilities: {
+          sameOriginUrls: false,
+          speech: { open: openSpeechSocket },
+        },
+      },
       speechState: {
         isListening: false,
         status: "idle" as
@@ -27,8 +37,10 @@ const { connection, observedSpeechOptions, openSpeechSocket, speechState } =
     };
   });
 
-vi.mock("../../hooks/useConnection", () => ({
-  useConnection: () => connection,
+vi.mock("../../contexts/SourceRuntimeContext", () => ({
+  useCurrentSourceRuntime: () => ({
+    transport: sourceTransport,
+  }),
 }));
 
 vi.mock("../../hooks/useModelSettings", () => ({

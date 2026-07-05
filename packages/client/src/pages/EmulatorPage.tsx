@@ -176,6 +176,17 @@ function DeviceList({
   );
 }
 
+function firstStreamableDevice(devices: DeviceInfo[]): DeviceInfo | undefined {
+  for (const type of DEVICE_TYPE_ORDER) {
+    const device = devices.find(
+      (candidate) =>
+        candidate.type === type && hasAction(candidate, "stream"),
+    );
+    if (device) return device;
+  }
+  return devices.find((device) => hasAction(device, "stream"));
+}
+
 function StreamView({
   device,
   onBack,
@@ -466,12 +477,12 @@ export function EmulatorPage() {
     useEmulators({ enabled: !needsDownload });
   const [activeDevice, setActiveDevice] = useState<DeviceInfo | null>(null);
 
-  // ?auto — auto-connect to the first streamable running device.
+  // ?auto — auto-connect to the first streamable running device in UI order.
   useEffect(() => {
     if (activeDevice || loading || needsDownload) return;
     const params = new URLSearchParams(window.location.search);
     if (!params.has("auto")) return;
-    const streamable = emulators.find((d) => hasAction(d, "stream"));
+    const streamable = firstStreamableDevice(emulators);
     if (streamable) setActiveDevice(streamable);
   }, [emulators, loading, activeDevice, needsDownload]);
 

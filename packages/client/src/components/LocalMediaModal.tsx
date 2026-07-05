@@ -6,14 +6,17 @@ import {
 } from "@yep-anywhere/shared";
 import { type MouseEvent, type RefObject, useEffect, useState } from "react";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
 import { useI18n } from "../i18n";
-import { getGlobalConnection, isRemoteMode } from "../lib/connection";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
+import { toSourceTransportApiPath } from "../lib/sourceTransportPaths";
 import {
   getPathBasename,
   getProjectRelativePath,
   makeDisplayPath,
 } from "../lib/text";
+import type { SourceTransport } from "../lib/transport";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -125,7 +128,10 @@ function localMediaApiPath(path: string): string {
   return `/api/local-image?path=${encodeURIComponent(path)}`;
 }
 
-function localResourceApiPath(resource: LocalResourceRef): string {
+function localResourceApiPath(
+  resource: LocalResourceRef,
+  sameOriginUrls: boolean,
+): string {
   if (resource.kind === "project-raw-file") {
     const params = new URLSearchParams({ path: resource.path });
     if (resource.download) {
@@ -137,7 +143,7 @@ function localResourceApiPath(resource: LocalResourceRef): string {
   }
 
   const params = new URLSearchParams({ path: resource.path });
-  if (resource.renderMarkdown && !isRemoteMode()) {
+  if (resource.renderMarkdown && sameOriginUrls) {
     params.set("render", "1");
   }
   if (resource.download) {
@@ -206,20 +212,11 @@ async function toPngBlob(blob: Blob): Promise<Blob> {
   }
 }
 
-export async function fetchMediaBlob(apiPath: string): Promise<Blob> {
-  if (isRemoteMode()) {
-    const connection = getGlobalConnection();
-    if (!connection) {
-      throw new Error("No connection available");
-    }
-    return connection.fetchBlob(apiPath);
-  }
-
-  const response = await fetch(apiPath, { credentials: "include" });
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
-  }
-  return response.blob();
+export async function fetchMediaBlob(
+  apiPath: string,
+  transport = getSourceRuntimeRegistry().getCurrentSourceRuntime().transport,
+): Promise<Blob> {
+  return transport.fetchBlob(toSourceTransportApiPath(apiPath));
 }
 
 function buildMediaApiPath(
@@ -233,6 +230,7 @@ async function fetchMediaBlobWithSource(
   path: string,
   mediaSource: LocalMediaSource | undefined,
   purpose: "inline" | "modal",
+  transport: SourceTransport,
 ): Promise<Blob> {
   const apiPath = buildMediaApiPath(path, mediaSource);
   if (!apiPath) {
@@ -240,43 +238,14 @@ async function fetchMediaBlobWithSource(
   }
   return mediaSource?.fetchBlob
     ? mediaSource.fetchBlob(path, apiPath, purpose)
-    : fetchMediaBlob(apiPath);
+    : fetchMediaBlob(apiPath, transport);
 }
 
-async function formatLocalFileFetchError(response: Response): Promise<string> {
-  let detail = "";
-  try {
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.toLowerCase().includes("application/json")) {
-      const body = (await response.json()) as { error?: unknown };
-      if (typeof body.error === "string" && body.error.trim()) {
-        detail = body.error.trim();
-      }
-    } else {
-      detail = (await response.text()).trim();
-    }
-  } catch {
-    detail = "";
-  }
-
-  const status = `${response.status} ${response.statusText}`.trim();
-  return detail ? `API error: ${status}: ${detail}` : `API error: ${status}`;
-}
-
-async function fetchLocalResourceBlob(apiPath: string): Promise<Blob> {
-  if (isRemoteMode()) {
-    const connection = getGlobalConnection();
-    if (!connection) {
-      throw new Error("No connection available");
-    }
-    return connection.fetchBlob(apiPath);
-  }
-
-  const response = await fetch(apiPath, { credentials: "include" });
-  if (!response.ok) {
-    throw new Error(await formatLocalFileFetchError(response));
-  }
-  return response.blob();
+async function fetchLocalResourceBlob(
+  apiPath: string,
+  transport: SourceTransport,
+): Promise<Blob> {
+  return transport.fetchBlob(toSourceTransportApiPath(apiPath));
 }
 
 function readBlobText(blob: Blob): Promise<string> {
@@ -388,6 +357,7 @@ export function LocalMediaModal({
   onClose,
 }: LocalMediaModalProps) {
   const { t } = useI18n();
+  const transport = useCurrentSourceRuntime().transport;
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -401,7 +371,7 @@ export function LocalMediaModal({
     setError(null);
     setUrl(null);
 
-    void fetchMediaBlobWithSource(path, mediaSource, "modal")
+    void fetchMediaBlobWithSource(path, mediaSource, "modal", transport)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -420,7 +390,7 @@ export function LocalMediaModal({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [mediaSource, path]);
+  }, [mediaSource, path, transport]);
 
   return (
     <Modal title={fileName} onClose={onClose}>
@@ -450,7 +420,9 @@ export function LocalMediaModal({
 
 export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
   const sessionMetadata = useOptionalSessionMetadata();
-  const apiPath = localResourceApiPath(resource);
+  const transport = useCurrentSourceRuntime().transport;
+  const sameOriginUrls = transport.capabilities.sameOriginUrls;
+  const apiPath = localResourceApiPath(resource, sameOriginUrls);
   const fileName = getFileName(resource.path);
   const locationSuffix = `${resource.lineNumber !== undefined ? `:${resource.lineNumber}` : ""}${
     resource.columnNumber !== undefined ? `:${resource.columnNumber}` : ""
@@ -468,7 +440,7 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
     let objectUrl: string | null = null;
     setState({ status: "loading" });
 
-    fetchLocalResourceBlob(apiPath)
+    fetchLocalResourceBlob(apiPath, transport)
       .then(async (blob) => {
         if (cancelled) return;
         const contentType = blob.type || "application/octet-stream";
@@ -477,9 +449,9 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
           const html = await readBlobText(blob);
           if (!cancelled) {
             setState(
-              isRemoteMode()
-                ? { status: "text", contentType, text: html }
-                : { status: "html", html },
+              sameOriginUrls
+                ? { status: "html", html }
+                : { status: "text", contentType, text: html },
             );
           }
           return;
@@ -512,7 +484,7 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [apiPath]);
+  }, [apiPath, sameOriginUrls, transport]);
 
   return (
     <Modal title={fileName} onClose={onClose}>
@@ -601,9 +573,12 @@ function isLocalFileResource(resource: LocalResourceRef): boolean {
   return resource.kind === "local-file" || resource.kind === "project-raw-file";
 }
 
-function shouldPreserveDirectBrowserGesture(e: MouseEvent): boolean {
+function shouldPreserveDirectBrowserGesture(
+  e: MouseEvent,
+  sameOriginUrls: boolean,
+): boolean {
   return (
-    !isRemoteMode() &&
+    sameOriginUrls &&
     (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
   );
 }
@@ -631,6 +606,8 @@ export function useLocalResourceClick(
   options: UseLocalResourceClickOptions = {},
 ): UseLocalResourceClickResult {
   const sessionMetadata = useOptionalSessionMetadata();
+  const sameOriginUrls =
+    useCurrentSourceRuntime().transport.capabilities.sameOriginUrls;
   const projectContext = options.projectContext ?? sessionMetadata;
   const [modal, setModal] = useState<{
     path: string;
@@ -702,7 +679,7 @@ export function useLocalResourceClick(
       projectContext,
     );
     if (projectFileTarget) {
-      if (shouldPreserveDirectBrowserGesture(e)) {
+      if (shouldPreserveDirectBrowserGesture(e, sameOriginUrls)) {
         return;
       }
       e.preventDefault();
@@ -726,7 +703,7 @@ export function useLocalResourceClick(
     }
 
     if (isLocalFileResource(resource)) {
-      if (shouldPreserveDirectBrowserGesture(e)) {
+      if (shouldPreserveDirectBrowserGesture(e, sameOriginUrls)) {
         return;
       }
       e.preventDefault();
@@ -765,6 +742,7 @@ export function useLocalMediaInlinePreviews(
   mediaSource?: LocalMediaSource,
 ) {
   const { inlineMediaExpandedByDefault } = useInlineMedia();
+  const transport = useCurrentSourceRuntime().transport;
 
   useEffect(() => {
     void refreshKey;
@@ -854,7 +832,7 @@ export function useLocalMediaInlinePreviews(
         loading.textContent = "Loading...";
         element.append(loading);
 
-        fetchMediaBlobWithSource(path, mediaSource, "inline")
+        fetchMediaBlobWithSource(path, mediaSource, "inline", transport)
           .then((blob) => {
             const objectUrl = URL.createObjectURL(blob);
             objectUrls.add(objectUrl);
@@ -884,5 +862,11 @@ export function useLocalMediaInlinePreviews(
         URL.revokeObjectURL(url);
       }
     };
-  }, [inlineMediaExpandedByDefault, rootRef, refreshKey, mediaSource]);
+  }, [
+    inlineMediaExpandedByDefault,
+    rootRef,
+    refreshKey,
+    mediaSource,
+    transport,
+  ]);
 }

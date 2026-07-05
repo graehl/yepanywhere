@@ -36,7 +36,6 @@ import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
-import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { createNewSessionDraftKey } from "../hooks/useDrafts";
 import {
@@ -445,7 +444,9 @@ export function NewSessionForm({
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const clientSummarySourceKey = useClientSummarySourceKey();
-  const sourceSummary = useCurrentSourceRuntime().summary;
+  const sourceRuntime = useCurrentSourceRuntime();
+  const sourceSummary = sourceRuntime.summary;
+  const sourceTransport = sourceRuntime.transport;
   const newSessionDraftKey = useMemo(
     () => createNewSessionDraftKey(clientSummarySourceKey),
     [clientSummarySourceKey],
@@ -539,9 +540,6 @@ export function NewSessionForm({
     speechSmartTurnSettings,
     setSpeechSmartTurnSettings,
   } = useModelSettings();
-
-  // Connection for uploads (uses WebSocket when enabled)
-  const connection = useConnection();
 
   // Server version for voiceBackends advertisement
   const { version: versionInfo } = useVersion();
@@ -668,7 +666,7 @@ export function NewSessionForm({
     draftAttachmentHydrationRef.current = hydrationId;
 
     try {
-      const refs = await validateDraftAttachmentRefs(connection, state);
+      const refs = await validateDraftAttachmentRefs(sourceTransport, state);
       if (draftAttachmentHydrationRef.current !== hydrationId) {
         return;
       }
@@ -720,7 +718,7 @@ export function NewSessionForm({
       showToast(t("sessionDraftAttachmentsUnavailable"), "info");
     }
   }, [
-    connection,
+    sourceTransport,
     draftControls,
     setPendingFiles,
     showToast,
@@ -783,7 +781,7 @@ export function NewSessionForm({
               )
             : { file };
           const uploadFile = preparedImage.file;
-          const stagedRef = await connection.uploadStagedAttachment(
+          const stagedRef = await sourceTransport.uploadStagedAttachment(
             uploadFile,
             {
               batchId,
@@ -824,7 +822,7 @@ export function NewSessionForm({
                   URL.revokeObjectURL(previewUrl);
                 }
                 void deleteDraftAttachmentRef(
-                  connection,
+                  sourceTransport,
                   stagedFile.batchId,
                   stagedFile.id,
                 ).catch((err) => {
@@ -874,7 +872,7 @@ export function NewSessionForm({
     },
     [
       attachmentQuality,
-      connection,
+      sourceTransport,
       ensureDraftAttachmentBatchId,
       setPendingFiles,
       showToast,
@@ -1590,14 +1588,16 @@ export function NewSessionForm({
     });
 
     if (removed && isPendingStagedFile(removed)) {
-      deleteDraftAttachmentRef(connection, removed.batchId, removed.id).catch(
-        (err) => {
-          console.warn(
-            "[NewSessionForm] Failed to delete staged attachment:",
-            err,
-          );
-        },
-      );
+      deleteDraftAttachmentRef(
+        sourceTransport,
+        removed.batchId,
+        removed.id,
+      ).catch((err) => {
+        console.warn(
+          "[NewSessionForm] Failed to delete staged attachment:",
+          err,
+        );
+      });
     }
   };
 
@@ -1698,7 +1698,7 @@ export function NewSessionForm({
               )
             : { file: pendingFile.file };
           const uploadFile = preparedImage.file;
-          const uploadedFile = await connection.upload(
+          const uploadedFile = await sourceTransport.upload(
             activeProjectId,
             sessionId,
             uploadFile,
@@ -1748,7 +1748,7 @@ export function NewSessionForm({
       }
 
       const materializedFiles = await materializeDraftAttachmentsForSession(
-        connection,
+        sourceTransport,
         activeProjectId,
         sessionId,
         {
@@ -1759,7 +1759,7 @@ export function NewSessionForm({
       );
       return [...uploadedFiles, ...materializedFiles];
     },
-    [attachmentQuality, connection, showToast, t],
+    [attachmentQuality, sourceTransport, showToast, t],
   );
 
   const handleStartSession = useCallback(

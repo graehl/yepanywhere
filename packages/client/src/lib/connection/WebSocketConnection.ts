@@ -117,7 +117,7 @@ export class WebSocketConnection implements Connection {
     return base;
   }
 
-  private async ensureConnected(): Promise<void> {
+  async ensureConnected(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }

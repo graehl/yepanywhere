@@ -93,7 +93,7 @@ export interface SourceTransportStatus {
 }
 
 export interface DeviceSignalingChannel {
-  send(msg: RemoteClientMessage): void;
+  send(msg: RemoteClientMessage): void | Promise<void>;
   onMessage(handler: (msg: DeviceServerMessage) => void): () => void;
 }
 

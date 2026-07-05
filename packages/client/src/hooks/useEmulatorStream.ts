@@ -2,10 +2,11 @@ import type {
   DeviceServerMessage,
   DeviceStreamProfileEvent,
   DeviceType,
+  RemoteClientMessage,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getGlobalConnection } from "../lib/connection";
-import { getWebSocketConnection } from "../lib/connection/WebSocketConnection";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import type { DeviceSignalingChannel } from "../lib/transport";
 import { generateUUID } from "../lib/uuid";
 import { QUALITY_TO_CRF, getEmulatorSettings } from "./useEmulatorSettings";
 
@@ -67,6 +68,17 @@ function publishProfileTelemetry(event: DeviceStreamProfileEvent) {
   );
 }
 
+function sendDeviceMessage(
+  channel: DeviceSignalingChannel,
+  msg: RemoteClientMessage,
+): Promise<void> {
+  try {
+    return Promise.resolve(channel.send(msg));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
 /**
  * Hook that manages WebRTC peer connection and signaling for emulator streaming.
  *
@@ -79,6 +91,8 @@ function publishProfileTelemetry(event: DeviceStreamProfileEvent) {
  * 6. WebRTC P2P established (video + data channel)
  */
 export function useEmulatorStream(): UseEmulatorStreamResult {
+  const transport = useCurrentSourceRuntime().transport;
+  const deviceChannel = transport.capabilities.device;
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
   const [connectionState, setConnectionState] =
@@ -93,14 +107,13 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
+  const deviceChannelRef = useRef<DeviceSignalingChannel | undefined>(
+    deviceChannel,
+  );
 
-  const getConnection = useCallback(() => {
-    // Remote mode: use global SecureConnection
-    const global = getGlobalConnection();
-    if (global) return global;
-    // Local mode: use WebSocket connection
-    return getWebSocketConnection();
-  }, []);
+  useEffect(() => {
+    deviceChannelRef.current = deviceChannel;
+  }, [deviceChannel]);
 
   const disconnect = useCallback(() => {
     const sid = sessionIdRef.current;
@@ -108,14 +121,14 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
 
     // Send stop message
     if (sid) {
-      try {
-        const conn = getConnection();
-        conn.sendMessage?.({
+      const channel = deviceChannelRef.current;
+      if (channel) {
+        void sendDeviceMessage(channel, {
           type: "device_stream_stop",
           sessionId: sid,
+        }).catch(() => {
+          // Best effort; the source may already be detached.
         });
-      } catch {
-        // Connection may already be closed
       }
     }
 
@@ -142,12 +155,19 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
     setError(null);
     setLatestProfileEvent(null);
     setProfileEventHistory([]);
-  }, [getConnection]);
+  }, []);
 
   const connect = useCallback(
     (device: { id: string; type?: DeviceType }) => {
       // Clean up any existing connection
       disconnect();
+
+      const channel = deviceChannel;
+      if (!channel) {
+        setConnectionState("failed");
+        setError("Device streaming is not available for this source");
+        return;
+      }
 
       const sessionId = generateUUID();
       sessionIdRef.current = sessionId;
@@ -160,8 +180,6 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       setLatestProfileEvent(null);
       setProfileEventHistory([]);
       resetProfileTelemetrySink();
-
-      const conn = getConnection();
 
       // Create RTCPeerConnection
       const pc = new RTCPeerConnection({
@@ -267,7 +285,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
             `${LOG_PREFIX} [${sid}] ICE gathering complete (null candidate)`,
           );
         }
-        conn.sendMessage?.({
+        void sendDeviceMessage(channel, {
           type: "device_ice_candidate",
           sessionId,
           candidate: event.candidate
@@ -278,11 +296,16 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
                 usernameFragment: event.candidate.usernameFragment,
               }
             : null,
+        }).catch((err: unknown) => {
+          setConnectionState("failed");
+          setError(
+            `Connection failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         });
       };
 
       // Listen for signaling messages from server
-      const unsub = conn.onDeviceMessage?.(async (msg: DeviceServerMessage) => {
+      const unsub = channel.onMessage(async (msg: DeviceServerMessage) => {
         if (msg.sessionId !== sessionId) return;
 
         switch (msg.type) {
@@ -300,7 +323,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
               console.log(
                 `${LOG_PREFIX} [${sid}] sent SDP answer (${(answer.sdp ?? "").length} bytes)`,
               );
-              conn.sendMessage?.({
+              await sendDeviceMessage(channel, {
                 type: "device_webrtc_answer",
                 sessionId,
                 sdp: answer.sdp ?? "",
@@ -367,19 +390,15 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
           }
         }
       });
-      unsubRef.current = unsub ?? null;
+      unsubRef.current = unsub;
 
-      // Ensure WebSocket is connected before sending start message
-      const ensureConnected = (
-        conn as { ensureConnected?: () => Promise<void> }
-      ).ensureConnected?.bind(conn);
-      const sendStart = () => {
+      const sendStart = async () => {
         const { maxFps, maxWidth, quality } = getEmulatorSettings();
         const crf = QUALITY_TO_CRF[quality];
         console.log(
           `${LOG_PREFIX} [${sid}] sending device_stream_start fps=${maxFps} width=${maxWidth} quality=${quality}(crf=${crf})`,
         );
-        conn.sendMessage?.({
+        await sendDeviceMessage(channel, {
           type: "device_stream_start",
           sessionId,
           deviceId: device.id,
@@ -387,24 +406,25 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
           options: { maxFps, maxWidth, quality: crf },
         });
       };
-      if (ensureConnected) {
-        ensureConnected()
-          .then(sendStart)
-          .catch((err: unknown) => {
-            console.error(
-              `${LOG_PREFIX} [${sid}] ensureConnected failed:`,
-              err,
-            );
-            setConnectionState("failed");
-            setError(
-              `Connection failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
-      } else {
-        sendStart();
-      }
+      Promise.resolve()
+        .then(async () => {
+          if (transport.status.getSnapshot().state !== "ready") {
+            await transport.reconnect();
+          }
+          await sendStart();
+        })
+        .catch((err: unknown) => {
+          console.error(
+            `${LOG_PREFIX} [${sid}] device signaling failed:`,
+            err,
+          );
+          setConnectionState("failed");
+          setError(
+            `Connection failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     },
-    [disconnect, getConnection],
+    [deviceChannel, disconnect, transport],
   );
 
   // Cleanup on unmount
@@ -420,15 +440,14 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       }
       // Send stop if we have a session
       if (sessionIdRef.current) {
-        try {
-          const global = getGlobalConnection();
-          const conn = global ?? getWebSocketConnection();
-          conn.sendMessage?.({
+        const channel = deviceChannelRef.current;
+        if (channel) {
+          void sendDeviceMessage(channel, {
             type: "device_stream_stop",
             sessionId: sessionIdRef.current,
+          }).catch(() => {
+            // Best-effort
           });
-        } catch {
-          // Best-effort
         }
       }
     };

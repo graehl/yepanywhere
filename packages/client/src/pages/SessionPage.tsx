@@ -66,7 +66,6 @@ import {
   getAttachmentUploadLongEdgePx,
   useAttachmentUploadQuality,
 } from "../hooks/useAttachmentUploadQuality";
-import { useConnection } from "../hooks/useConnection";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
@@ -834,6 +833,7 @@ function SessionPageContent({
   const sourceRuntime = useCurrentSourceRuntime();
   const sourceApi = sourceRuntime.api;
   const sourceSummary = sourceRuntime.summary;
+  const sourceTransport = sourceRuntime.transport;
   const sessionDraftReference = useMemo(
     () => ({
       sourceKey: clientSummarySourceKey,
@@ -1171,8 +1171,6 @@ function SessionPageContent({
     lastComposerSubmissionRef.current = submission;
   }, []);
 
-  // Connection for uploads (uses WebSocket when enabled)
-  const connection = useConnection();
   const { version: versionInfo } = useVersion();
   const stagedAttachmentUploadsEnabled =
     serverSupportsProjectQueue(versionInfo);
@@ -1287,7 +1285,7 @@ function SessionPageContent({
       }
 
       const materializedFiles = await materializeDraftAttachmentsForSession(
-        connection,
+        sourceTransport,
         projectId,
         sessionId,
         {
@@ -1298,7 +1296,7 @@ function SessionPageContent({
       );
       return [...uploadedFiles, ...materializedFiles];
     },
-    [connection, projectId, sessionId],
+    [sourceTransport, projectId, sessionId],
   );
 
   const supportsManualCompact =
@@ -3835,7 +3833,7 @@ function SessionPageContent({
       draftAttachmentHydrationRef.current = hydrationId;
 
       try {
-        const refs = await validateDraftAttachmentRefs(connection, state);
+        const refs = await validateDraftAttachmentRefs(sourceTransport, state);
         if (draftAttachmentHydrationRef.current !== hydrationId) {
           return;
         }
@@ -3870,7 +3868,7 @@ function SessionPageContent({
       }
     },
     [
-      connection,
+      sourceTransport,
       mainComposerForAside,
       setComposerAttachments,
       showToast,
@@ -4238,7 +4236,7 @@ function SessionPageContent({
             previewUrl = uploadFile.type.startsWith("image/")
               ? URL.createObjectURL(uploadFile)
               : undefined;
-            const stagedRef = await connection.uploadStagedAttachment(
+            const stagedRef = await sourceTransport.uploadStagedAttachment(
               uploadFile,
               {
                 batchId: draftBatchId,
@@ -4274,7 +4272,7 @@ function SessionPageContent({
             } satisfies ComposerStagedAttachment;
           }
 
-          return connection.upload(projectId, sessionId, uploadFile, {
+          return sourceTransport.upload(projectId, sessionId, uploadFile, {
             onProgress: (bytesUploaded) => {
               setUploadProgress((prev) =>
                 prev.map((p) =>
@@ -4348,7 +4346,7 @@ function SessionPageContent({
     },
     [
       attachmentQuality,
-      connection,
+      sourceTransport,
       ensureDraftAttachmentBatchId,
       projectId,
       sessionId,
@@ -4370,17 +4368,19 @@ function SessionPageContent({
       );
 
       if (removed && isComposerStagedAttachment(removed)) {
-        deleteDraftAttachmentRef(connection, removed.batchId, removed.id).catch(
-          (err) => {
-            console.warn(
-              "[SessionPage] Failed to delete staged attachment:",
-              err,
-            );
-          },
-        );
+        deleteDraftAttachmentRef(
+          sourceTransport,
+          removed.batchId,
+          removed.id,
+        ).catch((err) => {
+          console.warn(
+            "[SessionPage] Failed to delete staged attachment:",
+            err,
+          );
+        });
       }
     },
-    [connection, setComposerAttachments],
+    [sourceTransport, setComposerAttachments],
   );
 
   // Check if pending request is an AskUserQuestion

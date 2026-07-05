@@ -67,6 +67,12 @@ Global guardrails; per-slice tripwires are listed with each slice.
   pass against the facade before T6 starts. Consumer slices (T6–T8) may not
   weaken or skip parity rows; a row change requires a decision note in the
   topic doc first.
+- **E2E gate.** Every slice landing must verify the relevant E2E surface is
+  green, defaulting to `pnpm test:e2e` when practical. A focused E2E command is
+  acceptable only when the landing notes say why it covers the touched
+  behavior. If the slice exposes new or changed transport, reconnect, resume,
+  direct-vs-secure routing, or relay behavior that current E2E specs do not
+  exercise, add or extend an E2E test in the same slice before landing.
 - **Dual-write bridge.** From T3 until T9, connection flows both
   `setGlobalConnection(conn)` and `attach(conn)`. Never remove a global in
   the same slice that migrates its last consumer; deletion is T9's job so
@@ -78,9 +84,9 @@ Global guardrails; per-slice tripwires are listed with each slice.
   `transport.kind`. Reviewers should grep new diffs for `.kind`.
 - **Speech socket isolation.** The nested speech-socket connection must never
   touch any `ConnectionManager` (050 lesson).
-- **Verification per slice:** `pnpm lint`, `pnpm typecheck`, `pnpm test`;
-  `pnpm test:e2e` for T6–T8; update slice status in this document as part of
-  the landing commit.
+- **Verification per slice:** `pnpm lint`, `pnpm typecheck`, `pnpm test`, and
+  the E2E gate above; update slice status in this document as part of the
+  landing commit.
 
 ## Slice T1: Contract Types And Fakes
 

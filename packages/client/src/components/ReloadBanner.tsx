@@ -122,6 +122,36 @@ export function ReloadBanner({
             count: interruptibleSessionCount,
             suffix: interruptibleSessionCount !== 1 ? "s " : " ",
           });
+  const compactBlockerStatus =
+    activeBlockers > 0 && queuedBlockers > 0
+      ? t("reloadBannerStatusActiveAndQueuedCompact", {
+          activeCount: activeBlockers,
+          queuedCount: queuedBlockers,
+        })
+      : activeBlockers > 0
+        ? t("reloadBannerStatusActiveCompact", { count: activeBlockers })
+        : queuedBlockers > 0
+          ? t("reloadBannerStatusQueuedCompact", { count: queuedBlockers })
+          : null;
+  const compactImmediateRestartWarning =
+    interruptibleSessionCount > 0 && queuedSessionMessageCount > 0
+      ? t("reloadBannerStatusActiveAndQueuedCompact", {
+          activeCount: interruptibleSessionCount,
+          queuedCount: queuedSessionMessageCount,
+        })
+      : queuedSessionMessageCount > 0
+        ? t("reloadBannerStatusQueuedCompact", {
+            count: queuedSessionMessageCount,
+          })
+        : t("reloadBannerStatusActiveCompact", {
+            count: interruptibleSessionCount,
+          });
+  const compactWarningStatus =
+    safeRestartState?.status === "restarting"
+      ? t("reloadBannerSafeRestartRestartingCompact")
+      : hasScheduledRestart
+        ? (compactBlockerStatus ?? t("reloadBannerSafeRestartReadyCompact"))
+        : compactImmediateRestartWarning;
   const primaryReloadLabel = showWarning
     ? t("reloadBannerReloadAnyway")
     : t("reloadBannerReloadTarget", { target: label });
@@ -130,6 +160,9 @@ export function ReloadBanner({
   const displayedPrimaryReloadLabel = isConfirmingImmediateReload
     ? t("reloadBannerConfirmImmediateReload")
     : primaryReloadLabel;
+  const compactPrimaryReloadLabel = isConfirmingImmediateReload
+    ? t("reloadBannerConfirmImmediateReloadCompact")
+    : t("reloadBannerReloadTargetCompact");
 
   useEffect(() => {
     if (confirmingImmediateReloadLabel === null) return;
@@ -171,14 +204,24 @@ export function ReloadBanner({
       className={`reload-banner ${showWarning ? "reload-banner-warning" : ""}`}
     >
       <span className="reload-banner-message">
-        {t("reloadBannerCodeChanged", { target: label })}
+        <span className="reload-banner-label-full">
+          {t("reloadBannerCodeChanged", { target: label })}
+        </span>
+        <span className="reload-banner-label-compact">
+          {t("reloadBannerCodeChangedCompact", { target: label })}
+        </span>
       </span>
       {showWarning && (
         <span className="reload-banner-warning-text">
-          {safeRestartStatus ?? immediateRestartWarning}
-          {safeRestartPreservedStatus
-            ? ` ${safeRestartPreservedStatus}`
-            : null}
+          <span className="reload-banner-status-full">
+            {safeRestartStatus ?? immediateRestartWarning}
+            {safeRestartPreservedStatus
+              ? ` ${safeRestartPreservedStatus}`
+              : null}
+          </span>
+          <span className="reload-banner-status-compact">
+            {compactWarningStatus}
+          </span>
         </span>
       )}
       <button
@@ -187,8 +230,15 @@ export function ReloadBanner({
           showWarning ? "reload-banner-button-danger" : ""
         }`}
         onClick={handleImmediateReloadClick}
+        aria-label={displayedPrimaryReloadLabel}
+        title={displayedPrimaryReloadLabel}
       >
-        {displayedPrimaryReloadLabel}
+        <span className="reload-banner-label-full">
+          {displayedPrimaryReloadLabel}
+        </span>
+        <span className="reload-banner-label-compact">
+          {compactPrimaryReloadLabel}
+        </span>
       </button>
       {canScheduleSafeRestart && (
         <button
@@ -196,8 +246,15 @@ export function ReloadBanner({
           className="reload-banner-button reload-banner-button-safe"
           onClick={handleRestartWhenSafeClick}
           disabled={safeRestartMutating}
+          aria-label={t("reloadBannerRestartWhenSafe")}
+          title={t("reloadBannerRestartWhenSafe")}
         >
-          {t("reloadBannerRestartWhenSafe")}
+          <span className="reload-banner-label-full">
+            {t("reloadBannerRestartWhenSafe")}
+          </span>
+          <span className="reload-banner-label-compact">
+            {t("reloadBannerRestartWhenSafeCompact")}
+          </span>
         </button>
       )}
       {hasScheduledRestart && onCancelSafeRestart && (
@@ -206,16 +263,38 @@ export function ReloadBanner({
           className="reload-banner-button"
           onClick={handleCancelSafeRestartClick}
           disabled={safeRestartMutating}
+          aria-label={t("reloadBannerCancelSafeRestart")}
+          title={t("reloadBannerCancelSafeRestart")}
         >
-          {t("reloadBannerCancelSafeRestart")}
+          <span className="reload-banner-label-full">
+            {t("reloadBannerCancelSafeRestart")}
+          </span>
+          <span className="reload-banner-label-compact">
+            {t("reloadBannerCancelSafeRestartCompact")}
+          </span>
         </button>
       )}
       <button
         type="button"
-        className="reload-banner-button"
+        className="reload-banner-button reload-banner-dismiss-button"
         onClick={handleDismissClick}
+        aria-label={t("reloadBannerDismiss")}
+        title={t("reloadBannerDismiss")}
       >
-        {t("reloadBannerDismiss")}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </svg>
       </button>
       <span className="reload-banner-shortcut">Ctrl+Shift+R</span>
     </div>

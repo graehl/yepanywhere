@@ -18,7 +18,10 @@ import { useActivityBusConnection } from "./hooks/useActivityBusConnection";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useOnboarding } from "./hooks/useOnboarding";
-import { useReloadNotifications } from "./hooks/useReloadNotifications";
+import {
+  getVisibleReloadBanners,
+  useReloadNotifications,
+} from "./hooks/useReloadNotifications";
 import { useSeedCompactThreshold } from "./hooks/useSeedCompactThreshold";
 import { I18nProvider } from "./i18n";
 import { initClientLogCollection } from "./lib/diagnostics";
@@ -64,13 +67,17 @@ function AppContent({ children }: Props) {
     safeRestartState,
     safeRestartMutating,
   } = useReloadNotifications();
+  const visibleReloads = getVisibleReloadBanners(
+    !!isManualReloadMode,
+    pendingReloads,
+  );
 
   return (
     <>
       <ConnectionBar />
       <CacheMissBillingToasts />
       {!isSessionDetailRoute && <ClientLogRecordingBadge />}
-      {isManualReloadMode && pendingReloads.backend && (
+      {visibleReloads.backend && (
         <ReloadBanner
           target="backend"
           onReload={reloadBackend}
@@ -84,7 +91,7 @@ function AppContent({ children }: Props) {
           safeRestartMutating={safeRestartMutating}
         />
       )}
-      {isManualReloadMode && pendingReloads.frontend && (
+      {visibleReloads.frontend && (
         <ReloadBanner
           target="frontend"
           onReload={reloadFrontend}

@@ -36,7 +36,10 @@ import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
-import { useReloadNotifications } from "./hooks/useReloadNotifications";
+import {
+  getVisibleReloadBanners,
+  useReloadNotifications,
+} from "./hooks/useReloadNotifications";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { useVersion } from "./hooks/useVersion";
@@ -73,6 +76,10 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
     safeRestartMutating,
   } = useReloadNotifications();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
+  const visibleReloads = getVisibleReloadBanners(
+    !!isManualReloadMode,
+    pendingReloads,
+  );
 
   return (
     <>
@@ -80,7 +87,7 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
         versionInfo={versionInfo}
         relayUsername={currentRelayUsername}
       />
-      {isManualReloadMode && pendingReloads.backend && (
+      {visibleReloads.backend && (
         <ReloadBanner
           target="backend"
           onReload={reloadBackend}
@@ -94,7 +101,7 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
           safeRestartMutating={safeRestartMutating}
         />
       )}
-      {isManualReloadMode && pendingReloads.frontend && (
+      {visibleReloads.frontend && (
         <ReloadBanner
           target="frontend"
           onReload={reloadFrontend}

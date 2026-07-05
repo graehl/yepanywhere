@@ -9430,18 +9430,30 @@ a.linkified-url:hover {
   gap: var(--space-3);
   font-size: var(--font-size-sm);
   font-weight: 500;
-}
-
-/* Offset for second banner when both are shown */
-.reload-banner + .reload-banner {
-  top: 40px;
+  box-sizing: border-box;
+  min-height: 40px;
 }
 
 .reload-banner-message {
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.reload-banner-warning-text {
+  min-width: 0;
+  font-weight: 600;
+}
+
+.reload-banner-label-compact,
+.reload-banner-status-compact {
+  display: none;
 }
 
 .reload-banner-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   padding: var(--space-1) var(--space-2);
   border: 1px solid rgba(0, 0, 0, 0.3);
   border-radius: var(--radius-sm);
@@ -9449,6 +9461,7 @@ a.linkified-url:hover {
   color: #000;
   font-size: var(--font-size-sm);
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -9490,10 +9503,6 @@ a.linkified-url:hover {
   color: var(--error-color);
 }
 
-.reload-banner-warning-text {
-  font-weight: 600;
-}
-
 .reload-banner-button-safe {
   background: rgba(255, 255, 255, 0.32);
 }
@@ -9507,12 +9516,69 @@ a.linkified-url:hover {
   background: #222;
 }
 
+.reload-banner-dismiss-button {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
 /* Mobile adjustments */
 @media (max-width: 600px) {
   .reload-banner {
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: var(--space-2);
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+    height: 40px;
+    max-height: 40px;
+    padding: var(--space-1) var(--space-2);
+    overflow: hidden;
+  }
+
+  .reload-banner-message,
+  .reload-banner-warning-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reload-banner-message {
+    flex: 1 1 auto;
+  }
+
+  .reload-banner-warning .reload-banner-message {
+    flex: 0 1 auto;
+    max-width: 44%;
+  }
+
+  .reload-banner-warning-text {
+    flex: 1 1 auto;
+  }
+
+  .reload-banner-label-full,
+  .reload-banner-status-full {
+    display: none;
+  }
+
+  .reload-banner-label-compact,
+  .reload-banner-status-compact {
+    display: inline;
+  }
+
+  .reload-banner-button {
+    min-width: 54px;
+    min-height: 30px;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .reload-banner-button-primary {
+    min-width: 64px;
+  }
+
+  .reload-banner-dismiss-button {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
   }
 
   .reload-banner-shortcut {

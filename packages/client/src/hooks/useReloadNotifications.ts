@@ -34,6 +34,19 @@ const IDLE_SAFE_RESTART_STATE: SafeRestartState = {
   updatedAt: "",
 };
 
+export function getVisibleReloadBanners(
+  isManualReloadMode: boolean,
+  pendingReloads: PendingReloads,
+): PendingReloads {
+  if (!isManualReloadMode) {
+    return { backend: false, frontend: false };
+  }
+  if (pendingReloads.backend) {
+    return { backend: true, frontend: false };
+  }
+  return { backend: false, frontend: pendingReloads.frontend };
+}
+
 function toReloadUrl(currentUrl: string | URL): URL {
   return new URL(
     typeof currentUrl === "string" ? currentUrl : currentUrl.toString(),
@@ -69,6 +82,10 @@ export function useReloadNotifications() {
     backend: false,
     frontend: false,
   });
+  const [dismissedReloads, setDismissedReloads] = useState<PendingReloads>({
+    backend: false,
+    frontend: false,
+  });
   const [devStatus, setDevStatus] = useState<DevStatus | null>(null);
   const [connected, setConnected] = useState(activityBus.connected);
   const [safeRestartState, setSafeRestartState] =
@@ -84,6 +101,16 @@ export function useReloadNotifications() {
     timestamp: "",
   });
 
+  const showReloadIfNotDismissed = useCallback(
+    (target: "backend" | "frontend") => {
+      setPendingReloads((prev) => {
+        if (dismissedReloads[target]) return prev;
+        return { ...prev, [target]: true };
+      });
+    },
+    [dismissedReloads],
+  );
+
   // Sync dev status and worker activity from server
   const syncFromServer = useCallback(() => {
     if (window.location.pathname === "/login") {
@@ -95,6 +122,8 @@ export function useReloadNotifications() {
       .then((data) => {
         if (data && !data.backendDirty) {
           setPendingReloads((prev) => ({ ...prev, backend: false }));
+        } else if (data?.backendDirty) {
+          showReloadIfNotDismissed("backend");
         }
       })
       .catch(() => {
@@ -115,13 +144,13 @@ export function useReloadNotifications() {
         if (!data) return;
         setSafeRestartState(data);
         if (data.status !== "idle") {
-          setPendingReloads((prev) => ({ ...prev, backend: true }));
+          showReloadIfNotDismissed("backend");
         }
       })
       .catch(() => {
         // Ignore errors
       });
-  }, []);
+  }, [showReloadIfNotDismissed]);
 
   // Check if server is in dev mode and get persisted dirty state
   useEffect(() => {
@@ -133,13 +162,13 @@ export function useReloadNotifications() {
       .then((data) => {
         setDevStatus(data);
         if (data.backendDirty) {
-          setPendingReloads((prev) => ({ ...prev, backend: true }));
+          showReloadIfNotDismissed("backend");
         }
       })
       .catch(() => {
         setDevStatus(null);
       });
-  }, []);
+  }, [showReloadIfNotDismissed]);
 
   // Clean the cache-busting reload param back out after the fresh document loads
   // so copied/shared URLs do not retain reload-only query state.
@@ -157,10 +186,7 @@ export function useReloadNotifications() {
 
     unsubscribers.push(
       activityBus.on("source-change", (data: SourceChangeEvent) => {
-        setPendingReloads((prev) => ({
-          ...prev,
-          [data.target]: true,
-        }));
+        showReloadIfNotDismissed(data.target);
       }),
     );
 
@@ -181,7 +207,7 @@ export function useReloadNotifications() {
       activityBus.on("safe-restart-changed", (data) => {
         setSafeRestartState(data.state);
         if (data.state.status !== "idle") {
-          setPendingReloads((prev) => ({ ...prev, backend: true }));
+          showReloadIfNotDismissed("backend");
         }
       }),
     );
@@ -206,7 +232,7 @@ export function useReloadNotifications() {
         unsub();
       }
     };
-  }, [syncFromServer]);
+  }, [showReloadIfNotDismissed, syncFromServer]);
 
   // Sync connected state with bus
   useEffect(() => {
@@ -281,6 +307,10 @@ export function useReloadNotifications() {
 
   // Dismiss a pending reload notification
   const dismiss = useCallback((target: "backend" | "frontend") => {
+    setDismissedReloads((prev) => ({
+      ...prev,
+      [target]: true,
+    }));
     setPendingReloads((prev) => ({
       ...prev,
       [target]: false,
@@ -289,6 +319,7 @@ export function useReloadNotifications() {
 
   // Dismiss all
   const dismissAll = useCallback(() => {
+    setDismissedReloads({ backend: true, frontend: true });
     setPendingReloads({ backend: false, frontend: false });
   }, []);
 

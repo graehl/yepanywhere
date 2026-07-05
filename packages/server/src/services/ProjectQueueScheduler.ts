@@ -155,7 +155,9 @@ export class ProjectQueueScheduler {
   private readonly getConfiguredIdleGraceMs?: () => number;
   private readonly timers = new Map<UrlProjectId, ProjectQueueTimerState>();
   private readonly inFlight = new Set<UrlProjectId>();
+  private readonly inFlightRuns = new Set<Promise<RunProjectResult>>();
   private readonly unsubscribe: () => void;
+  private disposed = false;
 
   constructor(private readonly options: ProjectQueueSchedulerOptions) {
     this.projectQueueService = options.projectQueueService;
@@ -168,12 +170,14 @@ export class ProjectQueueScheduler {
     this.scheduleAllDispatchableProjects();
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
+    this.disposed = true;
     this.unsubscribe();
     for (const state of this.timers.values()) {
       clearTimeout(state.timer);
     }
     this.timers.clear();
+    await Promise.allSettled(this.inFlightRuns);
     this.inFlight.clear();
   }
 
@@ -275,6 +279,9 @@ export class ProjectQueueScheduler {
   }
 
   private readonly handleEvent = (event: BusEvent): void => {
+    if (this.disposed) {
+      return;
+    }
     switch (event.type) {
       case "project-queue-changed":
         if (
@@ -335,6 +342,9 @@ export class ProjectQueueScheduler {
     delayMs = this.getIdleGraceMs(),
     reason: ProjectQueueTimerReason = "quiet",
   ): void {
+    if (this.disposed) {
+      return;
+    }
     const projectIds =
       this.projectQueueService.getProjectIdsWithDispatchableItems();
     for (const projectId of projectIds) {
@@ -347,6 +357,9 @@ export class ProjectQueueScheduler {
     delayMs = this.getIdleGraceMs(),
     reason: ProjectQueueTimerReason = "quiet",
   ): void {
+    if (this.disposed) {
+      return;
+    }
     if (!this.projectQueueService.hasDispatchableItem(projectId)) {
       this.clearProjectTimer(projectId);
       return;
@@ -359,6 +372,9 @@ export class ProjectQueueScheduler {
     delayMs: number,
     reason: ProjectQueueTimerReason,
   ): void {
+    if (this.disposed) {
+      return;
+    }
     if (this.inFlight.has(projectId)) return;
     this.clearProjectTimer(projectId);
     const scheduledAtMs = Date.now();
@@ -410,6 +426,19 @@ export class ProjectQueueScheduler {
   }
 
   private async runProject(
+    projectId: UrlProjectId,
+    options: PromoteNowOptions = {},
+  ): Promise<RunProjectResult> {
+    const run = this.runProjectNow(projectId, options);
+    this.inFlightRuns.add(run);
+    run.then(
+      () => this.inFlightRuns.delete(run),
+      () => this.inFlightRuns.delete(run),
+    );
+    return run;
+  }
+
+  private async runProjectNow(
     projectId: UrlProjectId,
     options: PromoteNowOptions = {},
   ): Promise<RunProjectResult> {
@@ -502,7 +531,7 @@ export class ProjectQueueScheduler {
       };
     } finally {
       this.inFlight.delete(projectId);
-      if (retryBlockedProject) {
+      if (retryBlockedProject && !this.disposed) {
         this.scheduleBlockedProjectRetry(projectId);
       }
     }

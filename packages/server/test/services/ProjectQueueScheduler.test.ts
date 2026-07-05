@@ -99,6 +99,7 @@ class FakeSupervisor implements ProjectQueueSupervisor {
   resumeError: Error | null = null;
   startError: Error | null = null;
   createError: Error | null = null;
+  resumeBlocker: Promise<void> | null = null;
 
   constructor(private projectId: UrlProjectId) {}
 
@@ -143,6 +144,7 @@ class FakeSupervisor implements ProjectQueueSupervisor {
     message: UserMessage,
   ): Promise<ProjectQueueDispatchResult> {
     this.resumeCalls.push({ sessionId, projectPath, message });
+    await this.resumeBlocker;
     if (this.resumeError) throw this.resumeError;
     const process = createProcess(this.projectId, { sessionId });
     this.processes.push(process);
@@ -192,7 +194,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   afterEach(async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     vi.restoreAllMocks();
     await fs.rm(testDir, { recursive: true, force: true });
   });
@@ -218,7 +220,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("waits for the configured project quiet window before promoting", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     scheduler = new ProjectQueueScheduler({
       projectQueueService: service,
       supervisor,
@@ -241,8 +243,39 @@ describe("ProjectQueueScheduler", () => {
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 400);
   });
 
+  it("waits for in-flight promotion work before disposing", async () => {
+    let releaseResume!: () => void;
+    supervisor.resumeBlocker = new Promise((resolve) => {
+      releaseResume = resolve;
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "finish before teardown" },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+
+    let disposed = false;
+    const disposePromise = scheduler.dispose().then(() => {
+      disposed = true;
+    });
+    await wait(25);
+    expect(disposed).toBe(false);
+
+    releaseResume();
+    await disposePromise;
+
+    expect(disposed).toBe(true);
+    expect(service.listProject(projectId).items).toEqual([]);
+  });
+
   it("restarts the project quiet window after session activity", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     scheduler = new ProjectQueueScheduler({
       projectQueueService: service,
       supervisor,
@@ -274,7 +307,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("materializes staged attachments before promoting a queued new session", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     const projectPath = path.join(testDir, "project");
     const stagingService = new AttachmentStagingService({
       stagingRoot: path.join(testDir, "staging"),
@@ -372,7 +405,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("reports project readiness blockers and keeps retrying blocked backlog", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     const process = createProcess(projectId, { state: { type: "in-turn" } });
     supervisor.processes = [process];
     scheduler = new ProjectQueueScheduler({
@@ -419,7 +452,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("promoteNow skips the quiet timer but preserves idle blockers", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     scheduler = new ProjectQueueScheduler({
       projectQueueService: service,
       supervisor,
@@ -493,7 +526,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("waits for recovered patient queues before promoting project work", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     const sessionQueuePersistenceService = new SessionQueuePersistenceService({
       dataDir: testDir,
       eventBus,
@@ -580,7 +613,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("waits for external ownership to clear", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     const externalTracker = new FakeExternalTracker();
     externalTracker.sessions.set("external-session", projectId);
     scheduler = new ProjectQueueScheduler({
@@ -616,7 +649,7 @@ describe("ProjectQueueScheduler", () => {
   });
 
   it("does not promote while dispatch is paused and resumes on request", async () => {
-    scheduler.dispose();
+    await scheduler.dispose();
     await service.createItem({
       projectId,
       projectPath: PROJECT_PATH,

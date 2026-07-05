@@ -339,7 +339,7 @@ Likely change:
   workstream.
 - Session summaries/details may include a compact workstream display object
   when the experimental gate is on.
-- UI can show compact identity such as `yepanywhere / xr blink / ya/xr-blink`.
+- UI can show compact identity such as `yepanywhere / xr blink / main`.
 
 Out of scope:
 

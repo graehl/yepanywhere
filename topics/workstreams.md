@@ -333,9 +333,9 @@ The first product surface should be a project-level Workstreams page:
 ```text
 Workstream        #Queued   State        Branch             Diff       Action
 main              2         running      main               clean      Pause
-xr blink          5         ready        ya/xr-blink        +14 -2     Land
-world CRUD        1         queued       ya/world-crud      clean      Start
-tools cleanup     0         paused       ya/tools-cleanup   +8 -1      Resume
+xr blink          5         ready        main               +14 -2     Land
+world CRUD        1         queued       main               clean      Start
+tools cleanup     0         paused       main               +8 -1      Resume
 ```
 
 `#Queued` is the count of items waiting in that lane's queue, not a
@@ -370,7 +370,7 @@ Session headers should show the workstream identity in compact form, for
 example:
 
 ```text
-yepanywhere / xr blink / ya/xr-blink
+yepanywhere / xr blink / main
 ```
 
 ## Landing Back To Main

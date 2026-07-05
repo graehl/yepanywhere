@@ -43,7 +43,7 @@ describe("WorkstreamService", () => {
       label: "tools cleanup",
       kind: "checkout",
       path: "/tmp/workstreams-project-tools",
-      branch: "ya/tools-cleanup",
+      branch: "main",
       baseBranch: "main",
       baseCommit: null,
       managedByYa: true,
@@ -114,7 +114,7 @@ describe("WorkstreamService", () => {
       label: "tools cleanup",
       kind: "checkout",
       path: "/tmp/workstreams-project-tools",
-      branch: "ya/tools-cleanup",
+      branch: "main",
       managedByYa: true,
     });
 
@@ -167,7 +167,7 @@ describe("WorkstreamService", () => {
       projectId,
       label: "world CRUD",
       path: "/tmp/workstreams-project-world",
-      branch: "ya/world-crud",
+      branch: "main",
       managedByYa: true,
     });
 
@@ -176,7 +176,7 @@ describe("WorkstreamService", () => {
       label: "world CRUD",
       kind: "checkout",
       path: "/tmp/workstreams-project-world",
-      branch: "ya/world-crud",
+      branch: "main",
       baseBranch: "main",
       baseCommit: null,
       managedByYa: true,

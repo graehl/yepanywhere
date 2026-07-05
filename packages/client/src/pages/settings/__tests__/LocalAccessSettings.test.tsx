@@ -16,8 +16,10 @@ const {
   mockDisconnect,
   mockGetFileAccessInfo,
   mockSetRelayDebugEnabled,
+  mockUpdateSetting,
   mockUpdateSettings,
   remoteState,
+  versionState,
 } = vi.hoisted(() => ({
   hookState: {
     settings: null as ServerSettings | null,
@@ -27,9 +29,13 @@ const {
   mockDisconnect: vi.fn(),
   mockGetFileAccessInfo: vi.fn(),
   mockSetRelayDebugEnabled: vi.fn(),
+  mockUpdateSetting: vi.fn(),
   mockUpdateSettings: vi.fn(),
   remoteState: {
     connection: null as null | { disconnect: () => void },
+  },
+  versionState: {
+    capabilities: ["approvalAuditLog"] as string[],
   },
 }));
 
@@ -80,9 +86,17 @@ vi.mock("../../../hooks/useServerInfo", () => ({
 vi.mock("../../../hooks/useServerSettings", () => ({
   useServerSettings: () => ({
     ...hookState,
-    updateSetting: vi.fn(),
+    updateSetting: mockUpdateSetting,
     updateSettings: mockUpdateSettings,
     refetch: vi.fn(),
+  }),
+}));
+
+vi.mock("../../../hooks/useVersion", () => ({
+  useVersion: () => ({
+    version: {
+      capabilities: versionState.capabilities,
+    },
   }),
 }));
 
@@ -125,7 +139,9 @@ describe("LocalAccessSettings", () => {
     hookState.error = null;
     remoteState.connection = { disconnect: mockDisconnect };
     mockGetFileAccessInfo.mockResolvedValue(fileAccessInfo);
+    mockUpdateSetting.mockResolvedValue(undefined);
     mockUpdateSettings.mockResolvedValue(undefined);
+    versionState.capabilities = ["approvalAuditLog"];
   });
 
   afterEach(() => {
@@ -171,5 +187,46 @@ describe("LocalAccessSettings", () => {
         },
       }),
     );
+  });
+
+  it("updates approval audit logging when the server supports it", async () => {
+    hookState.settings = {
+      ...baseSettings,
+      approvalAuditLogEnabled: false,
+    };
+
+    render(<LocalAccessSettings />);
+
+    const auditToggle = await screen.findByRole("checkbox", {
+      name: "localAccessApprovalAuditTitle",
+    });
+    expect(auditToggle).toHaveProperty("disabled", false);
+    expect(auditToggle).toHaveProperty("checked", false);
+
+    fireEvent.click(auditToggle);
+
+    expect(mockUpdateSetting).toHaveBeenCalledWith(
+      "approvalAuditLogEnabled",
+      true,
+    );
+  });
+
+  it("shows legacy approval audit logging as read-only without capability", async () => {
+    versionState.capabilities = [];
+    hookState.settings = {
+      ...baseSettings,
+      approvalAuditLogEnabled: false,
+    };
+
+    render(<LocalAccessSettings />);
+
+    const auditToggle = await screen.findByRole("checkbox", {
+      name: "localAccessApprovalAuditTitle",
+    });
+    expect(auditToggle).toHaveProperty("disabled", true);
+    expect(auditToggle).toHaveProperty("checked", true);
+    expect(
+      screen.getByText("localAccessApprovalAuditUnsupportedDescription"),
+    ).toBeTruthy();
   });
 });

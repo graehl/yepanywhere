@@ -7,10 +7,31 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/app.js";
 import { MockClaudeSDK, createMockScenario } from "../../src/sdk/mock.js";
+import type { ServerSettingsService } from "../../src/services/ServerSettingsService.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, "..", "fixtures", "agents");
+
+async function readOptionalText(filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
+}
+
+function createSettingsServiceForAuditLog(
+  enabled: boolean,
+): ServerSettingsService {
+  return {
+    getSetting: (key: string) =>
+      key === "approvalAuditLogEnabled" ? enabled : undefined,
+  } as unknown as ServerSettingsService;
+}
 
 describe("Sessions API", () => {
   let mockSdk: MockClaudeSDK;
@@ -695,6 +716,136 @@ describe("Sessions API", () => {
       const json = await inputRes.json();
       expect(json.accepted).toBe(true);
       expect(json.pendingInputRequest).toBeNull();
+    });
+
+    it("writes approval audit entries only when enabled", async () => {
+      const logPath = join(testDir, "logs", "approval-decisions.jsonl");
+
+      mockSdk.addScenario({
+        messages: [
+          {
+            type: "system",
+            subtype: "init",
+            session_id: "sess-tool-audit-disabled",
+          },
+          {
+            type: "system",
+            subtype: "input_request",
+            input_request: {
+              id: "req-audit-disabled",
+              type: "tool-approval",
+              prompt: "Allow Bash?",
+              toolName: "Bash",
+              toolInput: { command: "echo disabled" },
+            },
+          },
+        ],
+        delayMs: 5,
+      });
+      const disabledApp = createApp({
+        sdk: mockSdk,
+        projectsDir: testDir,
+        dataDir: testDir,
+        serverSettingsService: createSettingsServiceForAuditLog(false),
+      }).app;
+
+      const disabledStart = await disabledApp.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yep-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(disabledStart.status).toBe(200);
+      const disabledSession = await disabledStart.json();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const disabledInput = await disabledApp.request(
+        `/api/sessions/${disabledSession.sessionId}/input`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yep-Anywhere": "true",
+          },
+          body: JSON.stringify({
+            requestId: "req-audit-disabled",
+            response: "approve",
+          }),
+        },
+      );
+      expect(disabledInput.status).toBe(200);
+      expect(await readOptionalText(logPath)).toBe("");
+
+      mockSdk.addScenario({
+        messages: [
+          {
+            type: "system",
+            subtype: "init",
+            session_id: "sess-tool-audit-enabled",
+          },
+          {
+            type: "system",
+            subtype: "input_request",
+            input_request: {
+              id: "req-audit-enabled",
+              type: "tool-approval",
+              prompt: "Allow Bash?",
+              toolName: "Bash",
+              toolInput: { command: "echo enabled" },
+            },
+          },
+        ],
+        delayMs: 5,
+      });
+      const enabledApp = createApp({
+        sdk: mockSdk,
+        projectsDir: testDir,
+        dataDir: testDir,
+        serverSettingsService: createSettingsServiceForAuditLog(true),
+      }).app;
+
+      const enabledStart = await enabledApp.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yep-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(enabledStart.status).toBe(200);
+      const enabledSession = await enabledStart.json();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const enabledInput = await enabledApp.request(
+        `/api/sessions/${enabledSession.sessionId}/input`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yep-Anywhere": "true",
+          },
+          body: JSON.stringify({
+            requestId: "req-audit-enabled",
+            response: "approve",
+          }),
+        },
+      );
+      expect(enabledInput.status).toBe(200);
+      const auditLines = (await readOptionalText(logPath)).trim().split("\n");
+      expect(auditLines).toHaveLength(1);
+      expect(JSON.parse(auditLines[0] ?? "{}")).toMatchObject({
+        requestId: "req-audit-enabled",
+        normalizedResponse: "approve",
+        accepted: true,
+      });
     });
 
     it("accepts deny response with correct requestId", async () => {

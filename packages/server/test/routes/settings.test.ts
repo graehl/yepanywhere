@@ -17,6 +17,7 @@ describe("Settings Routes", () => {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
       clientLogCollectionRequested: false,
+      approvalAuditLogEnabled: false,
       speechAudioRetention: DEFAULT_SERVER_SETTINGS.speechAudioRetention,
       publicSharesEnabled: false,
       workstreamsEnabled: false,
@@ -250,6 +251,25 @@ describe("Settings Routes", () => {
       expect(response.status).toBe(200);
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         clientLogCollectionRequested: true,
+      });
+    });
+
+    it("accepts approval audit log settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvalAuditLogEnabled: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        approvalAuditLogEnabled: true,
       });
     });
 

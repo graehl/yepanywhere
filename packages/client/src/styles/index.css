@@ -11034,6 +11034,11 @@ a.linkified-url:hover {
   background-color: #fff;
 }
 
+.toggle-switch input:disabled + .toggle-slider {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .settings-button-danger:hover {
   background: var(--error-hover, #b91c1c);
   border-color: var(--error-hover, #b91c1c);

@@ -255,6 +255,12 @@ function persistedPatientQueueSummary(
   };
 }
 
+function isApprovalAuditLogEnabled(deps: SessionsDeps): boolean {
+  return (
+    deps.serverSettingsService?.getSetting("approvalAuditLogEnabled") === true
+  );
+}
+
 function recoveredPatientQueueSummaries(
   deps: SessionsDeps,
   sessionId: string,
@@ -5667,25 +5673,27 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const permissionModeBefore = process.permissionMode;
 
     if (process.state.type !== "waiting-input") {
-      try {
-        await appendApprovalAuditLog(deps.dataDir, {
-          timestamp: new Date().toISOString(),
-          sessionId,
-          processId: process.id,
-          provider: process.provider,
-          requestId: body.requestId,
-          request: requestBefore,
-          response: body.response,
-          normalizedResponse,
-          answers: body.answers,
-          feedback: body.feedback,
-          accepted: false,
-          failure: "No pending input request",
-          permissionModeBefore,
-          permissionModeAfter: process.permissionMode,
-        });
-      } catch (error) {
-        console.warn("[approval-audit] Failed to append audit log:", error);
+      if (isApprovalAuditLogEnabled(deps)) {
+        try {
+          await appendApprovalAuditLog(deps.dataDir, {
+            timestamp: new Date().toISOString(),
+            sessionId,
+            processId: process.id,
+            provider: process.provider,
+            requestId: body.requestId,
+            request: requestBefore,
+            response: body.response,
+            normalizedResponse,
+            answers: body.answers,
+            feedback: body.feedback,
+            accepted: false,
+            failure: "No pending input request",
+            permissionModeBefore,
+            permissionModeAfter: process.permissionMode,
+          });
+        } catch (error) {
+          console.warn("[approval-audit] Failed to append audit log:", error);
+        }
       }
       return c.json({ error: "No pending input request" }, 400);
     }
@@ -5699,6 +5707,38 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     );
 
     if (!accepted) {
+      if (isApprovalAuditLogEnabled(deps)) {
+        try {
+          await appendApprovalAuditLog(deps.dataDir, {
+            timestamp: new Date().toISOString(),
+            sessionId,
+            processId: process.id,
+            provider: process.provider,
+            requestId: body.requestId,
+            request: requestBefore,
+            response: body.response,
+            normalizedResponse,
+            answers: body.answers,
+            feedback: body.feedback,
+            accepted: false,
+            failure: "Invalid request ID or no pending request",
+            permissionModeBefore,
+            permissionModeAfter: process.permissionMode,
+          });
+        } catch (error) {
+          console.warn("[approval-audit] Failed to append audit log:", error);
+        }
+      }
+      return c.json({ error: "Invalid request ID or no pending request" }, 400);
+    }
+
+    // If approve_accept_edits, switch the permission mode
+    if (isApproveAcceptEdits) {
+      process.setPermissionMode("acceptEdits");
+    }
+
+    const pendingInputRequest = process.getPendingInputRequest();
+    if (isApprovalAuditLogEnabled(deps)) {
       try {
         await appendApprovalAuditLog(deps.dataDir, {
           timestamp: new Date().toISOString(),
@@ -5711,41 +5751,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           normalizedResponse,
           answers: body.answers,
           feedback: body.feedback,
-          accepted: false,
-          failure: "Invalid request ID or no pending request",
+          accepted: true,
           permissionModeBefore,
           permissionModeAfter: process.permissionMode,
         });
       } catch (error) {
         console.warn("[approval-audit] Failed to append audit log:", error);
       }
-      return c.json({ error: "Invalid request ID or no pending request" }, 400);
-    }
-
-    // If approve_accept_edits, switch the permission mode
-    if (isApproveAcceptEdits) {
-      process.setPermissionMode("acceptEdits");
-    }
-
-    const pendingInputRequest = process.getPendingInputRequest();
-    try {
-      await appendApprovalAuditLog(deps.dataDir, {
-        timestamp: new Date().toISOString(),
-        sessionId,
-        processId: process.id,
-        provider: process.provider,
-        requestId: body.requestId,
-        request: requestBefore,
-        response: body.response,
-        normalizedResponse,
-        answers: body.answers,
-        feedback: body.feedback,
-        accepted: true,
-        permissionModeBefore,
-        permissionModeAfter: process.permissionMode,
-      });
-    } catch (error) {
-      console.warn("[approval-audit] Failed to append audit log:", error);
     }
 
     return c.json({ accepted: true, pendingInputRequest });

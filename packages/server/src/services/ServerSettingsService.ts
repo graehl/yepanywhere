@@ -55,6 +55,8 @@ export interface ServerSettings {
   persistRemoteSessionsToDisk: boolean;
   /** Whether the server is requesting browser clients to upload diagnostic logs */
   clientLogCollectionRequested: boolean;
+  /** Whether approve/deny decisions are written to logs/approval-decisions.jsonl */
+  approvalAuditLogEnabled: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */
@@ -149,6 +151,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
   clientLogCollectionRequested: false,
+  approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
   heartbeatTurnsAfterMinutes: 15,

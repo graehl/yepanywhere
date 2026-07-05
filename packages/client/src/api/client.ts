@@ -1899,6 +1899,8 @@ export interface ServerSettings {
   persistRemoteSessionsToDisk: boolean;
   /** Whether the server is requesting browser clients to upload diagnostic logs */
   clientLogCollectionRequested?: boolean;
+  /** Whether approve/deny decisions are written to the server audit log */
+  approvalAuditLogEnabled?: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled?: boolean;
   /** Whether experimental workstream surfaces and APIs are enabled */

@@ -12,9 +12,12 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useNetworkBinding } from "../../hooks/useNetworkBinding";
 import { useServerInfo } from "../../hooks/useServerInfo";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndo } from "./SettingsUndoContext";
+
+const APPROVAL_AUDIT_LOG_CAPABILITY = "approvalAuditLog";
 
 /** File-access form state — `custom` is edited as newline-separated text. */
 interface FileAccessForm {
@@ -75,6 +78,7 @@ export function LocalAccessSettings() {
   const remoteConnection = useOptionalRemoteConnection();
   const { relayDebugEnabled, setRelayDebugEnabled } = useDeveloperMode();
   const { serverInfo, loading: serverInfoLoading } = useServerInfo();
+  const { version: versionInfo } = useVersion();
   const {
     binding,
     loading: bindingLoading,
@@ -86,7 +90,13 @@ export function LocalAccessSettings() {
     isLoading: settingsLoading,
     error: settingsError,
     updateSettings: updateServerSettings,
+    updateSetting: updateServerSetting,
   } = useServerSettings();
+  const supportsApprovalAuditLog =
+    versionInfo?.capabilities?.includes(APPROVAL_AUDIT_LOG_CAPABILITY) ?? false;
+  const approvalAuditLogEnabled = supportsApprovalAuditLog
+    ? (serverSettings?.approvalAuditLogEnabled ?? false)
+    : true;
 
   // Network binding form state
   const [localhostPort, setLocalhostPort] = useState<string>("");
@@ -452,6 +462,31 @@ export function LocalAccessSettings() {
       </div>
     );
   };
+
+  const renderApprovalAuditSettings = () => (
+    <div className="settings-item">
+      <div className="settings-item-info">
+        <strong>{t("localAccessApprovalAuditTitle")}</strong>
+        <p>
+          {supportsApprovalAuditLog
+            ? t("localAccessApprovalAuditDescription")
+            : t("localAccessApprovalAuditUnsupportedDescription")}
+        </p>
+      </div>
+      <label className="toggle-switch">
+        <input
+          type="checkbox"
+          checked={approvalAuditLogEnabled}
+          disabled={!supportsApprovalAuditLog || !serverSettings}
+          onChange={(e) =>
+            updateServerSetting("approvalAuditLogEnabled", e.target.checked)
+          }
+          aria-label={t("localAccessApprovalAuditTitle")}
+        />
+        <span className="toggle-slider" />
+      </label>
+    </div>
+  );
 
   const handleApplyChanges = async () => {
     if (!auth) return;
@@ -938,6 +973,8 @@ export function LocalAccessSettings() {
           </div>
         </form>
 
+        <div className="settings-group">{renderApprovalAuditSettings()}</div>
+
         {/* Logout - shown when auth is enabled */}
         {auth.authEnabled && auth.isAuthenticated && (
           <div className="settings-group">
@@ -1002,6 +1039,8 @@ export function LocalAccessSettings() {
             </div>
           </div>
         )}
+
+        <div className="settings-group">{renderApprovalAuditSettings()}</div>
 
         <div className="settings-group">
           <div className="settings-item">

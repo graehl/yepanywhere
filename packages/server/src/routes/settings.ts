@@ -1150,6 +1150,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if (typeof body.clientLogCollectionRequested === "boolean") {
       updates.clientLogCollectionRequested = body.clientLogCollectionRequested;
     }
+    if (typeof body.approvalAuditLogEnabled === "boolean") {
+      updates.approvalAuditLogEnabled = body.approvalAuditLogEnabled;
+    }
     if (typeof body.publicSharesEnabled === "boolean") {
       updates.publicSharesEnabled = body.publicSharesEnabled;
     }

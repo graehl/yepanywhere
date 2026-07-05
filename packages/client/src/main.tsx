@@ -26,6 +26,7 @@ import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
+import { WorkstreamsPage } from "./pages/WorkstreamsPage";
 import "./styles/index.css";
 
 /**
@@ -180,6 +181,10 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                 <Route path="/settings" element={<SettingsLayout />} />
                 <Route path="/settings/:category" element={<SettingsLayout />} />
                 {/* Project-scoped pages */}
+                <Route
+                  path="/projects/:projectId/workstreams"
+                  element={<WorkstreamsPage />}
+                />
                 <Route
                   path="/projects/:projectId"
                   element={<Navigate to="/sessions" replace />}

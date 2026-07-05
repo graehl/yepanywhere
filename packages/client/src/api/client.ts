@@ -27,6 +27,7 @@ import type {
   ProjectQueuePromoteNowRequest,
   ProjectQueuePromoteNowResponse,
   ProjectQueueResponse,
+  ProjectWorkstreamsResponse,
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
   ProviderInfo,
@@ -578,6 +579,11 @@ export const api = {
 
   getProjectQueue: (projectId: string) =>
     fetchJSON<ProjectQueueResponse>(`/projects/${projectId}/queue`),
+
+  getProjectWorkstreams: (projectId: string) =>
+    fetchJSON<ProjectWorkstreamsResponse>(
+      `/projects/${projectId}/workstreams`,
+    ),
 
   getProjectQueueItems: () =>
     fetchJSON<ProjectQueueListResponse>("/project-queue"),

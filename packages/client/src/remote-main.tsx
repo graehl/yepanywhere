@@ -50,6 +50,7 @@ import { RelayConnectionGate } from "./pages/RelayConnectionGate";
 import { RelayLoginPage } from "./pages/RelayLoginPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
+import { WorkstreamsPage } from "./pages/WorkstreamsPage";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
 import "./styles/index.css";
@@ -99,6 +100,10 @@ const APP_ROUTES = (
       }
     >
       <Route path="projects" element={<ProjectsPage />} />
+      <Route
+        path="projects/:projectId/workstreams"
+        element={<WorkstreamsPage />}
+      />
       <Route path="projects/:projectId" element={<ProjectRedirect />} />
       <Route path="sessions" element={<GlobalSessionsPage />} />
       <Route path="agents" element={<AgentsPage />} />

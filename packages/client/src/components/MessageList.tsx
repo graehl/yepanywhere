@@ -120,6 +120,18 @@ const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
 const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
 const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
 
+type SelectionQuoteButtonState =
+  | {
+      placement: "floating";
+      top: number;
+      left: number;
+      anchors: readonly CommentAnchor[];
+    }
+  | {
+      placement: "mobile";
+      anchors: readonly CommentAnchor[];
+    };
+
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -844,6 +856,7 @@ export const MessageList = memo(function MessageList({
     null,
   );
   const selectionPointerStartRef = useRef<{ clientY: number } | null>(null);
+  const selectionQuotePointerAppliedRef = useRef(false);
   const quoteInsertionDraftRef = useRef<string | null>(null);
   const [thinkingItemsVisible, setThinkingItemsVisible] = useState(() => {
     // "Show thinking" preference seeds the render gate's default; "default"
@@ -884,10 +897,8 @@ export const MessageList = memo(function MessageList({
   const [commentAnchors, setCommentAnchors] = useState<
     readonly CommentAnchor[]
   >([]);
-  const [floatingQuoteButton, setFloatingQuoteButton] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
+  const [selectionQuoteButton, setSelectionQuoteButton] =
+    useState<SelectionQuoteButtonState | null>(null);
   const { quoteReplyButtonMode } = useQuoteReplyButtonMode();
   const alwaysShowQuoteCircles =
     quoteReplyButtonMode === "paragraph-always";
@@ -912,7 +923,7 @@ export const MessageList = memo(function MessageList({
       quoteInsertionDraftRef.current = nextDraft;
       setCommentAnchors((previous) => [...previous, ...anchors]);
       containerRef.current?.ownerDocument.getSelection()?.removeAllRanges();
-      setFloatingQuoteButton(null);
+      setSelectionQuoteButton(null);
       return true;
     },
     [onQuoteSelection],
@@ -1561,7 +1572,7 @@ export const MessageList = memo(function MessageList({
 
   useEffect(() => {
     if (inert || !onQuoteSelection) {
-      setFloatingQuoteButton(null);
+      setSelectionQuoteButton(null);
       return;
     }
 
@@ -1576,17 +1587,32 @@ export const MessageList = memo(function MessageList({
         !root ||
         !selection ||
         selection.isCollapsed ||
-        selection.rangeCount === 0 ||
-        extractMarkdownSnippetsFromSelection(root).length === 0
+        selection.rangeCount === 0
       ) {
-        setFloatingQuoteButton(null);
+        setSelectionQuoteButton(null);
+        return;
+      }
+
+      const anchors =
+        extractMarkdownSnippetsFromSelection(root).map(createCommentAnchor);
+      if (anchors.length === 0) {
+        setSelectionQuoteButton(null);
+        return;
+      }
+
+      const win = root.ownerDocument.defaultView ?? window;
+      if (shouldShieldTranscriptSelection(win)) {
+        setSelectionQuoteButton({ placement: "mobile", anchors });
         return;
       }
 
       const range = selection.getRangeAt(selection.rangeCount - 1);
-      const rect = pointerEnd ? null : range.getBoundingClientRect();
-      if (!pointerEnd && rect && rect.width === 0 && rect.height === 0) {
-        setFloatingQuoteButton(null);
+      const rect =
+        pointerEnd || typeof range.getBoundingClientRect !== "function"
+          ? null
+          : range.getBoundingClientRect();
+      if (!pointerEnd && (!rect || (rect.width === 0 && rect.height === 0))) {
+        setSelectionQuoteButton(null);
         return;
       }
       const rootRect = root.getBoundingClientRect();
@@ -1600,7 +1626,9 @@ export const MessageList = memo(function MessageList({
         0,
         root.clientWidth - SELECTION_QUOTE_BUTTON_SIZE_PX,
       );
-      setFloatingQuoteButton({
+      setSelectionQuoteButton({
+        placement: "floating",
+        anchors,
         top: clampNumber(
           pointerEnd?.placeBelow
             ? clientY - rootRect.top + SELECTION_QUOTE_BUTTON_GAP_PX
@@ -2940,6 +2968,67 @@ export const MessageList = memo(function MessageList({
       <span>{followButtonLabel}</span>
     </button>
   ) : null;
+  const mobileSelectionQuoteButtonTarget =
+    selectionQuoteButton?.placement === "mobile" &&
+    typeof document !== "undefined"
+      ? document.querySelector<HTMLElement>(".session-input-inner")
+      : null;
+  const selectionQuoteButtonElement = selectionQuoteButton ? (
+    <button
+      type="button"
+      className={[
+        "selection-quote-button",
+        selectionQuoteButton.placement === "mobile"
+          ? "selection-quote-button--mobile"
+          : "",
+        selectionQuoteButton.placement === "mobile" && followButton
+          ? "selection-quote-button--mobile-with-follow"
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={
+        selectionQuoteButton.placement === "floating"
+          ? {
+              top: `${selectionQuoteButton.top}px`,
+              left: `${selectionQuoteButton.left}px`,
+            }
+          : undefined
+      }
+      onPointerDown={(event) => {
+        if (selectionQuoteButton.placement === "mobile") {
+          selectionQuotePointerAppliedRef.current = false;
+          event.preventDefault();
+        }
+      }}
+      onPointerUp={(event) => {
+        if (selectionQuoteButton.placement === "mobile") {
+          event.preventDefault();
+          selectionQuotePointerAppliedRef.current = applyQuoteAnchors(
+            selectionQuoteButton.anchors,
+          );
+        }
+      }}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => {
+        if (
+          selectionQuoteButton.placement === "mobile" &&
+          selectionQuotePointerAppliedRef.current
+        ) {
+          selectionQuotePointerAppliedRef.current = false;
+          return;
+        }
+        applyQuoteAnchors(selectionQuoteButton.anchors);
+      }}
+      aria-label={t("sessionQuoteSelection")}
+      title={t("sessionQuoteSelection")}
+    >
+      <span aria-hidden="true">&gt;</span>
+      {selectionQuoteButton.placement === "mobile" && (
+        <span>{t("sessionQuoteSelectionShort")}</span>
+      )}
+    </button>
+  ) : null;
   return (
     <>
       <UserTurnNavigator
@@ -2965,6 +3054,15 @@ export const MessageList = memo(function MessageList({
       {followButtonTarget && followButton
         ? createPortal(followButton, followButtonTarget)
         : followButton}
+      {selectionQuoteButton?.placement === "mobile" &&
+      selectionQuoteButtonElement
+        ? mobileSelectionQuoteButtonTarget
+          ? createPortal(
+              selectionQuoteButtonElement,
+              mobileSelectionQuoteButtonTarget,
+            )
+          : selectionQuoteButtonElement
+        : null}
       <div
         className={`message-list${
           progressiveRevealActive ? " message-list-progressive-hydrating" : ""
@@ -2972,22 +3070,9 @@ export const MessageList = memo(function MessageList({
         ref={containerRef}
         aria-busy={progressiveRevealActive ? true : undefined}
       >
-        {floatingQuoteButton && (
-          <button
-            type="button"
-            className="selection-quote-button"
-            style={{
-              top: `${floatingQuoteButton.top}px`,
-              left: `${floatingQuoteButton.left}px`,
-            }}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => applyQuoteFromSelection()}
-            aria-label={t("sessionQuoteSelection")}
-            title={t("sessionQuoteSelection")}
-          >
-            &gt;
-          </button>
-        )}
+        {selectionQuoteButton?.placement === "floating"
+          ? selectionQuoteButtonElement
+          : null}
         {progressiveRevealActive && (
           <div className="session-render-progress loading" role="status">
             <div>{t("sessionLoading")}</div>

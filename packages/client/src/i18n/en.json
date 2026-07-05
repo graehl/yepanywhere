@@ -557,6 +557,7 @@
   "sessionDeferredEditFailed": "Failed to edit queued message: {message}",
   "sessionDeferredSteerFailed": "Failed to steer queued message: {message}",
   "sessionQuoteSelection": "Quote selection",
+  "sessionQuoteSelectionShort": "Quote",
   "sessionQuoteBlock": "Quote this paragraph — or select text to comment on a range",
   "sessionQuoteComposerUnavailable": "Composer is not available.",
   "sessionDeferredEditLocalOnly": "Queued message restored locally; it may already have left the server queue.",

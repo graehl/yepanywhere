@@ -43,6 +43,8 @@ vi.mock("../../i18n", () => ({
         sessionFollowLatestOutput: "Follow latest session output",
         sessionNewOutputBelow: "New output below",
         sessionNewOutputBelowTitle: "Jump to latest session output",
+        sessionQuoteSelection: "Quote selection",
+        sessionQuoteSelectionShort: "Quote",
         projectQueueAttachmentOnly: "Attachment-only message",
         projectQueueInlineStatusQueued: "Project Queue (#{position})",
         projectQueueInlineStatusDispatching:
@@ -1486,6 +1488,88 @@ describe("MessageList", () => {
     fireEvent.keyDown(window, { key: "x" });
 
     expect(onQuoteSelection).toHaveBeenCalledWith("> Recap selected text\nx");
+  });
+
+  it("keeps the selected-text quote button inside the transcript on desktop", async () => {
+    mockPointerCoarse(false);
+    const onQuoteSelection = vi.fn(() => "> Desktop selected text\n");
+
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Desktop selected text")]}
+        onQuoteSelection={onQuoteSelection}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Desktop selected text");
+    const selectedText = selectedElement.firstChild;
+    expect(selectedText).toBeTruthy();
+
+    const range = document.createRange();
+    range.setStart(selectedText as Node, 0);
+    range.setEnd(selectedText as Node, "Desktop selected text".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.pointerDown(selectedElement, { clientY: 120 });
+    fireEvent.pointerUp(selectedElement, { clientX: 180, clientY: 120 });
+
+    const quoteButton = await screen.findByRole("button", {
+      name: "Quote selection",
+    });
+    expect(quoteButton.closest(".message-list")).toBeTruthy();
+    expect(
+      quoteButton.classList.contains("selection-quote-button--mobile"),
+    ).toBe(false);
+
+    fireEvent.click(quoteButton);
+
+    expect(onQuoteSelection).toHaveBeenCalledWith("> Desktop selected text\n");
+  });
+
+  it("moves the selected-text quote button to the composer edge on mobile", async () => {
+    mockPointerCoarse(true);
+    const onQuoteSelection = vi.fn(() => "> Mobile selected text\n");
+    const inputTarget = document.createElement("div");
+    inputTarget.className = "session-input-inner";
+    document.body.appendChild(inputTarget);
+
+    render(
+      <MessageList
+        messages={[assistantMessage("assistant-1", "Mobile selected text")]}
+        onQuoteSelection={onQuoteSelection}
+      />,
+    );
+
+    const selectedElement = screen.getByText("Mobile selected text");
+    const selectedText = selectedElement.firstChild;
+    expect(selectedText).toBeTruthy();
+
+    const range = document.createRange();
+    range.setStart(selectedText as Node, 0);
+    range.setEnd(selectedText as Node, "Mobile selected text".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const quoteButton = await screen.findByRole("button", {
+      name: "Quote selection",
+    });
+    expect(inputTarget.contains(quoteButton)).toBe(true);
+    expect(
+      quoteButton.classList.contains("selection-quote-button--mobile"),
+    ).toBe(true);
+    expect(quoteButton.textContent).toContain("Quote");
+
+    selection?.removeAllRanges();
+    fireEvent.click(quoteButton);
+
+    expect(onQuoteSelection).toHaveBeenCalledWith("> Mobile selected text\n");
   });
 
   it("scrolls to current from a focused composer with Ctrl+End", () => {

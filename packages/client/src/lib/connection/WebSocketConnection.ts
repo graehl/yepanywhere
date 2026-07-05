@@ -352,16 +352,3 @@ export class WebSocketConnection implements Connection {
     this.options.onSocketStateChange?.("disconnected");
   }
 }
-
-/**
- * Singleton WebSocketConnection instance.
- * Created lazily to avoid connecting until needed.
- */
-let wsConnectionInstance: WebSocketConnection | null = null;
-
-export function getWebSocketConnection(): WebSocketConnection {
-  if (!wsConnectionInstance) {
-    wsConnectionInstance = new WebSocketConnection();
-  }
-  return wsConnectionInstance;
-}

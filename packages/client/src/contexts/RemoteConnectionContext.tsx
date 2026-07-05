@@ -2,8 +2,8 @@
  * RemoteConnectionContext - Provides SecureConnection for remote client.
  *
  * This context manages the SecureConnection lifecycle and provides it to
- * the app. Unlike the regular client which uses DirectConnection by default,
- * the remote client ONLY uses SecureConnection.
+ * the app. Unlike the regular client, which uses a localhost source transport
+ * by default, the remote client ONLY uses SecureConnection.
  *
  * Supports two connection modes:
  * - Direct: Connect via WebSocket URL + SRP auth
@@ -25,11 +25,6 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import {
-  connectionManager,
-  getGlobalConnection,
-  setGlobalConnection,
-} from "../lib/connection";
 import {
   REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
   type ClientSummarySourceKey,
@@ -343,40 +338,141 @@ export function RemoteConnectionProvider({ children }: Props) {
   // Track intentional disconnect (to prevent auto-redirect back to host after Switch Host)
   const [isIntentionalDisconnect, setIsIntentionalDisconnect] = useState(false);
   const activeSecureTransportRef = useRef<SecureSourceTransport | null>(null);
-
-  const attachConnectionTransport = useCallback((conn: SecureConnection) => {
-    const sourceKey = resolveRemoteConnectionSourceKey({
-      hostId: currentHostIdRef.current,
-      directUrl: currentDirectUrlRef.current,
-    });
-    const transport = getSecureSourceTransport(sourceKey);
-    if (
-      activeSecureTransportRef.current &&
-      activeSecureTransportRef.current !== transport
-    ) {
-      activeSecureTransportRef.current.detach();
-    }
-    transport.attach(conn);
-    activeSecureTransportRef.current = transport;
-  }, []);
-
-  const publishConnection = useCallback((conn: SecureConnection) => {
-    // T3 dual-write bridge: keep the legacy global connection for current
-    // consumers while also attaching the stable source transport slot.
-    setGlobalConnection(conn);
-    attachConnectionTransport(conn);
-    setConnection(conn);
-  }, [attachConnectionTransport]);
-
-  const detachTransport = useCallback(() => {
-    activeSecureTransportRef.current?.detach();
-    activeSecureTransportRef.current = null;
-    setGlobalConnection(null);
-  }, []);
+  const activeTransportStatusUnsubscribeRef = useRef<(() => void) | null>(null);
+  const connectionRef = useRef<SecureConnection | null>(connection);
+  connectionRef.current = connection;
 
   // Keep stored credentials in ref for updates during the component lifecycle
   const storedRef = useRef(initialStored);
   storedRef.current = loadStoredCredentials();
+
+  const clearTransportStatusSubscription = useCallback(() => {
+    activeTransportStatusUnsubscribeRef.current?.();
+    activeTransportStatusUnsubscribeRef.current = null;
+  }, []);
+
+  const handleTransportDisconnected = useCallback((error: Error) => {
+    console.log(
+      "[RemoteConnection] Source transport disconnected:",
+      error.message,
+    );
+    connectionRef.current = null;
+    setConnection(null);
+    const reason = categorizeError(error.message);
+    const currentStored = storedRef.current;
+    const isRelay = currentStored?.mode === "relay";
+    if (reason === "resume_incompatible") {
+      clearStaleResumeSession(currentStored);
+    }
+    if (reason !== "auth_failed" && reason !== "other") {
+      setAutoResumeError({
+        reason,
+        mode: isRelay ? "relay" : "direct",
+        relayUsername: isRelay ? currentStored?.relayUsername : undefined,
+        serverUrl: currentStored?.wsUrl,
+        message: error.message,
+      });
+    } else {
+      setError(`Connection lost: ${error.message}`);
+    }
+  }, []);
+
+  const subscribeToTransportStatus = useCallback(
+    (transport: SecureSourceTransport, conn: SecureConnection) => {
+      clearTransportStatusSubscription();
+
+      const handleDisconnectedSnapshot = () => {
+        if (
+          activeSecureTransportRef.current !== transport ||
+          connectionRef.current !== conn
+        ) {
+          return;
+        }
+        clearTransportStatusSubscription();
+        const latestSnapshot = transport.status.getSnapshot();
+        const message =
+          latestSnapshot.channels.find(
+            (channel) => channel.name === "secure-websocket",
+          )?.lastError ?? "Connection disconnected";
+        handleTransportDisconnected(new Error(message));
+      };
+
+      const syncStatus = () => {
+        if (
+          activeSecureTransportRef.current !== transport ||
+          connectionRef.current !== conn
+        ) {
+          return;
+        }
+
+        const snapshot = transport.status.getSnapshot();
+        if (snapshot.state === "ready") {
+          setError(null);
+          setAutoResumeError(null);
+          return;
+        }
+        if (snapshot.state !== "disconnected") return;
+
+        if (
+          snapshot.channels.some(
+            (channel) =>
+              channel.name === "secure-websocket" && channel.lastError,
+          )
+        ) {
+          handleDisconnectedSnapshot();
+          return;
+        }
+
+        // ConnectionManager emits stateChange("disconnected") before
+        // reconnectFailed, which is where the transport records lastError.
+        // Let that paired event land so auto-resume errors keep their cause.
+        queueMicrotask(handleDisconnectedSnapshot);
+      };
+
+      activeTransportStatusUnsubscribeRef.current =
+        transport.status.subscribe(syncStatus);
+      syncStatus();
+    },
+    [
+      clearTransportStatusSubscription,
+      handleTransportDisconnected,
+    ],
+  );
+
+  const attachConnectionTransport = useCallback(
+    (conn: SecureConnection) => {
+      clearTransportStatusSubscription();
+      const sourceKey = resolveRemoteConnectionSourceKey({
+        hostId: currentHostIdRef.current,
+        directUrl: currentDirectUrlRef.current,
+      });
+      const transport = getSecureSourceTransport(sourceKey);
+      if (
+        activeSecureTransportRef.current &&
+        activeSecureTransportRef.current !== transport
+      ) {
+        activeSecureTransportRef.current.detach();
+      }
+      transport.attach(conn);
+      activeSecureTransportRef.current = transport;
+      return transport;
+    },
+    [clearTransportStatusSubscription],
+  );
+
+  const publishConnection = useCallback((conn: SecureConnection) => {
+    const transport = attachConnectionTransport(conn);
+    connectionRef.current = conn;
+    setConnection(conn);
+    subscribeToTransportStatus(transport, conn);
+  }, [attachConnectionTransport, subscribeToTransportStatus]);
+
+  const detachTransport = useCallback(() => {
+    clearTransportStatusSubscription();
+    const transport = activeSecureTransportRef.current;
+    activeSecureTransportRef.current = null;
+    transport?.detach();
+  }, [clearTransportStatusSubscription]);
 
   // Track whether we want to remember sessions
   const rememberMeRef = useRef(false);
@@ -397,17 +493,12 @@ export function RemoteConnectionProvider({ children }: Props) {
     }
   }, []);
 
-  // Callback for when connection is lost unexpectedly.
-  // Feed the error to ConnectionManager which will attempt reconnection.
-  // Do NOT clear React connection state here — defer that until ConnectionManager
-  // emits 'disconnected' (all retries exhausted or non-retryable error).
+  // Callback for when connection is lost unexpectedly. The attached
+  // SourceTransport manager observes the same close before this callback fires,
+  // so React state is cleared from the transport status listener only after
+  // reconnect is exhausted or a non-retryable error disconnects the source.
   const handleDisconnect = useCallback((error: Error) => {
     console.log("[RemoteConnection] Connection lost:", error.message);
-    connectionManager.handleError(error);
-  }, []);
-
-  const handleAuthenticated = useCallback(() => {
-    connectionManager.markConnected();
   }, []);
 
   const connect = useCallback(
@@ -437,15 +528,14 @@ export function RemoteConnectionProvider({ children }: Props) {
             ? handleSessionEstablished
             : undefined,
           onDisconnect: handleDisconnect,
-          onAuthenticated: handleAuthenticated,
         });
 
         // Test the connection by making a simple request
         // This triggers the SRP handshake and verifies auth
         await conn.fetch("/auth/status");
 
-        // Set global connection BEFORE setConnection to avoid race condition
-        // where children render and try to use fetchJSON before globalConnection is set
+        // Attach the transport before setConnection so children rendered by
+        // the connected app can route API calls through the source runtime.
         publishConnection(conn);
       } catch (err) {
         const message =
@@ -460,7 +550,6 @@ export function RemoteConnectionProvider({ children }: Props) {
     [
       handleSessionEstablished,
       handleDisconnect,
-      handleAuthenticated,
       publishConnection,
       setCurrentDirectUrl,
     ],
@@ -486,14 +575,14 @@ export function RemoteConnectionProvider({ children }: Props) {
           {
             onSessionEstablished: handleSessionEstablished,
             onDisconnect: handleDisconnect,
-            onAuthenticated: handleAuthenticated,
           },
         );
 
         // Test the connection - this will try resume, fall back to SRP if needed
         await conn.fetch("/auth/status");
 
-        // Set global connection BEFORE setConnection to avoid race condition
+        // Attach the transport before setConnection so connected children can
+        // route API calls through the source runtime.
         publishConnection(conn);
       } catch (err) {
         const message =
@@ -508,7 +597,6 @@ export function RemoteConnectionProvider({ children }: Props) {
     [
       handleSessionEstablished,
       handleDisconnect,
-      handleAuthenticated,
       publishConnection,
       setCurrentDirectUrl,
     ],
@@ -628,7 +716,6 @@ export function RemoteConnectionProvider({ children }: Props) {
                 ? handleSessionEstablished
                 : undefined,
               onDisconnect: handleDisconnect,
-              onAuthenticated: handleAuthenticated,
             },
             { relayUrl, relayUsername },
           );
@@ -642,7 +729,6 @@ export function RemoteConnectionProvider({ children }: Props) {
                 ? handleSessionEstablished
                 : undefined,
               onDisconnect: handleDisconnect,
-              onAuthenticated: handleAuthenticated,
             },
             { relayUrl, relayUsername },
           );
@@ -651,7 +737,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Test the connection
         await conn.fetch("/auth/status");
 
-        // Set global connection
+        // Attach the source transport before connected routes render.
         publishConnection(conn);
       } catch (err) {
         const message =
@@ -666,7 +752,6 @@ export function RemoteConnectionProvider({ children }: Props) {
     [
       handleSessionEstablished,
       handleDisconnect,
-      handleAuthenticated,
       publishConnection,
       setCurrentDirectUrl,
     ],
@@ -678,11 +763,12 @@ export function RemoteConnectionProvider({ children }: Props) {
       // before any navigation happens. This prevents race conditions where
       // ConnectionGate might redirect back to the host before seeing the disconnect.
       flushSync(() => {
-        if (connection) {
-          connection.close();
-          detachTransport();
-          setConnection(null);
+        if (connectionRef.current) {
+          connectionRef.current.close();
         }
+        detachTransport();
+        connectionRef.current = null;
+        setConnection(null);
         clearStoredCredentials();
         setError(null);
         setAutoResumeError(null);
@@ -693,7 +779,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsIntentionalDisconnect(isIntentional);
       });
     },
-    [connection, detachTransport, setCurrentHostId, setCurrentDirectUrl],
+    [detachTransport, setCurrentHostId, setCurrentDirectUrl],
   );
 
   const clearAutoResumeError = useCallback(() => {
@@ -813,7 +899,6 @@ export function RemoteConnectionProvider({ children }: Props) {
             {
               onSessionEstablished: handleSessionEstablished,
               onDisconnect: handleDisconnect,
-              onAuthenticated: handleAuthenticated,
             },
             { relayUrl, relayUsername },
           );
@@ -823,7 +908,6 @@ export function RemoteConnectionProvider({ children }: Props) {
           conn = SecureConnection.forResumeOnly(storedSession, {
             onSessionEstablished: handleSessionEstablished,
             onDisconnect: handleDisconnect,
-            onAuthenticated: handleAuthenticated,
           });
         }
 
@@ -848,7 +932,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           const host = getHostByDirectWsUrl(currentStored.wsUrl);
           setCurrentHostId(host?.id ?? null);
         }
-        // Set global connection BEFORE setConnection to avoid race condition
+        // Attach the source transport before connected routes render.
         publishConnection(conn);
       } catch (err) {
         if (currentStored.mode !== "relay") {
@@ -895,67 +979,10 @@ export function RemoteConnectionProvider({ children }: Props) {
     autoResumeAttempted,
     handleSessionEstablished,
     handleDisconnect,
-    handleAuthenticated,
     publishConnection,
     setCurrentHostId,
     setCurrentDirectUrl,
   ]);
-
-  // Listen for ConnectionManager state changes to sync React state.
-  // When reconnection succeeds, restore the React connection state.
-  // When reconnection is in progress, keep current state (don't flash to login).
-  // When disconnected (all retries exhausted), clear connection and show error.
-  useEffect(() => {
-    const unsubState = connectionManager.on("stateChange", (state) => {
-      if (state === "connected") {
-        const globalConn = getGlobalConnection();
-        if (globalConn && !connection) {
-          console.log(
-            "[RemoteConnection] ConnectionManager connected, restoring React state",
-          );
-          attachConnectionTransport(globalConn as SecureConnection);
-          setConnection(globalConn as SecureConnection);
-          setError(null);
-          setAutoResumeError(null);
-        }
-      }
-      // 'reconnecting' — do nothing, keep current UI state
-    });
-
-    const unsubFailed = connectionManager.on("reconnectFailed", (error) => {
-      console.log(
-        "[RemoteConnection] ConnectionManager reconnect failed:",
-        error.message,
-      );
-      setConnection(null);
-      const reason = categorizeError(error.message);
-      const currentStored = storedRef.current;
-      const isRelay = currentStored?.mode === "relay";
-      if (reason === "resume_incompatible") {
-        clearStaleResumeSession(currentStored);
-      }
-      if (reason !== "auth_failed" && reason !== "other") {
-        setAutoResumeError({
-          reason,
-          mode: isRelay ? "relay" : "direct",
-          relayUsername: isRelay ? currentStored?.relayUsername : undefined,
-          serverUrl: currentStored?.wsUrl,
-          message: error.message,
-        });
-      } else {
-        setError(`Connection lost: ${error.message}`);
-      }
-    });
-
-    return () => {
-      unsubState();
-      unsubFailed();
-    };
-  }, [attachConnectionTransport, connection]);
-
-  // Track connection in ref for cleanup (avoids stale closure issues)
-  const connectionRef = useRef(connection);
-  connectionRef.current = connection;
 
   // Clean up connection on unmount only (not on connection changes)
   // Using empty deps + ref avoids the cleanup running when connection changes
@@ -963,8 +990,8 @@ export function RemoteConnectionProvider({ children }: Props) {
     return () => {
       if (connectionRef.current) {
         connectionRef.current.close();
-        detachTransport();
       }
+      detachTransport();
     };
   }, [detachTransport]);
 

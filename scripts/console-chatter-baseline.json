@@ -1,14 +1,14 @@
 {
   "limits": {
-    "warnings": 112,
+    "warnings": 110,
     "method.warn": 61,
     "method.error": 95
   },
   "observed": {
-    "warnings": 112,
+    "warnings": 110,
     "info": 158,
-    "total": 270,
-    "method.log": 114,
+    "total": 268,
+    "method.log": 112,
     "method.info": 0,
     "method.debug": 0,
     "method.trace": 0,

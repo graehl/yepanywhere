@@ -152,6 +152,19 @@ describe("multiplex source transports", () => {
     transport.dispose();
   });
 
+  it("rejects empty-slot demand fetches immediately when disposed", async () => {
+    const transport = new SecureSourceTransport({ readyTimeoutMs: 1000 });
+
+    const pending = transport.fetch("/sessions");
+    transport.dispose();
+
+    await expect(pending).rejects.toMatchObject({
+      code: "SOURCE_TRANSPORT_DISPOSED",
+      retryable: false,
+      transportKind: "secure",
+    });
+  });
+
   it("resolves pending fetches on attach and preserves facade identity across replacement", async () => {
     vi.useFakeTimers();
     const transport = new SecureSourceTransport({ readyTimeoutMs: 1000 });
@@ -201,7 +214,7 @@ describe("multiplex source transports", () => {
     transport.dispose();
   });
 
-  it("keeps the per-transport manager passive until consumers migrate", async () => {
+  it("reports reconnecting state before the manager backoff fires", async () => {
     const transport = new WebSocketSourceTransport({ readyTimeoutMs: 25 });
     const connection = new FakeMultiplexConnection("ws");
 

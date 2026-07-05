@@ -635,9 +635,3 @@ export class ConnectionManager {
     return parts.join(", ");
   }
 }
-
-/**
- * Legacy singleton ConnectionManager for migration-only consumers.
- * Source-owned streams and status readers use per-transport managers.
- */
-export const connectionManager = new ConnectionManager();

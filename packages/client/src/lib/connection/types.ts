@@ -203,7 +203,6 @@ export interface UploadOptions {
  * Connection abstraction for client-server communication.
  *
  * Implementations:
- * - DirectConnection: Uses native fetch for REST, WebSocket for uploads (localhost)
  * - WebSocketConnection: Multiplexes everything over a single WebSocket (localhost subscriptions)
  * - SecureConnection: Multiplexes everything over encrypted WebSocket (remote/relay)
  *

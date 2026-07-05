@@ -20,7 +20,6 @@ import type {
 } from "@yep-anywhere/shared";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
 import { generateUUID } from "../uuid";
-import { connectionManager } from "./ConnectionManager";
 import type {
   SessionSubscriptionOptions,
   StreamHandlers,
@@ -196,9 +195,8 @@ export class RelayProtocol {
   /**
    * Override the critical-operation guard used by multiplex uploads.
    *
-   * Defaults to the legacy singleton ConnectionManager so existing
-   * WebSocketConnection/SecureConnection users are unchanged until the source
-   * transport migration is complete.
+   * Source-owned connections inject their transport manager here. Connections
+   * without an owning manager run uploads without a health-check guard.
    */
   setBeginCriticalOperation(
     cb: BeginCriticalOperation | undefined,
@@ -747,10 +745,8 @@ export class RelayProtocol {
     file: File,
     options?: UploadOptions,
   ): Promise<UploadedFile> {
-    const endCriticalOperation = (
-      this.options.beginCriticalOperation ??
-      ((label) => connectionManager.beginCriticalOperation(label))
-    )("upload");
+    const endCriticalOperation =
+      this.options.beginCriticalOperation?.("upload") ?? (() => undefined);
     try {
       await this.transport.ensureConnected();
 
@@ -835,10 +831,8 @@ export class RelayProtocol {
     file: File,
     options?: UploadOptions & { batchId?: string },
   ): Promise<StagedAttachmentRef> {
-    const endCriticalOperation = (
-      this.options.beginCriticalOperation ??
-      ((label) => connectionManager.beginCriticalOperation(label))
-    )("upload");
+    const endCriticalOperation =
+      this.options.beginCriticalOperation?.("upload") ?? (() => undefined);
     try {
       await this.transport.ensureConnected();
 

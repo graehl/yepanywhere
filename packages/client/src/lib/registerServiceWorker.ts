@@ -6,6 +6,7 @@
  * needed by all users; push subscription is opt-in.
  */
 import { api } from "../api/client";
+import { isRemoteClient } from "./connection";
 
 /** Service Worker file path, compatible with Vite base URL (local "/" and remote "/remote/") */
 const SW_PATH = `${import.meta.env.BASE_URL}sw.js`;
@@ -24,6 +25,10 @@ export async function registerServiceWorkerAtStartup(): Promise<void> {
 
   // In dev mode, check server setting (allows runtime toggle via settings UI)
   if (import.meta.env.DEV) {
+    // The remote dev client is served by Vite before SRP authentication, so it
+    // has no same-origin API to query without bypassing the secure transport.
+    if (isRemoteClient()) return;
+
     try {
       const response = await api.getServerSettings();
       if (!response.settings.serviceWorkerEnabled) {

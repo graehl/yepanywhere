@@ -2,7 +2,12 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerSettings } from "../../api/client";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
-import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
+import {
+  asClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
 import {
   resetServerSettingsForTests,
   useServerSettings,
@@ -16,9 +21,34 @@ interface Deferred<T> {
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, Set<() => void>>();
+  const getServerSettings = vi.fn();
+  const updateServerSettings = vi.fn();
+  const sourceFetch = vi.fn(
+    (sourceKey: string, path: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (path === "/settings" && method === "GET") {
+        return getServerSettings();
+      }
+      if (path === "/settings" && method === "PUT") {
+        return updateServerSettings(
+          JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
+        );
+      }
+      throw new Error(`Unexpected ${method} ${path} for ${sourceKey}`);
+    },
+  );
+  const getOrCreateSourceRuntime = vi.fn((sourceKey: string) => ({
+    sourceKey,
+    transport: {
+      fetch: (path: string, init?: RequestInit) =>
+        sourceFetch(sourceKey, path, init),
+    },
+  }));
   return {
-    getServerSettings: vi.fn(),
-    updateServerSettings: vi.fn(),
+    getServerSettings,
+    updateServerSettings,
+    sourceFetch,
+    getOrCreateSourceRuntime,
     isRemoteClient: vi.fn(() => false),
     remoteState: {
       connection: null as { connection: object | null } | null,
@@ -45,11 +75,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../api/client", () => ({
-  api: {
-    getServerSettings: mocks.getServerSettings,
-    updateServerSettings: mocks.updateServerSettings,
-  },
+vi.mock("../../lib/sourceRuntime", () => ({
+  getSourceRuntimeRegistry: () => ({
+    getOrCreateSourceRuntime: mocks.getOrCreateSourceRuntime,
+  }),
 }));
 
 vi.mock("../../lib/activityBus", () => ({
@@ -99,6 +128,8 @@ beforeEach(() => {
   resetServerSettingsForTests();
   mocks.getServerSettings.mockReset();
   mocks.updateServerSettings.mockReset();
+  mocks.sourceFetch.mockClear();
+  mocks.getOrCreateSourceRuntime.mockClear();
   mocks.getServerSettings.mockResolvedValue({ settings: settings() });
   mocks.updateServerSettings.mockResolvedValue({ settings: settings() });
   mocks.isRemoteClient.mockReset();
@@ -178,12 +209,61 @@ describe("useServerSettings", () => {
     expect(mocks.getServerSettings).not.toHaveBeenCalled();
     expect(hook.result.current.isLoading).toBe(true);
 
+    act(() => {
+      setCurrentClientSummarySourceKey(asClientSummarySourceKey("direct:ws"));
+    });
     mocks.remoteState.connection = { connection: {} };
     hook.rerender();
 
     await settle();
     expect(mocks.getServerSettings).toHaveBeenCalledTimes(1);
     expect(hook.result.current.isLoading).toBe(false);
+  });
+
+  it("waits for remote source selection before fetching", async () => {
+    mocks.isRemoteClient.mockReturnValue(true);
+    mocks.remoteState.connection = { connection: {} };
+
+    const hook = renderHook(() => useServerSettings());
+
+    await settle();
+    expect(mocks.getServerSettings).not.toHaveBeenCalled();
+    expect(hook.result.current.isLoading).toBe(true);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(asClientSummarySourceKey("direct:ws"));
+    });
+    await settle();
+
+    expect(mocks.getServerSettings).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.isLoading).toBe(false);
+  });
+
+  it("fetches with the query source when the current source changes", async () => {
+    const remoteSource = asClientSummarySourceKey("direct:ws");
+    mocks.isRemoteClient.mockReturnValue(true);
+    mocks.remoteState.connection = { connection: {} };
+
+    act(() => {
+      setCurrentClientSummarySourceKey(remoteSource);
+    });
+    renderHook(() => useServerSettings());
+
+    act(() => {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+    });
+    await settle();
+
+    expect(mocks.sourceFetch).toHaveBeenCalledWith(
+      remoteSource,
+      "/settings",
+      undefined,
+    );
+    expect(mocks.sourceFetch).not.toHaveBeenCalledWith(
+      LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      "/settings",
+      undefined,
+    );
   });
 
   it("writes mutation responses into the shared settings snapshot", async () => {

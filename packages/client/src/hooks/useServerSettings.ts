@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { type ServerSettings, api } from "../api/client";
+import type { ServerSettings } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { createClientQueryKey } from "../lib/clientQueryController";
 import {
   type ClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
 import { isRemoteClient } from "../lib/connection";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 
 interface UseServerSettingsResult {
@@ -34,6 +37,7 @@ const SERVER_SETTINGS_QUERY_KEY = createClientQueryKey({
   endpoint: "settings",
 });
 const SERVER_SETTINGS_REVALIDATE_EVENTS = ["refresh", "reconnect"] as const;
+type ServerSettingsResponse = { settings: ServerSettings };
 
 const serverSettingsSnapshotsBySource = new Map<
   ClientSummarySourceKey,
@@ -87,6 +91,34 @@ function nextMutationObservedAt(sourceKey: ClientSummarySourceKey): number {
   return Math.max(Date.now(), currentObservedAt + 1);
 }
 
+function getSourceTransport(sourceKey: ClientSummarySourceKey) {
+  return getSourceRuntimeRegistry().getOrCreateSourceRuntime(sourceKey)
+    .transport;
+}
+
+function fetchServerSettingsForSource(
+  sourceKey: ClientSummarySourceKey,
+): Promise<ServerSettingsResponse> {
+  return getSourceTransport(sourceKey).fetch<ServerSettingsResponse>(
+    "/settings",
+  );
+}
+
+function updateServerSettingsForSource(
+  sourceKey: ClientSummarySourceKey,
+  updates: Partial<ServerSettings>,
+): Promise<ServerSettingsResponse> {
+  return getSourceTransport(sourceKey).fetch<ServerSettingsResponse>(
+    "/settings",
+    {
+      method: "PUT",
+      body: JSON.stringify(updates, (_key, value) =>
+        value === undefined ? null : value,
+      ),
+    },
+  );
+}
+
 function useServerSettingsSnapshot(
   sourceKey: ClientSummarySourceKey,
 ): ServerSettingsSnapshot {
@@ -110,9 +142,14 @@ export function resetServerSettingsForTests(): void {
 export function useServerSettings(): UseServerSettingsResult {
   const sourceKey = useClientSummarySourceKey();
   const remoteConnection = useOptionalRemoteConnection();
+  const hasResolvedRemoteSource =
+    sourceKey !== LOCAL_CLIENT_SUMMARY_SOURCE_KEY &&
+    sourceKey !== REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY;
   const ready =
     !isRemoteClient() ||
-    (remoteConnection !== null && remoteConnection.connection !== null);
+    (remoteConnection !== null &&
+      remoteConnection.connection !== null &&
+      hasResolvedRemoteSource);
   const snapshot = useServerSettingsSnapshot(sourceKey);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -122,9 +159,9 @@ export function useServerSettings(): UseServerSettingsResult {
     ready,
     hasData: snapshot.observedAt !== undefined,
     revalidateOn: SERVER_SETTINGS_REVALIDATE_EVENTS,
-    fetcher: async () => {
+    fetcher: async (context) => {
       try {
-        return await api.getServerSettings();
+        return await fetchServerSettingsForSource(context.sourceKey);
       } catch (err) {
         console.error("[useServerSettings] Failed to fetch settings:", err);
         throw err;
@@ -150,7 +187,10 @@ export function useServerSettings(): UseServerSettingsResult {
       const requestSourceKey = sourceKey;
       try {
         setMutationError(null);
-        const response = await api.updateServerSettings(updates);
+        const response = await updateServerSettingsForSource(
+          requestSourceKey,
+          updates,
+        );
         acceptServerSettingsSnapshot(
           requestSourceKey,
           response.settings,

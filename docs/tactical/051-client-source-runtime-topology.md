@@ -576,8 +576,9 @@ Status: In progress for source-bound summary ownership. Non-test summary
 writes, summary selector reads, summary activity leases, and draft-decoration
 leases now go through the mounted source runtime when one exists. Per-session
 live streams and the transport-level activity stream still use the existing
-ambient current-source path. The next stream work is blocked on first making
-the source transport boundary explicit; see
+ambient current-source path. The remaining stream/transport work continues in
+[`057-source-transport-boundary.md`](057-source-transport-boundary.md), the
+implementation runbook for the accepted contract in
 [`topics/source-transport.md`](../../topics/source-transport.md).
 
 Intent:
@@ -616,13 +617,11 @@ Near-term implementation slices:
    `useProjects({ runtime })` / `useProjectQueues({ runtime })`. Avoid naked
    `sourceKey` overrides for operations that also depend on API, summary,
    activity, or cache state.
-4. Add the source transport boundary from `topics/source-transport.md`,
-   preserving default localhost behavior while making its real stream/upload
-   channels visible in status snapshots.
-5. Move activity-bus retain/release, draft-decoration subscriptions, and live
-   stream/watch subscriptions under runtime transport ownership.
-6. Prove two real runtimes against two real YA servers before documenting
-   multi-source coexistence as supported.
+4. Superseded: slices 4–6 of this list are replaced by the T1–T10 sequence in
+   [`057-source-transport-boundary.md`](057-source-transport-boundary.md),
+   which carries the transport contract implementation, the stream/activity
+   moves, global deletion, and a minimal two-server smoke. Full coexistence
+   proof (relay concurrency, auth isolation) remains Phase 8 here.
 
 Completed read-side slice:
 
@@ -644,14 +643,12 @@ Completed activity/draft slice:
 
 Likely next slice:
 
-- Source transport boundary prefactoring. The summary layer can now bind reads,
-  writes, activity leases, and draft scan leases to a mounted runtime, but
+- Slice T1 of
+  [`057-source-transport-boundary.md`](057-source-transport-boundary.md)
+  (contract types and fakes). The summary layer can bind reads, writes,
+  activity leases, and draft scan leases to a mounted runtime, but
   `useSessionStream` / `useSessionWatchStream` still read the process-wide
-  connection path directly. Before moving those hooks, add the
-  `SourceTransport` shape from `topics/source-transport.md`: default localhost
-  mode stays source-ready with no-op source reconnect, while its WebSocket
-  channels remain visible; plain WebSocket and secure/relay modes remain
-  sibling multiplex transports.
+  connection path directly; 057 owns that migration end to end.
 
 Implementation note:
 

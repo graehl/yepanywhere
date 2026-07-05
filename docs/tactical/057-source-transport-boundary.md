@@ -2,7 +2,7 @@
 
 Topic: source-transport
 
-Status: Active plan, T4 landed 2026-07-05. This is the implementation runbook for the
+Status: Active plan, T5 landed 2026-07-05. This is the implementation runbook for the
 contract in [`topics/source-transport.md`](../../topics/source-transport.md).
 It continues Phase 6 of
 [`051-client-source-runtime-topology.md`](051-client-source-runtime-topology.md)
@@ -212,7 +212,7 @@ Tripwires:
 
 ## Slice T5: Managed Stream Helper
 
-Status: Not started.
+Status: Landed 2026-07-05.
 
 Intent:
 

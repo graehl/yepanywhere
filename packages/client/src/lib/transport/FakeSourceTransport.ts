@@ -55,6 +55,10 @@ interface MutableFakeSubscriptionRecord
   closeCalls: number;
 }
 
+export interface FakeSourceTransportCallbackOptions {
+  readonly allowClosed?: boolean;
+}
+
 export interface FakeSourceTransportOptions {
   readonly kind?: SourceTransportKind;
   readonly capabilities?: SourceTransportCapabilities;
@@ -345,22 +349,36 @@ export class FakeSourceTransport implements SourceTransport {
     eventType: string,
     data: unknown,
     eventId?: string,
+    options?: FakeSourceTransportCallbackOptions,
   ): void {
     const record = this.requireSubscription(id);
-    if (!record.closed) {
+    if (!record.closed || options?.allowClosed) {
       record.handlers.onEvent(eventType, eventId, data);
     }
   }
 
-  failSubscription(id: string, error: Error): void {
+  failSubscription(
+    id: string,
+    error: Error,
+    options?: FakeSourceTransportCallbackOptions,
+  ): void {
     const record = this.requireSubscription(id);
-    if (!record.closed) {
+    if (!record.closed || options?.allowClosed) {
       record.handlers.onError?.(error);
     }
   }
 
-  closeSubscription(id: string, error?: Error): void {
-    this.closeRecord(this.requireSubscription(id), error);
+  closeSubscription(
+    id: string,
+    error?: Error,
+    options?: FakeSourceTransportCallbackOptions,
+  ): void {
+    const record = this.requireSubscription(id);
+    if (options?.allowClosed && record.closed) {
+      record.handlers.onClose?.(error);
+      return;
+    }
+    this.closeRecord(record, error);
   }
 
   private createSubscription(

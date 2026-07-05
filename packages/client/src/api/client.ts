@@ -55,7 +55,6 @@ import type {
   UserMessageMetadata,
   WorkstreamId,
 } from "@yep-anywhere/shared";
-import { authEvents } from "../lib/authEvents";
 import {
   getGlobalConnection,
   isRemoteClient,
@@ -70,6 +69,7 @@ import type {
   SessionMetadata,
   SessionStatus,
 } from "../types";
+import { fetchPlainJSON, getDesktopAuthToken } from "./plainFetch";
 
 /** Pagination metadata for compact-boundary-based session loading */
 export interface PaginationInfo {
@@ -202,33 +202,8 @@ export interface SessionOptions {
 
 export type { UploadedFile } from "@yep-anywhere/shared";
 
-const API_BASE = "/api";
-
-/**
- * Desktop auth token read from URL query parameter (?desktop_token=...).
- * When present, sent as X-Desktop-Token header on every API request.
- * The Tauri desktop app passes this token to authenticate the iframe
- * without cookies or sessions — the token is valid for the server's lifetime.
- */
-let desktopAuthToken: string | null = null;
-if (typeof window !== "undefined") {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("desktop_token");
-  if (token) {
-    desktopAuthToken = token;
-    // Strip token from URL to keep it out of history/bookmarks
-    params.delete("desktop_token");
-    const cleanUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}${window.location.hash}`
-      : `${window.location.pathname}${window.location.hash}`;
-    window.history.replaceState({}, "", cleanUrl);
-  }
-}
-
 /** Get the desktop auth token (if running inside Tauri iframe). */
-export function getDesktopAuthToken(): string | null {
-  return desktopAuthToken;
-}
+export { getDesktopAuthToken };
 
 export interface AuthStatus {
   /** Whether auth is enabled in settings */
@@ -268,55 +243,7 @@ export async function fetchJSON<T>(
     return readyConn.fetch<T>(path, options);
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Yep-Anywhere": "true",
-  };
-  if (desktopAuthToken) {
-    headers["X-Desktop-Token"] = desktopAuthToken;
-  }
-
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      ...headers,
-      ...options?.headers,
-    },
-  });
-
-  if (!res.ok) {
-    // Signal login required for 401 errors (but not for auth endpoints themselves)
-    if (res.status === 401 && !path.startsWith("/auth/")) {
-      console.log("[API] 401 response, signaling login required");
-      authEvents.signalLoginRequired();
-    }
-
-    // Try to parse error message from response body
-    let errorMessage = `API error: ${res.status} ${res.statusText}`;
-    try {
-      const body = await res.json();
-      if (body.error) {
-        errorMessage = body.error;
-      } else if (body.message) {
-        errorMessage = body.message;
-      }
-    } catch {
-      // Response body wasn't JSON, use default message
-    }
-
-    // Include setup required info in error for auth handling
-    const setupRequired = res.headers.get("X-Setup-Required") === "true";
-    const error = new Error(errorMessage) as Error & {
-      status: number;
-      setupRequired?: boolean;
-    };
-    error.status = res.status;
-    if (setupRequired) error.setupRequired = true;
-    throw error;
-  }
-
-  return res.json();
+  return fetchPlainJSON<T>(path, options);
 }
 
 // Re-export upload functions

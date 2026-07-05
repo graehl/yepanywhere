@@ -1,9 +1,11 @@
 export { FakeSourceTransport } from "./FakeSourceTransport";
+export { LocalhostSourceTransport } from "./LocalhostSourceTransport";
 export type {
   FakeSourceTransportOptions,
   FakeSourceTransportSubscriptionKind,
   FakeSourceTransportSubscriptionRecord,
 } from "./FakeSourceTransport";
+export type { LocalhostSourceTransportOptions } from "./LocalhostSourceTransport";
 export {
   SourceTransportDisposedError,
   SourceTransportError,

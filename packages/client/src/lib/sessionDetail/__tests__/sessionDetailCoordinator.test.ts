@@ -760,6 +760,66 @@ describe("SessionDetailCoordinator", () => {
     ).toEqual(["current", "catchup"]);
   });
 
+  it("skips older-page requests when pagination has no older window", () => {
+    const detail = coordinator();
+
+    expect(detail.buildOlderPageRequest()).toEqual({ requested: false });
+
+    detail.replaceRouteSnapshot(routeSnapshot("current"));
+
+    expect(detail.buildOlderPageRequest()).toEqual({ requested: false });
+  });
+
+  it("builds older-page requests from the current pagination window", () => {
+    const detail = coordinator();
+
+    detail.replaceRouteSnapshot({
+      ...routeSnapshot("current"),
+      pagination: {
+        ...pagination(1),
+        hasOlderMessages: true,
+        truncatedBeforeMessageId: "before-current",
+      },
+    });
+
+    expect(detail.buildOlderPageRequest()).toEqual({
+      requested: true,
+      input: {
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        tailCompactions: 2,
+        beforeMessageId: "before-current",
+      },
+    });
+  });
+
+  it("prepends older-page responses", () => {
+    const detail = coordinator();
+    const responsePagination = {
+      ...pagination(2),
+      hasOlderMessages: false,
+      truncatedBeforeMessageId: undefined,
+    };
+
+    detail.replaceRouteSnapshot(routeSnapshot("current"));
+
+    expect(
+      detail.applyOlderPage(
+        sessionResponse(
+          [message("older", "2026-07-03T00:00:00.000Z")],
+          responsePagination,
+        ),
+      ),
+    ).toEqual({
+      messageCount: 2,
+      pagination: responsePagination,
+      sourceMessageCount: 1,
+    });
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
+    ).toEqual(["older", "current"]);
+  });
+
   it("builds reveal snapshots from store-backed runtime state", () => {
     const detail = coordinator();
 

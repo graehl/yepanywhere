@@ -4,6 +4,7 @@ import type {
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
 import type {
+  GetSessionInput,
   GetSessionMetadataResult,
   GetSessionResult,
   YaSourceRuntime,
@@ -15,7 +16,10 @@ import {
   type SessionLoadProgress,
   type SessionLoadProgressStage,
 } from "./loadProgress";
-import { selectSessionDetailRuntimeSnapshot } from "./selectors";
+import {
+  selectSessionDetailPagination,
+  selectSessionDetailRuntimeSnapshot,
+} from "./selectors";
 import {
   buildSessionDetailRevealSnapshot,
   getCacheableSessionDetailRevealSnapshot,
@@ -91,6 +95,12 @@ export interface SessionDetailAppliedIncrementalRefresh
   extends SessionDetailAppliedWarmRefresh {
   applied: boolean;
 }
+
+export type SessionDetailOlderPageRequest =
+  | { requested: false }
+  | { requested: true; input: GetSessionInput };
+
+export type SessionDetailAppliedOlderPage = SessionDetailAppliedWarmRefresh;
 
 export type SessionDetailAppliedInitialLoad =
   SessionDetailAppliedWarmRefresh;
@@ -603,6 +613,40 @@ export class SessionDetailCoordinator {
       applied: true,
       messageCount: merged?.messages.length ?? sourceMessageCount,
       pagination: merged?.pagination,
+      sourceMessageCount,
+    };
+  }
+
+  buildOlderPageRequest(): SessionDetailOlderPageRequest {
+    const pagination = this.readSelected(selectSessionDetailPagination);
+    if (
+      !pagination?.hasOlderMessages ||
+      !pagination.truncatedBeforeMessageId
+    ) {
+      return { requested: false };
+    }
+    return {
+      requested: true,
+      input: {
+        projectId: this.entryKey.projectId,
+        sessionId: this.entryKey.sessionId,
+        tailCompactions: 2,
+        beforeMessageId: pagination.truncatedBeforeMessageId,
+      },
+    };
+  }
+
+  applyOlderPage(data: GetSessionResult): SessionDetailAppliedOlderPage {
+    const sourceMessageCount = data.messages.length;
+    this.dispatch({
+      type: "prependOlderMessages",
+      messages: data.messages,
+      pagination: data.pagination,
+    });
+    const merged = this.readSelected(selectSessionDetailRuntimeSnapshot);
+    return {
+      messageCount: merged?.messages.length ?? sourceMessageCount,
+      pagination: merged?.pagination ?? data.pagination,
       sourceMessageCount,
     };
   }

@@ -267,6 +267,9 @@ runtime-status notification payload shaping is coordinator-owned while the
 reporting side effect remains hook-owned. Incremental refresh reducer-action
 selection is coordinator-owned while the fetch, status-reporting side effect,
 metadata update, and diagnostics timing remain hook-owned.
+Older-page request gating/input construction and reducer dispatch are
+coordinator-owned while React loading state, REST, status reporting,
+diagnostics, and error handling remain hook-owned.
 
 Pruning note: `buildRevealInput`, `buildWarmHydrationRevealInput`, and
 `buildInitialLoadStartPerfDetail` are pure identity/renaming wrappers
@@ -439,9 +442,19 @@ Implementation note:
   runtime-status reporting side effect, metadata update, and diagnostics
   timing, while the coordinator now no-ops empty refreshes and dispatches
   `replaceTailWindow` or `applyCatchupMessages` for non-empty responses.
-- The next Phase 3 slice should likely move another small non-React helper,
-  such as older-page reducer dispatch, while leaving React loading state,
-  side-effect calls, and user preference reads in the hook.
+- Moved older-page request gating/input construction and reducer dispatch into
+  `SessionDetailCoordinator`. The hook still owns `loadingOlder` React state,
+  the REST call, runtime-status reporting, diagnostics, and error handling,
+  while the coordinator now reads pagination, decides whether an older page is
+  requestable, builds the `beforeMessageId` request, and applies
+  `prependOlderMessages`.
+  Impact: `useSessionMessages` no longer imports the pagination selector or
+  directly dispatches transcript pagination actions; older-page behavior is now
+  covered in coordinator unit tests.
+- The next Phase 3 slice should likely be larger than recent payload moves:
+  either consolidate the remaining initial-load effect orchestration into a
+  named coordinator/hook boundary, or stop Phase 3 and prune identity-only
+  helper methods before Phase 4 naming work.
 
 ## Phase 4: Rename Public Cache Facade
 

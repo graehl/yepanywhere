@@ -37,7 +37,6 @@ import {
 } from "../lib/sessionDetail/shadowDiagnostics";
 import {
   selectSessionDetailLastMessageId,
-  selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
   selectSessionDetailSession,
 } from "../lib/sessionDetail/selectors";
@@ -958,37 +957,20 @@ export function useSessionMessages(
     updateSession,
   ]);
 
-  const readSelectorBackedPagination = useCallback(
-    () => coordinator.readSelected(selectSessionDetailPagination),
-    [coordinator],
-  );
-
   // Load older messages (previous chunk before the current truncation point)
   const loadOlderMessages = useCallback(async () => {
-    const currentPagination = readSelectorBackedPagination();
-    if (
-      !currentPagination?.hasOlderMessages ||
-      !currentPagination.truncatedBeforeMessageId
-    ) {
+    const request = coordinator.buildOlderPageRequest();
+    if (!request.requested) {
       return;
     }
     setLoadingOlder(true);
     try {
-      const data = await sourceApi.getSession({
-        projectId,
-        sessionId,
-        tailCompactions: 2,
-        beforeMessageId: currentPagination.truncatedBeforeMessageId,
-      });
+      const data = await sourceApi.getSession(request.input);
       reportProviderRuntimeStatusSnapshot(
         sourceKey,
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
-      dispatchSessionDetailAction({
-        type: "prependOlderMessages",
-        messages: data.messages,
-        pagination: data.pagination,
-      });
+      coordinator.applyOlderPage(data);
       reportStoreDivergence("older-page", { session: data.session });
     } catch {
       // Silent fail for loading older messages
@@ -997,10 +979,6 @@ export function useSessionMessages(
     }
   }, [
     coordinator,
-    projectId,
-    sessionId,
-    readSelectorBackedPagination,
-    dispatchSessionDetailAction,
     reportStoreDivergence,
     sourceApi,
     sourceKey,

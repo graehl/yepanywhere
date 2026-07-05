@@ -12,6 +12,10 @@ import {
   resolveSourceKeyForDirectUrl,
   resolveSourceKeyForSavedHost,
 } from "../lib/sourceIdentity";
+import {
+  getSourceRuntimeRegistry,
+  type SourceTransportRegistration,
+} from "../lib/sourceRuntime";
 import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 
 const DIRECT_ROUTE_SEGMENTS = new Set([
@@ -28,6 +32,13 @@ const DIRECT_ROUTE_SEGMENTS = new Set([
 ]);
 
 const NON_HOST_ROUTE_SEGMENTS = new Set(["login", "remote", "share"]);
+
+const LOCAL_TRANSPORT_REGISTRATION: SourceTransportRegistration = {
+  kind: "localhost",
+};
+const SECURE_TRANSPORT_REGISTRATION: SourceTransportRegistration = {
+  kind: "secure",
+};
 
 export interface ClientSummarySourceRemoteState {
   currentDirectUrl: string | null;
@@ -98,13 +109,24 @@ export function ClientSummarySourceBinding(): null {
     [currentDirectUrl, currentHostId, hasRemote, location.pathname],
   );
 
+  const transportRegistration = hasRemote
+    ? SECURE_TRANSPORT_REGISTRATION
+    : LOCAL_TRANSPORT_REGISTRATION;
+  getSourceRuntimeRegistry().registerSourceTransport(
+    sourceKey,
+    transportRegistration,
+  );
   if (getCurrentClientSummarySourceKey() !== sourceKey) {
     setCurrentClientSummarySourceKey(sourceKey);
   }
 
   useLayoutEffect(() => {
+    getSourceRuntimeRegistry().registerSourceTransport(
+      sourceKey,
+      transportRegistration,
+    );
     setCurrentClientSummarySourceKey(sourceKey);
-  }, [sourceKey]);
+  }, [sourceKey, transportRegistration]);
 
   return null;
 }

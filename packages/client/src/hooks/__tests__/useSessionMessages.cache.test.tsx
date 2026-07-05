@@ -40,6 +40,7 @@ import type {
   SourceSummaryRuntime,
   YaSourceRuntime,
 } from "../../lib/sourceRuntime";
+import { FakeSourceTransport } from "../../lib/transport";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
 import type { Message, SessionMetadata } from "../../types";
@@ -139,6 +140,7 @@ function fakeRuntime(sourceKey: string, messageId: string): YaSourceRuntime {
   const runtimeSourceKey = asClientSummarySourceKey(sourceKey);
   return {
     sourceKey: runtimeSourceKey,
+    transport: new FakeSourceTransport(),
     api: {
       getSession: vi.fn(async () => sessionResponse(messageId)),
       getSessionMetadata: vi.fn(),

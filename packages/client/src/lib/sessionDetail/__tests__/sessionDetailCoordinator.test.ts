@@ -23,6 +23,7 @@ import type {
   SourceSummaryRuntime,
   YaSourceRuntime,
 } from "../../sourceRuntime";
+import { FakeSourceTransport } from "../../transport";
 
 function message(
   uuid: string,
@@ -142,6 +143,7 @@ function runtime(): YaSourceRuntime {
   const sourceKey = asClientSummarySourceKey("host:test");
   return {
     sourceKey,
+    transport: new FakeSourceTransport(),
     api: {
       getSession: vi.fn(),
       getSessionMetadata: vi.fn(),

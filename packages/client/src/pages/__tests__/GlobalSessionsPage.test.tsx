@@ -131,6 +131,10 @@ vi.mock("../../hooks/useProjectQueues", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY: "local",
+  REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY: "remote:none",
+  getCurrentClientSummarySourceKey: () => "host:test",
+  setCurrentClientSummarySourceKey: vi.fn(),
   useClientSummarySourceKey: () => "host:test",
   useSessionCollectionQueryRecords: () => sessionCollectionState.records,
   useProjectQueuedSessionIds: () => sessionCollectionState.queuedSessionIds,

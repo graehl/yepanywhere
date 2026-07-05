@@ -31,6 +31,10 @@ import {
   setGlobalConnection,
 } from "../lib/connection";
 import {
+  REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
+  type ClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
+import {
   SecureConnection,
   type StoredSession,
 } from "../lib/connection/SecureConnection";
@@ -43,6 +47,11 @@ import {
   updateHostSession,
   upsertRelayHost,
 } from "../lib/hostStorage";
+import {
+  resolveSourceKeyForDirectUrl,
+  resolveSourceKeyForSavedHost,
+} from "../lib/sourceIdentity";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 
 /** Stored credentials for auto-reconnect */
 interface StoredCredentials {
@@ -276,6 +285,29 @@ interface Props {
   children: ReactNode;
 }
 
+function resolveRemoteConnectionSourceKey(options: {
+  hostId: string | null;
+  directUrl: string | null;
+}): ClientSummarySourceKey {
+  const host = options.hostId ? getHostById(options.hostId) : undefined;
+  if (host) return resolveSourceKeyForSavedHost(host);
+  if (options.directUrl) return resolveSourceKeyForDirectUrl(options.directUrl);
+  return REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY;
+}
+
+function getSecureSourceTransport(
+  sourceKey: ClientSummarySourceKey,
+): SecureSourceTransport {
+  const transport = getSourceRuntimeRegistry().registerSourceTransport(
+    sourceKey,
+    { kind: "secure" },
+  );
+  if (transport instanceof SecureSourceTransport) return transport;
+  throw new Error(
+    "Remote source transport registration did not create secure transport",
+  );
+}
+
 export function RemoteConnectionProvider({ children }: Props) {
   // Load stored credentials synchronously to determine initial state
   const initialStored = loadStoredCredentials();
@@ -292,32 +324,53 @@ export function RemoteConnectionProvider({ children }: Props) {
     useState<AutoResumeError | null>(null);
   // Track current host ID for multi-host support
   const [currentHostId, setCurrentHostIdState] = useState<string | null>(null);
-  const [currentDirectUrl, setCurrentDirectUrl] = useState<string | null>(null);
+  const [currentDirectUrl, setCurrentDirectUrlState] = useState<string | null>(
+    null,
+  );
   // Keep currentHostId in a ref so handleSessionEstablished always has latest value
   const currentHostIdRef = useRef<string | null>(null);
   const setCurrentHostId = useCallback((hostId: string | null) => {
     currentHostIdRef.current = hostId;
     setCurrentHostIdState(hostId);
   }, []);
+  const currentDirectUrlRef = useRef<string | null>(null);
+  const setCurrentDirectUrl = useCallback((url: string | null) => {
+    currentDirectUrlRef.current = url;
+    setCurrentDirectUrlState(url);
+  }, []);
   // Track if we've attempted auto-resume (to prevent repeated attempts)
   const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
   // Track intentional disconnect (to prevent auto-redirect back to host after Switch Host)
   const [isIntentionalDisconnect, setIsIntentionalDisconnect] = useState(false);
-  const secureTransportRef = useRef<SecureSourceTransport | null>(null);
-  if (!secureTransportRef.current) {
-    secureTransportRef.current = new SecureSourceTransport();
-  }
+  const activeSecureTransportRef = useRef<SecureSourceTransport | null>(null);
+
+  const attachConnectionTransport = useCallback((conn: SecureConnection) => {
+    const sourceKey = resolveRemoteConnectionSourceKey({
+      hostId: currentHostIdRef.current,
+      directUrl: currentDirectUrlRef.current,
+    });
+    const transport = getSecureSourceTransport(sourceKey);
+    if (
+      activeSecureTransportRef.current &&
+      activeSecureTransportRef.current !== transport
+    ) {
+      activeSecureTransportRef.current.detach();
+    }
+    transport.attach(conn);
+    activeSecureTransportRef.current = transport;
+  }, []);
 
   const publishConnection = useCallback((conn: SecureConnection) => {
     // T3 dual-write bridge: keep the legacy global connection for current
     // consumers while also attaching the stable source transport slot.
     setGlobalConnection(conn);
-    secureTransportRef.current?.attach(conn);
+    attachConnectionTransport(conn);
     setConnection(conn);
-  }, []);
+  }, [attachConnectionTransport]);
 
   const detachTransport = useCallback(() => {
-    secureTransportRef.current?.detach();
+    activeSecureTransportRef.current?.detach();
+    activeSecureTransportRef.current = null;
     setGlobalConnection(null);
   }, []);
 
@@ -409,6 +462,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       handleDisconnect,
       handleAuthenticated,
       publishConnection,
+      setCurrentDirectUrl,
     ],
   );
 
@@ -456,6 +510,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       handleDisconnect,
       handleAuthenticated,
       publishConnection,
+      setCurrentDirectUrl,
     ],
   );
 
@@ -613,6 +668,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       handleDisconnect,
       handleAuthenticated,
       publishConnection,
+      setCurrentDirectUrl,
     ],
   );
 
@@ -637,7 +693,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsIntentionalDisconnect(isIntentional);
       });
     },
-    [connection, detachTransport, setCurrentHostId],
+    [connection, detachTransport, setCurrentHostId, setCurrentDirectUrl],
   );
 
   const clearAutoResumeError = useCallback(() => {
@@ -842,6 +898,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     handleAuthenticated,
     publishConnection,
     setCurrentHostId,
+    setCurrentDirectUrl,
   ]);
 
   // Listen for ConnectionManager state changes to sync React state.
@@ -856,7 +913,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           console.log(
             "[RemoteConnection] ConnectionManager connected, restoring React state",
           );
-          secureTransportRef.current?.attach(globalConn as SecureConnection);
+          attachConnectionTransport(globalConn as SecureConnection);
           setConnection(globalConn as SecureConnection);
           setError(null);
           setAutoResumeError(null);
@@ -894,7 +951,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       unsubState();
       unsubFailed();
     };
-  }, [connection]);
+  }, [attachConnectionTransport, connection]);
 
   // Track connection in ref for cleanup (avoids stale closure issues)
   const connectionRef = useRef(connection);
@@ -908,8 +965,6 @@ export function RemoteConnectionProvider({ children }: Props) {
         connectionRef.current.close();
         detachTransport();
       }
-      secureTransportRef.current?.dispose();
-      secureTransportRef.current = null;
     };
   }, [detachTransport]);
 

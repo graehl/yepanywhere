@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   asClientSummarySourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
 } from "../clientSummaryStore";
 import {
@@ -25,6 +26,11 @@ import {
   getSourceRuntimeRegistry,
   type SourceApiClient,
 } from "../sourceRuntime";
+import {
+  FakeSourceTransport,
+  LocalhostSourceTransport,
+  SecureSourceTransport,
+} from "../transport";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -205,8 +211,65 @@ describe("SourceRuntimeRegistry", () => {
     const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
 
     expect(registry.getOrCreateSourceRuntime(sourceA)).toBe(runtimeA);
+    expect(registry.getOrCreateSourceRuntime(sourceA).transport).toBe(
+      runtimeA.transport,
+    );
     expect(registry.getOrCreateSourceRuntime(sourceB)).not.toBe(runtimeA);
     expect(registry.getOrCreateSourceRuntime(sourceB).sourceKey).toBe(sourceB);
+  });
+
+  it("uses explicit transport registrations without parsing source keys", () => {
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      defaultTransportRegistration: { kind: "localhost" },
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const sourceKey = asClientSummarySourceKey("host:opaque-remote-looking");
+
+    const runtime = registry.getOrCreateSourceRuntime(sourceKey);
+    expect(runtime.transport).toBeInstanceOf(LocalhostSourceTransport);
+
+    const transport = registry.registerSourceTransport(sourceKey, {
+      kind: "secure",
+    });
+    expect(transport).toBeInstanceOf(SecureSourceTransport);
+    expect(registry.getOrCreateSourceRuntime(sourceKey).transport).toBe(
+      transport,
+    );
+  });
+
+  it("keeps repeated matching transport registrations idempotent", () => {
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const sourceKey = asClientSummarySourceKey("server:stable");
+
+    const first = registry.registerSourceTransport(sourceKey, {
+      kind: "secure",
+    });
+    const second = registry.registerSourceTransport(sourceKey, {
+      kind: "secure",
+    });
+
+    expect(second).toBe(first);
+  });
+
+  it("resolves remote:none to a detached secure transport", () => {
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+
+    const runtime = registry.getOrCreateSourceRuntime(
+      REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
+    );
+
+    expect(runtime.transport).toBeInstanceOf(SecureSourceTransport);
+    expect(runtime.transport.status.getSnapshot()).toMatchObject({
+      kind: "secure",
+      state: "disconnected",
+    });
   });
 
   it("routes current-source helpers through the registry source key", () => {
@@ -422,9 +485,19 @@ describe("SourceRuntimeRegistry", () => {
     ).toBeUndefined();
   });
 
-  it("can dispose only the runtime wrapper for a source", () => {
+  it("disposes the source transport for a disposed runtime", () => {
+    const transports: FakeSourceTransport[] = [];
     const registry = createSourceRuntimeRegistry({
       apiClient: fakeApiClient(),
+      defaultTransportRegistration: {
+        kind: "custom",
+        createTransport: () => {
+          const transport = new FakeSourceTransport();
+          vi.spyOn(transport, "dispose");
+          transports.push(transport);
+          return transport;
+        },
+      },
       sessionDetails: { cache: createSessionDetailMemoryCache() },
     });
     const sourceKey = asClientSummarySourceKey("host:disposed");
@@ -432,8 +505,10 @@ describe("SourceRuntimeRegistry", () => {
 
     registry.disposeSource(sourceKey);
 
+    expect(transports[0]?.dispose).toHaveBeenCalledTimes(1);
     const second = registry.getOrCreateSourceRuntime(sourceKey);
     expect(second).not.toBe(first);
     expect(second.sourceKey).toBe(sourceKey);
+    expect(second.transport).toBe(transports[1]);
   });
 });

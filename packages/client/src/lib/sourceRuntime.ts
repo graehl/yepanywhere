@@ -5,6 +5,8 @@ import {
   getClientSummarySnapshotForSource,
   getClientSummaryStoreForSource,
   getCurrentClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
   reportProjectCollectionSnapshot,
@@ -37,6 +39,15 @@ import {
   defaultSessionDetailMemoryCache,
   type SessionDetailMemoryCache,
 } from "./sessionDetail/sessionDetailStore";
+import {
+  LocalhostSourceTransport,
+  type LocalhostSourceTransportOptions,
+  SecureSourceTransport,
+  type SecureSourceTransportOptions,
+  type SourceTransport,
+  WebSocketSourceTransport,
+  type WebSocketSourceTransportOptions,
+} from "./transport";
 
 interface GetSessionBaseInput {
   projectId: string;
@@ -144,12 +155,36 @@ export interface SourceSummaryRuntime {
 
 export interface YaSourceRuntime {
   sourceKey: ClientSummarySourceKey;
+  transport: SourceTransport;
   api: SourceApiClient;
   summary: SourceSummaryRuntime;
   sessionDetails: SessionDetailRuntime;
 }
 
+export type SourceTransportRegistration =
+  | {
+      kind: "localhost";
+      options?: LocalhostSourceTransportOptions;
+    }
+  | {
+      kind: "websocket";
+      options?: WebSocketSourceTransportOptions;
+    }
+  | {
+      kind: "secure";
+      options?: SecureSourceTransportOptions;
+    }
+  | {
+      kind: "custom";
+      createTransport: () => SourceTransport;
+    };
+
 export interface SourceRuntimeRegistry {
+  registerSourceTransport(
+    sourceKey: ClientSummarySourceKey,
+    registration: SourceTransportRegistration,
+  ): SourceTransport;
+  getOrCreateSourceTransport(sourceKey: ClientSummarySourceKey): SourceTransport;
   getOrCreateSourceRuntime(sourceKey: ClientSummarySourceKey): YaSourceRuntime;
   getCurrentSourceRuntime(): YaSourceRuntime;
   setCurrentSourceKey(sourceKey: ClientSummarySourceKey): void;
@@ -159,11 +194,45 @@ export interface SourceRuntimeRegistry {
 export interface SourceRuntimeRegistryOptions {
   apiClient?: SourceApiClient;
   sessionDetails?: SessionDetailRuntime;
+  defaultTransportRegistration?: SourceTransportRegistration;
   createSummaryRuntime?: (
     sourceKey: ClientSummarySourceKey,
   ) => SourceSummaryRuntime;
   getCurrentSourceKey?: () => ClientSummarySourceKey;
   setCurrentSourceKey?: (sourceKey: ClientSummarySourceKey) => void;
+}
+
+const LOCALHOST_TRANSPORT_REGISTRATION: SourceTransportRegistration = {
+  kind: "localhost",
+};
+const SECURE_TRANSPORT_REGISTRATION: SourceTransportRegistration = {
+  kind: "secure",
+};
+
+function createTransport(
+  registration: SourceTransportRegistration,
+): SourceTransport {
+  switch (registration.kind) {
+    case "localhost":
+      return new LocalhostSourceTransport(registration.options);
+    case "websocket":
+      return new WebSocketSourceTransport(registration.options);
+    case "secure":
+      return new SecureSourceTransport(registration.options);
+    case "custom":
+      return registration.createTransport();
+  }
+}
+
+function sameTransportRegistration(
+  left: SourceTransportRegistration,
+  right: SourceTransportRegistration,
+): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "custom" && right.kind === "custom") {
+    return left.createTransport === right.createTransport;
+  }
+  return true;
 }
 
 const currentSourceApiClient: SourceApiClient = {
@@ -286,8 +355,14 @@ function createCurrentSourceSummaryRuntime(
 
 class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
   private readonly runtimes = new Map<ClientSummarySourceKey, YaSourceRuntime>();
+  private readonly transports = new Map<ClientSummarySourceKey, SourceTransport>();
+  private readonly transportRegistrations = new Map<
+    ClientSummarySourceKey,
+    SourceTransportRegistration
+  >();
   private readonly apiClient: SourceApiClient;
   private readonly sessionDetails: SessionDetailRuntime;
+  private readonly defaultTransportRegistration: SourceTransportRegistration;
   private readonly createSummaryRuntime: (
     sourceKey: ClientSummarySourceKey,
   ) => SourceSummaryRuntime;
@@ -299,12 +374,49 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
   constructor(options: SourceRuntimeRegistryOptions = {}) {
     this.apiClient = options.apiClient ?? currentSourceApiClient;
     this.sessionDetails = options.sessionDetails ?? currentSessionDetailRuntime;
+    this.defaultTransportRegistration =
+      options.defaultTransportRegistration ?? LOCALHOST_TRANSPORT_REGISTRATION;
     this.createSummaryRuntime =
       options.createSummaryRuntime ?? createCurrentSourceSummaryRuntime;
     this.readCurrentSourceKey =
       options.getCurrentSourceKey ?? getCurrentClientSummarySourceKey;
     this.writeCurrentSourceKey =
       options.setCurrentSourceKey ?? setCurrentClientSummarySourceKey;
+  }
+
+  registerSourceTransport(
+    sourceKey: ClientSummarySourceKey,
+    registration: SourceTransportRegistration,
+  ): SourceTransport {
+    const previousRegistration = this.resolveTransportRegistration(sourceKey);
+    this.transportRegistrations.set(sourceKey, registration);
+
+    const existingTransport = this.transports.get(sourceKey);
+    if (!existingTransport) {
+      return this.createAndStoreTransport(sourceKey, registration);
+    }
+    if (sameTransportRegistration(previousRegistration, registration)) {
+      return existingTransport;
+    }
+
+    existingTransport.dispose();
+    const transport = this.createAndStoreTransport(sourceKey, registration);
+    const runtime = this.runtimes.get(sourceKey);
+    if (runtime) {
+      runtime.transport = transport;
+    }
+    return transport;
+  }
+
+  getOrCreateSourceTransport(
+    sourceKey: ClientSummarySourceKey,
+  ): SourceTransport {
+    const existingTransport = this.transports.get(sourceKey);
+    if (existingTransport) return existingTransport;
+    return this.createAndStoreTransport(
+      sourceKey,
+      this.resolveTransportRegistration(sourceKey),
+    );
   }
 
   getOrCreateSourceRuntime(
@@ -314,6 +426,7 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
     if (!runtime) {
       runtime = {
         sourceKey,
+        transport: this.getOrCreateSourceTransport(sourceKey),
         api: this.apiClient,
         summary: this.createSummaryRuntime(sourceKey),
         sessionDetails: this.sessionDetails,
@@ -333,6 +446,41 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
 
   disposeSource(sourceKey: ClientSummarySourceKey): void {
     this.runtimes.delete(sourceKey);
+    this.transports.get(sourceKey)?.dispose();
+    this.transports.delete(sourceKey);
+    this.transportRegistrations.delete(sourceKey);
+  }
+
+  resetForTests(): void {
+    for (const transport of this.transports.values()) {
+      transport.dispose();
+    }
+    this.runtimes.clear();
+    this.transports.clear();
+    this.transportRegistrations.clear();
+  }
+
+  private resolveTransportRegistration(
+    sourceKey: ClientSummarySourceKey,
+  ): SourceTransportRegistration {
+    const registration = this.transportRegistrations.get(sourceKey);
+    if (registration) return registration;
+    if (sourceKey === LOCAL_CLIENT_SUMMARY_SOURCE_KEY) {
+      return LOCALHOST_TRANSPORT_REGISTRATION;
+    }
+    if (sourceKey === REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY) {
+      return SECURE_TRANSPORT_REGISTRATION;
+    }
+    return this.defaultTransportRegistration;
+  }
+
+  private createAndStoreTransport(
+    sourceKey: ClientSummarySourceKey,
+    registration: SourceTransportRegistration,
+  ): SourceTransport {
+    const transport = createTransport(registration);
+    this.transports.set(sourceKey, transport);
+    return transport;
   }
 }
 
@@ -342,10 +490,14 @@ export function createSourceRuntimeRegistry(
   return new DefaultSourceRuntimeRegistry(options);
 }
 
-const defaultSourceRuntimeRegistry = createSourceRuntimeRegistry();
+const defaultSourceRuntimeRegistry = new DefaultSourceRuntimeRegistry();
 
 export function getSourceRuntimeRegistry(): SourceRuntimeRegistry {
   return defaultSourceRuntimeRegistry;
+}
+
+export function resetSourceRuntimeRegistryForTests(): void {
+  defaultSourceRuntimeRegistry.resetForTests();
 }
 
 export function getOrCreateCurrentSourceRuntime(

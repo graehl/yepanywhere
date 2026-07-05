@@ -55,11 +55,7 @@ import type {
   UserMessageMetadata,
   WorkstreamId,
 } from "@yep-anywhere/shared";
-import {
-  getGlobalConnection,
-  isRemoteClient,
-  whenConnectionReady,
-} from "../lib/connection";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import type {
   AgentSession,
   InputRequest,
@@ -69,7 +65,7 @@ import type {
   SessionMetadata,
   SessionStatus,
 } from "../types";
-import { fetchPlainJSON, getDesktopAuthToken } from "./plainFetch";
+import { getDesktopAuthToken } from "./plainFetch";
 
 /** Pagination metadata for compact-boundary-based session loading */
 export interface PaginationInfo {
@@ -226,24 +222,9 @@ export async function fetchJSON<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  // Route through global connection in remote mode (SecureConnection)
-  const globalConn = getGlobalConnection();
-  if (globalConn) {
-    return globalConn.fetch<T>(path, options);
-  }
-
-  // In remote client mode we MUST have a SecureConnection. If it isn't ready
-  // yet (initial connect or a reconnect still in progress), wait for it rather
-  // than failing the request outright — otherwise hooks that fetch on mount
-  // race the handshake, throw, and never retry. Rejects on teardown or timeout
-  // so genuine "not connected" states still surface. See
-  // docs/tactical/021-client-connection-readiness-vs-state-consistency.md.
-  if (isRemoteClient()) {
-    const readyConn = await whenConnectionReady();
-    return readyConn.fetch<T>(path, options);
-  }
-
-  return fetchPlainJSON<T>(path, options);
+  return getSourceRuntimeRegistry()
+    .getCurrentSourceRuntime()
+    .transport.fetch<T>(path, options);
 }
 
 // Re-export upload functions

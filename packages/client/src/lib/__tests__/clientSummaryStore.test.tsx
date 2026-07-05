@@ -4,6 +4,7 @@ import type {
   ProjectQueueItemSummary,
   UrlProjectId,
 } from "@yep-anywhere/shared";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GlobalSessionItem, InboxItem } from "../../api/client";
 
@@ -72,6 +73,13 @@ import {
   useStarredSessionRecords,
 } from "../clientSummaryStore";
 import { saveSessionDraft } from "../sessionDraftStorage";
+import { createSessionDetailMemoryCache } from "../sessionDetail/sessionDetailStore";
+import {
+  createSourceRuntimeRegistry,
+  type SourceApiClient,
+  type YaSourceRuntime,
+} from "../sourceRuntime";
+import { SourceRuntimeProvider } from "../sourceRuntimeReact";
 
 const PROJECT_ID = "project-1" as UrlProjectId;
 const RECENT = "2026-06-27T11:00:00.000Z";
@@ -137,6 +145,21 @@ function queueItem(
     status: "queued",
     attachmentCount: 0,
     ...overrides,
+  };
+}
+
+function fakeApiClient(): SourceApiClient {
+  return {
+    getSession: vi.fn(() => Promise.resolve({} as never)),
+    getSessionMetadata: vi.fn(() => Promise.resolve({} as never)),
+  };
+}
+
+function runtimeWrapper(runtime: YaSourceRuntime) {
+  return function RuntimeWrapper({ children }: { children: ReactNode }) {
+    return (
+      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+    );
   };
 }
 
@@ -367,6 +390,163 @@ describe("clientSummaryStore", () => {
 
     expect(selected.result.current).toBe("Mac Project");
     expect(renders).toBeGreaterThan(afterWinnativeRenders);
+  });
+
+  it("selects summary records from the mounted source runtime", () => {
+    const sourceA = createClientSummaryHostSourceKey("runtime-a");
+    const sourceB = createClientSummaryHostSourceKey("runtime-b");
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
+    const runtimeB = registry.getOrCreateSourceRuntime(sourceB);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(sourceA);
+      runtimeA.summary.reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [
+            globalSession("session-a", {
+              projectName: "Runtime A",
+            }),
+          ],
+          hasMore: false,
+        },
+        100,
+      );
+      runtimeA.summary.reportInboxCollectionSnapshot(
+        {
+          needsAttention: [
+            inboxItem("session-a", {
+              pendingInputType: "tool-approval",
+              projectName: "Runtime A",
+            }),
+          ],
+          active: [],
+          recentActivity: [],
+          unread8h: [],
+          unread24h: [],
+        },
+        100,
+      );
+      runtimeA.summary.reportProjectQueueCollectionSnapshot(
+        {
+          projectId: PROJECT_ID,
+          items: [
+            queueItem("a", {
+              target: { type: "existing-session", sessionId: "session-a" },
+            }),
+          ],
+        },
+        100,
+      );
+      runtimeA.summary.reportProviderRuntimeStatusSnapshot(
+        {
+          sessionId: "session-a",
+          projectId: PROJECT_ID,
+          providerRuntimeStatus: RUNTIME_STATUS,
+        },
+        100,
+      );
+
+      runtimeB.summary.reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [
+            globalSession("session-b", {
+              projectName: "Runtime B",
+            }),
+          ],
+          hasMore: false,
+        },
+        100,
+      );
+      runtimeB.summary.reportInboxCollectionSnapshot(
+        {
+          needsAttention: [
+            inboxItem("session-b", {
+              pendingInputType: "user-question",
+              projectName: "Runtime B",
+            }),
+          ],
+          active: [],
+          recentActivity: [],
+          unread8h: [],
+          unread24h: [],
+        },
+        100,
+      );
+      runtimeB.summary.reportProjectQueueCollectionSnapshot(
+        {
+          projectId: PROJECT_ID,
+          items: [
+            queueItem("b", {
+              target: { type: "existing-session", sessionId: "session-b" },
+            }),
+          ],
+        },
+        100,
+      );
+      runtimeB.summary.reportProviderRuntimeStatusSnapshot(
+        {
+          sessionId: "session-b",
+          projectId: PROJECT_ID,
+          providerRuntimeStatus: RUNTIME_STATUS,
+        },
+        100,
+      );
+    });
+
+    const runtimeARead = renderHook(
+      () => ({
+        projectName: useSessionCollectionRecord("session-a")?.projectName,
+        otherProjectName: useSessionCollectionRecord("session-b")?.projectName,
+        inboxIds: useInboxResponseSnapshot().needsAttention.map(
+          (item) => item.sessionId,
+        ),
+        queuedIds: [...useProjectQueuedSessionIds([PROJECT_ID])],
+        providerStatus: useProviderRuntimeStatusForSession("session-a"),
+      }),
+      { wrapper: runtimeWrapper(runtimeA) },
+    );
+    const runtimeBRead = renderHook(
+      () => ({
+        projectName: useSessionCollectionRecord("session-b")?.projectName,
+        otherProjectName: useSessionCollectionRecord("session-a")?.projectName,
+        inboxIds: useInboxResponseSnapshot().needsAttention.map(
+          (item) => item.sessionId,
+        ),
+        queuedIds: [...useProjectQueuedSessionIds([PROJECT_ID])],
+        providerStatus: useProviderRuntimeStatusForSession("session-b"),
+      }),
+      { wrapper: runtimeWrapper(runtimeB) },
+    );
+
+    expect(runtimeARead.result.current).toEqual({
+      projectName: "Runtime A",
+      otherProjectName: undefined,
+      inboxIds: ["session-a"],
+      queuedIds: ["session-a"],
+      providerStatus: RUNTIME_STATUS,
+    });
+    expect(runtimeBRead.result.current).toEqual({
+      projectName: "Runtime B",
+      otherProjectName: undefined,
+      inboxIds: ["session-b"],
+      queuedIds: ["session-b"],
+      providerStatus: RUNTIME_STATUS,
+    });
+
+    act(() => {
+      setCurrentClientSummarySourceKey(sourceB);
+    });
+
+    expect(runtimeARead.result.current.projectName).toBe("Runtime A");
+    expect(runtimeARead.result.current.inboxIds).toEqual(["session-a"]);
+    expect(runtimeBRead.result.current.projectName).toBe("Runtime B");
+    expect(runtimeBRead.result.current.inboxIds).toEqual(["session-b"]);
   });
 
   it("reduces stale activity callbacks into their retained source", () => {

@@ -75,6 +75,7 @@ import {
   isSessionDraftStorageKey,
   scanSessionDraftIds,
 } from "./sessionDraftStorage";
+import { useSourceRuntimeContextValue } from "./sourceRuntimeReact";
 
 type StoreListener = () => void;
 type BusUnsubscribe = () => void;
@@ -177,8 +178,13 @@ function getCurrentClientSummaryStore(): StoreApi<ClientSummaryState> {
 }
 
 function useCurrentClientSummaryStore(): StoreApi<ClientSummaryState> {
+  const runtime = useSourceRuntimeContextValue();
   const sourceKey = useClientSummarySourceKey();
-  return useMemo(() => getClientSummaryStoreForSource(sourceKey), [sourceKey]);
+  return useMemo(
+    () =>
+      runtime?.summary.getStore() ?? getClientSummaryStoreForSource(sourceKey),
+    [runtime, sourceKey],
+  );
 }
 
 export function clearClientSummarySource(key: ClientSummarySourceKey): void {

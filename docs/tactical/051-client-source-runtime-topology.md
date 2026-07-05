@@ -570,9 +570,9 @@ Implementation note:
 ## Phase 6: Per-Source Activity And Query Ownership
 
 Status: In progress for source-bound summary ownership. Non-test summary writes
-now go through `runtime.summary`; activity subscriptions, draft decoration, live
-streams, and summary selectors still use the existing ambient current-source
-path.
+and summary selector reads now go through the mounted source runtime when one
+exists. Activity subscriptions, draft-decoration scanning, and live streams
+still use the existing ambient current-source path.
 
 Intent:
 
@@ -614,6 +614,25 @@ Near-term implementation slices:
 5. Prove two real runtimes against two real YA servers before documenting
    multi-source coexistence as supported.
 
+Completed read-side slice:
+
+- Runtime-aware summary reads/selectors. The intended implementation is to keep
+  the existing selector hook names stable while making their store selection
+  come from the mounted `SourceRuntimeProvider` when one exists, falling back to
+  the ambient current-source store for legacy callers. This slice should prove
+  source isolation with two mounted runtimes and should not yet move
+  activity-bus retain/release, draft-decoration scanning, or live stream/watch
+  subscriptions.
+
+Likely next slice:
+
+- Runtime-owned activity and draft-decoration subscriptions. The summary
+  selectors now read from the mounted runtime's summary store, but their
+  retain/release hooks still subscribe and scan using the ambient current source.
+  The next valuable chunk is to move activity-bus retention and draft scanning
+  under runtime ownership without allowing an idle non-current source to keep
+  background loops alive indefinitely.
+
 Implementation note:
 
 - Added `SourceSummaryRuntime` on `YaSourceRuntime`, backed by the existing
@@ -636,6 +655,13 @@ Implementation note:
   through `runtime.summary`. `useRetainedClientQuery` now captures its
   fetch/apply callbacks at request start, preserving the source-bound writer for
   delayed in-flight responses.
+- Moved summary selector store lookup behind the mounted source runtime. The
+  existing selector hook names remain compatible, but when a
+  `SourceRuntimeProvider` is mounted they subscribe to `runtime.summary`'s store
+  instead of the ambient current-source store. A small raw provider module keeps
+  that lookup available to the store layer without depending on the higher-level
+  fallback hook. Added two-runtime selector coverage for session records, inbox
+  snapshots, queue session ids, and provider runtime status.
 
 ## Phase 7: Optional Snapshot Persistence Adapter
 

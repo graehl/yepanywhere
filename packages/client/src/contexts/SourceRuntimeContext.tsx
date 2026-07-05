@@ -1,32 +1,15 @@
-import {
-  createContext,
-  type ReactNode,
-  useContext,
-  useMemo,
-} from "react";
+import { type ReactNode, useMemo } from "react";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  SourceRuntimeProvider,
+  useSourceRuntimeContextValue,
+} from "../lib/sourceRuntimeReact";
 import {
   getSourceRuntimeRegistry,
   type YaSourceRuntime,
 } from "../lib/sourceRuntime";
 
-const SourceRuntimeContext = createContext<YaSourceRuntime | null>(null);
-
-interface SourceRuntimeProviderProps {
-  children: ReactNode;
-  runtime: YaSourceRuntime;
-}
-
-export function SourceRuntimeProvider({
-  children,
-  runtime,
-}: SourceRuntimeProviderProps) {
-  return (
-    <SourceRuntimeContext.Provider value={runtime}>
-      {children}
-    </SourceRuntimeContext.Provider>
-  );
-}
+export { SourceRuntimeProvider } from "../lib/sourceRuntimeReact";
 
 interface CurrentSourceRuntimeProviderProps {
   children: ReactNode;
@@ -47,7 +30,7 @@ export function CurrentSourceRuntimeProvider({
 }
 
 export function useCurrentSourceRuntime(): YaSourceRuntime {
-  const runtime = useContext(SourceRuntimeContext);
+  const runtime = useSourceRuntimeContextValue();
   const fallbackSourceKey = useClientSummarySourceKey();
   return (
     runtime ??

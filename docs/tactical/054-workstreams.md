@@ -357,8 +357,8 @@ pnpm i18n:scan
 
 ### WS-006: Associate Sessions With Workstreams
 
-Status: first metadata/scanner slice done; start-session UI and per-lane
-session counts remain deferred.
+Status: manual start-session association slice done; per-lane session counts
+and Project Queue targeting remain deferred.
 
 Goal: let sessions display their lane identity and let the Workstreams page
 show associated sessions.
@@ -378,6 +378,15 @@ Implemented:
 - Invalidated scanner snapshots on `workstreams-changed` events and included
   the workstreams metadata file in the persistent project-scan cache source
   state.
+- Added optional `workstreamId` handling to project-bound session start/create
+  routes. A non-main target runs the provider in that checkout path while YA
+  keeps the canonical project id in URLs, responses, and supervisor metadata.
+- Preserved selected lane metadata for starts that pass through the supervisor
+  capacity queue before a session id exists.
+- Added an experimental New Session workstream selector, visible only when
+  `workstreamsEnabled` is on, a known project is selected, and that project has
+  a stored checkout lane. Main remains the default and sends no explicit
+  `workstreamId`.
 
 Likely change:
 
@@ -412,9 +421,10 @@ Lane session association rules:
 Out of scope:
 
 - no automatic reassignment of historical sessions;
-- no start-session workstream picker or Workstreams-page session counts yet;
+- no Workstreams-page session counts yet;
+- no Project Queue target picker or scheduling changes yet;
 - no provider-native id changes;
-- no queue scheduling changes.
+- no broad queue scheduling changes.
 
 Suggested verification:
 
@@ -423,7 +433,15 @@ pnpm --filter @yep-anywhere/shared build
 pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/client exec tsc --noEmit
 pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
+pnpm --filter @yep-anywhere/server test -- test/routes/sessions-workstreams.test.ts
+pnpm --filter @yep-anywhere/client test -- src/components/__tests__/NewSessionForm.test.tsx
 ```
+
+Verified 2026-07-05 with the new focused route and client tests above, plus
+server/client typechecks, `pnpm lint`, `pnpm i18n:scan`, `pnpm console:scan`,
+and `git diff --check`. `pnpm i18n:scan` still reports the three pre-existing
+raw-copy warnings in `packages/client/src/main.tsx`; `pnpm console:scan` stayed
+within the committed baseline and reported no new warnings.
 
 ### WS-007: Add Project Queue Target Metadata And Hidden Target Picker
 

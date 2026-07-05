@@ -52,6 +52,7 @@ import type {
   UrlProjectId,
   UserQuestionAnswers,
   UserMessageMetadata,
+  WorkstreamId,
 } from "@yep-anywhere/shared";
 import { authEvents } from "../lib/authEvents";
 import {
@@ -194,6 +195,8 @@ export interface SessionOptions {
   helperSideModel?: string;
   /** Existing-session resume strategy. */
   resumeMode?: "full" | "compact-first";
+  /** Experimental project workstream lane for new project sessions. */
+  workstreamId?: WorkstreamId;
 }
 
 export type { UploadedFile } from "@yep-anywhere/shared";
@@ -735,6 +738,7 @@ export const api = {
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
+        workstreamId: options?.workstreamId,
         attachments,
         clientTimestamp,
         messageMetadata,
@@ -768,6 +772,7 @@ export const api = {
         recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
+        workstreamId: options?.workstreamId,
       }),
     }),
 

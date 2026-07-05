@@ -31,6 +31,7 @@ const {
   mockCreateDetachedSession,
   mockQueueMessage,
   mockCreateProjectQueueItem,
+  mockGetProjectWorkstreams,
   mockReportProjectQueueCollectionSnapshot,
   mockAddProject,
   mockUpload,
@@ -65,6 +66,7 @@ const {
   mockCreateDetachedSession: vi.fn(),
   mockQueueMessage: vi.fn(),
   mockCreateProjectQueueItem: vi.fn(),
+  mockGetProjectWorkstreams: vi.fn(),
   mockReportProjectQueueCollectionSnapshot: vi.fn(),
   mockAddProject: vi.fn(),
   mockUpload: vi.fn(),
@@ -152,6 +154,7 @@ const {
         baseUrl: string;
         model?: string;
       }>;
+      workstreamsEnabled?: boolean;
     } | null,
     isLoading: true,
   },
@@ -225,6 +228,7 @@ vi.mock("../../api/client", () => ({
     createSession: mockCreateSession,
     queueMessage: mockQueueMessage,
     createProjectQueueItem: mockCreateProjectQueueItem,
+    getProjectWorkstreams: mockGetProjectWorkstreams,
   },
 }));
 
@@ -627,6 +631,7 @@ describe("NewSessionForm", () => {
     mockCreateDetachedSession.mockReset();
     mockQueueMessage.mockReset();
     mockCreateProjectQueueItem.mockReset();
+    mockGetProjectWorkstreams.mockReset();
     mockAddProject.mockReset();
     mockUpload.mockReset();
     mockUploadStagedAttachment.mockReset();
@@ -701,6 +706,10 @@ describe("NewSessionForm", () => {
         attachmentCount: 0,
       },
       queue: { projectId: "project-1", items: [] },
+    });
+    mockGetProjectWorkstreams.mockResolvedValue({
+      projectId: "project-1",
+      workstreams: [],
     });
     mockAddProject.mockResolvedValue({
       project: {
@@ -962,6 +971,79 @@ describe("NewSessionForm", () => {
         }),
       }),
     );
+  });
+
+  it("submits the selected workstream when starting a project session", async () => {
+    serverSettingsState.settings = {
+      workstreamsEnabled: true,
+    };
+    serverSettingsState.isLoading = false;
+    mockGetProjectWorkstreams.mockResolvedValue({
+      projectId: "project-1",
+      workstreams: [
+        {
+          id: "main:project-1",
+          projectId: "project-1",
+          label: "Main",
+          kind: "main",
+          path: "/tmp/alpha",
+          branch: "main",
+          baseBranch: "main",
+          baseCommit: null,
+          managedByYa: false,
+          queuePaused: false,
+          status: "active",
+          createdAt: "1970-01-01T00:00:00.000Z",
+          updatedAt: "1970-01-01T00:00:00.000Z",
+        },
+        {
+          id: "ws-lane",
+          projectId: "project-1",
+          label: "tools cleanup",
+          kind: "checkout",
+          path: "/tmp/checkouts/alpha/tools-cleanup",
+          branch: "main",
+          baseBranch: "main",
+          baseCommit: null,
+          managedByYa: true,
+          queuePaused: false,
+          status: "active",
+          createdAt: "2026-07-05T10:00:00.000Z",
+          updatedAt: "2026-07-05T10:00:00.000Z",
+        },
+      ],
+    });
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const workstreamSelect = (await screen.findByLabelText(
+      "newSessionWorkstreamLabel",
+    )) as HTMLSelectElement;
+    fireEvent.change(workstreamSelect, { target: { value: "ws-lane" } });
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-1",
+        "hello",
+        expect.objectContaining({
+          workstreamId: "ws-lane",
+        }),
+        undefined,
+        expect.any(Number),
+      );
+    });
   });
 
   it("stages selected new-session files into the draft envelope", async () => {

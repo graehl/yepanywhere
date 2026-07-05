@@ -1138,6 +1138,7 @@ export function createApp(options: AppOptions): AppResult {
       piSessionsDir: PI_SESSIONS_DIR,
       piReaderFactory,
       serverSettingsService: options.serverSettingsService,
+      workstreamService: options.workstreamService,
       modelInfoService: options.modelInfoService,
       sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       dataDir: options.dataDir,

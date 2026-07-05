@@ -450,6 +450,8 @@
   "newSessionProjectPathHint": "Recent folders and matching projects show up below as you type.",
   "newSessionProjectUseTypedPath": "Use typed path",
   "newSessionProjectNoMatches": "No saved project matches. You can still start with the typed path.",
+  "newSessionWorkstreamLabel": "Workstream",
+  "newSessionWorkstreamMain": "Main checkout",
   "newSessionDefaultsDescription": "Save the current provider, model, and permission mode as your defaults.",
   "newSessionDefaultsAction": "Set as default",
   "newSessionDefaultsSaving": "Saving...",

@@ -18,10 +18,13 @@ import {
   type UserMessageDeliveryIntent,
   type UserMessageMetadata,
   type UrlProjectId,
+  type WorkstreamId,
   buildEffectiveAgentContext,
   clampRecapAfterSeconds,
   getModelContextWindow,
   isUrlProjectId,
+  isWorkstreamId,
+  mainWorkstreamId,
   thinkingOptionToConfig,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
@@ -48,6 +51,7 @@ import type {
   PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
 } from "../services/SessionQueuePersistenceService.js";
+import type { WorkstreamService } from "../services/WorkstreamService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -203,6 +207,8 @@ export interface SessionsDeps {
   piReaderFactory?: (projectPath: string) => PiSessionReader;
   /** ServerSettingsService for reading global instructions */
   serverSettingsService?: ServerSettingsService;
+  /** WorkstreamService for resolving experimental checkout lanes */
+  workstreamService?: WorkstreamService;
   /** ModelInfoService for context window lookups */
   modelInfoService?: ModelInfoService;
   /** Durable store for recovered patient queued messages */
@@ -406,6 +412,8 @@ interface StartSessionBody {
   helperSideModel?: string;
   /** Resume strategy for existing sessions. */
   resumeMode?: ResumeMode;
+  /** Experimental workstream lane target for new project sessions. */
+  workstreamId?: string;
 }
 
 interface CreateSessionBody {
@@ -428,6 +436,8 @@ interface CreateSessionBody {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
   helperSideModel?: string;
+  /** Experimental workstream lane target for new project sessions. */
+  workstreamId?: string;
 }
 
 interface InputResponseBody {
@@ -1824,6 +1834,48 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       hints: deps.serverSettingsService?.getSetting("agentContextHints"),
     });
 
+  const resolveLaunchWorkstreamTarget = (
+    project: Project,
+    rawWorkstreamId: string | undefined,
+  ):
+    | { projectPath: string; workstreamId?: WorkstreamId }
+    | { error: string; status: 400 | 404 | 409 | 503 } => {
+    if (rawWorkstreamId === undefined) {
+      return { projectPath: project.path };
+    }
+    if (!isWorkstreamId(rawWorkstreamId)) {
+      return { error: "Invalid workstream ID format", status: 400 };
+    }
+    if (
+      deps.serverSettingsService?.getSetting("workstreamsEnabled") !== true
+    ) {
+      return { error: "Workstreams are disabled", status: 404 };
+    }
+    if (!deps.workstreamService) {
+      return { error: "Workstreams unavailable", status: 503 };
+    }
+
+    const workstreamId = rawWorkstreamId;
+    if (workstreamId === mainWorkstreamId(project.id)) {
+      return { projectPath: project.path };
+    }
+    if (!deps.sessionMetadataService) {
+      return { error: "Session metadata unavailable", status: 503 };
+    }
+
+    const workstream = deps.workstreamService.getWorkstream(
+      project.id,
+      workstreamId,
+    );
+    if (workstream?.kind !== "checkout") {
+      return { error: "Workstream not found", status: 404 };
+    }
+    if (workstream.status !== "active") {
+      return { error: "Workstream is not active", status: 409 };
+    }
+    return { projectPath: workstream.path, workstreamId };
+  };
+
   const persistLaunchMetadata = async (
     sessionId: string,
     provider: ProviderName | undefined,
@@ -1832,6 +1884,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     requestedModel?: string,
     promptSuggestionMode?: PromptSuggestionMode,
     recapAfterSeconds?: number,
+    workstreamId?: WorkstreamId,
   ): Promise<void> => {
     if (!deps.sessionMetadataService) {
       return;
@@ -1869,6 +1922,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       await deps.sessionMetadataService.updateMetadata(sessionId, {
         recapAfterSeconds,
       });
+    }
+    if (workstreamId !== undefined) {
+      await deps.sessionMetadataService.setWorkstream(sessionId, workstreamId);
     }
   };
 
@@ -3002,6 +3058,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
     }
+    const workstreamTarget = resolveLaunchWorkstreamTarget(
+      project,
+      body.workstreamId,
+    );
+    if ("error" in workstreamTarget) {
+      return c.json({ error: workstreamTarget.error }, workstreamTarget.status);
+    }
 
     const serverTimestamp = Date.now();
     const userMessage: UserMessage = {
@@ -3033,7 +3096,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     });
 
     const result = await deps.supervisor.startSession(
-      project.path,
+      workstreamTarget.projectPath,
       userMessage,
       body.mode,
       {
@@ -3049,6 +3112,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
+      },
+      {
+        projectId: project.id,
+        workstreamId: workstreamTarget.workstreamId,
       },
     );
 
@@ -3073,6 +3140,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model,
       result.promptSuggestionMode,
       helperSettings.recapAfterSeconds,
+      workstreamTarget.workstreamId,
     );
 
     return c.json({
@@ -3119,6 +3187,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (helperSettings.error) {
       return c.json({ error: helperSettings.error }, 400);
     }
+    const workstreamTarget = resolveLaunchWorkstreamTarget(
+      project,
+      body.workstreamId,
+    );
+    if ("error" in workstreamTarget) {
+      return c.json({ error: workstreamTarget.error }, workstreamTarget.status);
+    }
 
     // Convert thinking option to SDK config
     const { thinking, effort } = body.thinking
@@ -3131,7 +3206,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     const result = await deps.supervisor.createSession(
-      project.path,
+      workstreamTarget.projectPath,
       body.mode,
       {
         model,
@@ -3146,6 +3221,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
+      },
+      {
+        projectId: project.id,
+        workstreamId: workstreamTarget.workstreamId,
       },
     );
 
@@ -3170,6 +3249,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model,
       result.promptSuggestionMode,
       helperSettings.recapAfterSeconds,
+      workstreamTarget.workstreamId,
     );
 
     return c.json({

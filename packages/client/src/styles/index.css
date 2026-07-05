@@ -12752,6 +12752,8 @@ a.linkified-url:hover {
 .new-session-project-slot {
   grid-area: project;
   min-width: 0;
+  display: grid;
+  gap: var(--space-2);
 }
 
 .new-session-provider-slot {
@@ -12913,6 +12915,44 @@ a.linkified-url:hover {
   outline: none;
   border-color: var(--app-yep-green);
   box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.14);
+}
+
+.new-session-workstream-field {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  background: color-mix(in srgb, var(--bg-code) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 94%, transparent);
+  border-radius: var(--radius-lg);
+}
+
+.new-session-workstream-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.new-session-workstream-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.5rem;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.new-session-workstream-path {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .new-session-project-field-hint {

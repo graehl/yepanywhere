@@ -12,6 +12,8 @@ import {
   type StagedAttachmentRef,
   type ThinkingMode,
   type ThinkingOption,
+  type Workstream,
+  type WorkstreamId,
   normalizeRecapAfterSeconds,
   resolveModel,
 } from "@yep-anywhere/shared";
@@ -173,6 +175,12 @@ type PendingStagedFile = StagedAttachmentRef & {
 };
 
 type PendingFile = PendingLocalFile | PendingUploadingFile | PendingStagedFile;
+
+interface WorkstreamsLoadState {
+  status: "idle" | "loading" | "ready" | "error";
+  projectId: string | null;
+  workstreams: Workstream[];
+}
 
 interface PendingSpeechFinal {
   timer: ReturnType<typeof setTimeout>;
@@ -485,6 +493,14 @@ export function NewSessionForm({
   const [, setSpeechPreviewRevision] = useState(0);
   const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
     useState(false);
+  const [selectedWorkstreamId, setSelectedWorkstreamId] =
+    useState<WorkstreamId | null>(null);
+  const [workstreamsState, setWorkstreamsState] =
+    useState<WorkstreamsLoadState>({
+      status: "idle",
+      projectId: null,
+      workstreams: [],
+    });
   const [projectInput, setProjectInput] = useState(
     () => selectedProject?.path ?? "",
   );
@@ -1086,6 +1102,82 @@ export function NewSessionForm({
     hasCustomProjectPath || currentProjectSelection
       ? shortenPath(projectSummaryMeta)
       : projectSummaryMeta;
+  const workstreamSelectionProjectId =
+    !hasCustomProjectPath && normalizedProjectInput && currentProjectSelection
+      ? currentProjectSelection.id
+      : null;
+  const workstreamSelectionEnabled = settings?.workstreamsEnabled === true;
+
+  useEffect(() => {
+    setSelectedWorkstreamId(null);
+    if (!workstreamSelectionEnabled || !workstreamSelectionProjectId) {
+      setWorkstreamsState({
+        status: "idle",
+        projectId: null,
+        workstreams: [],
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setWorkstreamsState({
+      status: "loading",
+      projectId: workstreamSelectionProjectId,
+      workstreams: [],
+    });
+
+    api
+      .getProjectWorkstreams(workstreamSelectionProjectId)
+      .then((response) => {
+        if (cancelled) return;
+        setWorkstreamsState({
+          status: "ready",
+          projectId: workstreamSelectionProjectId,
+          workstreams: response.workstreams,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWorkstreamsState({
+          status: "error",
+          projectId: workstreamSelectionProjectId,
+          workstreams: [],
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workstreamSelectionEnabled, workstreamSelectionProjectId]);
+
+  const workstreamOptions =
+    workstreamsState.status === "ready" &&
+    workstreamsState.projectId === workstreamSelectionProjectId
+      ? workstreamsState.workstreams.filter(
+          (workstream) =>
+            workstream.kind === "main" || workstream.status === "active",
+        )
+      : [];
+  const showWorkstreamChooser =
+    workstreamSelectionEnabled &&
+    workstreamSelectionProjectId !== null &&
+    workstreamOptions.length > 1;
+  const selectedWorkstream =
+    workstreamOptions.find(
+      (workstream) => workstream.id === selectedWorkstreamId,
+    ) ??
+    workstreamOptions.find((workstream) => workstream.kind === "main") ??
+    null;
+  const selectedCheckoutWorkstreamId =
+    selectedWorkstream?.kind === "checkout" ? selectedWorkstream.id : undefined;
+
+  const handleWorkstreamSelect = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const nextValue = event.currentTarget.value;
+      setSelectedWorkstreamId(nextValue ? (nextValue as WorkstreamId) : null);
+    },
+    [],
+  );
 
   const handleProjectOptionSelect = useCallback(
     (project: Project) => {
@@ -1738,6 +1830,7 @@ export function NewSessionForm({
           recapAfterSeconds,
           promptSuggestionMode: effectivePromptSuggestionMode,
           helperSideModel,
+          workstreamId: selectedCheckoutWorkstreamId,
         };
         logSessionUiTrace("new-session-submit", {
           projectId: resolvedProjectId ?? null,
@@ -1971,6 +2064,7 @@ export function NewSessionForm({
       resolvePendingAttachmentsForSession,
       resolveProjectIdForSubmission,
       selectedExecutor,
+      selectedCheckoutWorkstreamId,
       selectedModel,
       selectedPromptSuggestionMode,
       selectedProvider,
@@ -2919,6 +3013,38 @@ export function NewSessionForm({
       )}
     </div>
   );
+  const workstreamChooser =
+    showWorkstreamChooser && selectedWorkstream ? (
+      <label className="new-session-workstream-field">
+        <span className="new-session-workstream-label">
+          {t("newSessionWorkstreamLabel")}
+        </span>
+        <select
+          className="new-session-workstream-select"
+          value={selectedCheckoutWorkstreamId ?? ""}
+          onChange={handleWorkstreamSelect}
+          disabled={isStarting}
+          aria-label={t("newSessionWorkstreamLabel")}
+        >
+          {workstreamOptions.map((workstream) => (
+            <option
+              key={workstream.id}
+              value={workstream.kind === "main" ? "" : workstream.id}
+            >
+              {workstream.kind === "main"
+                ? t("newSessionWorkstreamMain")
+                : workstream.label}
+            </option>
+          ))}
+        </select>
+        <span
+          className="new-session-workstream-path"
+          title={selectedWorkstream.path}
+        >
+          {shortenPath(selectedWorkstream.path)}
+        </span>
+      </label>
+    ) : null;
 
   const providerSection =
     !providersLoading && availableProviders.length > 1 ? (
@@ -3149,7 +3275,10 @@ export function NewSessionForm({
         <div className="new-session-main-stack">
           <div className="new-session-input-area">{inputArea}</div>
         </div>
-        <aside className="new-session-project-slot">{projectChooser}</aside>
+        <aside className="new-session-project-slot">
+          {projectChooser}
+          {workstreamChooser}
+        </aside>
         {(providerSection ||
           modelSection ||
           thinkingSection ||

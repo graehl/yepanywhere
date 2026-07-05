@@ -12,6 +12,7 @@ import {
   type SessionLivenessSnapshot,
   type ThinkingConfig,
   type UrlProjectId,
+  type WorkstreamId,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
@@ -390,6 +391,13 @@ export interface ModelSettings {
   compactAtContextWindow?: number;
 }
 
+export interface SessionLaunchOptions {
+  /** Canonical YA project id when the provider cwd is a checkout lane. */
+  projectId?: UrlProjectId;
+  /** YA workstream lane to persist once a queued launch starts. */
+  workstreamId?: WorkstreamId;
+}
+
 /** Error response when queue is full */
 export interface QueueFullResponse {
   error: "queue_full";
@@ -673,8 +681,9 @@ export class Supervisor {
     message: UserMessage,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
-    const projectId = encodeProjectId(projectPath);
+    const projectId = launchOptions?.projectId ?? encodeProjectId(projectPath);
 
     // Check if at capacity
     if (this.isAtCapacity()) {
@@ -689,6 +698,7 @@ export class Supervisor {
           type: "new-session",
           projectPath,
           projectId,
+          workstreamId: launchOptions?.workstreamId,
           message,
           permissionMode,
           modelSettings,
@@ -750,8 +760,9 @@ export class Supervisor {
     projectPath: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    launchOptions?: SessionLaunchOptions,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
-    const projectId = encodeProjectId(projectPath);
+    const projectId = launchOptions?.projectId ?? encodeProjectId(projectPath);
 
     // Check if at capacity
     if (this.isAtCapacity()) {
@@ -766,6 +777,7 @@ export class Supervisor {
           type: "new-session",
           projectPath,
           projectId,
+          workstreamId: launchOptions?.workstreamId,
           message: { text: "" }, // Placeholder, will be replaced when first message sent
           permissionMode,
           modelSettings,
@@ -4168,6 +4180,13 @@ export class Supervisor {
             request.modelSettings,
           );
           process = result;
+        }
+
+        if (request.workstreamId) {
+          await this.sessionMetadataService?.setWorkstream(
+            process.sessionId,
+            request.workstreamId,
+          );
         }
 
         // Emit queue removed event

@@ -1,9 +1,14 @@
-import { toUrlProjectId } from "@yep-anywhere/shared";
+import {
+  toUrlProjectId,
+  type ProviderRuntimeStatus,
+} from "@yep-anywhere/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   asClientSummarySourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  resetClientSummaryStoreForTests,
 } from "../clientSummaryStore";
+import { selectProviderRuntimeStatusForSession } from "../clientSummaryState";
 import { createSessionDetailMemoryCache } from "../sessionDetail/sessionDetailStore";
 import type { SessionRouteSnapshot } from "../sessionRouteSnapshots";
 import {
@@ -21,6 +26,23 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({
   api: apiMocks,
 }));
+
+const RUNTIME_STATUS: Exclude<ProviderRuntimeStatus, null> = {
+  kind: "retrying",
+  provider: "claude",
+  reason: "rate_limit",
+  httpStatus: 429,
+  startedAt: "2026-07-04T00:00:00.000Z",
+  lastSeenAt: "2026-07-04T00:00:01.000Z",
+  retryAt: "2026-07-04T00:01:00.000Z",
+  retryDelayMs: 60_000,
+  eventCount: 1,
+  source: "claude.system.api_retry",
+};
+
+beforeEach(() => {
+  resetClientSummaryStoreForTests();
+});
 
 function fakeApiClient(): SourceApiClient {
   return {
@@ -213,6 +235,52 @@ describe("SourceRuntimeRegistry", () => {
         sessionId,
       })?.lastMessageId,
     ).toBe("msg-a");
+  });
+
+  it("binds summary store access and status reports to the source key", () => {
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const sourceA = asClientSummarySourceKey("host:summary-a");
+    const sourceB = asClientSummarySourceKey("host:summary-b");
+    const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
+    const runtimeB = registry.getOrCreateSourceRuntime(sourceB);
+
+    expect(runtimeA.summary.sourceKey).toBe(sourceA);
+    expect(runtimeA.summary.getStore()).toBe(runtimeA.summary.getStore());
+    expect(runtimeA.summary.getStore()).not.toBe(runtimeB.summary.getStore());
+
+    runtimeA.summary.reportProviderRuntimeStatusSnapshot(
+      {
+        sessionId: "session-a",
+        projectId: "project-a",
+        providerRuntimeStatus: RUNTIME_STATUS,
+      },
+      100,
+    );
+
+    expect(
+      selectProviderRuntimeStatusForSession(
+        runtimeA.summary.getSnapshot(),
+        "session-a",
+      ),
+    ).toEqual(RUNTIME_STATUS);
+    expect(
+      selectProviderRuntimeStatusForSession(
+        runtimeB.summary.getSnapshot(),
+        "session-a",
+      ),
+    ).toBe(null);
+
+    runtimeA.summary.clear();
+
+    expect(
+      selectProviderRuntimeStatusForSession(
+        runtimeA.summary.getSnapshot(),
+        "session-a",
+      ),
+    ).toBe(null);
   });
 
   it("can dispose only the runtime wrapper for a source", () => {

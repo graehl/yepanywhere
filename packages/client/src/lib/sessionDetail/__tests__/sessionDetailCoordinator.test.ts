@@ -3,7 +3,10 @@ import {
   type ProviderRuntimeStatus,
 } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
-import { asClientSummarySourceKey } from "../../clientSummaryStore";
+import {
+  asClientSummarySourceKey,
+  type ClientSummarySourceKey,
+} from "../../clientSummaryStore";
 import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
@@ -15,7 +18,11 @@ import {
   type SessionDetailStreamProcessors,
 } from "../sessionDetailCoordinator";
 import type { Message } from "../../../types";
-import type { GetSessionResult, YaSourceRuntime } from "../../sourceRuntime";
+import type {
+  GetSessionResult,
+  SourceSummaryRuntime,
+  YaSourceRuntime,
+} from "../../sourceRuntime";
 
 function message(
   uuid: string,
@@ -111,13 +118,25 @@ function sessionResponse(
   };
 }
 
-function runtime(): YaSourceRuntime {
+function summaryRuntime(sourceKey: ClientSummarySourceKey): SourceSummaryRuntime {
   return {
-    sourceKey: asClientSummarySourceKey("host:test"),
+    sourceKey,
+    getStore: vi.fn(() => undefined as never),
+    getSnapshot: vi.fn(() => undefined as never),
+    clear: vi.fn(),
+    reportProviderRuntimeStatusSnapshot: vi.fn(),
+  };
+}
+
+function runtime(): YaSourceRuntime {
+  const sourceKey = asClientSummarySourceKey("host:test");
+  return {
+    sourceKey,
     api: {
       getSession: vi.fn(),
       getSessionMetadata: vi.fn(),
     },
+    summary: summaryRuntime(sourceKey),
     sessionDetails: {
       cache: createSessionDetailMemoryCache(),
     },

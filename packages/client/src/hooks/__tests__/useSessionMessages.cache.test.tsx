@@ -17,6 +17,7 @@ import {
 import { __resetDeveloperModeForTest } from "../useDeveloperMode";
 import {
   asClientSummarySourceKey,
+  type ClientSummarySourceKey,
   createClientSummaryHostSourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
@@ -34,7 +35,11 @@ import {
   defaultSessionDetailMemoryCache,
   getSessionDetailRetentionDefaults,
 } from "../../lib/sessionDetail/sessionDetailStore";
-import type { GetSessionResult, YaSourceRuntime } from "../../lib/sourceRuntime";
+import type {
+  GetSessionResult,
+  SourceSummaryRuntime,
+  YaSourceRuntime,
+} from "../../lib/sourceRuntime";
 import { UI_KEYS } from "../../lib/storageKeys";
 import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
 import type { Message, SessionMetadata } from "../../types";
@@ -108,13 +113,27 @@ function sessionResponse(messageId: string): GetSessionResult {
   };
 }
 
-function fakeRuntime(sourceKey: string, messageId: string): YaSourceRuntime {
+function fakeSummaryRuntime(
+  sourceKey: ClientSummarySourceKey,
+): SourceSummaryRuntime {
   return {
-    sourceKey: asClientSummarySourceKey(sourceKey),
+    sourceKey,
+    getStore: vi.fn(() => undefined as never),
+    getSnapshot: vi.fn(() => undefined as never),
+    clear: vi.fn(),
+    reportProviderRuntimeStatusSnapshot: vi.fn(),
+  };
+}
+
+function fakeRuntime(sourceKey: string, messageId: string): YaSourceRuntime {
+  const runtimeSourceKey = asClientSummarySourceKey(sourceKey);
+  return {
+    sourceKey: runtimeSourceKey,
     api: {
       getSession: vi.fn(async () => sessionResponse(messageId)),
       getSessionMetadata: vi.fn(),
     },
+    summary: fakeSummaryRuntime(runtimeSourceKey),
     sessionDetails: {
       cache: createSessionDetailMemoryCache(),
     },

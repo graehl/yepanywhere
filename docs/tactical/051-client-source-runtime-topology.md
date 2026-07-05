@@ -241,6 +241,9 @@ Implementation note:
   so direct/local/remote behavior and existing tests remain unchanged.
 - Added focused coverage proving two fake source runtimes can load the same
   project/session ids without crossing API calls or cache entries.
+- Provider runtime status reporting in `useSessionMessages` now goes through
+  `runtime.summary`, so this first summary writer no longer carries a separate
+  source-key argument.
 
 ## Phase 3: Extract SessionDetailCoordinator Skeleton
 
@@ -566,6 +569,10 @@ Implementation note:
 
 ## Phase 6: Per-Source Activity And Query Ownership
 
+Status: Started for source-bound summary ownership. Activity subscriptions,
+draft decoration, live streams, and broader query hooks still use the existing
+ambient current-source path.
+
 Intent:
 
 - Move activity-bus retain/release and draft-decoration subscriptions under
@@ -585,6 +592,18 @@ Acceptance:
 Non-goal:
 
 - Do not build a merged multi-source sidebar yet.
+
+Implementation note:
+
+- Added `SourceSummaryRuntime` on `YaSourceRuntime`, backed by the existing
+  per-source client summary stores. It exposes source-bound store access,
+  snapshot reads, source clearing, and provider runtime status reporting.
+  Impact: new runtime consumers can own summary writes without threading a
+  second source-key argument through the call site.
+- Added registry coverage proving summary stores and provider runtime status
+  writes remain isolated across two source runtimes. The facade intentionally
+  reuses the existing store implementation, so retained query selectors and
+  activity subscriptions are unchanged until later Phase 6 chunks.
 
 ## Phase 7: Optional Snapshot Persistence Adapter
 

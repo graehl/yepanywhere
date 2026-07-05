@@ -1,9 +1,18 @@
+import type { StoreApi } from "zustand/vanilla";
 import { api } from "../api/client";
 import {
+  clearClientSummarySource,
+  getClientSummarySnapshotForSource,
+  getClientSummaryStoreForSource,
   getCurrentClientSummarySourceKey,
+  reportProviderRuntimeStatusSnapshot,
   setCurrentClientSummarySourceKey,
   type ClientSummarySourceKey,
 } from "./clientSummaryStore";
+import type {
+  ClientSummaryState,
+  ProviderRuntimeStatusSnapshot,
+} from "./clientSummaryState";
 import {
   defaultSessionDetailMemoryCache,
   type SessionDetailMemoryCache,
@@ -68,9 +77,21 @@ export interface SessionDetailRuntime {
   cache: SessionDetailMemoryCache;
 }
 
+export interface SourceSummaryRuntime {
+  sourceKey: ClientSummarySourceKey;
+  getStore(): StoreApi<ClientSummaryState>;
+  getSnapshot(): ClientSummaryState;
+  clear(): void;
+  reportProviderRuntimeStatusSnapshot(
+    input: ProviderRuntimeStatusSnapshot,
+    observedAt?: number,
+  ): void;
+}
+
 export interface YaSourceRuntime {
   sourceKey: ClientSummarySourceKey;
   api: SourceApiClient;
+  summary: SourceSummaryRuntime;
   sessionDetails: SessionDetailRuntime;
 }
 
@@ -84,6 +105,9 @@ export interface SourceRuntimeRegistry {
 export interface SourceRuntimeRegistryOptions {
   apiClient?: SourceApiClient;
   sessionDetails?: SessionDetailRuntime;
+  createSummaryRuntime?: (
+    sourceKey: ClientSummarySourceKey,
+  ) => SourceSummaryRuntime;
   getCurrentSourceKey?: () => ClientSummarySourceKey;
   setCurrentSourceKey?: (sourceKey: ClientSummarySourceKey) => void;
 }
@@ -152,10 +176,27 @@ const currentSessionDetailRuntime: SessionDetailRuntime = {
   cache: defaultSessionDetailMemoryCache,
 };
 
+function createCurrentSourceSummaryRuntime(
+  sourceKey: ClientSummarySourceKey,
+): SourceSummaryRuntime {
+  return {
+    sourceKey,
+    getStore: () => getClientSummaryStoreForSource(sourceKey),
+    getSnapshot: () => getClientSummarySnapshotForSource(sourceKey),
+    clear: () => clearClientSummarySource(sourceKey),
+    reportProviderRuntimeStatusSnapshot: (input, observedAt) => {
+      reportProviderRuntimeStatusSnapshot(sourceKey, input, observedAt);
+    },
+  };
+}
+
 class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
   private readonly runtimes = new Map<ClientSummarySourceKey, YaSourceRuntime>();
   private readonly apiClient: SourceApiClient;
   private readonly sessionDetails: SessionDetailRuntime;
+  private readonly createSummaryRuntime: (
+    sourceKey: ClientSummarySourceKey,
+  ) => SourceSummaryRuntime;
   private readonly readCurrentSourceKey: () => ClientSummarySourceKey;
   private readonly writeCurrentSourceKey: (
     sourceKey: ClientSummarySourceKey,
@@ -164,6 +205,8 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
   constructor(options: SourceRuntimeRegistryOptions = {}) {
     this.apiClient = options.apiClient ?? currentSourceApiClient;
     this.sessionDetails = options.sessionDetails ?? currentSessionDetailRuntime;
+    this.createSummaryRuntime =
+      options.createSummaryRuntime ?? createCurrentSourceSummaryRuntime;
     this.readCurrentSourceKey =
       options.getCurrentSourceKey ?? getCurrentClientSummarySourceKey;
     this.writeCurrentSourceKey =
@@ -178,6 +221,7 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
       runtime = {
         sourceKey,
         api: this.apiClient,
+        summary: this.createSummaryRuntime(sourceKey),
         sessionDetails: this.sessionDetails,
       };
       this.runtimes.set(sourceKey, runtime);

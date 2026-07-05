@@ -29,7 +29,6 @@ import {
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import { shouldRetainSessionScrollMemory } from "../lib/sessionScrollBehavior";
 import type { Message, SessionMetadata } from "../types";
-import { reportProviderRuntimeStatusSnapshot } from "../lib/clientSummaryStore";
 import {
   isSessionDetailShadowDiagnosticsEnabled,
   reportSessionDetailStoreDivergence,
@@ -213,6 +212,7 @@ export function useSessionMessages(
   } = options;
   const runtime = useCurrentSourceRuntime();
   const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const snapshotKey: SessionDetailEntryKeyInput = useMemo(
     () => ({
       sourceKey,
@@ -514,8 +514,7 @@ export function useSessionMessages(
     const notifyLoadComplete = (
       data: GetSessionResult,
     ) => {
-      reportProviderRuntimeStatusSnapshot(
-        sourceKey,
+      sourceSummary.reportProviderRuntimeStatusSnapshot(
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
       onLoadComplete?.(coordinator.buildLoadCompleteResult(data));
@@ -823,7 +822,7 @@ export function useSessionMessages(
     snapshotKeyString,
     sourceApi,
     warnSessionDetailStore,
-    sourceKey,
+    sourceSummary,
   ]);
 
   // Handle streaming content updates (from useStreamingContent)
@@ -927,8 +926,7 @@ export function useSessionMessages(
                 tailCompactions: 2,
               },
         );
-        reportProviderRuntimeStatusSnapshot(
-          sourceKey,
+        sourceSummary.reportProviderRuntimeStatusSnapshot(
           coordinator.buildProviderRuntimeStatusSnapshot(data),
         );
         const applied = coordinator.applyIncrementalRefresh(data, {
@@ -953,7 +951,7 @@ export function useSessionMessages(
     readStoreLastMessageId,
     reportStoreDivergence,
     sourceApi,
-    sourceKey,
+    sourceSummary,
     updateSession,
   ]);
 
@@ -966,8 +964,7 @@ export function useSessionMessages(
     setLoadingOlder(true);
     try {
       const data = await sourceApi.getSession(request.input);
-      reportProviderRuntimeStatusSnapshot(
-        sourceKey,
+      sourceSummary.reportProviderRuntimeStatusSnapshot(
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
       coordinator.applyOlderPage(data);
@@ -981,7 +978,7 @@ export function useSessionMessages(
     coordinator,
     reportStoreDivergence,
     sourceApi,
-    sourceKey,
+    sourceSummary,
   ]);
 
   const updateRouteScrollSnapshot = useCallback(
@@ -1005,8 +1002,7 @@ export function useSessionMessages(
         projectId,
         sessionId,
       });
-      reportProviderRuntimeStatusSnapshot(
-        sourceKey,
+      sourceSummary.reportProviderRuntimeStatusSnapshot(
         coordinator.buildProviderRuntimeStatusSnapshot(data),
       );
       const metadataSession = {
@@ -1020,7 +1016,14 @@ export function useSessionMessages(
     } catch {
       // Silent fail for metadata updates
     }
-  }, [coordinator, projectId, sessionId, sourceApi, sourceKey, updateSession]);
+  }, [
+    coordinator,
+    projectId,
+    sessionId,
+    sourceApi,
+    sourceSummary,
+    updateSession,
+  ]);
   const selectedInitialScrollSnapshot =
     shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ? (coordinator.readScrollSnapshot() ?? cachedLoad?.scrollSnapshot ?? null)

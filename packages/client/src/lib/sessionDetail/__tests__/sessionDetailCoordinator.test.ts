@@ -9,7 +9,7 @@ import type {
   SessionRouteSnapshot,
 } from "../../sessionRouteSnapshots";
 import { selectSessionDetailMessages } from "../selectors";
-import { createSessionDetailStore } from "../sessionDetailStore";
+import { createSessionDetailMemoryCache } from "../sessionDetailStore";
 import {
   createSessionDetailCoordinator,
   type SessionDetailStreamProcessors,
@@ -119,7 +119,7 @@ function runtime(): YaSourceRuntime {
       getSessionMetadata: vi.fn(),
     },
     sessionDetails: {
-      cache: createSessionDetailStore(),
+      cache: createSessionDetailMemoryCache(),
     },
   };
 }

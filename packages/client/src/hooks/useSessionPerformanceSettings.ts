@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import {
+  clearDefaultSessionDetailMemoryCache,
+  clearDefaultSessionDetailMemoryCacheScrollSnapshots,
   configureSessionDetailRetention,
-  defaultSessionDetailStore,
+  evictExpiredDefaultSessionDetailMemoryCache,
 } from "../lib/sessionDetail/sessionDetailStore";
 import {
   DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
@@ -32,9 +34,9 @@ export const TRANSCRIPT_CACHE_TTL_HOUR_STOPS = [
  * (see sessionDetail/transcriptCharge.ts). */
 export const TYPICAL_SESSION_TRANSCRIPT_BYTES = 2 * 1024 * 1024;
 
-// Canonical home is the store module so non-hook consumers (client
-// telemetry) can sample the same stats; re-exported here for the
-// settings surface.
+// Canonical home is the memory-cache facade so non-hook consumers (client
+// telemetry) can sample the same stats; re-exported here for the settings
+// surface.
 export {
   getSessionTranscriptMemoryStats,
   type SessionTranscriptMemoryStats,
@@ -199,7 +201,7 @@ export function setSessionTranscriptCacheBudgetMbPreference(
   // Keep the legacy boolean coherent for older bundles reading it.
   savePreference(UI_KEYS.sessionTranscriptCache, String(normalized > 0));
   if (normalized <= 0) {
-    defaultSessionDetailStore.clear();
+    clearDefaultSessionDetailMemoryCache();
   }
   applySessionDetailRetentionPreferences();
   emitChange();
@@ -223,7 +225,7 @@ export function setSessionScrollBehaviorModePreference(
   const normalized = parseSessionScrollBehaviorMode(mode);
   savePreference(UI_KEYS.sessionScrollBehavior, normalized);
   if (!shouldRetainSessionScrollMemory(normalized)) {
-    defaultSessionDetailStore.clearScrollSnapshots();
+    clearDefaultSessionDetailMemoryCacheScrollSnapshots();
   }
   emitChange();
 }
@@ -255,7 +257,7 @@ if (typeof window !== "undefined") {
   applySessionDetailRetentionPreferences();
   if (import.meta.env.MODE !== "test") {
     window.setInterval(() => {
-      defaultSessionDetailStore.evictExpired();
+      evictExpiredDefaultSessionDetailMemoryCache();
     }, SWEEP_INTERVAL_MS);
   }
 }

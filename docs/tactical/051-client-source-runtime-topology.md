@@ -34,10 +34,12 @@ UI still exposes one current source at a time.
 
 This plan starts from the current post-refactor state:
 
-- `defaultSessionDetailStore` is a module singleton facade over an explicit
-  `SessionDetailCache`.
-- `SessionDetailCache` owns source/project/session/window keyed entries,
-  retain/release, TTL, byte budget, LRU eviction, and stats.
+- `defaultSessionDetailMemoryCache` is the public module singleton facade over
+  an explicit `SessionDetailCache`; the older `defaultSessionDetailStore` /
+  `SessionDetailStore` exports remain as compatibility aliases.
+- `SessionDetailCache`, exported publicly as `SessionDetailMemoryCache`, owns
+  source/project/session/window keyed entries, retain/release, TTL, byte
+  budget, LRU eviction, and stats.
 - `SessionDetailEntryStore` owns per-entry reducer state and selected
   subscriptions.
 - `useSessionMessages` still coordinates initial load, warm reveal, stream
@@ -100,7 +102,7 @@ For whoever picks this up first:
 - **Plumbing:** provide the current-source runtime through React context,
   alongside the existing `ClientSummarySourceBinding` — the hook already
   derives its source key from context, so this is the least-surprising path.
-  A module-level getter mirroring `defaultSessionDetailStore` is acceptable
+  A module-level getter mirroring `defaultSessionDetailMemoryCache` is acceptable
   as an interim, but there must be exactly one construction path either way.
 - **Treat `sourceKey` as opaque** in every new interface. The
   source-identity question (route vs. logical server) is undecided; new code
@@ -187,7 +189,7 @@ Implementation note:
 
 - Added a `YaSourceRuntime` contract with source-bound session-detail API and
   cache access, plus a current-source adapter that wraps the existing global
-  API transport and `defaultSessionDetailStore`.
+  API transport and `defaultSessionDetailMemoryCache`.
 - Added `CurrentSourceRuntimeProvider` next to `ClientSummarySourceBinding` so
   app shells construct the current runtime from the existing route-derived
   source key. The adapter keeps route-scoped keys opaque and does not parse
@@ -205,7 +207,7 @@ Intent:
 - Let `useSessionMessages` receive or derive a `YaSourceRuntime`.
 - Replace direct reads of `useClientSummarySourceKey()` inside the session
   detail path with `runtime.sourceKey`.
-- Replace direct `defaultSessionDetailStore` access in the hook with
+- Replace direct default-cache access in the hook with
   `runtime.sessionDetails.cache`, while preserving the existing singleton as
   the current-source runtime's cache.
 - Replace direct `api.getSession` / `api.getSessionMetadata` calls in the hook
@@ -463,6 +465,10 @@ Implementation note:
 
 ## Phase 4: Rename Public Cache Facade
 
+Status: Started. Public memory-cache names are now available and production
+runtime/settings imports use them; older store exports remain for staged
+migration.
+
 Intent:
 
 - Make the cache/store distinction visible in public names once call sites are
@@ -486,6 +492,20 @@ Non-goal:
 
 - Do not rename every internal file solely for cosmetics if the facade already
   makes ownership clear.
+
+Implementation note:
+
+- Added `SessionDetailMemoryCache`, `createSessionDetailMemoryCache`, and
+  `defaultSessionDetailMemoryCache` as the public facade names while preserving
+  `SessionDetailStore`, `createSessionDetailStore`, and
+  `defaultSessionDetailStore` as compatibility aliases. Cache aggregate stats
+  are now named `SessionDetailMemoryCacheStats` /
+  `SessionDetailMemoryCacheEntryStats`, with the old type aliases retained.
+  Impact: new runtime and settings code now reads as memory-cache ownership,
+  while staged migration remains source-compatible for older imports.
+- Added default-cache helper functions for clear, scroll-snapshot clear, and
+  TTL eviction so settings code calls cache-manager operations instead of
+  reaching through the singleton and invoking store-shaped methods directly.
 
 ## Phase 5: Source Runtime Registry
 

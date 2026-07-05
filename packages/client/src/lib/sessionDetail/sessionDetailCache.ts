@@ -7,7 +7,7 @@ import { reduceSessionDetailState } from "./transcriptReducer";
 import type { SessionDetailAction, SessionDetailState } from "./types";
 import {
   SessionDetailEntry,
-  type SessionDetailStoreEntryStats,
+  type SessionDetailMemoryCacheEntryStats,
 } from "./sessionDetailEntry";
 import {
   getSessionDetailEntryKey,
@@ -27,7 +27,7 @@ import {
 type Selector<T> = (state: SessionDetailState | undefined) => T;
 type Equality<T> = (left: T, right: T) => boolean;
 
-export interface SessionDetailStoreStats {
+export interface SessionDetailMemoryCacheStats {
   entryCount: number;
   retainedEntryCount: number;
   warmCacheEntryCount: number;
@@ -42,8 +42,10 @@ export interface SessionDetailStoreStats {
   warmCacheApproxBytes: number;
   /** Aggregate warm-cache bytes with rows shared across warm entries charged once. */
   warmCacheDedupedApproxBytes: number;
-  entries: SessionDetailStoreEntryStats[];
+  entries: SessionDetailMemoryCacheEntryStats[];
 }
+
+export type SessionDetailStoreStats = SessionDetailMemoryCacheStats;
 
 // Boundary paths (loads, snapshot writes) measure every row; per-action
 // dispatch estimates skip serializing not-yet-measured rows (the growing
@@ -338,7 +340,7 @@ export class SessionDetailCache {
     entry.resetState(at, options);
   }
 
-  getStats(): SessionDetailStoreStats {
+  getStats(): SessionDetailMemoryCacheStats {
     const recordEntries = this.recordEntries();
     const retainedEntries = recordEntries.filter(
       (entry) => entry.retainCount > 0,

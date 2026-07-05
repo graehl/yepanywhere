@@ -4,7 +4,7 @@ import type { Message, SessionMetadata } from "../types";
 
 /**
  * Serializable transcript-window DTOs for warm route reveals; runtime
- * ownership lives in `SessionDetailStore`.
+ * ownership lives in `SessionDetailMemoryCache`.
  */
 export interface SessionRouteScrollSnapshot {
   atBottom: boolean;

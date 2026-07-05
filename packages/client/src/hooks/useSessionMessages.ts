@@ -41,7 +41,7 @@ import {
   selectSessionDetailSession,
 } from "../lib/sessionDetail/selectors";
 import {
-  defaultSessionDetailStore,
+  clearDefaultSessionDetailMemoryCache,
   type SessionDetailEntryKeyInput,
 } from "../lib/sessionDetail/sessionDetailStore";
 import type { GetSessionResult } from "../lib/sourceRuntime";
@@ -173,7 +173,7 @@ function readSessionLoadCache(
 }
 
 export function __resetSessionLoadCacheForTest(): void {
-  defaultSessionDetailStore.clear();
+  clearDefaultSessionDetailMemoryCache();
 }
 
 function toError(value: unknown): Error {

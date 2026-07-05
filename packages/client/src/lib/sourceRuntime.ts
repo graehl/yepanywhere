@@ -1,8 +1,8 @@
 import { api } from "../api/client";
 import type { ClientSummarySourceKey } from "./clientSummaryStore";
 import {
-  defaultSessionDetailStore,
-  type SessionDetailStore,
+  defaultSessionDetailMemoryCache,
+  type SessionDetailMemoryCache,
 } from "./sessionDetail/sessionDetailStore";
 
 interface GetSessionBaseInput {
@@ -61,7 +61,7 @@ export interface SourceApiClient {
 }
 
 export interface SessionDetailRuntime {
-  cache: SessionDetailStore;
+  cache: SessionDetailMemoryCache;
 }
 
 export interface YaSourceRuntime {
@@ -131,7 +131,7 @@ const currentSourceApiClient: SourceApiClient = {
 };
 
 const currentSessionDetailRuntime: SessionDetailRuntime = {
-  cache: defaultSessionDetailStore,
+  cache: defaultSessionDetailMemoryCache,
 };
 
 const currentSourceRuntimes = new Map<ClientSummarySourceKey, YaSourceRuntime>();

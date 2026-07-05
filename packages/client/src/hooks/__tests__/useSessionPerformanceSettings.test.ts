@@ -5,7 +5,7 @@ import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
 import {
-  defaultSessionDetailStore,
+  defaultSessionDetailMemoryCache,
   getSessionDetailRetentionDefaults,
 } from "../../lib/sessionDetail/sessionDetailStore";
 import type { SessionRouteSnapshot } from "../../lib/sessionRouteSnapshots";
@@ -68,13 +68,13 @@ describe("useSessionPerformanceSettings", () => {
         storage.clear();
       },
     });
-    defaultSessionDetailStore.clear();
+    defaultSessionDetailMemoryCache.clear();
   });
 
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
-    defaultSessionDetailStore.clear();
+    defaultSessionDetailMemoryCache.clear();
   });
 
   it("defaults to dom-linger off and transcript cache off with a 1h TTL", () => {
@@ -157,14 +157,14 @@ describe("useSessionPerformanceSettings", () => {
     act(() => {
       result.current.setSessionTranscriptCacheBudgetMb(24);
     });
-    defaultSessionDetailStore.writeRouteSnapshot(key, snapshot());
-    expect(defaultSessionDetailStore.readRouteSnapshot(key)).toBeDefined();
+    defaultSessionDetailMemoryCache.writeRouteSnapshot(key, snapshot());
+    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(key)).toBeDefined();
 
     act(() => {
       result.current.setSessionTranscriptCacheBudgetMb(0);
     });
 
-    expect(defaultSessionDetailStore.readRouteSnapshot(key)).toBeUndefined();
+    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(key)).toBeUndefined();
     expect(localStorage.getItem(UI_KEYS.sessionTranscriptCache)).toBe("false");
   });
 
@@ -187,9 +187,9 @@ describe("useSessionPerformanceSettings", () => {
       tailFrom: "msg-1",
     };
 
-    defaultSessionDetailStore.writeRouteSnapshot(warmKey, snapshot());
-    defaultSessionDetailStore.writeRouteSnapshot(liveKey, snapshot());
-    const release = defaultSessionDetailStore.retain(liveKey);
+    defaultSessionDetailMemoryCache.writeRouteSnapshot(warmKey, snapshot());
+    defaultSessionDetailMemoryCache.writeRouteSnapshot(liveKey, snapshot());
+    const release = defaultSessionDetailMemoryCache.retain(liveKey);
 
     const stats = getSessionTranscriptMemoryStats();
     expect(stats.totalBytes).toBeGreaterThan(0);
@@ -219,7 +219,7 @@ describe("useSessionPerformanceSettings", () => {
     );
     expect(getSessionScrollBehaviorMode()).toBe("remember-place");
 
-    defaultSessionDetailStore.writeRouteSnapshot(storeKey, {
+    defaultSessionDetailMemoryCache.writeRouteSnapshot(storeKey, {
       ...snapshot(),
       scrollSnapshot: {
         atBottom: true,
@@ -229,9 +229,9 @@ describe("useSessionPerformanceSettings", () => {
         updatedAtMs: 10,
       },
     });
-    expect(defaultSessionDetailStore.readRouteSnapshot(storeKey)).toBeDefined();
+    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)).toBeDefined();
     expect(
-      defaultSessionDetailStore.readScrollSnapshot(storeKey),
+      defaultSessionDetailMemoryCache.readScrollSnapshot(storeKey),
     ).toBeDefined();
 
     act(() => {
@@ -239,12 +239,12 @@ describe("useSessionPerformanceSettings", () => {
     });
 
     expect(result.current.sessionScrollBehaviorMode).toBe("no-memory");
-    expect(defaultSessionDetailStore.readRouteSnapshot(storeKey)).toBeDefined();
+    expect(defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)).toBeDefined();
     expect(
-      defaultSessionDetailStore.readRouteSnapshot(storeKey)?.scrollSnapshot,
+      defaultSessionDetailMemoryCache.readRouteSnapshot(storeKey)?.scrollSnapshot,
     ).toBeUndefined();
     expect(
-      defaultSessionDetailStore.readScrollSnapshot(storeKey),
+      defaultSessionDetailMemoryCache.readScrollSnapshot(storeKey),
     ).toBeUndefined();
   });
 });

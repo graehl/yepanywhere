@@ -18,7 +18,7 @@ import {
   type SessionDetailRetentionOptions,
 } from "./sessionDetailRetention";
 
-export interface SessionDetailStoreEntryStats {
+export interface SessionDetailMemoryCacheEntryStats {
   key: string;
   sourceKey: ClientSummarySourceKey;
   projectId: string;
@@ -35,6 +35,9 @@ export interface SessionDetailStoreEntryStats {
   expiresAt: number;
   hasScrollSnapshot: boolean;
 }
+
+export type SessionDetailStoreEntryStats =
+  SessionDetailMemoryCacheEntryStats;
 
 interface SessionDetailEntryMetadata {
   retainCount: number;
@@ -226,7 +229,7 @@ export class SessionDetailEntry {
     return this.store.subscribe(selector, listener, equality);
   }
 
-  toStats(): SessionDetailStoreEntryStats {
+  toStats(): SessionDetailMemoryCacheEntryStats {
     const state = this.state;
     if (!this.metadata || !state) {
       throw new Error("Cannot build stats for an empty session detail entry");

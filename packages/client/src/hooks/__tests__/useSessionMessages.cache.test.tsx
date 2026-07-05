@@ -30,8 +30,8 @@ import {
 } from "../../lib/sessionDetail/selectors";
 import {
   configureSessionDetailRetention,
-  createSessionDetailStore,
-  defaultSessionDetailStore,
+  createSessionDetailMemoryCache,
+  defaultSessionDetailMemoryCache,
   getSessionDetailRetentionDefaults,
 } from "../../lib/sessionDetail/sessionDetailStore";
 import type { GetSessionResult, YaSourceRuntime } from "../../lib/sourceRuntime";
@@ -116,7 +116,7 @@ function fakeRuntime(sourceKey: string, messageId: string): YaSourceRuntime {
       getSessionMetadata: vi.fn(),
     },
     sessionDetails: {
-      cache: createSessionDetailStore(),
+      cache: createSessionDetailMemoryCache(),
     },
   };
 }
@@ -133,7 +133,7 @@ function readStoreMessageIds(
   projectId = "proj-1",
   sessionId = "sess-1",
 ): string[] | undefined {
-  return defaultSessionDetailStore
+  return defaultSessionDetailMemoryCache
     .readSelected(
       {
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -165,7 +165,7 @@ function readRuntimeMessageIds(
 }
 
 function readStoreAgentContent(projectId = "proj-1", sessionId = "sess-1") {
-  return defaultSessionDetailStore.readSelected(
+  return defaultSessionDetailMemoryCache.readSelected(
     {
       sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
       projectId,
@@ -176,7 +176,7 @@ function readStoreAgentContent(projectId = "proj-1", sessionId = "sess-1") {
 }
 
 function readStoreToolUseToAgent(projectId = "proj-1", sessionId = "sess-1") {
-  const entries = defaultSessionDetailStore.readSelected(
+  const entries = defaultSessionDetailMemoryCache.readSelected(
     {
       sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
       projectId,
@@ -419,7 +419,7 @@ describe("useSessionMessages cache", () => {
         rendered.result.current.messages.map((message) => message.uuid),
       ).toEqual(["msg-1"]);
       expect(readStoreMessageIds()).toEqual(["msg-1"]);
-      expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(1);
+      expect(defaultSessionDetailMemoryCache.getStats().retainedEntryCount).toBe(1);
       expect(
         warn.mock.calls.some(([label, payload]) => {
           if (label !== "[SessionDetailStore]") return false;
@@ -618,14 +618,14 @@ describe("useSessionMessages cache", () => {
       sessionId: "sess-1",
     };
     expect(
-      defaultSessionDetailStore
+      defaultSessionDetailMemoryCache
         .read(storeKey)
         ?.messages.map((message) => message.uuid),
     ).toEqual(["msg-1"]);
 
     rendered.unmount();
 
-    expect(defaultSessionDetailStore.read(storeKey)).toBeUndefined();
+    expect(defaultSessionDetailMemoryCache.read(storeKey)).toBeUndefined();
   });
 
   it("retains the mounted session's store entry against eviction", async () => {
@@ -661,18 +661,18 @@ describe("useSessionMessages cache", () => {
     );
 
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
-    expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(1);
+    expect(defaultSessionDetailMemoryCache.getStats().retainedEntryCount).toBe(1);
 
     // A TTL sweep far in the future must not evict the mounted entry.
     expect(
-      defaultSessionDetailStore.evictExpired({
+      defaultSessionDetailMemoryCache.evictExpired({
         nowMs: Date.now() + 60 * 60 * 1000,
       }),
     ).toBe(0);
     expect(readStoreMessageIds()).toEqual(["msg-1"]);
 
     rendered.unmount();
-    expect(defaultSessionDetailStore.getStats().retainedEntryCount).toBe(0);
+    expect(defaultSessionDetailMemoryCache.getStats().retainedEntryCount).toBe(0);
   });
 
   it("returns store-selected messages", async () => {
@@ -710,7 +710,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -777,7 +777,7 @@ describe("useSessionMessages cache", () => {
     const returnedToolUseToAgent = rendered.result.current.toolUseToAgent;
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -849,7 +849,7 @@ describe("useSessionMessages cache", () => {
     ).toEqual(["msg-1"]);
 
     act(() => {
-      defaultSessionDetailStore.deleteEntry({
+      defaultSessionDetailMemoryCache.deleteEntry({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
@@ -907,7 +907,7 @@ describe("useSessionMessages cache", () => {
     };
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -960,7 +960,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -1132,7 +1132,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -1283,7 +1283,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -1362,7 +1362,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -1441,7 +1441,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -1629,7 +1629,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -1802,7 +1802,7 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.loading).toBe(true);
     expect(second.result.current.messages).toEqual([]);
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2344,7 +2344,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
     expect(rendered.result.current.pagination?.hasOlderMessages).toBe(true);
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2360,7 +2360,7 @@ describe("useSessionMessages cache", () => {
           },
         },
       );
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2470,7 +2470,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2828,7 +2828,7 @@ describe("useSessionMessages cache", () => {
     };
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2855,7 +2855,7 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(
-      defaultSessionDetailStore.read({
+      defaultSessionDetailMemoryCache.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
@@ -2916,7 +2916,7 @@ describe("useSessionMessages cache", () => {
     };
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2938,7 +2938,7 @@ describe("useSessionMessages cache", () => {
     expect(result.current.messages[0]?._source).toBe("sdk");
     expect(result.current.messages[1]).toEqual(updated);
     expect(
-      defaultSessionDetailStore
+      defaultSessionDetailMemoryCache
         .read({
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -2995,7 +2995,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       result.current.handleStreamingUpdate(streaming);
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -3014,7 +3014,7 @@ describe("useSessionMessages cache", () => {
       "store-only-1",
     ]);
     expect(
-      defaultSessionDetailStore
+      defaultSessionDetailMemoryCache
         .read({
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -3071,7 +3071,7 @@ describe("useSessionMessages cache", () => {
       model: "gpt-5.4",
     });
     expect(
-      defaultSessionDetailStore.read({
+      defaultSessionDetailMemoryCache.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
@@ -3121,7 +3121,7 @@ describe("useSessionMessages cache", () => {
     };
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -3151,7 +3151,7 @@ describe("useSessionMessages cache", () => {
       status: "completed",
     });
     expect(
-      defaultSessionDetailStore.read({
+      defaultSessionDetailMemoryCache.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
@@ -3203,7 +3203,7 @@ describe("useSessionMessages cache", () => {
     };
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -3231,7 +3231,7 @@ describe("useSessionMessages cache", () => {
       contextUsage,
     });
     expect(
-      defaultSessionDetailStore.read({
+      defaultSessionDetailMemoryCache.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
@@ -3293,7 +3293,7 @@ describe("useSessionMessages cache", () => {
     };
 
     act(() => {
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -3321,7 +3321,7 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(
-      defaultSessionDetailStore.read({
+      defaultSessionDetailMemoryCache.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",
@@ -3381,7 +3381,7 @@ describe("useSessionMessages cache", () => {
         messages: [durableMessage, streamingMessage],
         status: "running",
       });
-      defaultSessionDetailStore.dispatch(
+      defaultSessionDetailMemoryCache.dispatch(
         {
           sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
           projectId: "proj-1",
@@ -3408,7 +3408,7 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(
-      defaultSessionDetailStore.read({
+      defaultSessionDetailMemoryCache.read({
         sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
         projectId: "proj-1",
         sessionId: "sess-1",

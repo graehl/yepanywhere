@@ -6,8 +6,12 @@ import {
 } from "../../clientSummaryStore";
 import type { SessionRouteSnapshot } from "../../sessionRouteSnapshots";
 import {
+  createSessionDetailMemoryCache,
   createSessionDetailStore,
+  defaultSessionDetailMemoryCache,
+  defaultSessionDetailStore,
   getSessionDetailEntryKey,
+  SessionDetailMemoryCache,
   type SessionDetailEntryKeyInput,
 } from "../sessionDetailStore";
 
@@ -55,9 +59,19 @@ function snapshot(
   };
 }
 
-describe("SessionDetailStore", () => {
+describe("SessionDetailMemoryCache", () => {
+  it("keeps staged store compatibility aliases wired to the memory cache", () => {
+    expect(createSessionDetailMemoryCache()).toBeInstanceOf(
+      SessionDetailMemoryCache,
+    );
+    expect(createSessionDetailStore()).toBeInstanceOf(
+      SessionDetailMemoryCache,
+    );
+    expect(defaultSessionDetailStore).toBe(defaultSessionDetailMemoryCache);
+  });
+
   it("stores route snapshots under source-scoped keys with stats", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     expect(
@@ -91,7 +105,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("separates retained live bytes from warm cache bytes in stats", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const warmKey = key("warm-session");
     const liveKey = key("live-session");
 
@@ -128,7 +142,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("notifies selector subscribers only when the selected value changes", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
     let notifications = 0;
     const unsubscribe = store.subscribe(
@@ -160,7 +174,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("keeps subscription-only entries out of stats", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
     const source = snapshot("session-a", ["msg-1"]);
     const streamMessage = source.messages[0];
@@ -204,7 +218,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("reads selected state without exposing the whole entry", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(
@@ -223,7 +237,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("keeps explicit tail variants separate from the default session entry", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const defaultKey = key("session-a");
     const tailTurnsKey = {
       ...defaultKey,
@@ -299,7 +313,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("deletes a single entry without clearing unrelated entries", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
 
     store.writeRouteSnapshot(key("one"), snapshot("one", ["one"]));
     store.writeRouteSnapshot(key("two"), snapshot("two", ["two"]));
@@ -311,7 +325,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("keeps scroll snapshots outside ordinary selector subscriptions", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
     let notifications = 0;
 
@@ -355,7 +369,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("keeps retained entries through a warm-cache clear", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const retainedKey = key("live-session");
     const warmKey = key("warm-session");
 
@@ -373,7 +387,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("returns an identity-stable scroll snapshot between patches", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]));
@@ -403,7 +417,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("retains entries through expiry until released", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
@@ -423,7 +437,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("rejects over-budget snapshots without deleting retained entries", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
@@ -448,7 +462,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("rejects over-budget snapshots and clears unretained cache records", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
@@ -465,7 +479,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("replaces retained active snapshots outside cache admission budget", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
@@ -497,7 +511,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("does not evict the active replacement target before retain attaches", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     expect(
@@ -515,7 +529,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("drops incremental actions for a missing entry instead of fabricating state", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
     const source = snapshot("session-a", ["msg-1"]);
     const streamMessage = source.messages[0];
@@ -552,7 +566,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("does not resurrect an expired entry from a later stream dispatch", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
     const source = snapshot("session-a", ["msg-1", "msg-2"]);
     const streamMessage = source.messages[0];
@@ -585,7 +599,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("resets entry state in place without dropping retention", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");
 
     store.writeRouteSnapshot(storeKey, snapshot("session-a", ["msg-1"]), {
@@ -605,7 +619,7 @@ describe("SessionDetailStore", () => {
   });
 
   it("keeps retained entries out of LRU eviction candidates", () => {
-    const store = createSessionDetailStore();
+    const store = createSessionDetailMemoryCache();
 
     store.writeRouteSnapshot(key("one"), snapshot("one", ["one"]), {
       maxEntries: 2,

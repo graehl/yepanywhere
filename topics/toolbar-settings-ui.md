@@ -2,7 +2,7 @@
 
 > The Settings → **Toolbar** pane lets users pick which composer-toolbar
 > controls are shown and, for overflow-supported controls, how eagerly each
-> collapses into the `…` overflow menu as the bar narrows ("narrowing
+> moves into the More (`...`) menu as the bar narrows ("narrowing
 > priority"). Both are edited through one **presence slider** per control:
 > a notched scale from Hide (left) through the collapse tiers to
 > "Show always" (right).
@@ -74,18 +74,18 @@ primary send button or disappear because an adjacent send context was omitted.
 ## Presence slider & narrowing-priority model
 
 The presence slider merges visibility and narrowing priority into one ordinal
-scale — "how much does this control stay present as the toolbar narrows".
+scale — "how long does this control stay visible when space is tight".
 Notches, left to right (end labels **Hide** / **Show always**; intermediate
 notches are unlabeled — a caption under the slider states the selected notch's
 meaning, so tier definitions are not tooltip-only):
 
-| notch | stored presence | meaning                        | legacy tier |
-|-------|-----------------|--------------------------------|-------------|
-| 0     | `hidden`        | not on the toolbar             | —           |
-| 1     | `first`         | collapses first                | `early`     |
-| 2     | `mid`           | collapses in the middle        | `medium`    |
-| 3     | `last`          | collapses last                 | `late`      |
-| 4     | `pin`           | never collapses (no menu copy) | (always-on) |
+| notch | stored presence | meaning                              | legacy tier |
+|-------|-----------------|--------------------------------------|-------------|
+| 0     | `hidden`        | not on the toolbar                   | —           |
+| 1     | `first`         | moves to More first                  | `early`     |
+| 2     | `mid`           | moves to More after the first group  | `medium`    |
+| 3     | `last`          | moves to More near the end           | `late`      |
+| 4     | `pin`           | always visible (no menu copy)        | (always-on) |
 
 The stored data model is that single enum (`ToolbarControlPresence` =
 `"hidden" | ToolbarNarrowingPriority`) — one value per control, no separate

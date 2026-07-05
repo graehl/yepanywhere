@@ -291,11 +291,8 @@ function WorkstreamsRow({
           {statusLabel(workstream.status, t)}
         </span>
       </td>
-      <td>
-        <span
-          className="workstreams-placeholder"
-          aria-label={t("workstreamsSessionsUnavailable")}
-        >
+      <td aria-label={t("workstreamsSessionsUnavailable")}>
+        <span className="workstreams-placeholder" aria-hidden="true">
           -
         </span>
       </td>

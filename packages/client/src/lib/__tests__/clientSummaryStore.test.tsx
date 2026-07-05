@@ -549,6 +549,56 @@ describe("clientSummaryStore", () => {
     expect(runtimeBRead.result.current.inboxIds).toEqual(["session-b"]);
   });
 
+  it("retains activity through the mounted source runtime", () => {
+    const sourceA = createClientSummaryHostSourceKey("runtime-activity-a");
+    const sourceB = createClientSummaryHostSourceKey("runtime-activity-b");
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(sourceB);
+    });
+
+    const selected = renderHook(
+      () => useSessionCollectionRecord("runtime-event-session"),
+      { wrapper: runtimeWrapper(runtimeA) },
+    );
+    expect(mockActivityBus.on).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.listenerCount()).toBe(8);
+
+    act(() => {
+      mockActivityBus.emit("session-created", {
+        type: "session-created",
+        session: {
+          id: "runtime-event-session",
+          projectId: PROJECT_ID,
+          title: "Runtime event",
+          fullTitle: "Runtime event",
+          createdAt: RECENT,
+          updatedAt: RECENT,
+          messageCount: 1,
+          ownership: { owner: "none" },
+          provider: "claude",
+        },
+        timestamp: RECENT,
+      });
+    });
+
+    expect(selected.result.current?.id).toBe("runtime-event-session");
+    expect(
+      getClientSummarySnapshotForSource(sourceB).sessions.entities.get(
+        "runtime-event-session",
+      ),
+    ).toBeUndefined();
+
+    selected.unmount();
+
+    expect(mockActivityBus.listenerCount()).toBe(0);
+  });
+
   it("reduces stale activity callbacks into their retained source", () => {
     const macbook = createClientSummaryHostSourceKey("macbook");
     const winnative = createClientSummaryHostSourceKey("winnative");
@@ -969,5 +1019,69 @@ describe("clientSummaryStore", () => {
     });
 
     expect([...selected.result.current]).toEqual(["win-draft-session"]);
+  });
+
+  it("scans draft decorations through mounted source runtimes", () => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    const sourceA = createClientSummaryHostSourceKey("draft-runtime-a");
+    const sourceB = createClientSummaryHostSourceKey("draft-runtime-b");
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
+    const runtimeB = registry.getOrCreateSourceRuntime(sourceB);
+
+    saveSessionDraft(
+      { sourceKey: sourceA, sessionId: "draft-session-a" },
+      "draft A",
+    );
+    saveSessionDraft(
+      { sourceKey: sourceB, sessionId: "draft-session-b" },
+      "draft B",
+    );
+
+    act(() => {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+    });
+
+    const selectedA = renderHook(() => useDraftSessionIds(), {
+      wrapper: runtimeWrapper(runtimeA),
+    });
+    const selectedB = renderHook(() => useDraftSessionIds(), {
+      wrapper: runtimeWrapper(runtimeB),
+    });
+
+    expect([...selectedA.result.current]).toEqual(["draft-session-a"]);
+    expect([...selectedB.result.current]).toEqual(["draft-session-b"]);
+    expect(vi.getTimerCount()).toBe(2);
+
+    selectedA.unmount();
+
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => {
+      saveSessionDraft(
+        { sourceKey: sourceB, sessionId: "draft-session-b-later" },
+        "later draft B",
+      );
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect([...selectedB.result.current]).toEqual([
+      "draft-session-b",
+      "draft-session-b-later",
+    ]);
+    expect(
+      [
+        ...getClientSummarySnapshotForSource(sourceA).localDecorations
+          .draftSessionIds,
+      ],
+    ).toEqual(["draft-session-a"]);
+
+    selectedB.unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

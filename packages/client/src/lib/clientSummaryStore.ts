@@ -120,9 +120,13 @@ let currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
 let mountedConsumerCount = 0;
 let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
 let activityBusSubscriptionSourceKey: ClientSummarySourceKey | null = null;
-let mountedDraftDecorationConsumerCount = 0;
-let draftDecorationRelease: ReleaseSubscription | null = null;
-let draftDecorationSubscriptionSourceKey: ClientSummarySourceKey | null = null;
+const draftDecorationSubscriptionsBySource = new Map<
+  ClientSummarySourceKey,
+  {
+    retainCount: number;
+    release: ReleaseSubscription;
+  }
+>();
 
 function createClientSummaryStore(): StoreApi<ClientSummaryState> {
   return createStore<ClientSummaryState>(() => createEmptyClientSummaryState());
@@ -354,9 +358,22 @@ function retainActivityBusSubscription(
   };
 }
 
+export function retainClientSummaryActivitySubscription(
+  sourceKey: ClientSummarySourceKey,
+): ReleaseSubscription {
+  return retainActivityBusSubscription(sourceKey);
+}
+
 function useClientSummaryActivitySubscription(): void {
+  const runtime = useSourceRuntimeContextValue();
   const sourceKey = useClientSummarySourceKey();
-  useEffect(() => retainActivityBusSubscription(sourceKey), [sourceKey]);
+  useEffect(
+    () =>
+      runtime
+        ? runtime.summary.retainActivitySubscription()
+        : retainClientSummaryActivitySubscription(sourceKey),
+    [runtime, sourceKey],
+  );
 }
 
 export function reportDraftSessionIdsSnapshot(
@@ -385,20 +402,11 @@ function scanDraftSessionIdsIntoStore(sourceKey: ClientSummarySourceKey): void {
 
 function startDraftDecorationSubscription(
   sourceKey: ClientSummarySourceKey,
-): void {
-  if (draftDecorationRelease) {
-    if (draftDecorationSubscriptionSourceKey === sourceKey) {
-      return;
-    }
-    stopDraftDecorationSubscription();
-  }
-
-  draftDecorationSubscriptionSourceKey = sourceKey;
+): ReleaseSubscription {
   scanDraftSessionIdsIntoStore(sourceKey);
 
   if (typeof window === "undefined") {
-    draftDecorationRelease = () => {};
-    return;
+    return () => {};
   }
 
   const handleStorage = (event: StorageEvent) => {
@@ -413,51 +421,57 @@ function startDraftDecorationSubscription(
     DRAFT_DECORATION_SCAN_INTERVAL_MS,
   );
 
-  draftDecorationRelease = () => {
+  return () => {
     window.removeEventListener("storage", handleStorage);
     window.clearInterval(interval);
   };
 }
 
-function stopDraftDecorationSubscription(): void {
-  if (!draftDecorationRelease) {
-    return;
-  }
-
-  draftDecorationRelease();
-  draftDecorationRelease = null;
-  draftDecorationSubscriptionSourceKey = null;
-}
-
-function stopDraftDecorationSubscriptionIfIdle(): void {
-  if (mountedDraftDecorationConsumerCount > 0 || !draftDecorationRelease) {
-    return;
-  }
-
-  stopDraftDecorationSubscription();
-}
-
 function retainDraftDecorationSubscription(
   sourceKey: ClientSummarySourceKey,
 ): () => void {
-  mountedDraftDecorationConsumerCount += 1;
-  startDraftDecorationSubscription(sourceKey);
+  let record = draftDecorationSubscriptionsBySource.get(sourceKey);
+  if (!record) {
+    record = {
+      retainCount: 0,
+      release: startDraftDecorationSubscription(sourceKey),
+    };
+    draftDecorationSubscriptionsBySource.set(sourceKey, record);
+  }
+  record.retainCount += 1;
 
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    mountedDraftDecorationConsumerCount = Math.max(
-      0,
-      mountedDraftDecorationConsumerCount - 1,
-    );
-    stopDraftDecorationSubscriptionIfIdle();
+    const current = draftDecorationSubscriptionsBySource.get(sourceKey);
+    if (!current) {
+      return;
+    }
+    current.retainCount = Math.max(0, current.retainCount - 1);
+    if (current.retainCount === 0) {
+      current.release();
+      draftDecorationSubscriptionsBySource.delete(sourceKey);
+    }
   };
 }
 
+export function retainClientSummaryDraftDecorations(
+  sourceKey: ClientSummarySourceKey,
+): ReleaseSubscription {
+  return retainDraftDecorationSubscription(sourceKey);
+}
+
 function useDraftDecorationSubscription(): void {
+  const runtime = useSourceRuntimeContextValue();
   const sourceKey = useClientSummarySourceKey();
-  useEffect(() => retainDraftDecorationSubscription(sourceKey), [sourceKey]);
+  useEffect(
+    () =>
+      runtime
+        ? runtime.summary.retainDraftDecorations()
+        : retainClientSummaryDraftDecorations(sourceKey),
+    [runtime, sourceKey],
+  );
 }
 
 export function subscribeClientSummary(
@@ -878,7 +892,6 @@ export function resetClientSummaryStoreForTests(): void {
   currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
   currentSourceKeyListeners.clear();
   mountedConsumerCount = 0;
-  mountedDraftDecorationConsumerCount = 0;
   if (activityBusUnsubscribers) {
     for (const unsubscribe of activityBusUnsubscribers) {
       unsubscribe();
@@ -886,9 +899,8 @@ export function resetClientSummaryStoreForTests(): void {
     activityBusUnsubscribers = null;
   }
   activityBusSubscriptionSourceKey = null;
-  if (draftDecorationRelease) {
-    draftDecorationRelease();
-    draftDecorationRelease = null;
+  for (const record of draftDecorationSubscriptionsBySource.values()) {
+    record.release();
   }
-  draftDecorationSubscriptionSourceKey = null;
+  draftDecorationSubscriptionsBySource.clear();
 }

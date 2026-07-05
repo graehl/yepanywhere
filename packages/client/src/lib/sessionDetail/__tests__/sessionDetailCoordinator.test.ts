@@ -124,6 +124,8 @@ function summaryRuntime(sourceKey: ClientSummarySourceKey): SourceSummaryRuntime
     getStore: vi.fn(() => undefined as never),
     getSnapshot: vi.fn(() => undefined as never),
     clear: vi.fn(),
+    retainActivitySubscription: vi.fn(() => vi.fn()),
+    retainDraftDecorations: vi.fn(() => vi.fn()),
     reportGlobalSessionsCollectionSnapshot: vi.fn(),
     reportInboxCollectionSnapshot: vi.fn(),
     reportProjectsCollectionSnapshot: vi.fn(),

@@ -14,6 +14,8 @@ import {
   reportProviderRuntimeStatusSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
+  retainClientSummaryActivitySubscription,
+  retainClientSummaryDraftDecorations,
   setCurrentClientSummarySourceKey,
   type ClientSummarySourceKey,
 } from "./clientSummaryStore";
@@ -100,6 +102,8 @@ export interface SourceSummaryRuntime {
   getStore(): StoreApi<ClientSummaryState>;
   getSnapshot(): ClientSummaryState;
   clear(): void;
+  retainActivitySubscription(): () => void;
+  retainDraftDecorations(): () => void;
   reportGlobalSessionsCollectionSnapshot(
     input: GlobalSessionsCollectionSnapshot,
     requestStartedAt?: number,
@@ -234,6 +238,10 @@ function createCurrentSourceSummaryRuntime(
     getStore: () => getClientSummaryStoreForSource(sourceKey),
     getSnapshot: () => getClientSummarySnapshotForSource(sourceKey),
     clear: () => clearClientSummarySource(sourceKey),
+    retainActivitySubscription: () =>
+      retainClientSummaryActivitySubscription(sourceKey),
+    retainDraftDecorations: () =>
+      retainClientSummaryDraftDecorations(sourceKey),
     reportGlobalSessionsCollectionSnapshot: (input, requestStartedAt) => {
       reportGlobalSessionsCollectionSnapshot(
         sourceKey,

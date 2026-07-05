@@ -569,10 +569,11 @@ Implementation note:
 
 ## Phase 6: Per-Source Activity And Query Ownership
 
-Status: In progress for source-bound summary ownership. Non-test summary writes
-and summary selector reads now go through the mounted source runtime when one
-exists. Activity subscriptions, draft-decoration scanning, and live streams
-still use the existing ambient current-source path.
+Status: In progress for source-bound summary ownership. Non-test summary
+writes, summary selector reads, summary activity leases, and draft-decoration
+leases now go through the mounted source runtime when one exists. Per-session
+live streams and the transport-level activity stream still use the existing
+ambient current-source path.
 
 Intent:
 
@@ -624,14 +625,22 @@ Completed read-side slice:
   activity-bus retain/release, draft-decoration scanning, or live stream/watch
   subscriptions.
 
+Completed activity/draft slice:
+
+- Runtime-owned activity and draft-decoration subscriptions. Summary selector
+  hooks now retain activity-bus updates and draft-decoration scans through
+  `runtime.summary` when mounted under a `SourceRuntimeProvider`, with legacy
+  fallback to the ambient current source. Draft scans are refcounted per source
+  and tear down their interval when the final mounted consumer releases.
+
 Likely next slice:
 
-- Runtime-owned activity and draft-decoration subscriptions. The summary
-  selectors now read from the mounted runtime's summary store, but their
-  retain/release hooks still subscribe and scan using the ambient current source.
-  The next valuable chunk is to move activity-bus retention and draft scanning
-  under runtime ownership without allowing an idle non-current source to keep
-  background loops alive indefinitely.
+- Runtime-owned per-session live stream/watch subscriptions. The summary layer
+  can now bind reads, writes, activity leases, and draft scan leases to a
+  mounted runtime, but `useSessionStream` / `useSessionWatchStream` still read
+  the process-wide connection path directly. The next valuable chunk is to add a
+  runtime stream surface and move those per-session subscriptions behind it,
+  preserving explicit teardown for closed tabs.
 
 Implementation note:
 
@@ -662,6 +671,14 @@ Implementation note:
   that lookup available to the store layer without depending on the higher-level
   fallback hook. Added two-runtime selector coverage for session records, inbox
   snapshots, queue session ids, and provider runtime status.
+- Added source-bound summary leases for activity-bus updates and draft
+  decoration scans. Selector hooks now retain those leases through
+  `runtime.summary` when mounted under a `SourceRuntimeProvider`, while legacy
+  callers still fall back to the ambient current source. Draft-decoration scans
+  are refcounted per source and tear down their interval on release. The
+  activity bus transport itself remains a singleton until the later runtime
+  activity-stream work, so this proves non-current runtime retention but not
+  true two-server activity multiplexing.
 
 ## Phase 7: Optional Snapshot Persistence Adapter
 

@@ -279,25 +279,12 @@ export function ReloadBanner({
         )}
         <button
           type="button"
-          className="reload-banner-button reload-banner-dismiss-button"
+          className="reload-banner-button"
           onClick={handleDismissClick}
           aria-label={t("reloadBannerDismiss")}
           title={t("reloadBannerDismiss")}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
+          {t("reloadBannerDismiss")}
         </button>
         <span className="reload-banner-shortcut">Ctrl+Shift+R</span>
       </span>

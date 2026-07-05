@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InboxContent } from "../InboxContent";
 
@@ -10,10 +12,12 @@ const {
   mockRefresh,
   mockUseProjectQueues,
   mockUseProjectQueuedSessionIds,
+  projectQueueItems,
   queuedSessionIds,
 } = vi.hoisted(() => ({
   draftSessionIds: new Set<string>(),
   queuedSessionIds: new Set<string>(),
+  projectQueueItems: [] as Array<Record<string, unknown>>,
   mockRefresh: vi.fn(),
   mockUseProjectQueues: vi.fn(),
   mockUseProjectQueuedSessionIds: vi.fn(),
@@ -58,7 +62,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     mockUseProjectQueues(projectIds);
     return {
       queuesByProject: {},
-      items: [],
+      items: projectQueueItems,
       projectStatusesByProject: {},
       recoveredSessionQueues: [],
       loading: false,
@@ -160,6 +164,40 @@ function makeInboxItem(
   };
 }
 
+function makeProject(projectId: string) {
+  return {
+    id: projectId,
+    path: `/tmp/${projectId}`,
+    name: `Project ${projectId}`,
+    sessionCount: 0,
+    activeOwnedCount: 0,
+    activeExternalCount: 0,
+    lastActivity: null,
+  };
+}
+
+function makeProjectQueueItem(
+  itemId: string,
+  projectId: string,
+  messagePreview: string,
+): Record<string, unknown> {
+  return {
+    id: itemId,
+    projectId,
+    target: { type: "new-session" },
+    messagePreview,
+    message: { text: messagePreview },
+    createdAt: "2026-06-28T00:00:00.000Z",
+    updatedAt: "2026-06-28T00:00:00.000Z",
+    status: "queued",
+    attachmentCount: 0,
+  };
+}
+
+function renderInbox(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe("InboxContent", () => {
   beforeEach(() => {
     inboxState.needsAttention = [];
@@ -169,6 +207,7 @@ describe("InboxContent", () => {
     inboxState.unread24h = [];
     inboxState.loading = false;
     inboxState.error = null;
+    projectQueueItems.length = 0;
     draftSessionIds.clear();
     queuedSessionIds.clear();
     mockRefresh.mockReset();
@@ -188,7 +227,7 @@ describe("InboxContent", () => {
     draftSessionIds.add("plain-session");
     queuedSessionIds.add("queued-session");
 
-    render(<InboxContent />);
+    renderInbox(<InboxContent />);
 
     expect(mockUseProjectQueues).toHaveBeenCalledWith([
       "project-1",
@@ -215,7 +254,7 @@ describe("InboxContent", () => {
       makeInboxItem("hidden-session", "project-2"),
     ];
 
-    render(<InboxContent projectId="project-1" />);
+    renderInbox(<InboxContent projectId="project-1" />);
 
     expect(mockUseProjectQueues).toHaveBeenCalledWith(["project-1"]);
     expect(mockUseProjectQueuedSessionIds).toHaveBeenCalledWith(["project-1"]);
@@ -232,7 +271,7 @@ describe("InboxContent", () => {
       },
     ];
 
-    render(<InboxContent />);
+    renderInbox(<InboxContent />);
 
     expect(screen.getByTestId("session-renamed-session").textContent).toContain(
       "Renamed title",
@@ -253,7 +292,7 @@ describe("InboxContent", () => {
       },
     ];
 
-    render(<InboxContent />);
+    renderInbox(<InboxContent />);
 
     expect(screen.getByTestId("session-starred-session").textContent).toContain(
       "Star",
@@ -268,7 +307,7 @@ describe("InboxContent", () => {
       },
     ];
 
-    render(<InboxContent />);
+    renderInbox(<InboxContent />);
 
     expect(screen.getByTestId("thinking-running-session")).toBeTruthy();
   });
@@ -283,11 +322,29 @@ describe("InboxContent", () => {
     ];
     queuedSessionIds.add("queued-session");
 
-    render(<InboxContent />);
+    renderInbox(<InboxContent />);
 
     expect(screen.getByTestId("session-queued-session").textContent).toContain(
       "Q",
     );
     expect(screen.queryByTestId("thinking-queued-session")).toBe(null);
+  });
+
+  it("renders pending new-session Project Queue items in Active", () => {
+    projectQueueItems.push(
+      makeProjectQueueItem("queue-new-session", "project-1", "Build the docs"),
+    );
+
+    renderInbox(<InboxContent projects={[makeProject("project-1")]} />);
+
+    expect(mockUseProjectQueues).toHaveBeenCalledWith(["project-1"]);
+    expect(screen.getByText("Build the docs")).toBeTruthy();
+    expect(screen.getByText("projectQueueTargetNewSession")).toBeTruthy();
+    expect(screen.getByText("projectQueueStatusQueued")).toBeTruthy();
+
+    const link = screen.getByRole("link", { name: /Build the docs/ });
+    expect(link.getAttribute("href")).toBe(
+      "/projects?queueItem=queue-new-session",
+    );
   });
 });

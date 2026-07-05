@@ -14,6 +14,7 @@ import type {
   BinaryFormatValue,
   OriginMetadata,
   RelayRequest,
+  RelayUploadError,
   RelaySpeechEvent,
   RelaySubscribe,
   RelayStagedUploadStart,
@@ -190,6 +191,27 @@ export interface WSAdapter {
  * Created per-connection, captures connection state for automatic encryption.
  */
 export type SendFn = (msg: YepMessage) => void;
+
+function relayUploadErrorCode(error: unknown): string | undefined {
+  if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOSPC") {
+    return "DISK_FULL";
+  }
+  return undefined;
+}
+
+function relayUploadError(
+  uploadId: string,
+  error: string,
+  cause: unknown,
+): RelayUploadError {
+  const code = relayUploadErrorCode(cause);
+  return {
+    type: "upload_error",
+    uploadId,
+    error,
+    ...(code ? { code } : {}),
+  };
+}
 
 /**
  * Dependencies for relay handlers.
@@ -755,7 +777,7 @@ export async function handleUploadStart(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to start upload";
-    send({ type: "upload_error", uploadId, error: message });
+    send(relayUploadError(uploadId, message, err));
   }
 }
 
@@ -817,7 +839,7 @@ export async function handleStagedUploadStart(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to start staged upload";
-    send({ type: "upload_error", uploadId, error: message });
+    send(relayUploadError(uploadId, message, err));
   }
 }
 
@@ -876,7 +898,7 @@ export async function handleUploadChunk(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to write chunk";
-    send({ type: "upload_error", uploadId, error: message });
+    send(relayUploadError(uploadId, message, err));
     uploads.delete(uploadId);
     try {
       await cancelRelayUpload(state, uploadManager, attachmentStagingService);
@@ -961,7 +983,7 @@ export async function handleBinaryUploadChunk(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to write chunk";
-    send({ type: "upload_error", uploadId, error: message });
+    send(relayUploadError(uploadId, message, err));
     uploads.delete(uploadId);
     try {
       await cancelRelayUpload(state, uploadManager, attachmentStagingService);
@@ -1024,7 +1046,7 @@ export async function handleUploadEnd(
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to complete upload";
-    send({ type: "upload_error", uploadId, error: message });
+    send(relayUploadError(uploadId, message, err));
     uploads.delete(uploadId);
     try {
       await cancelRelayUpload(state, uploadManager, attachmentStagingService);

@@ -33,6 +33,13 @@ export interface CodexCorrelationDebugRecord {
 let writeStream: fs.WriteStream | null = null;
 let enabled = false;
 
+function disableLogger(stream: fs.WriteStream): void {
+  if (writeStream !== stream) return;
+  enabled = false;
+  writeStream = null;
+  stream.destroy();
+}
+
 export function initCodexCorrelationDebugLogger(): void {
   enabled = process.env.CODEX_CORRELATION_DEBUG === "true";
   if (!enabled) return;
@@ -40,8 +47,18 @@ export function initCodexCorrelationDebugLogger(): void {
   const config = loadConfig();
   const logPath = path.join(config.logDir, "codex-correlation-debug.jsonl");
 
-  fs.mkdirSync(config.logDir, { recursive: true });
-  writeStream = fs.createWriteStream(logPath, { flags: "a" });
+  try {
+    fs.mkdirSync(config.logDir, { recursive: true });
+    const stream = fs.createWriteStream(logPath, { flags: "a" });
+    stream.on("error", () => {
+      disableLogger(stream);
+    });
+    writeStream = stream;
+  } catch {
+    enabled = false;
+    writeStream = null;
+    return;
+  }
 
   logRaw({
     _meta: "logger_started",
@@ -53,9 +70,11 @@ export function initCodexCorrelationDebugLogger(): void {
 }
 
 export function closeCodexCorrelationDebugLogger(): void {
-  if (writeStream) {
-    writeStream.end();
-    writeStream = null;
+  const stream = writeStream;
+  enabled = false;
+  writeStream = null;
+  if (stream) {
+    stream.end();
   }
 }
 
@@ -298,10 +317,17 @@ function truncate(value: string, maxLength = 160): string {
 }
 
 function logRaw(obj: unknown): void {
-  if (!writeStream) return;
+  if (!enabled || !writeStream) return;
+  let line: string;
   try {
-    writeStream.write(`${JSON.stringify(obj)}\n`);
+    line = `${JSON.stringify(obj)}\n`;
   } catch {
-    // Ignore write errors for best-effort debug logging.
+    return;
+  }
+  const stream = writeStream;
+  try {
+    stream.write(line);
+  } catch {
+    disableLogger(stream);
   }
 }

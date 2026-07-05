@@ -48,6 +48,7 @@ interface ActiveStagedUpload {
   width?: number;
   height?: number;
   writeStream: WriteStream | null;
+  writeError: Error | null;
 }
 
 export interface AttachmentStagingServiceOptions {
@@ -123,15 +124,16 @@ function normalizeOwner(value: unknown): StagedAttachmentOwner | null {
       ? { type: "draft", batchId: value.batchId }
       : null;
   }
-  if (
-    value.type === "project-queue" &&
-    typeof value.queueItemId === "string"
-  ) {
+  if (value.type === "project-queue" && typeof value.queueItemId === "string") {
     return isSafeUploadPathSegment(value.queueItemId)
       ? { type: "project-queue", queueItemId: value.queueItemId }
       : null;
   }
   return null;
+}
+
+function toWriteError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function normalizeRecord(
@@ -233,10 +235,7 @@ export class AttachmentStagingService {
     ) {
       throw new Error("Invalid upload size");
     }
-    if (
-      this.maxUploadSizeBytes > 0 &&
-      params.size > this.maxUploadSizeBytes
-    ) {
+    if (this.maxUploadSizeBytes > 0 && params.size > this.maxUploadSizeBytes) {
       const maxMB = Math.round(this.maxUploadSizeBytes / (1024 * 1024));
       throw new Error(`File size exceeds maximum allowed size of ${maxMB}MB`);
     }
@@ -262,6 +261,7 @@ export class AttachmentStagingService {
       ...(width !== undefined ? { width } : {}),
       ...(height !== undefined ? { height } : {}),
       writeStream: null,
+      writeError: null,
     });
 
     return { uploadId: id, batchId };
@@ -282,16 +282,31 @@ export class AttachmentStagingService {
       }
     }
 
-    if (!state.writeStream) {
-      state.writeStream = createWriteStream(state.tempPath);
-    }
+    const writeStream = this.ensureWriteStream(state);
 
     return new Promise((resolvePromise, reject) => {
-      state.writeStream?.write(chunk, (error) => {
+      let settled = false;
+      const rejectOnce = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        writeStream.off("error", rejectOnce);
+        const normalized = toWriteError(error);
+        state.writeError = normalized;
+        reject(normalized);
+      };
+      writeStream.once("error", rejectOnce);
+      writeStream.write(chunk, (error) => {
         if (error) {
-          reject(error);
+          rejectOnce(error);
           return;
         }
+        if (state.writeError) {
+          rejectOnce(state.writeError);
+          return;
+        }
+        if (settled) return;
+        settled = true;
+        writeStream.off("error", rejectOnce);
         state.bytesReceived += chunk.length;
         resolvePromise(state.bytesReceived);
       });
@@ -311,9 +326,38 @@ export class AttachmentStagingService {
     try {
       if (state.writeStream) {
         await new Promise<void>((resolvePromise, reject) => {
-          state.writeStream?.end((error: Error | null | undefined) => {
-            if (error) reject(error);
-            else resolvePromise();
+          const writeStream = state.writeStream;
+          if (!writeStream) {
+            resolvePromise();
+            return;
+          }
+          if (state.writeError) {
+            reject(state.writeError);
+            return;
+          }
+          let settled = false;
+          const rejectOnce = (error: unknown) => {
+            if (settled) return;
+            settled = true;
+            writeStream.off("error", rejectOnce);
+            const normalized = toWriteError(error);
+            state.writeError = normalized;
+            reject(normalized);
+          };
+          writeStream.once("error", rejectOnce);
+          writeStream.end((error: Error | null | undefined) => {
+            if (error) {
+              rejectOnce(error);
+              return;
+            }
+            if (state.writeError) {
+              rejectOnce(state.writeError);
+              return;
+            }
+            if (settled) return;
+            settled = true;
+            writeStream.off("error", rejectOnce);
+            resolvePromise();
           });
         });
       } else {
@@ -373,6 +417,22 @@ export class AttachmentStagingService {
       this.activeUploads.delete(uploadId);
       throw error;
     }
+  }
+
+  private ensureWriteStream(state: ActiveStagedUpload): WriteStream {
+    if (state.writeError) {
+      throw state.writeError;
+    }
+    if (state.writeStream) {
+      return state.writeStream;
+    }
+
+    const writeStream = createWriteStream(state.tempPath);
+    writeStream.on("error", (error) => {
+      state.writeError = toWriteError(error);
+    });
+    state.writeStream = writeStream;
+    return writeStream;
   }
 
   async cancelUpload(uploadId: string): Promise<void> {
@@ -517,8 +577,7 @@ export class AttachmentStagingService {
 
     const records = await this.getValidatedRecords(params.refs, (record) => {
       return (
-        record.owner.type === "draft" &&
-        record.owner.batchId === params.batchId
+        record.owner.type === "draft" && record.owner.batchId === params.batchId
       );
     });
     const queueDir = this.ownerDir({
@@ -568,8 +627,7 @@ export class AttachmentStagingService {
 
     const records = await this.getValidatedRecords(params.refs, (record) => {
       return (
-        record.owner.type === "draft" &&
-        record.owner.batchId === params.batchId
+        record.owner.type === "draft" && record.owner.batchId === params.batchId
       );
     });
     return this.materializeRecordsForSession(records, {

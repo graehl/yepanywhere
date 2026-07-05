@@ -88,6 +88,9 @@ export function createLogger(config: LogConfig): pino.Logger {
   if (config.logToFile) {
     const logPath = path.join(config.logDir, config.logFile);
     const fileStream = fs.createWriteStream(logPath, { flags: "a" });
+    fileStream.on("error", () => {
+      fileStream.destroy();
+    });
     streams.push({
       stream: fileStream,
       level: config.fileLevel as pino.Level,

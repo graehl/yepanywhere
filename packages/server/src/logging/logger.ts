@@ -107,11 +107,8 @@ export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
       fs.mkdirSync(finalConfig.logDir, { recursive: true });
       const logPath = path.join(finalConfig.logDir, finalConfig.logFile);
       const fileStream = fs.createWriteStream(logPath, { flags: "a" });
-      fileStream.on("error", (err) => {
-        const error = err instanceof Error ? err : new Error(String(err));
-        process.stderr.write(
-          `[logger] Failed to write log file ${logPath}: ${error.message}\n`,
-        );
+      fileStream.on("error", () => {
+        fileStream.destroy();
       });
       streams.push({
         stream: fileStream,

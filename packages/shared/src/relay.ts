@@ -270,6 +270,8 @@ export interface RelayUploadError {
   uploadId: string;
   /** Error message */
   error: string;
+  /** Optional machine-readable upload error code, e.g. DISK_FULL. */
+  code?: string;
 }
 
 // ============================================================================

@@ -58,6 +58,13 @@ function stagingRouteErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Attachment staging failed";
 }
 
+function uploadErrorCode(error: unknown, fallback: string): string {
+  if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOSPC") {
+    return "DISK_FULL";
+  }
+  return fallback;
+}
+
 function isStagedAttachmentRefArray(
   value: unknown,
 ): value is StagedAttachmentRef[] {
@@ -180,7 +187,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
             } catch (err) {
               const message =
                 err instanceof Error ? err.message : "Failed to start upload";
-              sendError(ws, message, "START_ERROR");
+              sendError(ws, message, uploadErrorCode(err, "START_ERROR"));
             }
             break;
           }
@@ -201,7 +208,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
                 err instanceof Error
                   ? err.message
                   : "Failed to complete upload";
-              sendError(ws, message, "COMPLETE_ERROR");
+              sendError(ws, message, uploadErrorCode(err, "COMPLETE_ERROR"));
               await backend.cancelUpload(uploadId);
               currentUploadId = null;
             }
@@ -252,7 +259,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Write failed";
-        sendError(ws, message, "WRITE_ERROR");
+        sendError(ws, message, uploadErrorCode(err, "WRITE_ERROR"));
         await backend.cancelUpload(uploadId);
         currentUploadId = null;
       }
@@ -436,27 +443,31 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
   });
 
   // DELETE endpoint: /attachments/staging/drafts/:batchId/:attachmentId
-  routes.delete("/attachments/staging/drafts/:batchId/:attachmentId", async (c) => {
-    if (!deps.attachmentStagingService) {
-      return c.json({ error: "Attachment staging is unavailable" }, 404);
-    }
-
-    try {
-      const deleted = await deps.attachmentStagingService.deleteDraftAttachment(
-        c.req.param("batchId"),
-        c.req.param("attachmentId"),
-      );
-      if (!deleted) {
-        return c.json({ error: "Staged attachment not found" }, 404);
+  routes.delete(
+    "/attachments/staging/drafts/:batchId/:attachmentId",
+    async (c) => {
+      if (!deps.attachmentStagingService) {
+        return c.json({ error: "Attachment staging is unavailable" }, 404);
       }
-      return c.json({ deleted });
-    } catch (error) {
-      return c.json(
-        { error: stagingRouteErrorMessage(error) },
-        stagingRouteErrorStatus(error),
-      );
-    }
-  });
+
+      try {
+        const deleted =
+          await deps.attachmentStagingService.deleteDraftAttachment(
+            c.req.param("batchId"),
+            c.req.param("attachmentId"),
+          );
+        if (!deleted) {
+          return c.json({ error: "Staged attachment not found" }, 404);
+        }
+        return c.json({ deleted });
+      } catch (error) {
+        return c.json(
+          { error: stagingRouteErrorMessage(error) },
+          stagingRouteErrorStatus(error),
+        );
+      }
+    },
+  );
 
   // POST endpoint: /projects/:projectId/sessions/:sessionId/attachments/staging/materialize
   routes.post(

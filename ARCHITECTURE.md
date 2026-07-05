@@ -59,6 +59,9 @@ section below for what would have to change at higher fan-out.
 - [`topics/session-media-handles.md`](topics/session-media-handles.md) —
   problem statement and latent proposal for replacing transcript inline
   base64 image/blob payloads with authenticated server media handles.
+- [`topics/disk-full-degraded-mode.md`](topics/disk-full-degraded-mode.md)
+  — problem statement and latent proposal for keeping relay/local control
+  paths alive when optional disk writers hit `ENOSPC`.
 - [`docs/project/connection-matrix.md`](docs/project/connection-matrix.md) —
   the four client transport modes (Direct / WS / SecureConnection /
   SecureConnection-via-relay) and which auth/encoding each uses.
@@ -242,6 +245,28 @@ search anchors, and the augment-on-DOM streaming path; each needs verification.
 **Trigger.** Defer until a real long-session profile shows row count is the
 dominant cost, not formatter work. The `RenderProfile` markers documented in
 `RENDERING_PERFORMANCE.md` are the right tool to confirm.
+
+### Disk-pressure degraded mode
+
+**Problem today.** Optional disk writers can still be process-fatal if they
+emit an unhandled Node stream `error`. A local `ENOSPC` can therefore kill the
+YA server and drop relay access even though the relay client reconnects while
+the process is alive.
+
+**Proposal.** Treat optional diagnostics as degradable, fail upload/user-action
+writes explicitly, and surface disk-pressure state through diagnostics when the
+same policy starts appearing across multiple writers. See
+[`topics/disk-full-degraded-mode.md`](topics/disk-full-degraded-mode.md).
+
+**Cost.** Small for stream hardening; larger if YA adds log rotation, shared
+persistence policy, or remote-visible disk health.
+
+**Benefit.** Remote and local control paths stay available under disk pressure,
+and users get clear write-failure errors instead of a dead server.
+
+**Trigger.** The narrow stream-hardening trigger has been met by an observed
+`ENOSPC` process exit. Broader degraded-mode work should wait for the triggers
+listed in the topic doc.
 
 ---
 

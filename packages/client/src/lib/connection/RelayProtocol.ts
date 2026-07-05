@@ -360,7 +360,11 @@ export class RelayProtocol {
     const pending = this.pendingUploads.get(msg.uploadId);
     if (pending) {
       this.pendingUploads.delete(msg.uploadId);
-      pending.reject(new Error(msg.error));
+      const error = new Error(msg.error) as Error & { code?: string };
+      if (msg.code) {
+        error.code = msg.code;
+      }
+      pending.reject(error);
     }
   }
 
@@ -829,7 +833,9 @@ export class RelayProtocol {
         const startMsg: RelayStagedUploadStart = {
           type: "staged_upload_start",
           uploadId,
-          ...(options?.batchId !== undefined ? { batchId: options.batchId } : {}),
+          ...(options?.batchId !== undefined
+            ? { batchId: options.batchId }
+            : {}),
           filename: file.name,
           size: file.size,
           mimeType: file.type || "application/octet-stream",

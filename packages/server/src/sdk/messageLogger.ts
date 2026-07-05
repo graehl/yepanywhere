@@ -13,6 +13,13 @@ import { loadConfig } from "../config.js";
 let writeStream: fs.WriteStream | null = null;
 let enabled = false;
 
+function disableMessageLogger(stream: fs.WriteStream): void {
+  if (writeStream !== stream) return;
+  enabled = false;
+  writeStream = null;
+  stream.destroy();
+}
+
 /**
  * Initialize the SDK message logger.
  * Call once at server startup.
@@ -24,11 +31,21 @@ export function initMessageLogger(): void {
   const config = loadConfig();
   const logPath = path.join(config.logDir, "sdk-raw.jsonl");
 
-  // Ensure log directory exists
-  fs.mkdirSync(config.logDir, { recursive: true });
+  try {
+    // Ensure log directory exists
+    fs.mkdirSync(config.logDir, { recursive: true });
 
-  // Open append stream
-  writeStream = fs.createWriteStream(logPath, { flags: "a" });
+    // Open append stream
+    const stream = fs.createWriteStream(logPath, { flags: "a" });
+    stream.on("error", () => {
+      disableMessageLogger(stream);
+    });
+    writeStream = stream;
+  } catch {
+    enabled = false;
+    writeStream = null;
+    return;
+  }
 
   // Log startup
   logRaw({
@@ -74,11 +91,18 @@ export function logSDKMessage(
  * Log any object as a raw line.
  */
 function logRaw(obj: unknown): void {
-  if (!writeStream) return;
+  if (!enabled || !writeStream) return;
+  let line: string;
   try {
-    writeStream.write(`${JSON.stringify(obj)}\n`);
+    line = `${JSON.stringify(obj)}\n`;
   } catch {
-    // Ignore write errors
+    return;
+  }
+  const stream = writeStream;
+  try {
+    stream.write(line);
+  } catch {
+    disableMessageLogger(stream);
   }
 }
 
@@ -86,8 +110,10 @@ function logRaw(obj: unknown): void {
  * Close the logger.
  */
 export function closeMessageLogger(): void {
-  if (writeStream) {
-    writeStream.end();
-    writeStream = null;
+  const stream = writeStream;
+  enabled = false;
+  writeStream = null;
+  if (stream) {
+    stream.end();
   }
 }

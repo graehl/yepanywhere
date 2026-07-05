@@ -1,5 +1,9 @@
 import { api } from "../api/client";
-import type { ClientSummarySourceKey } from "./clientSummaryStore";
+import {
+  getCurrentClientSummarySourceKey,
+  setCurrentClientSummarySourceKey,
+  type ClientSummarySourceKey,
+} from "./clientSummaryStore";
 import {
   defaultSessionDetailMemoryCache,
   type SessionDetailMemoryCache,
@@ -70,6 +74,20 @@ export interface YaSourceRuntime {
   sessionDetails: SessionDetailRuntime;
 }
 
+export interface SourceRuntimeRegistry {
+  getOrCreateSourceRuntime(sourceKey: ClientSummarySourceKey): YaSourceRuntime;
+  getCurrentSourceRuntime(): YaSourceRuntime;
+  setCurrentSourceKey(sourceKey: ClientSummarySourceKey): void;
+  disposeSource(sourceKey: ClientSummarySourceKey): void;
+}
+
+export interface SourceRuntimeRegistryOptions {
+  apiClient?: SourceApiClient;
+  sessionDetails?: SessionDetailRuntime;
+  getCurrentSourceKey?: () => ClientSummarySourceKey;
+  setCurrentSourceKey?: (sourceKey: ClientSummarySourceKey) => void;
+}
+
 const currentSourceApiClient: SourceApiClient = {
   getSession: (input) => {
     const { projectId, sessionId } = input;
@@ -134,19 +152,66 @@ const currentSessionDetailRuntime: SessionDetailRuntime = {
   cache: defaultSessionDetailMemoryCache,
 };
 
-const currentSourceRuntimes = new Map<ClientSummarySourceKey, YaSourceRuntime>();
+class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
+  private readonly runtimes = new Map<ClientSummarySourceKey, YaSourceRuntime>();
+  private readonly apiClient: SourceApiClient;
+  private readonly sessionDetails: SessionDetailRuntime;
+  private readonly readCurrentSourceKey: () => ClientSummarySourceKey;
+  private readonly writeCurrentSourceKey: (
+    sourceKey: ClientSummarySourceKey,
+  ) => void;
+
+  constructor(options: SourceRuntimeRegistryOptions = {}) {
+    this.apiClient = options.apiClient ?? currentSourceApiClient;
+    this.sessionDetails = options.sessionDetails ?? currentSessionDetailRuntime;
+    this.readCurrentSourceKey =
+      options.getCurrentSourceKey ?? getCurrentClientSummarySourceKey;
+    this.writeCurrentSourceKey =
+      options.setCurrentSourceKey ?? setCurrentClientSummarySourceKey;
+  }
+
+  getOrCreateSourceRuntime(
+    sourceKey: ClientSummarySourceKey,
+  ): YaSourceRuntime {
+    let runtime = this.runtimes.get(sourceKey);
+    if (!runtime) {
+      runtime = {
+        sourceKey,
+        api: this.apiClient,
+        sessionDetails: this.sessionDetails,
+      };
+      this.runtimes.set(sourceKey, runtime);
+    }
+    return runtime;
+  }
+
+  getCurrentSourceRuntime(): YaSourceRuntime {
+    return this.getOrCreateSourceRuntime(this.readCurrentSourceKey());
+  }
+
+  setCurrentSourceKey(sourceKey: ClientSummarySourceKey): void {
+    this.writeCurrentSourceKey(sourceKey);
+  }
+
+  disposeSource(sourceKey: ClientSummarySourceKey): void {
+    this.runtimes.delete(sourceKey);
+  }
+}
+
+export function createSourceRuntimeRegistry(
+  options: SourceRuntimeRegistryOptions = {},
+): SourceRuntimeRegistry {
+  return new DefaultSourceRuntimeRegistry(options);
+}
+
+const defaultSourceRuntimeRegistry = createSourceRuntimeRegistry();
+
+export function getSourceRuntimeRegistry(): SourceRuntimeRegistry {
+  return defaultSourceRuntimeRegistry;
+}
 
 export function getOrCreateCurrentSourceRuntime(
   sourceKey: ClientSummarySourceKey,
 ): YaSourceRuntime {
-  let runtime = currentSourceRuntimes.get(sourceKey);
-  if (!runtime) {
-    runtime = {
-      sourceKey,
-      api: currentSourceApiClient,
-      sessionDetails: currentSessionDetailRuntime,
-    };
-    currentSourceRuntimes.set(sourceKey, runtime);
-  }
-  return runtime;
+  return defaultSourceRuntimeRegistry.getOrCreateSourceRuntime(sourceKey);
 }

@@ -509,6 +509,9 @@ Implementation note:
 
 ## Phase 5: Source Runtime Registry
 
+Status: Started. The current-source runtime map now lives behind an explicit
+registry; activity and query ownership are still later-phase work.
+
 Intent:
 
 - Introduce a registry that can return runtimes by source key.
@@ -545,6 +548,21 @@ Risk:
   services runtime-scoped, or facades over per-runtime instances. This is
   likely the hardest hidden chunk of making `SourceApiClient` real for remote
   sources.
+
+Implementation note:
+
+- Added a `SourceRuntimeRegistry` facade with explicit
+  `getOrCreateSourceRuntime`, `getCurrentSourceRuntime`, `setCurrentSourceKey`,
+  and `disposeSource` methods. The default registry still wraps the existing
+  global API transport and default session-detail memory cache, so
+  single-source behavior is unchanged.
+  Impact: current-source runtime construction no longer depends on a hidden
+  module-level map, and new code can request a runtime by explicit source key.
+- Switched `CurrentSourceRuntimeProvider` and fallback hook reads to consume the
+  registry path while keeping `getOrCreateCurrentSourceRuntime` as a
+  compatibility helper. Added tests for stable per-source runtime identity,
+  current-source routing, source-key cache isolation, and runtime wrapper
+  disposal.
 
 ## Phase 6: Per-Source Activity And Query Ownership
 

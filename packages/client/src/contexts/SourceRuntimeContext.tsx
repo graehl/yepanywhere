@@ -6,7 +6,7 @@ import {
 } from "react";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
-  getOrCreateCurrentSourceRuntime,
+  getSourceRuntimeRegistry,
   type YaSourceRuntime,
 } from "../lib/sourceRuntime";
 
@@ -36,9 +36,10 @@ export function CurrentSourceRuntimeProvider({
   children,
 }: CurrentSourceRuntimeProviderProps) {
   const sourceKey = useClientSummarySourceKey();
+  const registry = getSourceRuntimeRegistry();
   const runtime = useMemo(
-    () => getOrCreateCurrentSourceRuntime(sourceKey),
-    [sourceKey],
+    () => registry.getOrCreateSourceRuntime(sourceKey),
+    [registry, sourceKey],
   );
   return (
     <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
@@ -48,5 +49,8 @@ export function CurrentSourceRuntimeProvider({
 export function useCurrentSourceRuntime(): YaSourceRuntime {
   const runtime = useContext(SourceRuntimeContext);
   const fallbackSourceKey = useClientSummarySourceKey();
-  return runtime ?? getOrCreateCurrentSourceRuntime(fallbackSourceKey);
+  return (
+    runtime ??
+    getSourceRuntimeRegistry().getOrCreateSourceRuntime(fallbackSourceKey)
+  );
 }

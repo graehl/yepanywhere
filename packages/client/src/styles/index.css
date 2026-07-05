@@ -9434,6 +9434,22 @@ a.linkified-url:hover {
   min-height: 40px;
 }
 
+.reload-banner-content,
+.reload-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.reload-banner-content {
+  gap: var(--space-2);
+}
+
+.reload-banner-actions {
+  gap: var(--space-3);
+  flex: 0 0 auto;
+}
+
 .reload-banner-message {
   flex-shrink: 0;
   min-width: 0;
@@ -9526,13 +9542,32 @@ a.linkified-url:hover {
 /* Mobile adjustments */
 @media (max-width: 600px) {
   .reload-banner {
-    justify-content: flex-start;
+    align-items: stretch;
+    justify-content: center;
+    flex-direction: column;
     flex-wrap: nowrap;
     gap: var(--space-1);
-    height: 40px;
-    max-height: 40px;
+    height: 68px;
+    max-height: 68px;
     padding: var(--space-1) var(--space-2);
     overflow: hidden;
+  }
+
+  .reload-banner-content,
+  .reload-banner-actions {
+    width: 100%;
+  }
+
+  .reload-banner-content {
+    justify-content: flex-start;
+    gap: var(--space-1);
+    min-height: 26px;
+  }
+
+  .reload-banner-actions {
+    justify-content: flex-end;
+    gap: var(--space-1);
+    min-height: 30px;
   }
 
   .reload-banner-message,
@@ -9543,12 +9578,8 @@ a.linkified-url:hover {
   }
 
   .reload-banner-message {
-    flex: 1 1 auto;
-  }
-
-  .reload-banner-warning .reload-banner-message {
     flex: 0 1 auto;
-    max-width: 44%;
+    max-width: 52%;
   }
 
   .reload-banner-warning-text {
@@ -9566,13 +9597,17 @@ a.linkified-url:hover {
   }
 
   .reload-banner-button {
-    min-width: 54px;
+    min-width: 56px;
     min-height: 30px;
     padding: var(--space-1) var(--space-2);
   }
 
   .reload-banner-button-primary {
-    min-width: 64px;
+    min-width: 70px;
+  }
+
+  .reload-banner-button-safe {
+    min-width: 124px;
   }
 
   .reload-banner-dismiss-button {

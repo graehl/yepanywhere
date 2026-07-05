@@ -203,100 +203,104 @@ export function ReloadBanner({
     <div
       className={`reload-banner ${showWarning ? "reload-banner-warning" : ""}`}
     >
-      <span className="reload-banner-message">
-        <span className="reload-banner-label-full">
-          {t("reloadBannerCodeChanged", { target: label })}
+      <span className="reload-banner-content">
+        <span className="reload-banner-message">
+          <span className="reload-banner-label-full">
+            {t("reloadBannerCodeChanged", { target: label })}
+          </span>
+          <span className="reload-banner-label-compact">
+            {t("reloadBannerCodeChangedCompact", { target: label })}
+          </span>
         </span>
-        <span className="reload-banner-label-compact">
-          {t("reloadBannerCodeChangedCompact", { target: label })}
-        </span>
+        {showWarning && (
+          <span className="reload-banner-warning-text">
+            <span className="reload-banner-status-full">
+              {safeRestartStatus ?? immediateRestartWarning}
+              {safeRestartPreservedStatus
+                ? ` ${safeRestartPreservedStatus}`
+                : null}
+            </span>
+            <span className="reload-banner-status-compact">
+              {compactWarningStatus}
+            </span>
+          </span>
+        )}
       </span>
-      {showWarning && (
-        <span className="reload-banner-warning-text">
-          <span className="reload-banner-status-full">
-            {safeRestartStatus ?? immediateRestartWarning}
-            {safeRestartPreservedStatus
-              ? ` ${safeRestartPreservedStatus}`
-              : null}
-          </span>
-          <span className="reload-banner-status-compact">
-            {compactWarningStatus}
-          </span>
-        </span>
-      )}
-      <button
-        type="button"
-        className={`reload-banner-button reload-banner-button-primary ${
-          showWarning ? "reload-banner-button-danger" : ""
-        }`}
-        onClick={handleImmediateReloadClick}
-        aria-label={displayedPrimaryReloadLabel}
-        title={displayedPrimaryReloadLabel}
-      >
-        <span className="reload-banner-label-full">
-          {displayedPrimaryReloadLabel}
-        </span>
-        <span className="reload-banner-label-compact">
-          {compactPrimaryReloadLabel}
-        </span>
-      </button>
-      {canScheduleSafeRestart && (
+      <span className="reload-banner-actions">
         <button
           type="button"
-          className="reload-banner-button reload-banner-button-safe"
-          onClick={handleRestartWhenSafeClick}
-          disabled={safeRestartMutating}
-          aria-label={t("reloadBannerRestartWhenSafe")}
-          title={t("reloadBannerRestartWhenSafe")}
+          className={`reload-banner-button reload-banner-button-primary ${
+            showWarning ? "reload-banner-button-danger" : ""
+          }`}
+          onClick={handleImmediateReloadClick}
+          aria-label={displayedPrimaryReloadLabel}
+          title={displayedPrimaryReloadLabel}
         >
           <span className="reload-banner-label-full">
-            {t("reloadBannerRestartWhenSafe")}
+            {displayedPrimaryReloadLabel}
           </span>
           <span className="reload-banner-label-compact">
-            {t("reloadBannerRestartWhenSafeCompact")}
+            {compactPrimaryReloadLabel}
           </span>
         </button>
-      )}
-      {hasScheduledRestart && onCancelSafeRestart && (
+        {canScheduleSafeRestart && (
+          <button
+            type="button"
+            className="reload-banner-button reload-banner-button-safe"
+            onClick={handleRestartWhenSafeClick}
+            disabled={safeRestartMutating}
+            aria-label={t("reloadBannerRestartWhenSafe")}
+            title={t("reloadBannerRestartWhenSafe")}
+          >
+            <span className="reload-banner-label-full">
+              {t("reloadBannerRestartWhenSafe")}
+            </span>
+            <span className="reload-banner-label-compact">
+              {t("reloadBannerRestartWhenSafeCompact")}
+            </span>
+          </button>
+        )}
+        {hasScheduledRestart && onCancelSafeRestart && (
+          <button
+            type="button"
+            className="reload-banner-button"
+            onClick={handleCancelSafeRestartClick}
+            disabled={safeRestartMutating}
+            aria-label={t("reloadBannerCancelSafeRestart")}
+            title={t("reloadBannerCancelSafeRestart")}
+          >
+            <span className="reload-banner-label-full">
+              {t("reloadBannerCancelSafeRestart")}
+            </span>
+            <span className="reload-banner-label-compact">
+              {t("reloadBannerCancelSafeRestartCompact")}
+            </span>
+          </button>
+        )}
         <button
           type="button"
-          className="reload-banner-button"
-          onClick={handleCancelSafeRestartClick}
-          disabled={safeRestartMutating}
-          aria-label={t("reloadBannerCancelSafeRestart")}
-          title={t("reloadBannerCancelSafeRestart")}
+          className="reload-banner-button reload-banner-dismiss-button"
+          onClick={handleDismissClick}
+          aria-label={t("reloadBannerDismiss")}
+          title={t("reloadBannerDismiss")}
         >
-          <span className="reload-banner-label-full">
-            {t("reloadBannerCancelSafeRestart")}
-          </span>
-          <span className="reload-banner-label-compact">
-            {t("reloadBannerCancelSafeRestartCompact")}
-          </span>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
         </button>
-      )}
-      <button
-        type="button"
-        className="reload-banner-button reload-banner-dismiss-button"
-        onClick={handleDismissClick}
-        aria-label={t("reloadBannerDismiss")}
-        title={t("reloadBannerDismiss")}
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
-      </button>
-      <span className="reload-banner-shortcut">Ctrl+Shift+R</span>
+        <span className="reload-banner-shortcut">Ctrl+Shift+R</span>
+      </span>
     </div>
   );
 }

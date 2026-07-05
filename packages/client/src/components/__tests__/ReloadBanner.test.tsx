@@ -69,7 +69,7 @@ describe("ReloadBanner", () => {
     expect(onReload).not.toHaveBeenCalled();
   });
 
-  it("clears immediate reload confirmation when restart when safe is chosen", () => {
+  it("clears immediate reload confirmation when reload when safe is chosen", () => {
     const onReload = vi.fn();
     const onRestartWhenSafe = vi.fn();
     renderBanner({
@@ -81,7 +81,7 @@ describe("ReloadBanner", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Restart When Safe" }),
+      screen.getByRole("button", { name: "Reload When Safe" }),
     );
 
     expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
@@ -92,7 +92,7 @@ describe("ReloadBanner", () => {
     expect(onReload).not.toHaveBeenCalled();
   });
 
-  it("offers restart when safe for backend reloads", () => {
+  it("offers reload when safe for backend reloads", () => {
     const onRestartWhenSafe = vi.fn();
     renderBanner({
       unsafeToRestart: true,
@@ -101,7 +101,7 @@ describe("ReloadBanner", () => {
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Restart When Safe" }),
+      screen.getByRole("button", { name: "Reload When Safe" }),
     );
 
     expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
@@ -110,14 +110,14 @@ describe("ReloadBanner", () => {
     ).toBeTruthy();
   });
 
-  it("hides restart when safe for safe backend reloads", () => {
+  it("hides reload when safe for safe backend reloads", () => {
     renderBanner({
       onRestartWhenSafe: vi.fn(),
     });
 
     expect(screen.getByRole("button", { name: "Reload Server" })).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Restart When Safe" }),
+      screen.queryByRole("button", { name: "Reload When Safe" }),
     ).toBeNull();
   });
 
@@ -167,14 +167,14 @@ describe("ReloadBanner", () => {
     ).toBeTruthy();
   });
 
-  it("does not show restart when safe for frontend reloads", () => {
+  it("does not show reload when safe for frontend reloads", () => {
     renderBanner({
       target: "frontend",
       onRestartWhenSafe: vi.fn(),
     });
 
     expect(
-      screen.queryByRole("button", { name: "Restart When Safe" }),
+      screen.queryByRole("button", { name: "Reload When Safe" }),
     ).toBeNull();
   });
 });

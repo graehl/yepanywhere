@@ -1,5 +1,6 @@
 import {
   toUrlProjectId,
+  type ProjectQueueItemSummary,
   type ProviderRuntimeStatus,
 } from "@yep-anywhere/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +9,13 @@ import {
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
 } from "../clientSummaryStore";
-import { selectProviderRuntimeStatusForSession } from "../clientSummaryState";
+import {
+  createGlobalSessionsCollectionQueryDescriptor,
+  selectProjectCollectionRecords,
+  selectProjectQueueItemsByProject,
+  selectProviderRuntimeStatusForSession,
+  selectSessionCollectionQueryRecords,
+} from "../clientSummaryState";
 import { createSessionDetailMemoryCache } from "../sessionDetail/sessionDetailStore";
 import type { SessionRouteSnapshot } from "../sessionRouteSnapshots";
 import {
@@ -76,6 +83,23 @@ function snapshot(sessionId: string, messageId: string): SessionRouteSnapshot {
     toolUseToAgentEntries: [],
     lastMessageId: messageId,
     maxPersistedTimestampMs: 0,
+  };
+}
+
+function projectQueueItem(
+  id: string,
+  projectId: ProjectQueueItemSummary["projectId"],
+): ProjectQueueItemSummary {
+  return {
+    id,
+    projectId,
+    target: { type: "existing-session", sessionId: "session-a" },
+    messagePreview: `Message ${id}`,
+    message: { text: `Message ${id}` },
+    createdAt: "2026-07-05T00:00:00.000Z",
+    updatedAt: "2026-07-05T00:00:00.000Z",
+    status: "queued",
+    attachmentCount: 0,
   };
 }
 
@@ -281,6 +305,94 @@ describe("SourceRuntimeRegistry", () => {
         "session-a",
       ),
     ).toBe(null);
+  });
+
+  it("binds summary collection writers to the source key", () => {
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    const sourceA = asClientSummarySourceKey("host:collection-a");
+    const sourceB = asClientSummarySourceKey("host:collection-b");
+    const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
+    const runtimeB = registry.getOrCreateSourceRuntime(sourceB);
+    const projectId = toUrlProjectId("/repo/project-a");
+    const query = createGlobalSessionsCollectionQueryDescriptor({});
+
+    runtimeA.summary.reportGlobalSessionsCollectionSnapshot(
+      {
+        query,
+        sessions: [
+          {
+            id: "session-a",
+            title: "Session A",
+            fullTitle: "Session A",
+            createdAt: "2026-07-05T00:00:00.000Z",
+            updatedAt: "2026-07-05T00:00:00.000Z",
+            messageCount: 1,
+            provider: "claude",
+            projectId,
+            projectName: "Project A",
+            ownership: { owner: "none" },
+            isArchived: false,
+            isStarred: false,
+          },
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+    runtimeA.summary.reportProjectsCollectionSnapshot(
+      {
+        projects: [
+          {
+            id: projectId,
+            path: "/repo/project-a",
+            name: "Project A",
+            sessionCount: 1,
+            activeOwnedCount: 0,
+            activeExternalCount: 0,
+            lastActivity: null,
+          },
+        ],
+      },
+      100,
+    );
+    runtimeA.summary.reportProjectQueueCollectionSnapshot(
+      {
+        projectId,
+        items: [projectQueueItem("queue-a", projectId)],
+      },
+      100,
+    );
+
+    expect(
+      selectSessionCollectionQueryRecords(
+        runtimeA.summary.getSnapshot(),
+        query,
+      ).map((record) => record.id),
+    ).toEqual(["session-a"]);
+    expect(
+      selectSessionCollectionQueryRecords(
+        runtimeB.summary.getSnapshot(),
+        query,
+      ),
+    ).toEqual([]);
+    expect(
+      selectProjectCollectionRecords(runtimeA.summary.getSnapshot()).map(
+        (project) => project.id,
+      ),
+    ).toEqual([projectId]);
+    expect(
+      selectProjectQueueItemsByProject(runtimeA.summary.getSnapshot(), [
+        projectId,
+      ])[projectId]?.map((item) => item.id),
+    ).toEqual(["queue-a"]);
+    expect(
+      selectProjectQueueItemsByProject(runtimeB.summary.getSnapshot(), [
+        projectId,
+      ])[projectId],
+    ).toBeUndefined();
   });
 
   it("can dispose only the runtime wrapper for a source", () => {

@@ -5,12 +5,28 @@ import {
   getClientSummarySnapshotForSource,
   getClientSummaryStoreForSource,
   getCurrentClientSummarySourceKey,
+  reportGlobalSessionsCollectionSnapshot,
+  reportProjectCollectionSnapshot,
+  reportProjectQueueCollectionSnapshot,
+  reportProjectQueueGlobalCollectionSnapshot,
+  reportProjectsCollectionSnapshot,
   reportProviderRuntimeStatusSnapshot,
+  reportSessionCollectionCreated,
+  reportSessionCollectionMetadataChanged,
   setCurrentClientSummarySourceKey,
   type ClientSummarySourceKey,
 } from "./clientSummaryStore";
 import type {
+  SessionCreatedEvent,
+  SessionMetadataChangedEvent,
+} from "./activityBus";
+import type {
   ClientSummaryState,
+  GlobalSessionsCollectionSnapshot,
+  ProjectCollectionSnapshot,
+  ProjectQueueCollectionSnapshot,
+  ProjectQueueGlobalCollectionSnapshot,
+  ProjectsCollectionSnapshot,
   ProviderRuntimeStatusSnapshot,
 } from "./clientSummaryState";
 import {
@@ -82,8 +98,36 @@ export interface SourceSummaryRuntime {
   getStore(): StoreApi<ClientSummaryState>;
   getSnapshot(): ClientSummaryState;
   clear(): void;
+  reportGlobalSessionsCollectionSnapshot(
+    input: GlobalSessionsCollectionSnapshot,
+    requestStartedAt?: number,
+  ): void;
+  reportProjectsCollectionSnapshot(
+    input: ProjectsCollectionSnapshot,
+    requestStartedAt?: number,
+  ): void;
+  reportProjectCollectionSnapshot(
+    input: ProjectCollectionSnapshot,
+    requestStartedAt?: number,
+  ): void;
+  reportProjectQueueCollectionSnapshot(
+    input: ProjectQueueCollectionSnapshot,
+    requestStartedAt?: number,
+  ): void;
+  reportProjectQueueGlobalCollectionSnapshot(
+    input: ProjectQueueGlobalCollectionSnapshot,
+    requestStartedAt?: number,
+  ): void;
   reportProviderRuntimeStatusSnapshot(
     input: ProviderRuntimeStatusSnapshot,
+    observedAt?: number,
+  ): void;
+  reportSessionCollectionCreated(
+    event: SessionCreatedEvent,
+    observedAt?: number,
+  ): void;
+  reportSessionCollectionMetadataChanged(
+    event: SessionMetadataChangedEvent,
     observedAt?: number,
   ): void;
 }
@@ -184,8 +228,41 @@ function createCurrentSourceSummaryRuntime(
     getStore: () => getClientSummaryStoreForSource(sourceKey),
     getSnapshot: () => getClientSummarySnapshotForSource(sourceKey),
     clear: () => clearClientSummarySource(sourceKey),
+    reportGlobalSessionsCollectionSnapshot: (input, requestStartedAt) => {
+      reportGlobalSessionsCollectionSnapshot(
+        sourceKey,
+        input,
+        requestStartedAt,
+      );
+    },
+    reportProjectsCollectionSnapshot: (input, requestStartedAt) => {
+      reportProjectsCollectionSnapshot(sourceKey, input, requestStartedAt);
+    },
+    reportProjectCollectionSnapshot: (input, requestStartedAt) => {
+      reportProjectCollectionSnapshot(sourceKey, input, requestStartedAt);
+    },
+    reportProjectQueueCollectionSnapshot: (input, requestStartedAt) => {
+      reportProjectQueueCollectionSnapshot(
+        sourceKey,
+        input,
+        requestStartedAt,
+      );
+    },
+    reportProjectQueueGlobalCollectionSnapshot: (input, requestStartedAt) => {
+      reportProjectQueueGlobalCollectionSnapshot(
+        sourceKey,
+        input,
+        requestStartedAt,
+      );
+    },
     reportProviderRuntimeStatusSnapshot: (input, observedAt) => {
       reportProviderRuntimeStatusSnapshot(sourceKey, input, observedAt);
+    },
+    reportSessionCollectionCreated: (event, observedAt) => {
+      reportSessionCollectionCreated(sourceKey, event, observedAt);
+    },
+    reportSessionCollectionMetadataChanged: (event, observedAt) => {
+      reportSessionCollectionMetadataChanged(sourceKey, event, observedAt);
     },
   };
 }

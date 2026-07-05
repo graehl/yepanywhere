@@ -9,13 +9,11 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { createClientQueryKey } from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
-  reportProjectQueueCollectionSnapshot,
-  reportProjectQueueGlobalCollectionSnapshot,
-  useClientSummarySourceKey,
   useProjectQueueDispatchState,
   useProjectQueueItemsByProject,
   useProjectQueueProjectStatusesByProject,
@@ -80,7 +78,9 @@ export function useProjectQueues(
   projectIds: readonly string[],
 ): UseProjectQueuesResult {
   const { version } = useVersion();
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const remoteConnection = useOptionalRemoteConnection();
   const enabled = serverSupportsProjectQueue(version);
   const ready =
@@ -114,8 +114,7 @@ export function useProjectQueues(
     revalidateOn: PROJECT_QUEUE_REVALIDATE_EVENTS,
     fetcher: () => api.getProjectQueueItems(),
     applySnapshot: (data, context) => {
-      reportProjectQueueGlobalCollectionSnapshot(
-        context.sourceKey,
+      sourceSummary.reportProjectQueueGlobalCollectionSnapshot(
         data,
         context.requestStartedAt,
       );
@@ -130,14 +129,14 @@ export function useProjectQueues(
     ) => {
       setMutatingItemId(itemId);
       setMutationError(null);
-      const requestSourceKey = sourceKey;
+      const requestSummary = sourceSummary;
       try {
         const response = await api.updateProjectQueueItem(
           projectId,
           itemId,
           request,
         );
-        reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
+        requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
       } catch (err) {
         setMutationError(err instanceof Error ? err : new Error(String(err)));
         throw err;
@@ -145,53 +144,53 @@ export function useProjectQueues(
         setMutatingItemId(null);
       }
     },
-    [sourceKey],
+    [sourceSummary],
   );
 
   const deleteItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
     setMutationError(null);
-    const requestSourceKey = sourceKey;
+    const requestSummary = sourceSummary;
     try {
       const response = await api.deleteProjectQueueItem(projectId, itemId);
-      reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
+      requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
     }
-  }, [sourceKey]);
+  }, [sourceSummary]);
 
   const retryItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
     setMutationError(null);
-    const requestSourceKey = sourceKey;
+    const requestSummary = sourceSummary;
     try {
       const response = await api.retryProjectQueueItem(projectId, itemId);
-      reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
+      requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
     }
-  }, [sourceKey]);
+  }, [sourceSummary]);
 
   const moveItemToTop = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
     setMutationError(null);
-    const requestSourceKey = sourceKey;
+    const requestSummary = sourceSummary;
     try {
       const response = await api.moveProjectQueueItemToTop(projectId, itemId);
-      reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
+      requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
     }
-  }, [sourceKey]);
+  }, [sourceSummary]);
 
   const refetchQueues = useCallback(async () => {
     setMutationError(null);
@@ -201,32 +200,32 @@ export function useProjectQueues(
   const pauseDispatch = useCallback(async () => {
     setMutatingDispatchState(true);
     setMutationError(null);
-    const requestSourceKey = sourceKey;
+    const requestSummary = sourceSummary;
     try {
       const response = await api.pauseProjectQueueDispatch();
-      reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
+      requestSummary.reportProjectQueueGlobalCollectionSnapshot(response);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingDispatchState(false);
     }
-  }, [sourceKey]);
+  }, [sourceSummary]);
 
   const resumeDispatch = useCallback(async () => {
     setMutatingDispatchState(true);
     setMutationError(null);
-    const requestSourceKey = sourceKey;
+    const requestSummary = sourceSummary;
     try {
       const response = await api.resumeProjectQueueDispatch();
-      reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
+      requestSummary.reportProjectQueueGlobalCollectionSnapshot(response);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingDispatchState(false);
     }
-  }, [sourceKey]);
+  }, [sourceSummary]);
 
   const promoteNow = useCallback(
     async (
@@ -236,13 +235,13 @@ export function useProjectQueues(
     ) => {
       setMutatingPromoteItemId(itemId);
       setMutationError(null);
-      const requestSourceKey = sourceKey;
+      const requestSummary = sourceSummary;
       try {
         const response = await api.promoteProjectQueueNow(projectId, {
           itemId,
           ...(options.force ? { force: true } : {}),
         });
-        reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
+        requestSummary.reportProjectQueueGlobalCollectionSnapshot(response);
         return response.promoteResult;
       } catch (err) {
         setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -251,7 +250,7 @@ export function useProjectQueues(
         setMutatingPromoteItemId(null);
       }
     },
-    [sourceKey],
+    [sourceSummary],
   );
 
   const items = useMemo(

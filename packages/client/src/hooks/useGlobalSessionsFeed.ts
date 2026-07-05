@@ -14,6 +14,7 @@ import {
   type ProjectOption,
 } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { isRemoteClient } from "../lib/connection";
 import {
   createClientQueryKey,
@@ -22,11 +23,7 @@ import {
   retainClientQuery,
 } from "../lib/clientQueryController";
 import {
-  reportGlobalSessionsCollectionSnapshot,
-  reportSessionCollectionCreated,
-  reportSessionCollectionMetadataChanged,
   type ClientSummarySourceKey,
-  useClientSummarySourceKey,
   useSessionCollectionQueryRecords,
   useSessionCollectionQueryState,
 } from "../lib/clientSummaryStore";
@@ -227,7 +224,9 @@ export function useGlobalSessionsFeed(
     [query],
   );
   const requestedRows = limit ?? GLOBAL_SESSIONS_DEFAULT_LIMIT;
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const sourceKeyRef = useRef(sourceKey);
   sourceKeyRef.current = sourceKey;
   const auxiliary = useGlobalSessionsAuxiliary(sourceKey);
@@ -324,8 +323,7 @@ export function useGlobalSessionsFeed(
               includeStats: false,
             }),
           applySnapshot: (data, context) => {
-            reportGlobalSessionsCollectionSnapshot(
-              context.sourceKey,
+            sourceSummary.reportGlobalSessionsCollectionSnapshot(
               {
                 query: queryForRequest,
                 sessions: data.sessions,
@@ -378,6 +376,7 @@ export function useGlobalSessionsFeed(
       includeStats,
       requestedRows,
       sourceKey,
+      sourceSummary,
     ],
   );
 
@@ -410,8 +409,7 @@ export function useGlobalSessionsFeed(
         includeStats: false,
       });
 
-      reportGlobalSessionsCollectionSnapshot(
-        requestSourceKey,
+      sourceSummary.reportGlobalSessionsCollectionSnapshot(
         {
           query,
           sessions: data.sessions,
@@ -437,6 +435,7 @@ export function useGlobalSessionsFeed(
     includeArchived,
     starred,
     sourceKey,
+    sourceSummary,
   ]);
 
   const debouncedRefetch = useCallback(() => {
@@ -468,7 +467,7 @@ export function useGlobalSessionsFeed(
   const handleSessionCreated = useCallback(
     (event: SessionCreatedEvent) => {
       const observedAt = Date.now();
-      reportSessionCollectionCreated(sourceKey, event, observedAt);
+      sourceSummary.reportSessionCollectionCreated(event, observedAt);
 
       if (projectId && event.session.projectId !== projectId) return;
       if (starred && !event.session.isStarred) return;
@@ -479,8 +478,7 @@ export function useGlobalSessionsFeed(
         return;
       }
 
-      reportGlobalSessionsCollectionSnapshot(
-        sourceKey,
+      sourceSummary.reportGlobalSessionsCollectionSnapshot(
         {
           query,
           sessions: [
@@ -499,13 +497,13 @@ export function useGlobalSessionsFeed(
       searchQuery,
       debouncedRefetch,
       query,
-      sourceKey,
+      sourceSummary,
     ],
   );
 
   const handleSessionMetadataChange = useCallback(
     (event: SessionMetadataChangedEvent) => {
-      reportSessionCollectionMetadataChanged(sourceKey, event);
+      sourceSummary.reportSessionCollectionMetadataChanged(event);
 
       if (
         searchQuery ||
@@ -516,7 +514,7 @@ export function useGlobalSessionsFeed(
         debouncedRefetch();
       }
     },
-    [debouncedRefetch, projectId, searchQuery, sourceKey],
+    [debouncedRefetch, projectId, searchQuery, sourceSummary],
   );
 
   useFileActivity({

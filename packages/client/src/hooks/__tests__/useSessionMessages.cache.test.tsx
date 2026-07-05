@@ -121,7 +121,14 @@ function fakeSummaryRuntime(
     getStore: vi.fn(() => undefined as never),
     getSnapshot: vi.fn(() => undefined as never),
     clear: vi.fn(),
+    reportGlobalSessionsCollectionSnapshot: vi.fn(),
+    reportProjectsCollectionSnapshot: vi.fn(),
+    reportProjectCollectionSnapshot: vi.fn(),
+    reportProjectQueueCollectionSnapshot: vi.fn(),
+    reportProjectQueueGlobalCollectionSnapshot: vi.fn(),
     reportProviderRuntimeStatusSnapshot: vi.fn(),
+    reportSessionCollectionCreated: vi.fn(),
+    reportSessionCollectionMetadataChanged: vi.fn(),
   };
 }
 

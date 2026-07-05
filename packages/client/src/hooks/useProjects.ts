@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { api } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import {
   activityBus,
   type ProcessStateEvent,
@@ -12,9 +13,6 @@ import {
   type ClientQueryRequestContext,
 } from "../lib/clientQueryController";
 import {
-  reportProjectCollectionSnapshot,
-  reportProjectsCollectionSnapshot,
-  useClientSummarySourceKey,
   useProjectCollectionRecord,
   useProjectCollectionRecords,
 } from "../lib/clientSummaryStore";
@@ -50,7 +48,9 @@ function useRemoteReady(): boolean {
  * Fetch a single project by ID.
  */
 export function useProject(projectId: string | undefined) {
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const project = useProjectCollectionRecord(projectId) ?? null;
   const ready = useRemoteReady();
   const queryKey = useMemo(
@@ -84,8 +84,7 @@ export function useProject(projectId: string | undefined) {
       return api.getProject(requestProjectId);
     },
     applySnapshot: (data, context) => {
-      reportProjectCollectionSnapshot(
-        context.sourceKey,
+      sourceSummary.reportProjectCollectionSnapshot(
         { project: data.project },
         context.requestStartedAt,
       );
@@ -131,7 +130,9 @@ export function useProject(projectId: string | undefined) {
 }
 
 export function useProjects() {
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const projects = useProjectCollectionRecords();
   const ready = useRemoteReady();
   const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
@@ -142,8 +143,7 @@ export function useProjects() {
     revalidateOn: PROJECTS_REVALIDATE_EVENTS,
     fetcher: () => api.getProjects(),
     applySnapshot: (data, context: ClientQueryRequestContext) => {
-      reportProjectsCollectionSnapshot(
-        context.sourceKey,
+      sourceSummary.reportProjectsCollectionSnapshot(
         { projects: data.projects },
         context.requestStartedAt,
       );

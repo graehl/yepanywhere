@@ -569,9 +569,10 @@ Implementation note:
 
 ## Phase 6: Per-Source Activity And Query Ownership
 
-Status: Started for source-bound summary ownership. Activity subscriptions,
-draft decoration, live streams, and broader query hooks still use the existing
-ambient current-source path.
+Status: Started for source-bound summary ownership. Shared summary-fetch hooks
+now write through `runtime.summary`; activity subscriptions, draft decoration,
+live streams, summary selectors, inbox fetches, and page-specific queue
+mutations still use the existing ambient current-source path.
 
 Intent:
 
@@ -604,6 +605,12 @@ Implementation note:
   writes remain isolated across two source runtimes. The facade intentionally
   reuses the existing store implementation, so retained query selectors and
   activity subscriptions are unchanged until later Phase 6 chunks.
+- Expanded `SourceSummaryRuntime` with collection-writer methods and moved
+  `useGlobalSessionsFeed`, `useProjectQueues`, and `useProjects` to write
+  global-session, project, and project-queue snapshots through the runtime.
+  Impact: the main reusable summary-fetch hooks now bind their summary writes
+  to the source runtime, while retained-query identity still uses the runtime's
+  source key for compatibility with the existing query controller.
 
 ## Phase 7: Optional Snapshot Persistence Adapter
 

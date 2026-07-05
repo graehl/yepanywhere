@@ -114,7 +114,6 @@ import {
   getBtwAsideSessionDisplayTitle,
 } from "../lib/btwAsideSessions";
 import {
-  reportProjectQueueCollectionSnapshot,
   useActiveProjectSessionIds,
   useClientSummarySourceKey,
   useProviderRuntimeStatusForSession,
@@ -832,7 +831,9 @@ function SessionPageContent({
   const { projects } = useProjects();
   const activeProjectSessionIds = useActiveProjectSessionIds(projectId);
   const clientSummarySourceKey = useClientSummarySourceKey();
-  const sourceApi = useCurrentSourceRuntime().api;
+  const sourceRuntime = useCurrentSourceRuntime();
+  const sourceApi = sourceRuntime.api;
+  const sourceSummary = sourceRuntime.summary;
   const sessionDraftReference = useMemo(
     () => ({
       sourceKey: clientSummarySourceKey,
@@ -2894,10 +2895,7 @@ function SessionPageContent({
           client: "toolbar",
         },
       });
-      reportProjectQueueCollectionSnapshot(
-        clientSummarySourceKey,
-        response.queue,
-      );
+      sourceSummary.reportProjectQueueCollectionSnapshot(response.queue);
       logSessionUiTrace("composer-project-queue-result", {
         sessionId,
         projectId,

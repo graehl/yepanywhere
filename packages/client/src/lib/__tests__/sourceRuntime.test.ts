@@ -11,6 +11,7 @@ import {
 } from "../clientSummaryStore";
 import {
   createGlobalSessionsCollectionQueryDescriptor,
+  selectInboxResponse,
   selectProjectCollectionRecords,
   selectProjectQueueItemsByProject,
   selectProviderRuntimeStatusForSession,
@@ -342,6 +343,24 @@ describe("SourceRuntimeRegistry", () => {
       },
       100,
     );
+    runtimeA.summary.reportInboxCollectionSnapshot(
+      {
+        needsAttention: [
+          {
+            sessionId: "session-a",
+            projectId,
+            projectName: "Project A",
+            sessionTitle: "Session A",
+            updatedAt: "2026-07-05T00:00:00.000Z",
+          },
+        ],
+        active: [],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      100,
+    );
     runtimeA.summary.reportProjectsCollectionSnapshot(
       {
         projects: [
@@ -377,6 +396,14 @@ describe("SourceRuntimeRegistry", () => {
         runtimeB.summary.getSnapshot(),
         query,
       ),
+    ).toEqual([]);
+    expect(
+      selectInboxResponse(runtimeA.summary.getSnapshot()).needsAttention.map(
+        (item) => item.sessionId,
+      ),
+    ).toEqual(["session-a"]);
+    expect(
+      selectInboxResponse(runtimeB.summary.getSnapshot()).needsAttention,
     ).toEqual([]);
     expect(
       selectProjectCollectionRecords(runtimeA.summary.getSnapshot()).map(

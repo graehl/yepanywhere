@@ -6,16 +6,13 @@ import {
 } from "react";
 import { fetchJSON } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import {
   activityBus,
   type SessionMetadataChangedEvent,
 } from "../lib/activityBus";
 import { createClientQueryKey } from "../lib/clientQueryController";
-import {
-  type ClientSummarySourceKey,
-  reportProviderRuntimeStatusSnapshot,
-  useClientSummarySourceKey,
-} from "../lib/clientSummaryStore";
+import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { isRemoteClient } from "../lib/connection";
 import type {
   AgentActivity,
@@ -189,7 +186,9 @@ export function resetProcessesForTests(): void {
  * Returns active and terminated processes for the Agents page.
  */
 export function useProcesses() {
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const remoteConnection = useOptionalRemoteConnection();
   const ready =
     !isRemoteClient() ||
@@ -214,8 +213,7 @@ export function useProcesses() {
         ...data.processes,
         ...(data.terminatedProcesses ?? []),
       ]) {
-        reportProviderRuntimeStatusSnapshot(
-          context.sourceKey,
+        sourceSummary.reportProviderRuntimeStatusSnapshot(
           {
             sessionId: process.sessionId,
             projectId: process.projectId,
@@ -225,7 +223,7 @@ export function useProcesses() {
         );
       }
     },
-    [],
+    [sourceSummary],
   );
 
   const { loading, error, refetch } = useRetainedClientQuery<ProcessesResponse>({

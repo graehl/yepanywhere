@@ -125,6 +125,7 @@ function summaryRuntime(sourceKey: ClientSummarySourceKey): SourceSummaryRuntime
     getSnapshot: vi.fn(() => undefined as never),
     clear: vi.fn(),
     reportGlobalSessionsCollectionSnapshot: vi.fn(),
+    reportInboxCollectionSnapshot: vi.fn(),
     reportProjectsCollectionSnapshot: vi.fn(),
     reportProjectCollectionSnapshot: vi.fn(),
     reportProjectQueueCollectionSnapshot: vi.fn(),

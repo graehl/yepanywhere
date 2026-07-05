@@ -6,6 +6,7 @@ import {
   getClientSummaryStoreForSource,
   getCurrentClientSummarySourceKey,
   reportGlobalSessionsCollectionSnapshot,
+  reportInboxCollectionSnapshot,
   reportProjectCollectionSnapshot,
   reportProjectQueueCollectionSnapshot,
   reportProjectQueueGlobalCollectionSnapshot,
@@ -23,6 +24,7 @@ import type {
 import type {
   ClientSummaryState,
   GlobalSessionsCollectionSnapshot,
+  InboxCollectionSnapshot,
   ProjectCollectionSnapshot,
   ProjectQueueCollectionSnapshot,
   ProjectQueueGlobalCollectionSnapshot,
@@ -100,6 +102,10 @@ export interface SourceSummaryRuntime {
   clear(): void;
   reportGlobalSessionsCollectionSnapshot(
     input: GlobalSessionsCollectionSnapshot,
+    requestStartedAt?: number,
+  ): void;
+  reportInboxCollectionSnapshot(
+    input: InboxCollectionSnapshot,
     requestStartedAt?: number,
   ): void;
   reportProjectsCollectionSnapshot(
@@ -234,6 +240,9 @@ function createCurrentSourceSummaryRuntime(
         input,
         requestStartedAt,
       );
+    },
+    reportInboxCollectionSnapshot: (input, requestStartedAt) => {
+      reportInboxCollectionSnapshot(sourceKey, input, requestStartedAt);
     },
     reportProjectsCollectionSnapshot: (input, requestStartedAt) => {
       reportProjectsCollectionSnapshot(sourceKey, input, requestStartedAt);

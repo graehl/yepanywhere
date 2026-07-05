@@ -380,6 +380,16 @@ vi.mock("../../lib/clientSummaryStore", () => ({
   },
 }));
 
+vi.mock("../../contexts/SourceRuntimeContext", () => ({
+  useCurrentSourceRuntime: () => ({
+    sourceKey: "host:test",
+    summary: {
+      reportProjectQueueCollectionSnapshot:
+        mockReportProjectQueueCollectionSnapshot,
+    },
+  }),
+}));
+
 vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: (projectIds: string[]) => {
     const queuesByProject = Object.fromEntries(
@@ -1141,7 +1151,6 @@ describe("NewSessionForm", () => {
     expect(mockStartSession).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockReportProjectQueueCollectionSnapshot).toHaveBeenCalledWith(
-      "host:test",
       { projectId: "project-1", items: [] },
     );
   });

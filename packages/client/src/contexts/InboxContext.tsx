@@ -27,12 +27,11 @@ import {
 } from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
 import {
-  reportInboxCollectionSnapshot,
-  useClientSummarySourceKey,
   useInboxResponseSnapshot,
 } from "../lib/clientSummaryStore";
 import { INBOX_TIERS, type InboxTier } from "../lib/inboxTiers";
 import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
+import { useCurrentSourceRuntime } from "./SourceRuntimeContext";
 
 // Re-export types for consumers
 export type { InboxItem, InboxResponse } from "../api/client";
@@ -208,7 +207,9 @@ export function InboxProvider({
   initialEnabled = true,
 }: InboxProviderProps) {
   const remoteConnection = useOptionalRemoteConnection();
-  const sourceKey = useClientSummarySourceKey();
+  const runtime = useCurrentSourceRuntime();
+  const sourceKey = runtime.sourceKey;
+  const sourceSummary = runtime.summary;
   const sourceKeyRef = useRef(sourceKey);
   sourceKeyRef.current = sourceKey;
   const inbox = useInboxResponseSnapshot();
@@ -258,7 +259,7 @@ export function InboxProvider({
         context.meta.forceFullSort === true;
 
       if (sourceKeyRef.current !== requestSourceKey) {
-        reportInboxCollectionSnapshot(requestSourceKey, data, requestStartedAt);
+        sourceSummary.reportInboxCollectionSnapshot(data, requestStartedAt);
         return;
       }
 
@@ -271,17 +272,13 @@ export function InboxProvider({
         return;
       }
 
-      reportInboxCollectionSnapshot(
-        requestSourceKey,
-        nextInbox,
-        requestStartedAt,
-      );
+      sourceSummary.reportInboxCollectionSnapshot(nextInbox, requestStartedAt);
       tierOrderRef.current = extractTierOrder(nextInbox);
       latestAcceptedRequestStartedAtRef.current = requestStartedAt;
       hasInitialLoadRef.current = true;
       setHasInitialLoad(true);
     },
-    [],
+    [sourceSummary],
   );
 
   const shouldRevalidateInboxEvent = useCallback(

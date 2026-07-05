@@ -146,6 +146,8 @@ export function useRetainedClientQuery<T>({
       }
 
       try {
+        const fetcherAtStart = fetcherRef.current;
+        const applySnapshotAtStart = applySnapshotRef.current;
         await ensureClientQuery({
           sourceKey,
           key: queryKey,
@@ -153,9 +155,9 @@ export function useRetainedClientQuery<T>({
           staleTimeMs,
           force,
           meta: meta ?? metaRef.current,
-          fetcher: (context) => fetcherRef.current(context),
+          fetcher: (context) => fetcherAtStart(context),
           applySnapshot: (result, context) =>
-            applySnapshotRef.current?.(result, context),
+            applySnapshotAtStart?.(result, context),
         });
 
         if (!mountedRef.current || requestId !== runSequenceRef.current) {

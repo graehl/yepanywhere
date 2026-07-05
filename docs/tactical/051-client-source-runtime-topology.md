@@ -569,10 +569,10 @@ Implementation note:
 
 ## Phase 6: Per-Source Activity And Query Ownership
 
-Status: Started for source-bound summary ownership. Shared summary-fetch hooks
-now write through `runtime.summary`; activity subscriptions, draft decoration,
-live streams, summary selectors, inbox fetches, and page-specific queue
-mutations still use the existing ambient current-source path.
+Status: In progress for source-bound summary ownership. Non-test summary writes
+now go through `runtime.summary`; activity subscriptions, draft decoration, live
+streams, and summary selectors still use the existing ambient current-source
+path.
 
 Intent:
 
@@ -594,6 +594,26 @@ Non-goal:
 
 - Do not build a merged multi-source sidebar yet.
 
+Near-term implementation slices:
+
+1. Finish non-test summary writers. Move inbox snapshots, process/session
+   provider runtime status, and page-specific project-queue mutation writes
+   through `runtime.summary`. Also make retained-query request callbacks capture
+   their fetch/apply functions at request start so delayed responses keep the
+   source binding they launched with.
+2. Add runtime-aware summary reads/selectors. Keep compatibility hooks, but make
+   the source-owned path able to select records from `runtime.summary` rather
+   than the ambient current summary store.
+3. Add optional explicit runtime overrides where they reduce test or
+   multi-source plumbing, with context as the default:
+   `useProjects({ runtime })` / `useProjectQueues({ runtime })`. Avoid naked
+   `sourceKey` overrides for operations that also depend on API, summary,
+   activity, or cache state.
+4. Move activity-bus retain/release, draft-decoration subscriptions, and live
+   stream/watch subscriptions under runtime ownership.
+5. Prove two real runtimes against two real YA servers before documenting
+   multi-source coexistence as supported.
+
 Implementation note:
 
 - Added `SourceSummaryRuntime` on `YaSourceRuntime`, backed by the existing
@@ -611,6 +631,11 @@ Implementation note:
   Impact: the main reusable summary-fetch hooks now bind their summary writes
   to the source runtime, while retained-query identity still uses the runtime's
   source key for compatibility with the existing query controller.
+- Moved the remaining non-test direct summary writers in `InboxContext`,
+  `useProcesses`, legacy `useSession`, `SessionPage`, and `NewSessionForm`
+  through `runtime.summary`. `useRetainedClientQuery` now captures its
+  fetch/apply callbacks at request start, preserving the source-bound writer for
+  delayed in-flight responses.
 
 ## Phase 7: Optional Snapshot Persistence Adapter
 

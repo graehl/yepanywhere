@@ -31,6 +31,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useConnection } from "../hooks/useConnection";
@@ -84,7 +85,6 @@ import {
   shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
 import {
-  reportProjectQueueCollectionSnapshot,
   useActiveProjectSessionIds,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
@@ -437,6 +437,7 @@ export function NewSessionForm({
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const clientSummarySourceKey = useClientSummarySourceKey();
+  const sourceSummary = useCurrentSourceRuntime().summary;
   const newSessionDraftKey = useMemo(
     () => createNewSessionDraftKey(clientSummarySourceKey),
     [clientSummarySourceKey],
@@ -2061,10 +2062,7 @@ export function NewSessionForm({
           client: "new-session",
         },
       });
-      reportProjectQueueCollectionSnapshot(
-        clientSummarySourceKey,
-        response.queue,
-      );
+      sourceSummary.reportProjectQueueCollectionSnapshot(response.queue);
 
       logSessionUiTrace("new-session-project-queued", {
         projectId: resolvedProjectId,

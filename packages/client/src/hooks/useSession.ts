@@ -13,12 +13,9 @@ import {
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { hasUnconfirmedSelfSends } from "../lib/deliveryState";
-import {
-  reportProviderRuntimeStatusSnapshot,
-  useClientSummarySourceKey,
-} from "../lib/clientSummaryStore";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
@@ -504,7 +501,7 @@ export function useSession(
     detailedLoadingProgress?: boolean;
   },
 ) {
-  const sourceKey = useClientSummarySourceKey();
+  const sourceSummary = useCurrentSourceRuntime().summary;
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
     initialStatus ?? { owner: "none" },
@@ -522,13 +519,13 @@ export function useSession(
       targetSessionId: string,
       providerRuntimeStatus: ProviderRuntimeStatus | undefined,
     ) => {
-      reportProviderRuntimeStatusSnapshot(sourceKey, {
+      sourceSummary.reportProviderRuntimeStatusSnapshot({
         sessionId: targetSessionId,
         projectId,
         providerRuntimeStatus: providerRuntimeStatus ?? null,
       });
     },
-    [projectId, sourceKey],
+    [projectId, sourceSummary],
   );
 
   // Actual session ID from server (may differ from URL sessionId during temp→real ID transition)

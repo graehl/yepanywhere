@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ReloadBanner } from "../ReloadBanner";
 
@@ -21,6 +21,77 @@ function renderBanner(
 }
 
 describe("ReloadBanner", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("requires confirmation before immediate reload", () => {
+    const onReload = vi.fn();
+    renderBanner({
+      unsafeToRestart: true,
+      interruptibleSessionCount: 1,
+      onReload,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+
+    expect(onReload).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Tap again to confirm" }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Tap again to confirm" }),
+    );
+
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets immediate reload confirmation after a short timeout", () => {
+    vi.useFakeTimers();
+    const onReload = vi.fn();
+    renderBanner({
+      unsafeToRestart: true,
+      interruptibleSessionCount: 1,
+      onReload,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+
+    expect(screen.getByRole("button", { name: "Reload Anyway" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+
+    expect(onReload).not.toHaveBeenCalled();
+  });
+
+  it("clears immediate reload confirmation when restart when safe is chosen", () => {
+    const onReload = vi.fn();
+    const onRestartWhenSafe = vi.fn();
+    renderBanner({
+      unsafeToRestart: true,
+      interruptibleSessionCount: 1,
+      onReload,
+      onRestartWhenSafe,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Restart When Safe" }),
+    );
+
+    expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Reload Anyway" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload Anyway" }));
+
+    expect(onReload).not.toHaveBeenCalled();
+  });
+
   it("offers restart when safe for backend reloads", () => {
     const onRestartWhenSafe = vi.fn();
     renderBanner({

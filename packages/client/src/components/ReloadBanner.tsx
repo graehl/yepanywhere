@@ -3,6 +3,7 @@ import type {
   SafeRestartPreservedWork,
   SafeRestartState,
 } from "@yep-anywhere/shared";
+import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 
 interface Props {
@@ -45,7 +46,12 @@ export function ReloadBanner({
   safeRestartMutating = false,
 }: Props) {
   const { t } = useI18n();
-  const label = target === "backend" ? "Server" : "Frontend";
+  const [confirmingImmediateReloadLabel, setConfirmingImmediateReloadLabel] =
+    useState<string | null>(null);
+  const label =
+    target === "backend"
+      ? t("reloadBannerTargetServer")
+      : t("reloadBannerTargetFrontend");
   const hasScheduledRestart =
     target === "backend" &&
     safeRestartState !== undefined &&
@@ -116,6 +122,49 @@ export function ReloadBanner({
             count: interruptibleSessionCount,
             suffix: interruptibleSessionCount !== 1 ? "s " : " ",
           });
+  const primaryReloadLabel = showWarning
+    ? t("reloadBannerReloadAnyway")
+    : t("reloadBannerReloadTarget", { target: label });
+  const isConfirmingImmediateReload =
+    confirmingImmediateReloadLabel === primaryReloadLabel;
+  const displayedPrimaryReloadLabel = isConfirmingImmediateReload
+    ? t("reloadBannerConfirmImmediateReload")
+    : primaryReloadLabel;
+
+  useEffect(() => {
+    if (confirmingImmediateReloadLabel === null) return;
+
+    const timeout = window.setTimeout(() => {
+      setConfirmingImmediateReloadLabel(null);
+    }, 5000);
+
+    return () => window.clearTimeout(timeout);
+  }, [confirmingImmediateReloadLabel]);
+
+  const handleImmediateReloadClick = () => {
+    if (!isConfirmingImmediateReload) {
+      setConfirmingImmediateReloadLabel(primaryReloadLabel);
+      return;
+    }
+
+    setConfirmingImmediateReloadLabel(null);
+    onReload();
+  };
+  const clearImmediateReloadConfirmation = () => {
+    setConfirmingImmediateReloadLabel(null);
+  };
+  const handleRestartWhenSafeClick = () => {
+    clearImmediateReloadConfirmation();
+    onRestartWhenSafe?.();
+  };
+  const handleCancelSafeRestartClick = () => {
+    clearImmediateReloadConfirmation();
+    onCancelSafeRestart?.();
+  };
+  const handleDismissClick = () => {
+    clearImmediateReloadConfirmation();
+    onDismiss();
+  };
 
   return (
     <div
@@ -137,15 +186,15 @@ export function ReloadBanner({
         className={`reload-banner-button reload-banner-button-primary ${
           showWarning ? "reload-banner-button-danger" : ""
         }`}
-        onClick={onReload}
+        onClick={handleImmediateReloadClick}
       >
-        {showWarning ? "Reload Anyway" : `Reload ${label}`}
+        {displayedPrimaryReloadLabel}
       </button>
       {canScheduleSafeRestart && (
         <button
           type="button"
           className="reload-banner-button reload-banner-button-safe"
-          onClick={onRestartWhenSafe}
+          onClick={handleRestartWhenSafeClick}
           disabled={safeRestartMutating}
         >
           {t("reloadBannerRestartWhenSafe")}
@@ -155,7 +204,7 @@ export function ReloadBanner({
         <button
           type="button"
           className="reload-banner-button"
-          onClick={onCancelSafeRestart}
+          onClick={handleCancelSafeRestartClick}
           disabled={safeRestartMutating}
         >
           {t("reloadBannerCancelSafeRestart")}
@@ -164,9 +213,9 @@ export function ReloadBanner({
       <button
         type="button"
         className="reload-banner-button"
-        onClick={onDismiss}
+        onClick={handleDismissClick}
       >
-        Dismiss
+        {t("reloadBannerDismiss")}
       </button>
       <span className="reload-banner-shortcut">Ctrl+Shift+R</span>
     </div>

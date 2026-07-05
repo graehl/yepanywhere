@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { WorkstreamId } from "@yep-anywhere/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataService } from "../../src/metadata/SessionMetadataService.js";
 
 describe("SessionMetadataService", () => {
@@ -110,9 +111,18 @@ describe("SessionMetadataService", () => {
         join(testDir, "session-metadata.json"),
         "not valid json{{{",
       );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       // Should not throw
-      await service.initialize();
+      try {
+        await service.initialize();
+        expect(warnSpy).toHaveBeenCalledWith(
+          "[SessionMetadataService] Failed to load state, starting fresh:",
+          expect.any(SyntaxError),
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
 
       // Should start fresh
       expect(service.getAllMetadata()).toEqual({});
@@ -540,6 +550,34 @@ describe("SessionMetadataService", () => {
       await service.clearSession("nonexistent-session");
 
       expect(service.getMetadata("nonexistent-session")).toBeUndefined();
+    });
+  });
+
+  describe("setWorkstream", () => {
+    it("sets and clears workstream identity", async () => {
+      await service.initialize();
+
+      await service.setWorkstream("session-1", "ws-feature" as WorkstreamId);
+
+      expect(service.getMetadata("session-1")).toEqual({
+        workstreamId: "ws-feature",
+      });
+
+      await service.setWorkstream("session-1", undefined);
+
+      expect(service.getMetadata("session-1")).toBeUndefined();
+    });
+
+    it("preserves other metadata when updating workstream identity", async () => {
+      await service.initialize();
+      await service.setTitle("session-1", "My Title");
+
+      await service.setWorkstream("session-1", "ws-feature" as WorkstreamId);
+
+      expect(service.getMetadata("session-1")).toEqual({
+        customTitle: "My Title",
+        workstreamId: "ws-feature",
+      });
     });
   });
 

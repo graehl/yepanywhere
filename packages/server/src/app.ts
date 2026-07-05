@@ -446,6 +446,7 @@ export function createApp(options: AppOptions): AppResult {
     geminiScanner,
     projectScanCachePath,
     projectMetadataService: options.projectMetadataService,
+    workstreamService: options.workstreamService,
     eventBus: options.eventBus,
     cacheTtlMs: options.projectScanCacheTtlMs,
   });

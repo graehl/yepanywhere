@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -42,6 +43,10 @@ async function initGitProject(projectPath: string): Promise<void> {
     await runGit(["init", projectPath]);
     await runGit(["-C", projectPath, "checkout", "-b", "main"]);
   }
+}
+
+function shortProjectHash(projectId: UrlProjectId): string {
+  return createHash("sha256").update(projectId).digest("hex").slice(0, 10);
 }
 
 describe("WorkstreamService", () => {
@@ -235,11 +240,37 @@ describe("WorkstreamService", () => {
       path.join(
         testDir,
         "checkouts",
-        `example-repo-${projectId.slice(0, 10)}`,
+        `example-repo-${shortProjectHash(projectId)}`,
         "feature-lane",
       ),
     );
     expect(preview.checkoutPath).toBe(preview.checkoutRootPath);
+  });
+
+  it("resolves stored checkout paths back to their workstream", async () => {
+    const service = await createService();
+    await service.upsertWorkstream(
+      makeWorkstream({
+        path: path.join(testDir, "checkouts", "repo", "feature"),
+      }),
+    );
+
+    expect(
+      service.resolvePath(
+        path.join(testDir, "checkouts", "repo", "feature", "src"),
+      ),
+    ).toMatchObject({
+      projectId,
+      workstreamId: "ws-tools",
+      workstream: {
+        id: "ws-tools",
+        projectId,
+        path: path.join(testDir, "checkouts", "repo", "feature"),
+      },
+    });
+    expect(
+      service.resolvePath(path.join(testDir, "checkouts", "repo-other")),
+    ).toBeNull();
   });
 
   it("creates a real checkout lane and persists metadata after setup", async () => {

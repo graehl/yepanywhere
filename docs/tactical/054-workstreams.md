@@ -2,10 +2,11 @@
 
 Topic: workstreams
 
-Status: First three preparatory chunks landed. Workstreams remain hidden/no-op
-by default; no workstream API route, scheduler change, lane checkout creation,
-or sync action has landed yet. The pending plan was re-cut after the topic
-switched from branch-backed git worktrees to ordinary repo checkouts.
+Status: Preparatory metadata/API/UI chunks and the first checkout creation
+slice have landed. Workstreams remain hidden/no-op by default; no queue
+targeting, scheduler change, delete/import route, sync action, or landing
+action has landed yet. The pending plan was re-cut after the topic switched
+from branch-backed git worktrees to ordinary repo checkouts.
 
 Product rationale and the target user workflow live in
 [`topics/workstreams.md`](../../topics/workstreams.md). This tactical document
@@ -68,7 +69,7 @@ machinery.
 - [x] WS-003: Add shared workstream types and server metadata service.
 - [x] WS-004: Add read-only workstream API behind the gate.
 - [x] WS-005: Add hidden Workstreams page shell.
-- [ ] WS-006: Associate sessions with workstreams.
+- [x] WS-006: Associate sessions with workstreams.
 - [ ] WS-007: Add Project Queue target metadata and hidden target picker.
 - [x] WS-008: Add UI-backed lane checkout creation.
 - [ ] WS-009: Make Project Queue scheduling workstream-aware.
@@ -356,10 +357,27 @@ pnpm i18n:scan
 
 ### WS-006: Associate Sessions With Workstreams
 
-Status: proposed.
+Status: first metadata/scanner slice done; start-session UI and per-lane
+session counts remain deferred.
 
 Goal: let sessions display their lane identity and let the Workstreams page
 show associated sessions.
+
+Implemented:
+
+- Added optional `workstreamId` to YA session metadata and session summary
+  response types.
+- Kept missing `workstreamId` as the default: it resolves to the implicit
+  main workstream for the session's effective project and is not eagerly
+  written for existing sessions.
+- Added server metadata helpers for setting/clearing a session workstream id.
+- Added stored-checkout cwd resolution in `WorkstreamService`.
+- Taught project scanning to collapse known lane cwd paths back onto the
+  canonical project id instead of listing the lane checkout as a duplicate
+  project.
+- Invalidated scanner snapshots on `workstreams-changed` events and included
+  the workstreams metadata file in the persistent project-scan cache source
+  state.
 
 Likely change:
 
@@ -370,9 +388,31 @@ Likely change:
   when the experimental gate is on.
 - UI can show compact identity such as `yepanywhere / xr blink / main`.
 
+Lane session association rules:
+
+- YA URLs, persisted YA metadata, REST/WebSocket payloads, and UI routing keep
+  the canonical project id for the repository's main checkout.
+- Starting a session in a non-main lane should use that lane's checkout path as
+  the provider cwd, while storing `workstreamId` separately.
+- For a root-level project, a YA-managed lane cwd is
+  `{dataDir}/checkouts/<project-slug>-<project-id-hash>/<lane-slug>`.
+- For a subdirectory project, YA clones the repository root under that same
+  lane root, then uses the matching subdirectory inside the clone as the
+  provider cwd.
+- The `<project-id-hash>` segment is a short stable hash of the canonical
+  project id, not the first characters of the base64url id; path prefixes are
+  not unique enough across sibling projects.
+- The session scanner must resolve any cwd equal to or inside a stored
+  checkout lane path to the lane's canonical `projectId`. It must not create a
+  separate project row for that checkout.
+- Scanner recognition is intentionally metadata-backed. Arbitrary sibling
+  clones or external git worktrees are not auto-associated until the user
+  explicitly imports them.
+
 Out of scope:
 
 - no automatic reassignment of historical sessions;
+- no start-session workstream picker or Workstreams-page session counts yet;
 - no provider-native id changes;
 - no queue scheduling changes.
 
@@ -432,7 +472,7 @@ Implemented:
   client can show the exact server-computed destination before create.
 - Added blocking `POST /api/projects/:projectId/workstreams`.
 - Created lanes as ordinary local clones under
-  `{dataDir}/checkouts/<project>/<lane-slug>`.
+  `{dataDir}/checkouts/<project-slug>-<project-id-hash>/<lane-slug>`.
 - Left the canonical checkout unchanged.
 - Set the lane clone's `origin` to the canonical checkout's own origin when it
   exists; otherwise the local clone source remains the origin.

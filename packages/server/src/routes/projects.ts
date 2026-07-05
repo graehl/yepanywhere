@@ -320,6 +320,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         isArchived,
         isStarred,
         parentSessionId,
+        workstreamId: metadata?.workstreamId,
       };
     });
   }

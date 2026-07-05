@@ -25,6 +25,7 @@ import type {
 } from "./types.js";
 import type { UploadedFile } from "./upload.js";
 import type { UserMessageMetadata } from "./user-message-metadata.js";
+import type { WorkstreamId } from "./workstreams.js";
 
 // =============================================================================
 // App Message Extensions
@@ -449,6 +450,8 @@ export interface AppSessionSummary {
   workingProjectId?: UrlProjectId;
   /** Provider transcript project when it differs from the effective project. */
   transcriptProjectId?: UrlProjectId;
+  /** YA workstream lane for this session. Missing means the implicit main lane. */
+  workstreamId?: WorkstreamId;
 }
 
 /**
@@ -476,6 +479,8 @@ export interface SessionMetadataPayload
   workingProjectId?: UrlProjectId;
   /** Provider transcript project when it differs from the effective project. */
   transcriptProjectId?: UrlProjectId;
+  /** YA workstream lane for this session. Missing means the implicit main lane. */
+  workstreamId?: WorkstreamId;
 }
 
 export type SessionQueuedMessageKind = "deferred" | "patient";

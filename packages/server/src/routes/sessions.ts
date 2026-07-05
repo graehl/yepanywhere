@@ -2273,6 +2273,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         recapAfterSeconds: metadata?.recapAfterSeconds,
         workingProjectId: metadata?.workingProjectId,
         transcriptProjectId: metadata?.transcriptProjectId,
+        workstreamId: metadata?.workstreamId,
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         lastSeenAt,
         hasUnread,
@@ -2700,6 +2701,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             recapAfterSeconds: metadata?.recapAfterSeconds,
             workingProjectId: metadata?.workingProjectId,
             transcriptProjectId: metadata?.transcriptProjectId,
+            workstreamId: metadata?.workstreamId,
             transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
@@ -2948,6 +2950,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         recapAfterSeconds: metadata?.recapAfterSeconds,
         workingProjectId: metadata?.workingProjectId,
         transcriptProjectId: metadata?.transcriptProjectId,
+        workstreamId: metadata?.workstreamId,
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,

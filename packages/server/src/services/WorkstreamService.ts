@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
@@ -24,7 +24,7 @@ const DEFAULT_PROJECT_SLUG = "project";
 const DEFAULT_LANE_SLUG = "lane";
 const MAX_PROJECT_SLUG_LENGTH = 42;
 const MAX_LANE_SLUG_LENGTH = 48;
-const PROJECT_ID_SUFFIX_LENGTH = 10;
+const PROJECT_ID_HASH_LENGTH = 10;
 const MAX_DESTINATION_ATTEMPTS = 100;
 const GIT_DEFAULT_TIMEOUT_MS = 30_000;
 const GIT_CLONE_TIMEOUT_MS = 5 * 60_000;
@@ -76,6 +76,12 @@ export interface WorkstreamCheckoutDestination {
 export interface CreateCheckoutWorkstreamResult {
   workstream: StoredWorkstream;
   destination: WorkstreamCheckoutDestination;
+}
+
+export interface WorkstreamPathResolution {
+  projectId: UrlProjectId;
+  workstreamId: WorkstreamId;
+  workstream: StoredWorkstream;
 }
 
 export class WorkstreamValidationError extends Error {
@@ -255,7 +261,11 @@ function getProjectCheckoutSegment(
     DEFAULT_PROJECT_SLUG,
     MAX_PROJECT_SLUG_LENGTH,
   );
-  return `${projectSlug}-${projectId.slice(0, PROJECT_ID_SUFFIX_LENGTH)}`;
+  const projectHash = createHash("sha256")
+    .update(projectId)
+    .digest("hex")
+    .slice(0, PROJECT_ID_HASH_LENGTH);
+  return `${projectSlug}-${projectHash}`;
 }
 
 function getGitErrorDetail(error: unknown): string {
@@ -463,6 +473,32 @@ export class WorkstreamService {
         workstream.projectId === projectId && workstream.id === workstreamId,
     );
     return found ? cloneJson(found) : null;
+  }
+
+  resolvePath(candidatePath: string): WorkstreamPathResolution | null {
+    this.ensureInitialized();
+    const resolvedCandidate = path.resolve(candidatePath);
+    let best: StoredWorkstream | null = null;
+    let bestLength = -1;
+
+    for (const workstream of this.state.workstreams) {
+      const workstreamPath = path.resolve(workstream.path);
+      if (!isPathInside(workstreamPath, resolvedCandidate)) {
+        continue;
+      }
+      if (workstreamPath.length <= bestLength) {
+        continue;
+      }
+      best = workstream;
+      bestLength = workstreamPath.length;
+    }
+
+    if (!best) return null;
+    return {
+      projectId: best.projectId,
+      workstreamId: best.id,
+      workstream: cloneJson(best),
+    };
   }
 
   async createWorkstream(

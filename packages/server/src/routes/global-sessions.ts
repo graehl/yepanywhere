@@ -5,7 +5,7 @@
  * this returns a flat list suitable for navigation/sidebar use.
  */
 
-import type { ProviderName } from "@yep-anywhere/shared";
+import type { ProviderName, WorkstreamId } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionIndexListOptions } from "../indexes/types.js";
@@ -97,6 +97,8 @@ export interface GlobalSessionItem {
   isStarred?: boolean;
   /** Parent session when this item is a YA-owned /btw aside. */
   parentSessionId?: string;
+  /** YA workstream lane for this session. Missing means the implicit main lane. */
+  workstreamId?: WorkstreamId;
   /** Initial prompt text accepted by YA for new-session recovery/copy. */
   initialPrompt?: string;
   /** SSH host alias for remote execution (undefined = local) */
@@ -484,6 +486,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           isArchived,
           isStarred,
           parentSessionId,
+          workstreamId: metadata?.workstreamId,
           initialPrompt: initialPrompt ?? undefined,
           executor,
           lastAgentText: overlaidSession.lastAgentText,

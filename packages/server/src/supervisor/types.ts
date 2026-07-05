@@ -13,6 +13,7 @@ import type {
   ThinkingConfig,
   UrlProjectId,
   SessionLivenessSnapshot,
+  WorkstreamId,
 } from "@yep-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
 
@@ -130,6 +131,8 @@ export interface SessionSummary {
   approvalPolicy?: string;
   /** Sandbox policy from turn_context */
   sandboxPolicy?: SessionSandboxPolicy;
+  /** YA workstream lane for this session. Missing means the implicit main lane. */
+  workstreamId?: WorkstreamId;
 }
 
 /**

@@ -7,6 +7,7 @@ import { ProjectMetadataService } from "../../src/metadata/ProjectMetadataServic
 import { CodexSessionScanner } from "../../src/projects/codex-scanner.js";
 import { GeminiSessionScanner } from "../../src/projects/gemini-scanner.js";
 import { ProjectScanner } from "../../src/projects/scanner.js";
+import { WorkstreamService } from "../../src/services/WorkstreamService.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
@@ -410,5 +411,56 @@ describe("ProjectScanner cache", () => {
     expect(projects.some((p) => p.path === "/home/user/codex-project")).toBe(
       false,
     );
+  });
+
+  it("groups known workstream checkout cwd paths under the canonical project", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    const dataDir = join(tmpdir(), `workstream-data-${randomUUID()}`);
+    tempDirs.push(projectsDir, dataDir);
+    const canonicalProjectPath = join(dataDir, "repo");
+    const lanePath = join(dataDir, "checkouts", "repo", "feature-lane");
+    await mkdir(canonicalProjectPath, { recursive: true });
+    await mkdir(lanePath, { recursive: true });
+
+    const workstreamService = new WorkstreamService({ dataDir });
+    await workstreamService.initialize();
+    await workstreamService.createWorkstream({
+      projectId: encodeProjectId(canonicalProjectPath),
+      label: "Feature lane",
+      path: lanePath,
+      branch: "main",
+      managedByYa: true,
+    });
+
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      lanePath,
+      "sess-lane",
+    );
+
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      workstreamService,
+      cacheTtlMs: 60000,
+    });
+
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0]).toMatchObject({
+      id: encodeProjectId(canonicalProjectPath),
+      path: canonicalProjectPath,
+      name: "repo",
+      sessionCount: 1,
+    });
+
+    await expect(
+      scanner.getOrCreateProject(encodeProjectId(lanePath)),
+    ).resolves.toMatchObject({
+      id: encodeProjectId(canonicalProjectPath),
+      path: canonicalProjectPath,
+    });
   });
 });

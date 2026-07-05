@@ -34,3 +34,15 @@ PUT surface no longer accepts the legacy keys: a stale cached client sending
 them gets 400 and logs a console warning until it picks up the new bundle.
 Accept-and-translate was deliberately skipped as speculative scaffolding for
 a transient skew.
+
+2026-07-05 session-detail REST default / approval audit log — uncursored
+`GET /api/projects/:projectId/sessions/:sessionId` now returns a
+two-compaction tail unless `fullHistory=1` is explicit, and approval decision
+logging now defaults off behind `approvalAuditLogEnabled`. The session-detail
+flip is the server-side safety backstop for tactical 055/SPC-007: the current
+client source API requires a bound or explicit full-history request and handles
+pagination, while stale cached or out-of-repo clients that relied on the old
+unbounded default now get a bounded window and must opt in to full history.
+The audit-log flip favors privacy/explicit operator intent over implicit
+security logging; older clients cannot enable it without the capability-gated
+settings surface.

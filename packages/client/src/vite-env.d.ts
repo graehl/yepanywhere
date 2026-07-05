@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_IS_REMOTE_CLIENT?: boolean;
   /** Remote-client default relay URL override for static hosted deployments. */
   readonly VITE_DEFAULT_RELAY_URL?: string;
+  /** Enables Playwright-only source transport smoke helpers. */
+  readonly VITE_E2E_SOURCE_TRANSPORT_SMOKE?: string;
 }
 
 interface ImportMeta {

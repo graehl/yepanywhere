@@ -142,6 +142,14 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
   // Register SW at startup so PWA install is available without visiting settings
   registerServiceWorkerAtStartup();
 
+  if (import.meta.env.VITE_E2E_SOURCE_TRANSPORT_SMOKE === "true") {
+    void import("./lib/e2e/sourceTransportCoexistenceSmoke").then(
+      ({ installSourceTransportCoexistenceSmoke }) => {
+        installSourceTransportCoexistenceSmoke();
+      },
+    );
+  }
+
   // SSE activity stream connection is managed by useActivityBusConnection hook
   // in App.tsx, which connects only when authenticated (or auth is disabled)
 

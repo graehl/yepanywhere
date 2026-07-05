@@ -2,7 +2,7 @@
 
 Topic: source-transport
 
-Status: Active plan, T9 landed 2026-07-05. This is the implementation runbook for the
+Status: Active plan, T10 landed 2026-07-05. This is the implementation runbook for the
 contract in [`topics/source-transport.md`](../../topics/source-transport.md).
 It continues Phase 6 of
 [`051-client-source-runtime-topology.md`](051-client-source-runtime-topology.md)
@@ -360,15 +360,16 @@ Tripwires:
 
 ## Slice T10: Two-Server Coexistence Smoke
 
-Status: Not started.
+Status: Landed 2026-07-05.
 
 Intent:
 
 - Behind a dev flag or E2E harness (not a product surface), run the primary
-  server plus a second server (`PORT=4000 YEP_PROFILE=dev`) and mount two
-  runtimes: the localhost source plus a `WebSocketSourceTransport` pointed at
-  `ws://localhost:4001/api/ws` — the cheapest real second source (no relay,
-  no SRP setup).
+  E2E server plus a second backend-only server on an assigned free port
+  (`PORT=0`) with its own temporary profile directories. Mount two runtimes:
+  the localhost source plus a `WebSocketSourceTransport` pointed at the
+  second server's actual `ws://127.0.0.1:<port>/api/ws` — the cheapest real
+  second source (no relay, no SRP setup).
 - Exercise: independent status snapshots; independent session/watch/activity
   streams for identical project/session ids; disposing one source leaves the
   other live; wake handling pings both attached sockets.
@@ -377,6 +378,22 @@ Acceptance:
 
 - The smoke runs in CI or as a documented dev procedure; findings that fake
   runtimes could not catch are recorded here.
+
+Landing notes:
+
+- Added `packages/client/e2e/source-transport-coexistence.spec.ts`, enabled by
+  the Playwright-only `VITE_E2E_SOURCE_TRANSPORT_SMOKE` build flag.
+- The smoke starts a second server with isolated Claude/Codex/Gemini/YA data
+  dirs, validates both sources can fetch version and persisted session detail
+  for the same YA project/session ids, opens independent activity and focused
+  session-watch streams, records client wake ping frames on both attached
+  sockets, disposes the second source, and verifies the localhost source still
+  fetches and wake-pings.
+- The live `session` stream requires an active provider-owned process. T10
+  covers the session subscription boundary with independent no-active-process
+  errors for the same session id; provider-backed two-server live session
+  stream coverage remains Phase 8/mock-provider E2E scope rather than being
+  pulled into this minimal smoke.
 
 Tripwires:
 

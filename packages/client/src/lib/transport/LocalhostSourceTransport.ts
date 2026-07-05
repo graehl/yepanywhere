@@ -9,7 +9,10 @@ import {
   type WebSocketLike,
   type WebSocketFactory,
 } from "../../api/upload";
-import { ConnectionManager } from "../connection/ConnectionManager";
+import {
+  ConnectionManager,
+  type ConnectionManagerConfig,
+} from "../connection/ConnectionManager";
 import {
   WebSocketConnection,
   type WebSocketConnectionFactory,
@@ -32,6 +35,7 @@ import type {
 } from "./types";
 
 export interface LocalhostSourceTransportOptions {
+  connectionManagerConfig?: ConnectionManagerConfig;
   streamWebSocketFactory?: WebSocketConnectionFactory;
   uploadWebSocketFactory?: WebSocketFactory;
 }
@@ -87,7 +91,7 @@ export class LocalhostSourceTransport implements SourceTransport {
   };
   readonly status: SourceTransportStatus;
 
-  private readonly streamManager = new ConnectionManager();
+  private readonly streamManager: ConnectionManager;
   private readonly streamConnection: WebSocketConnection;
   private readonly mutableStatus: LocalhostTransportStatus;
   private readonly uploadWebSocketFactory?: WebSocketFactory;
@@ -106,6 +110,7 @@ export class LocalhostSourceTransport implements SourceTransport {
   private removeManagerVisibilityListener: (() => void) | null = null;
 
   constructor(options: LocalhostSourceTransportOptions = {}) {
+    this.streamManager = new ConnectionManager(options.connectionManagerConfig);
     this.uploadWebSocketFactory = options.uploadWebSocketFactory;
     this.streamConnection = new WebSocketConnection({
       createWebSocket: options.streamWebSocketFactory,

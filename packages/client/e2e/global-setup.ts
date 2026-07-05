@@ -167,6 +167,10 @@ export default async function globalSetup() {
   console.log("[E2E] Building client...");
   execSync("pnpm --filter @yep-anywhere/client build", {
     cwd: repoRoot,
+    env: {
+      ...process.env,
+      VITE_E2E_SOURCE_TRANSPORT_SMOKE: "true",
+    },
     stdio: "inherit",
   });
 

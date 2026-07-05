@@ -4,6 +4,8 @@ Topic: client-source-runtime-topology
 
 Status: Draft tactical plan. This follows the architectural vision in
 [`topics/client-source-runtime-topology.md`](../../topics/client-source-runtime-topology.md)
+and the transport-boundary proposal in
+[`topics/source-transport.md`](../../topics/source-transport.md),
 and builds on the completed session-detail boundary work in
 [`046-session-detail-store-boundary-refactor.md`](046-session-detail-store-boundary-refactor.md).
 
@@ -17,8 +19,7 @@ The target shape is:
 ```text
 SourceRuntimeRegistry
   YaSourceRuntime
-    SourceApiClient
-    SourceActivityStream
+    SourceTransport
     client summary/query stores
     SessionDetailRuntime
       SessionDetailMemoryCache
@@ -52,9 +53,9 @@ This plan starts from the current post-refactor state:
 - The global remote connection is consumed by more than `api.fetchJSON`:
   uploads, `useSessionStream` / `useSessionWatchStream`, remote media loading
   (`useRemoteImage`, `LocalMediaModal`), the emulator stream, and
-  `useConnection` all read it directly. The narrow `SourceApiClient` in the
-  phases below does not cover these; they are the known remaining
-  global-connection consumers.
+  `useConnection` all read it directly. The early narrow `SourceApiClient`
+  subset below does not cover these; the broader `SourceTransport` proposal is
+  the intended follow-on boundary for replacing those global consumers.
 - Reconnect, backoff, and readiness are process-wide singletons
   (`connectionManager`, `whenConnectionReady`, `isRemoteMode`), shared between
   the remote connection context and the activity bus.
@@ -78,6 +79,8 @@ of React hooks.
 ## Working Terms
 
 - **Source runtime:** one YA server/source as seen by the client.
+- **Source transport:** source-bound transport facade for API calls, uploads,
+  session/watch/activity subscriptions, source status, and channel snapshots.
 - **Source API client:** source-bound API methods. It never consults a global
   "current connection".
 - **Source activity stream:** source-bound event subscription/fan-in.
@@ -573,14 +576,17 @@ Status: In progress for source-bound summary ownership. Non-test summary
 writes, summary selector reads, summary activity leases, and draft-decoration
 leases now go through the mounted source runtime when one exists. Per-session
 live streams and the transport-level activity stream still use the existing
-ambient current-source path.
+ambient current-source path. The next stream work is blocked on first making
+the source transport boundary explicit; see
+[`topics/source-transport.md`](../../topics/source-transport.md).
 
 Intent:
 
 - Move activity-bus retain/release and draft-decoration subscriptions under
   source runtimes.
-- Give the runtime a per-session stream surface so `useSessionStream` /
-  `useSessionWatchStream` stop reading the global connection directly.
+- Give the runtime a `SourceTransport` so `useSessionStream` /
+  `useSessionWatchStream` stop reading the global connection and singleton
+  connection manager directly.
 - Ensure retained query and route-retention state is naturally source-owned,
   even where the implementation remains module-level maps keyed by source.
 
@@ -610,9 +616,12 @@ Near-term implementation slices:
    `useProjects({ runtime })` / `useProjectQueues({ runtime })`. Avoid naked
    `sourceKey` overrides for operations that also depend on API, summary,
    activity, or cache state.
-4. Move activity-bus retain/release, draft-decoration subscriptions, and live
-   stream/watch subscriptions under runtime ownership.
-5. Prove two real runtimes against two real YA servers before documenting
+4. Add the source transport boundary from `topics/source-transport.md`,
+   preserving default localhost behavior while making its real stream/upload
+   channels visible in status snapshots.
+5. Move activity-bus retain/release, draft-decoration subscriptions, and live
+   stream/watch subscriptions under runtime transport ownership.
+6. Prove two real runtimes against two real YA servers before documenting
    multi-source coexistence as supported.
 
 Completed read-side slice:
@@ -635,12 +644,14 @@ Completed activity/draft slice:
 
 Likely next slice:
 
-- Runtime-owned per-session live stream/watch subscriptions. The summary layer
-  can now bind reads, writes, activity leases, and draft scan leases to a
-  mounted runtime, but `useSessionStream` / `useSessionWatchStream` still read
-  the process-wide connection path directly. The next valuable chunk is to add a
-  runtime stream surface and move those per-session subscriptions behind it,
-  preserving explicit teardown for closed tabs.
+- Source transport boundary prefactoring. The summary layer can now bind reads,
+  writes, activity leases, and draft scan leases to a mounted runtime, but
+  `useSessionStream` / `useSessionWatchStream` still read the process-wide
+  connection path directly. Before moving those hooks, add the
+  `SourceTransport` shape from `topics/source-transport.md`: default localhost
+  mode stays source-ready with no-op source reconnect, while its WebSocket
+  channels remain visible; plain WebSocket and secure/relay modes remain
+  sibling multiplex transports.
 
 Implementation note:
 

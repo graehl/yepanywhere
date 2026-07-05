@@ -120,3 +120,5 @@
   queues over real checkouts syncing through the shared upstream.
 - session-media-handles - Server-owned media handles replacing inline base64
   transcript payloads in retained client state.
+- source-transport - Source-bound transport facade for localhost, plain
+  multiplex WebSocket, and secure/relay modes with visible channel status.

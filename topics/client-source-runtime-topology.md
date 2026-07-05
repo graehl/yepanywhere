@@ -50,8 +50,7 @@ The desired topology is:
 App / route shell
   -> SourceRuntimeRegistry
     -> YaSourceRuntime per YA server/source
-      -> SourceApiClient / transport
-      -> SourceActivityStream
+      -> SourceTransport
       -> client summary/query stores
       -> session detail runtime
         -> SessionDetailMemoryCache
@@ -66,8 +65,8 @@ App / route shell
 client's point of view. It should carry:
 
 - `sourceKey`, the stable source identity used in caches and UI state;
-- an API client bound to that source's transport;
-- an activity stream or event subscription bound to that source;
+- a source transport bound to that source, including API calls, uploads,
+  streams, activity, and visible status/debug snapshots;
 - per-session live stream subscriptions (session stream, watch stream), which
   today read the global connection directly;
 - connection readiness, reconnect, and backoff state for that source's
@@ -133,20 +132,25 @@ but the registry model should not require exactly one runtime to exist. A
 future tabbed source sidebar or merged inbox should be able to ask for more
 than one runtime.
 
-### SourceApiClient
+### SourceTransport
 
-The source API client is the transport-facing contract used by data code. It
-should expose YA API operations for one source without consulting a global
+The source transport is the transport-facing contract used by data and stream
+code. It should expose YA API operations, uploads, subscriptions, activity, and
+visible connection/channel status for one source without consulting a global
 connection. Its implementation may wrap:
 
 - ordinary local HTTP fetches;
+- local WebSocket subscriptions for default localhost mode;
+- plain multiplexed `WebSocketConnection`;
 - direct remote `SecureConnection`;
 - relay-backed `SecureConnection`;
 - test or embedded transports.
 
-Relay, SRP, NaCl, reconnect, and WebSocket framing remain transport-layer
-details. Session-detail code should depend on this API contract, not on the
-transport implementation.
+The concrete boundary is proposed in
+[`source-transport.md`](source-transport.md). Relay, SRP, NaCl, reconnect, and
+WebSocket framing remain transport-layer details, but status and channel
+snapshots should remain visible for debugging. Session-detail code may continue
+to depend on a narrower API subset while the broader source transport lands.
 
 ### SessionDetailRuntime
 
@@ -288,7 +292,8 @@ it.
 - React hooks bind runtime objects to component lifetime and expose selected
   state; they should not be the only place where session-detail protocol logic
   lives.
-- Transport internals remain behind a source API/activity contract.
+- Transport internals remain behind a source transport contract with explicit
+  source status and channel snapshots.
 - Coexistence claims are exercised, not merely typed: if the architecture says
   two runtimes can coexist, some test or development surface actually runs two
   against real servers before the claim is recorded as supported.
@@ -314,8 +319,12 @@ it.
 - [`client-route-retention.md`](client-route-retention.md) covers retained
   route data. Source runtimes should be the natural owner of source-scoped
   retention policy.
+- [`source-transport.md`](source-transport.md) defines the proposed
+  source-level transport facade and the localhost / plain WebSocket / secure
+  mode semantics.
 - [`docs/project/connection-matrix.md`](../docs/project/connection-matrix.md)
-  explains the transport modes that `SourceApiClient` implementations can wrap.
+  explains the historical transport modes that `SourceTransport`
+  implementations can wrap.
 - [`docs/project/ws-auth-state-model.md`](../docs/project/ws-auth-state-model.md)
   and [`docs/project/relay-design.md`](../docs/project/relay-design.md)
   remain the detailed auth/relay transport references.

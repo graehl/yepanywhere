@@ -51,6 +51,9 @@ section below for what would have to change at higher fan-out.
   — vision for explicit per-source client runtimes so local/direct/relay YA
   servers can own their API transport, activity stream, summary stores, and
   session-detail services without hidden current-source globals.
+- [`topics/source-transport.md`](topics/source-transport.md) — proposal for a
+  source-bound transport facade that makes localhost, plain multiplex
+  WebSocket, and secure/relay modes explicit without hiding channel status.
 - [`topics/session-detail-data-layer.md`](topics/session-detail-data-layer.md)
   — lower-level vision for a canonical client session-detail data layer
   between provider stream/REST inputs and transcript DOM rendering; see the

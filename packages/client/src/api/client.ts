@@ -20,6 +20,7 @@ import type {
   GitRemoteCheckResult,
   FreezePublicSessionLiveSharesResponse,
   GitStatusInfo,
+  GitUntrackedFolderInfo,
   HelperTargetConfig,
   ModelInfo,
   NewSessionDefaults,
@@ -1508,6 +1509,11 @@ export const api = {
   // Git status API
   getGitStatus: (projectId: string) =>
     fetchJSON<GitStatusInfo>(`/projects/${projectId}/git`),
+
+  getGitUntrackedFolder: (projectId: string, path: string) =>
+    fetchJSON<GitUntrackedFolderInfo>(
+      `/projects/${projectId}/git/untracked-folder?path=${encodeURIComponent(path)}`,
+    ),
 
   checkGitRemote: (projectId: string) =>
     fetchJSON<GitRemoteCheckResult>(`/projects/${projectId}/git/check-remote`, {

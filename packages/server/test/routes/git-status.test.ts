@@ -7,6 +7,7 @@ import {
   type GitIntegrationOptionsResult,
   type GitPushResult,
   type GitStatusInfo,
+  type GitUntrackedFolderInfo,
   toUrlProjectId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -147,6 +148,54 @@ describe("git-status routes", () => {
     expect(Number.isFinite(checkedRemoteMs)).toBe(true);
     expect(checkedRemoteMs).toBeGreaterThanOrEqual(beforeFetchMs);
     expect(checkedRemoteMs).toBeLessThanOrEqual(afterFetchMs);
+  });
+
+  it("reports compact untracked folders as dirty entries", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await mkdir(join(repoDir, "transport", "__tests__"), { recursive: true });
+    await writeFile(join(repoDir, "transport", "types.ts"), "export {};\n");
+    await writeFile(
+      join(repoDir, "transport", "__tests__", "types.test.ts"),
+      "export {};\n",
+    );
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git`);
+    const body = (await response.json()) as GitStatusInfo;
+
+    expect(response.status).toBe(200);
+    expect(body.isClean).toBe(false);
+    expect(body.files).toContainEqual({
+      path: "transport/",
+      status: "?",
+      staged: false,
+      linesAdded: null,
+      linesDeleted: null,
+    });
+  });
+
+  it("expands one untracked folder on demand", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await mkdir(join(repoDir, "transport", "__tests__"), { recursive: true });
+    await writeFile(join(repoDir, "transport", "types.ts"), "export {};\n");
+    await writeFile(
+      join(repoDir, "transport", "__tests__", "types.test.ts"),
+      "export {};\n",
+    );
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(
+      `/${projectId}/git/untracked-folder?path=${encodeURIComponent("transport/")}`,
+    );
+    const body = (await response.json()) as GitUntrackedFolderInfo;
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      path: "transport/",
+      files: ["transport/__tests__/types.test.ts", "transport/types.ts"],
+      truncated: false,
+      limit: 500,
+    });
   });
 
   it("reports automatic integration options for a clean diverged branch", async () => {

@@ -18246,6 +18246,54 @@ body:has(.session-page)
   color: var(--error-color);
 }
 
+.modal:has(.git-untracked-folder-modal) {
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+}
+
+.git-untracked-folder-modal {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.git-untracked-folder-status,
+.git-untracked-folder-summary {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.git-untracked-folder-error {
+  color: var(--error-color);
+}
+
+.git-untracked-folder-list {
+  display: flex;
+  max-height: min(60vh, 520px);
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  list-style: none;
+}
+
+.git-untracked-folder-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.git-untracked-folder-item:last-child {
+  border-bottom: 0;
+}
+
 .diff-context-buttons {
   display: flex;
   gap: 0.25rem;

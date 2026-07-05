@@ -123,6 +123,7 @@ export type {
   GitRemoteCheckResult,
   GitRemoteCheckStatus,
   GitStatusInfo,
+  GitUntrackedFolderInfo,
 } from "./git-status.js";
 
 export type {

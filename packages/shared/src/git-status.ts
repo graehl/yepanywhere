@@ -7,7 +7,7 @@ export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
   "git-status-integration-options";
 
 export interface GitFileChange {
-  /** Relative file path within the repo */
+  /** Relative path within the repo. May be a compact untracked directory. */
   path: string;
   /** Git status code: M, A, D, ?, R, T, U */
   status: string;
@@ -32,6 +32,17 @@ export interface GitRecentCommit {
   authorName: string;
   /** Author timestamp as an ISO 8601 string */
   authorDate: string;
+}
+
+export interface GitUntrackedFolderInfo {
+  /** Compact untracked directory path, with trailing slash */
+  path: string;
+  /** Expanded untracked file paths within the directory */
+  files: string[];
+  /** Whether the list was capped by the server */
+  truncated: boolean;
+  /** Maximum number of files returned before truncation */
+  limit: number;
 }
 
 export interface GitStatusInfo {

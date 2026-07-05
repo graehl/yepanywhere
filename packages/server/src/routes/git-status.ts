@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,7 @@ import {
   type GitRemoteCheckResult,
   type GitRecentCommit,
   type GitStatusInfo,
+  type GitUntrackedFolderInfo,
   type PatchHunk,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
@@ -39,6 +40,7 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
 
 const remoteCheckedAtByProjectPath = new Map<string, string>();
 const gitOperationsByProjectPath = new Set<string>();
+const UNTRACKED_FOLDER_FILE_LIMIT = 500;
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
@@ -63,6 +65,37 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         return c.json(NOT_A_GIT_REPO);
       }
       return c.json({ error: "Failed to get git status" }, 500);
+    }
+  });
+
+  /**
+   * GET /:projectId/git/untracked-folder?path=dir/
+   * Expand one compact untracked directory on demand.
+   */
+  routes.get("/:projectId/git/untracked-folder", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const path = c.req.query("path");
+    if (!path || !isValidUntrackedFolderPath(path)) {
+      return c.json({ error: "Invalid untracked folder path" }, 400);
+    }
+
+    try {
+      return c.json(await getUntrackedFolderInfo(project.path, path));
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        return c.json({ error: "Not a git repository" }, 400);
+      }
+      return c.json({ error: "Failed to expand untracked folder" }, 500);
     }
   });
 
@@ -385,6 +418,12 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     if (!path || typeof staged !== "boolean" || !status) {
       return c.json(
         { error: "Missing required fields: path, staged, status" },
+        400,
+      );
+    }
+    if (status === "?" && path.endsWith("/")) {
+      return c.json(
+        { error: "Diff preview is not available for untracked folders" },
         400,
       );
     }
@@ -733,6 +772,140 @@ function parseNumstat(
   return map;
 }
 
+function isValidUntrackedFolderPath(path: string): boolean {
+  if (!path.endsWith("/") || path.includes("\0")) {
+    return false;
+  }
+  if (path.startsWith("/") || /^[A-Za-z]:/.test(path)) {
+    return false;
+  }
+
+  const segments = path.slice(0, -1).split("/");
+  return (
+    segments.length > 0 &&
+    segments.every((segment) => segment !== "" && segment !== "..")
+  );
+}
+
+async function getUntrackedFolderInfo(
+  projectPath: string,
+  folderPath: string,
+): Promise<GitUntrackedFolderInfo> {
+  const { files, truncated } = await collectUntrackedFolderFiles(
+    projectPath,
+    folderPath,
+    UNTRACKED_FOLDER_FILE_LIMIT,
+  );
+
+  files.sort((a, b) => a.localeCompare(b));
+  return {
+    path: folderPath,
+    files,
+    truncated,
+    limit: UNTRACKED_FOLDER_FILE_LIMIT,
+  };
+}
+
+async function collectUntrackedFolderFiles(
+  projectPath: string,
+  folderPath: string,
+  limit: number,
+): Promise<{ files: string[]; truncated: boolean }> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn("git", [
+      "-C",
+      projectPath,
+      "status",
+      "--porcelain=v2",
+      "--untracked-files=all",
+      "--",
+      folderPath,
+    ]);
+    const files: string[] = [];
+    let stdoutRemainder = "";
+    let stderr = "";
+    let truncated = false;
+    let settled = false;
+    let stdoutBytes = 0;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const settle = (
+      resolve: boolean,
+      value: { files: string[]; truncated: boolean } | Error,
+    ) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (resolve) {
+        resolvePromise(value as { files: string[]; truncated: boolean });
+      } else {
+        rejectPromise(value);
+      }
+    };
+
+    const stopAsTruncated = () => {
+      if (truncated) return;
+      truncated = true;
+      child.kill("SIGTERM");
+    };
+
+    const readStatusLine = (line: string) => {
+      if (!line.startsWith("? ")) return;
+
+      const path = line.slice(2);
+      if (!path.startsWith(folderPath) || path.endsWith("/")) return;
+
+      if (files.length >= limit) {
+        stopAsTruncated();
+        return;
+      }
+      files.push(path);
+      if (files.length >= limit) {
+        stopAsTruncated();
+      }
+    };
+
+    timeout = setTimeout(stopAsTruncated, 10_000);
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdoutBytes += Buffer.byteLength(chunk);
+      stdoutRemainder += chunk;
+      const lines = stdoutRemainder.split("\n");
+      stdoutRemainder = lines.pop() ?? "";
+      for (const line of lines) {
+        readStatusLine(line);
+      }
+      if (stdoutBytes > 1024 * 1024) {
+        stopAsTruncated();
+      }
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (err) => {
+      settle(false, err);
+    });
+
+    child.on("close", (code) => {
+      if (stdoutRemainder) {
+        readStatusLine(stdoutRemainder);
+      }
+      if (code === 0 || truncated) {
+        settle(true, { files, truncated });
+        return;
+      }
+
+      const err = new Error(stderr.trim() || `git exited with code ${code}`);
+      Object.assign(err, { stderr });
+      settle(false, err);
+    });
+  });
+}
+
 /** Status letter from the XY field for a given position */
 function statusChar(xy: string | undefined, index: 0 | 1): string | null {
   if (!xy) return null;
@@ -858,18 +1031,17 @@ async function getGitStatus(
         });
       }
     }
-    // Untracked: "? path" (skip directories — they end with /)
+    // Untracked: "? path". Git reports a whole untracked directory as
+    // "path/" until the caller explicitly asks for --untracked-files=all.
     else if (line.startsWith("? ")) {
       const path = line.slice(2);
-      if (!path.endsWith("/")) {
-        files.push({
-          path,
-          status: "?",
-          staged: false,
-          linesAdded: null,
-          linesDeleted: null,
-        });
-      }
+      files.push({
+        path,
+        status: "?",
+        staged: false,
+        linesAdded: null,
+        linesDeleted: null,
+      });
     }
     // Unmerged: "u XY sub m1 m2 m3 mW h1 h2 h3 path"
     else if (line.startsWith("u ")) {

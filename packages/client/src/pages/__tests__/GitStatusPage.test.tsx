@@ -10,6 +10,7 @@ import { GitStatusPage } from "../GitStatusPage";
 
 const mocks = vi.hoisted(() => ({
   getGitDiff: vi.fn(),
+  getGitUntrackedFolder: vi.fn(),
   useProjects: vi.fn(),
   useProject: vi.fn(),
   useVersion: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../api/client", () => ({
   api: {
     getGitDiff: mocks.getGitDiff,
+    getGitUntrackedFolder: mocks.getGitUntrackedFolder,
     checkGitRemote: vi.fn(),
     pullGit: vi.fn(),
     pushGit: vi.fn(),
@@ -120,6 +122,7 @@ function renderPage() {
 beforeEach(() => {
   resetRouteRetentionForTests();
   mocks.getGitDiff.mockReset();
+  mocks.getGitUntrackedFolder.mockReset();
   mocks.getGitDiff.mockResolvedValue({
     diffHtml: "",
     structuredPatch: [
@@ -131,6 +134,15 @@ beforeEach(() => {
         lines: ["-a", "+b"],
       },
     ],
+  });
+  mocks.getGitUntrackedFolder.mockResolvedValue({
+    path: "packages/client/src/lib/transport/",
+    files: [
+      "packages/client/src/lib/transport/FakeSourceTransport.ts",
+      "packages/client/src/lib/transport/types.ts",
+    ],
+    truncated: false,
+    limit: 500,
   });
   mocks.useProjects.mockReturnValue({
     projects: [project()],
@@ -176,5 +188,46 @@ describe("GitStatusPage route retention", () => {
         .getByRole("button", { name: /b\.ts/ })
         .getAttribute("aria-current"),
     ).toBe("true");
+  });
+});
+
+describe("GitStatusPage untracked folders", () => {
+  it("opens an untracked folder listing without loading a diff", async () => {
+    mocks.useGitStatus.mockReturnValue({
+      gitStatus: {
+        ...status(),
+        files: [
+          {
+            path: "packages/client/src/lib/transport/",
+            status: "?",
+            staged: false,
+            linesAdded: null,
+            linesDeleted: null,
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /packages\/client\/src\/lib\/transport\//,
+      }),
+    );
+
+    expect(mocks.getGitDiff).not.toHaveBeenCalled();
+    expect(mocks.getGitUntrackedFolder).toHaveBeenCalledWith(
+      "project-a",
+      "packages/client/src/lib/transport/",
+    );
+    expect(
+      await screen.findByText(
+        "packages/client/src/lib/transport/FakeSourceTransport.ts",
+      ),
+    ).toBeDefined();
   });
 });

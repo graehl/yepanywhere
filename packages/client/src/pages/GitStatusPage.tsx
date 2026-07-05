@@ -7,6 +7,7 @@ import type {
   GitRemoteCheckResult,
   GitRecentCommit,
   GitStatusInfo,
+  GitUntrackedFolderInfo,
 } from "@yep-anywhere/shared";
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
@@ -307,6 +308,11 @@ function GitStatusContent({
   const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
     () => retainedRouteState?.selectedFileKey ?? null,
   );
+  const [expandedUntrackedFolder, setExpandedUntrackedFolder] =
+    useState<GitFileChange | null>(null);
+  const [untrackedFolderCache, setUntrackedFolderCache] = useState<
+    Record<string, GitUntrackedFolderInfo>
+  >({});
   const [remoteCheckResult, setRemoteCheckResult] =
     useState<GitRemoteCheckResult | null>(null);
   const [isCheckingRemote, setIsCheckingRemote] = useState(false);
@@ -326,29 +332,41 @@ function GitStatusContent({
   >(null);
   const nowMs = useRelativeNow();
 
-  const { stagedFiles, unstagedFiles, untrackedFiles, allFiles } =
-    useMemo(() => {
-      const staged = status.files.filter((f) => f.staged);
-      const unstaged = status.files.filter(
-        (f) => !f.staged && f.status !== "?",
-      );
-      const untracked = status.files.filter((f) => f.status === "?");
-      return {
-        stagedFiles: staged,
-        unstagedFiles: unstaged,
-        untrackedFiles: untracked,
-        allFiles: [...staged, ...unstaged, ...untracked],
-      };
-    }, [status.files]);
+  const {
+    stagedFiles,
+    unstagedFiles,
+    untrackedFiles,
+    allFiles,
+    previewableFiles,
+  } = useMemo(() => {
+    const staged = status.files.filter((f) => f.staged);
+    const unstaged = status.files.filter((f) => !f.staged && f.status !== "?");
+    const untracked = status.files.filter((f) => f.status === "?");
+    const all = [...staged, ...unstaged, ...untracked];
+    return {
+      stagedFiles: staged,
+      unstagedFiles: unstaged,
+      untrackedFiles: untracked,
+      allFiles: all,
+      previewableFiles: all.filter((file) => !isUntrackedFolder(file)),
+    };
+  }, [status.files]);
   const selectedFile = useMemo(
     () =>
       selectedFileKey
-        ? (allFiles.find((file) => gitFileKey(file) === selectedFileKey) ??
-          null)
+        ? (previewableFiles.find(
+            (file) => gitFileKey(file) === selectedFileKey,
+          ) ?? null)
         : null,
-    [allFiles, selectedFileKey],
+    [previewableFiles, selectedFileKey],
   );
   const statusRevision = useMemo(() => getGitStatusRevision(status), [status]);
+
+  useEffect(() => {
+    void statusRevision;
+    setUntrackedFolderCache({});
+    setExpandedUntrackedFolder(null);
+  }, [statusRevision]);
 
   const retainSelectedFileKey = useCallback(
     (nextSelectedFileKey: string | null) => {
@@ -366,6 +384,11 @@ function GitStatusContent({
 
   const handleFileClick = useCallback(
     (file: GitFileChange) => {
+      if (isUntrackedFolder(file)) {
+        setExpandedUntrackedFolder(file);
+        return;
+      }
+
       const nextSelectedFileKey = gitFileKey(file);
       setSelectedFileKey(nextSelectedFileKey);
       retainSelectedFileKey(nextSelectedFileKey);
@@ -374,23 +397,27 @@ function GitStatusContent({
   );
 
   useEffect(() => {
-    setSelectedFileKey((current) => {
-      if (allFiles.length === 0) {
-        if (current !== null) {
-          retainSelectedFileKey(null);
-        }
-        return null;
-      }
-      if (current && allFiles.some((file) => gitFileKey(file) === current)) {
-        return current;
-      }
-      const next = isWideScreen && allFiles[0] ? gitFileKey(allFiles[0]) : null;
-      if (next !== current) {
-        retainSelectedFileKey(next);
-      }
-      return next;
-    });
-  }, [allFiles, isWideScreen, retainSelectedFileKey]);
+    const nextSelectedFileKey =
+      allFiles.length === 0
+        ? null
+        : selectedFileKey &&
+            previewableFiles.some((file) => gitFileKey(file) === selectedFileKey)
+          ? selectedFileKey
+          : isWideScreen && previewableFiles[0]
+            ? gitFileKey(previewableFiles[0])
+            : null;
+
+    if (nextSelectedFileKey !== selectedFileKey) {
+      setSelectedFileKey(nextSelectedFileKey);
+      retainSelectedFileKey(nextSelectedFileKey);
+    }
+  }, [
+    allFiles.length,
+    previewableFiles,
+    isWideScreen,
+    retainSelectedFileKey,
+    selectedFileKey,
+  ]);
 
   useEffect(() => {
     if (!routeRetentionKey) {
@@ -754,6 +781,22 @@ function GitStatusContent({
           }}
         />
       )}
+
+      {expandedUntrackedFolder && (
+        <UntrackedFolderModal
+          folder={expandedUntrackedFolder}
+          projectId={projectId}
+          cachedInfo={untrackedFolderCache[expandedUntrackedFolder.path] ?? null}
+          onLoaded={(info) =>
+            setUntrackedFolderCache((current) => ({
+              ...current,
+              [info.path]: info,
+            }))
+          }
+          onClose={() => setExpandedUntrackedFolder(null)}
+          t={t}
+        />
+      )}
     </div>
   );
 }
@@ -972,6 +1015,110 @@ function GitDiffModal({
         retainedRouteState={retainedRouteState}
         t={t}
       />
+    </Modal>
+  );
+}
+
+function UntrackedFolderModal({
+  folder,
+  projectId,
+  cachedInfo,
+  onLoaded,
+  t,
+  onClose,
+}: {
+  folder: GitFileChange;
+  projectId: string;
+  cachedInfo: GitUntrackedFolderInfo | null;
+  onLoaded: (info: GitUntrackedFolderInfo) => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  onClose: () => void;
+}) {
+  const [info, setInfo] = useState<GitUntrackedFolderInfo | null>(cachedInfo);
+  const [loading, setLoading] = useState(!cachedInfo);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cachedInfo) {
+      setInfo(cachedInfo);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setInfo(null);
+    setLoading(true);
+    setError(null);
+
+    api
+      .getGitUntrackedFolder(projectId, folder.path)
+      .then((result) => {
+        if (cancelled) return;
+        setInfo(result);
+        onLoaded(result);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : t("gitStatusLoadUntrackedFolderFailed"),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cachedInfo, folder.path, onLoaded, projectId, t]);
+
+  return (
+    <Modal title={folder.path} onClose={onClose}>
+      <div className="git-untracked-folder-modal">
+        {loading && (
+          <div className="git-untracked-folder-status">
+            {t("gitStatusLoading")}
+          </div>
+        )}
+        {!loading && error && (
+          <div className="git-untracked-folder-status git-untracked-folder-error">
+            {error}
+          </div>
+        )}
+        {!loading && !error && info && (
+          <>
+            <div className="git-untracked-folder-summary">
+              {info.truncated
+                ? t("gitStatusUntrackedFolderCountTruncated", {
+                    count: info.files.length,
+                  })
+                : t("gitStatusUntrackedFolderCount", {
+                    count: info.files.length,
+                  })}
+            </div>
+            {info.files.length === 0 ? (
+              <div className="git-untracked-folder-status">
+                {t("gitStatusUntrackedFolderEmpty")}
+              </div>
+            ) : (
+              <ul className="git-untracked-folder-list">
+                {info.files.map((path) => (
+                  <li key={path} className="git-untracked-folder-item">
+                    <span className="git-status-badge git-status-?">?</span>
+                    <span className="git-file-path">{path}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -1233,6 +1380,10 @@ function GitDiffContent({
 
 function gitFileKey(file: GitFileChange): string {
   return `${file.path}\0${file.staged ? "1" : "0"}\0${file.status}`;
+}
+
+function isUntrackedFolder(file: GitFileChange): boolean {
+  return file.status === "?" && !file.staged && file.path.endsWith("/");
 }
 
 function getGitStatusRevision(status: GitStatusInfo): string {

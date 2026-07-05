@@ -114,15 +114,6 @@ export interface SessionDetailRouteSnapshotLoadProgressOptions
   messageCount?: number;
 }
 
-export interface SessionDetailInitialLoadStartPerfInput {
-  projectId: string;
-  sessionId: string;
-  tailCompactions: number;
-  tailTurns?: number;
-  tailFrom?: string;
-  restoredFromSnapshot: boolean;
-}
-
 export interface SessionDetailRestoredPerfOptions {
   restoredFromSnapshot?: boolean;
 }
@@ -148,20 +139,6 @@ export interface SessionDetailInitialRevealCompletion {
   messagesQueuedPerfDetail: Record<string, unknown>;
   loadCompleteProgress: SessionLoadProgress;
   loadCompletePerfDetail: Record<string, unknown>;
-}
-
-export interface SessionDetailWarmHydrationRevealInputOptions {
-  loadedSession: GetSessionResult["session"];
-  loadedPagination?: GetSessionResult["pagination"];
-  lastMessageId?: string;
-  scrollSnapshot?: SessionRouteScrollSnapshot;
-}
-
-export interface SessionDetailRevealInputOptions {
-  session: GetSessionResult["session"];
-  pagination?: GetSessionResult["pagination"];
-  lastMessageId?: string;
-  scrollSnapshot?: SessionRouteScrollSnapshot;
 }
 
 export interface SessionDetailLoadCompleteResult {
@@ -380,24 +357,6 @@ export class SessionDetailCoordinator {
     });
   }
 
-  buildInitialLoadStartPerfDetail({
-    projectId,
-    sessionId,
-    tailCompactions,
-    tailTurns,
-    tailFrom,
-    restoredFromSnapshot,
-  }: SessionDetailInitialLoadStartPerfInput): Record<string, unknown> {
-    return {
-      projectId,
-      sessionId,
-      tailCompactions,
-      tailTurns,
-      tailFrom,
-      restoredFromSnapshot,
-    };
-  }
-
   buildInitialLoadDataReadyPerfDetail(
     data: GetSessionResult,
     options: SessionDetailDataReadyPerfOptions = {},
@@ -472,34 +431,6 @@ export class SessionDetailCoordinator {
         sourceMessageCount,
         { restoredFromSnapshot },
       ),
-    };
-  }
-
-  buildWarmHydrationRevealInput({
-    loadedSession,
-    loadedPagination,
-    lastMessageId,
-    scrollSnapshot,
-  }: SessionDetailWarmHydrationRevealInputOptions): SessionDetailRevealSnapshotInput {
-    return this.buildRevealInput({
-      session: loadedSession,
-      pagination: loadedPagination,
-      lastMessageId,
-      scrollSnapshot,
-    });
-  }
-
-  buildRevealInput({
-    session,
-    pagination,
-    lastMessageId,
-    scrollSnapshot,
-  }: SessionDetailRevealInputOptions): SessionDetailRevealSnapshotInput {
-    return {
-      session,
-      pagination,
-      lastMessageId,
-      scrollSnapshot,
     };
   }
 

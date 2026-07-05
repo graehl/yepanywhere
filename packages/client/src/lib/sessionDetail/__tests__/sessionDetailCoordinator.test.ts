@@ -481,23 +481,6 @@ describe("SessionDetailCoordinator", () => {
     const snapshot = routeSnapshot("perf-snapshot");
 
     expect(
-      detail.buildInitialLoadStartPerfDetail({
-        projectId: "proj-1",
-        sessionId: "sess-1",
-        tailCompactions: 2,
-        tailTurns: 8,
-        tailFrom: "turn-1",
-        restoredFromSnapshot: true,
-      }),
-    ).toEqual({
-      projectId: "proj-1",
-      sessionId: "sess-1",
-      tailCompactions: 2,
-      tailTurns: 8,
-      tailFrom: "turn-1",
-      restoredFromSnapshot: true,
-    });
-    expect(
       detail.buildInitialLoadDataReadyPerfDetail(response, {
         restoredFromSnapshot: true,
         appliedAfterSnapshotHydration: true,
@@ -569,46 +552,6 @@ describe("SessionDetailCoordinator", () => {
         messages: 2,
         restoredFromSnapshot: true,
       },
-    });
-  });
-
-  it("builds warm hydration reveal inputs from hook-supplied cursors", () => {
-    const detail = coordinator();
-    const responsePagination = pagination(2);
-    const retainedScroll = scrollSnapshot(72);
-
-    expect(
-      detail.buildWarmHydrationRevealInput({
-        loadedSession: session(),
-        loadedPagination: responsePagination,
-        lastMessageId: "last-warm",
-        scrollSnapshot: retainedScroll,
-      }),
-    ).toEqual({
-      session: session(),
-      pagination: responsePagination,
-      lastMessageId: "last-warm",
-      scrollSnapshot: retainedScroll,
-    });
-  });
-
-  it("builds reveal inputs from hook-supplied cursors", () => {
-    const detail = coordinator();
-    const responsePagination = pagination(2);
-    const retainedScroll = scrollSnapshot(80);
-
-    expect(
-      detail.buildRevealInput({
-        session: session(),
-        pagination: responsePagination,
-        lastMessageId: "last-load",
-        scrollSnapshot: retainedScroll,
-      }),
-    ).toEqual({
-      session: session(),
-      pagination: responsePagination,
-      lastMessageId: "last-load",
-      scrollSnapshot: retainedScroll,
     });
   });
 

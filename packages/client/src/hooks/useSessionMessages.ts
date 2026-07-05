@@ -598,12 +598,12 @@ export function useSessionMessages(
     }): SessionDetailRevealSnapshotResult => {
       const reveal = readRevealSnapshotAfterStoreUpdate(
         options.diagnosticBoundary,
-        coordinator.buildWarmHydrationRevealInput({
-          loadedSession: options.loadedSession,
-          loadedPagination: options.loadedPagination,
+        {
+          session: options.loadedSession,
+          pagination: options.loadedPagination,
           lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
-        }),
+        },
       );
       const { snapshot } = reveal;
       completeInitialReveal({
@@ -660,12 +660,12 @@ export function useSessionMessages(
       });
       const reveal = readRevealSnapshotAfterStoreUpdate(
         "warm-catchup-after-hydration",
-        coordinator.buildRevealInput({
+        {
           session: data.session,
           pagination: applied.pagination,
           lastMessageId: readStoreLastMessageId(),
           scrollSnapshot: scrollSnapshotRef.current,
-        }),
+        },
       );
       const { snapshot } = reveal;
       applyRevealSnapshot(snapshot);
@@ -679,14 +679,14 @@ export function useSessionMessages(
 
     markReloadPerfPhase(
       "session_initial_load_start",
-      coordinator.buildInitialLoadStartPerfDetail({
+      {
         projectId,
         sessionId,
         tailCompactions: 2,
         tailTurns,
         tailFrom,
         restoredFromSnapshot: initialLoad.restoredFromSnapshot,
-      }),
+      },
     );
     scrollSnapshotRef.current = shouldRetainSessionScrollMemory(
       getSessionScrollBehaviorMode(),
@@ -761,12 +761,12 @@ export function useSessionMessages(
         const applied = coordinator.applyInitialLoad(data);
         const reveal = readRevealSnapshotAfterStoreUpdate(
           "initial-load",
-          coordinator.buildRevealInput({
+          {
             session: data.session,
             pagination: applied.pagination,
             lastMessageId: readStoreLastMessageId(),
             scrollSnapshot: scrollSnapshotRef.current,
-          }),
+          },
         );
         const { snapshot } = reveal;
         completeInitialReveal({

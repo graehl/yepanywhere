@@ -271,11 +271,10 @@ Older-page request gating/input construction and reducer dispatch are
 coordinator-owned while React loading state, REST, status reporting,
 diagnostics, and error handling remain hook-owned.
 
-Pruning note: `buildRevealInput`, `buildWarmHydrationRevealInput`, and
-`buildInitialLoadStartPerfDetail` are pure identity/renaming wrappers
-today, kept only as landing spots for future slices. A slice that does not
-grow real shaping behavior into one of them should delete it and pass the
-literal instead of keeping the indirection.
+Cleanup note: identity-only coordinator wrappers are intentionally pruned
+rather than kept as speculative seams. `buildRevealInput`,
+`buildWarmHydrationRevealInput`, and `buildInitialLoadStartPerfDetail` were
+removed after they failed to grow real shaping behavior.
 
 Intent:
 
@@ -451,10 +450,16 @@ Implementation note:
   Impact: `useSessionMessages` no longer imports the pagination selector or
   directly dispatches transcript pagination actions; older-page behavior is now
   covered in coordinator unit tests.
-- The next Phase 3 slice should likely be larger than recent payload moves:
-  either consolidate the remaining initial-load effect orchestration into a
-  named coordinator/hook boundary, or stop Phase 3 and prune identity-only
-  helper methods before Phase 4 naming work.
+- Pruned identity-only coordinator helpers that were acting as speculative
+  seams rather than behavior owners: reveal fallback input wrappers and the
+  initial-load-start perf-detail wrapper. Hook call sites now pass those
+  literals directly, and tests for pure identity mapping were removed.
+  Impact: coordinator public API and tests now better reflect behavior
+  ownership rather than object-literal relocation.
+- The next Phase 3 slice should be a genuinely larger boundary move, such as
+  consolidating the remaining initial-load effect orchestration into named
+  hook/coordinator phases; otherwise Phase 3 is a reasonable stopping point
+  before Phase 4 naming work.
 
 ## Phase 4: Rename Public Cache Facade
 

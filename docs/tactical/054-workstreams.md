@@ -66,11 +66,11 @@ machinery.
 - [x] WS-001: Extract Project Queue response assembly.
 - [x] WS-002: Add default-off experimental workstreams gate.
 - [x] WS-003: Add shared workstream types and server metadata service.
-- [ ] WS-004: Add read-only workstream API behind the gate.
+- [x] WS-004: Add read-only workstream API behind the gate.
 - [ ] WS-005: Add hidden Workstreams page shell.
 - [ ] WS-006: Associate sessions with workstreams.
 - [ ] WS-007: Add Project Queue target metadata and hidden target picker.
-- [ ] WS-008: Add lane checkout lifecycle API.
+- [ ] WS-008: Add UI-backed lane checkout creation.
 - [ ] WS-009: Make Project Queue scheduling workstream-aware.
 - [ ] WS-010: Add shared-upstream lane sync and repair turns.
 - [ ] WS-011: Add optional `.workstream` readiness checks.
@@ -261,7 +261,23 @@ persisted data, so no migration was needed.
 
 ### WS-004: Add Read-Only Workstream API Behind The Gate
 
-Status: proposed.
+Status: done.
+
+Implemented:
+
+- Added `WorkstreamService` initialization in the real server and passed it
+  into `createApp`.
+- Added `GET /api/projects/:projectId/workstreams`, mounted under
+  `/api/projects`.
+- Gated the route on `serverSettingsService.getSetting("workstreamsEnabled")`.
+  Disabled mode returns a hidden/explicit `404` JSON response and does not
+  resolve the project.
+- The enabled response includes the implicit `main` lane plus any stored
+  checkout lanes for the canonical project.
+- Added route tests for disabled mode, invalid project ids, missing projects,
+  main-lane synthesis, and stored checkout lane listing.
+- Left the global `GET /api/workstreams` route unimplemented until a concrete
+  caller needs it.
 
 Goal: expose enough data for a hidden Workstreams page to render lanes.
 
@@ -269,7 +285,6 @@ Likely routes:
 
 ```http
 GET /api/projects/:projectId/workstreams
-GET /api/workstreams
 ```
 
 Early behavior:
@@ -291,9 +306,12 @@ Suggested verification:
 ```bash
 pnpm --filter @yep-anywhere/shared build
 pnpm --filter @yep-anywhere/server exec tsc --noEmit
-pnpm --filter @yep-anywhere/server test -- test/routes/workstreams.test.ts
-node scripts/biome.cjs lint packages/server/src/routes packages/shared/src
+pnpm --filter @yep-anywhere/server test -- test/routes/workstreams.test.ts test/services/WorkstreamService.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/workstreams.ts packages/server/src/app.ts packages/server/src/index.ts packages/server/test/routes/workstreams.test.ts
 ```
+
+Verified 2026-07-05 with the focused test and lint commands above, plus
+`git diff --check`.
 
 ### WS-005: Add Hidden Workstreams Page Shell
 
@@ -391,21 +409,39 @@ pnpm --filter @yep-anywhere/server test -- test/routes/project-queue.test.ts
 pnpm --filter @yep-anywhere/client test -- src/hooks/__tests__/useProjectQueues.test.ts
 ```
 
-### WS-008: Add Lane Checkout Lifecycle API
+### WS-008: Add UI-Backed Lane Checkout Creation
 
 Status: proposed after WS-004 through WS-007 land.
 
-Goal: let YA create or import ordinary repo checkouts for lanes without
-changing scheduler behavior yet.
+Goal: let a user press `New workstream`, have YA create the ordinary repo
+checkout for that lane, and see a durable success or failure state without
+using the command line. This still does not change scheduler behavior.
 
 Likely routes:
 
 ```http
 POST /api/projects/:projectId/workstreams
-POST /api/projects/:projectId/workstreams/import
 DELETE /api/projects/:projectId/workstreams/:workstreamId
 PATCH /api/projects/:projectId/workstreams/:workstreamId
 ```
+
+The first `POST` may either block the HTTP request while awaiting async git
+child processes, or return `202 { operationId }` if the first implementation
+needs progress polling. It must not use synchronous shell work that blocks the
+Node event loop. Start with the blocking request unless clone/setup latency or
+progress UX makes an operation resource obviously necessary.
+
+Likely UI behavior:
+
+- add a `New workstream` action on the hidden Workstreams page;
+- collect the lane label and show the computed checkout destination before
+  creation;
+- disable the create action while a create operation is active for the
+  canonical project;
+- show a creating row or inline progress state while the operation is running;
+- show success by rendering the new lane row from the API/EventBus result;
+- show checkout creation failure as a first-class lane/operation state with the
+  error/log, `Retry`, and `Delete` actions.
 
 Likely creation behavior:
 
@@ -420,10 +456,23 @@ Likely creation behavior:
 - do not create a branch in the first version;
 - do not run setup scripts or symlink directories by default.
 
-Likely import behavior:
+Concurrency and operation semantics:
 
-- allow explicit import of an existing checkout path that belongs to the same
-  repository;
+- enforce a per-canonical-project single-flight lock for checkout create,
+  delete, cleanup, and future sync operations;
+- a second create while one is active returns a clear
+  `409 operation_in_progress` response rather than racing;
+- releasing the lock is mandatory on success, failure, and client disconnect;
+- the operation result is driven by server state, not by the initiating tab
+  staying open;
+- emit a workstreams/activity event on created/failed/deleted state changes so
+  other tabs update without polling everything.
+
+Secondary import behavior:
+
+- import is an admin/debug affordance, not the main product milestone;
+- when added, explicit import of an existing checkout path must verify that it
+  belongs to the same repository;
 - default imported lanes to read-only/unmanaged until the user marks them
   managed;
 - detect external git worktrees only as import candidates, not as YA-owned
@@ -441,7 +490,9 @@ Out of scope:
 - no setup/cleanup scripts;
 - no scheduler behavior changes;
 - no local landing;
-- no automatic import of arbitrary external checkouts or worktrees.
+- no automatic import of arbitrary external checkouts or worktrees;
+- no generic job framework unless the checkout operation needs progress or
+  survives beyond a single HTTP response.
 
 Suggested verification:
 
@@ -622,8 +673,10 @@ Deferred branch-mode constraints:
   present with settings reporting disabled?
 - Lane checkout destination: always under `{dataDir}/checkouts`, configurable
   root, or same-volume-near-project when possible for cheaper local clones?
-- Should manual import of existing checkouts land before YA-managed creation,
-  or as part of the same lifecycle API?
+- Is the first checkout create response a blocking `201 Created`, or a `202`
+  operation resource with polling/activity updates?
+- Should import of existing checkouts be deferred until after YA-managed
+  creation works?
 - Should the first Workstreams page live under Projects, Settings, or both?
 - Should workstream queue pause be global state in `WorkstreamService`, or live
   inside Project Queue dispatch state once scheduling is lane-aware?

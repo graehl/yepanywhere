@@ -72,6 +72,7 @@ import {
   ServerSettingsService,
   SessionQueuePersistenceService,
   SharingService,
+  WorkstreamService,
 } from "./services/index.js";
 import {
   type SpeechRegistryInitOptions,
@@ -416,6 +417,10 @@ const connectedBrowsersService = new ConnectedBrowsersService(eventBus);
 const serverSettingsService = new ServerSettingsService({
   dataDir: config.dataDir,
 });
+const workstreamService = new WorkstreamService({
+  dataDir: config.dataDir,
+  eventBus,
+});
 const sharingService = new SharingService({
   dataDir: config.dataDir,
 });
@@ -512,6 +517,8 @@ async function startServer() {
   markStartup("modelInfoService initialized");
   await serverSettingsService.initialize();
   markStartup("serverSettingsService initialized");
+  await workstreamService.initialize();
+  markStartup("workstreamService initialized");
   await sharingService.initialize();
   markStartup("sharingService initialized");
   // Loading persisted public shares is not required to bind the listening
@@ -706,6 +713,7 @@ async function startServer() {
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     serverSettingsService,
+    workstreamService,
     sharingService,
     publicShareService,
     deviceBridgeService,

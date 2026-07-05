@@ -105,6 +105,7 @@ import { createLocalImageRoutes } from "./routes/local-image.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { createSpeechRoutes } from "./routes/speech.js";
 import { createVersionRoutes } from "./routes/version.js";
+import { createWorkstreamRoutes } from "./routes/workstreams.js";
 import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
 import {
   configureProviderRuntime,
@@ -126,6 +127,7 @@ import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
+import type { WorkstreamService } from "./services/WorkstreamService.js";
 import type {
   PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
@@ -252,6 +254,8 @@ export interface AppOptions {
   browserProfileService?: BrowserProfileService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
+  /** WorkstreamService for experimental per-project checkout lanes */
+  workstreamService?: WorkstreamService;
   /** ModelInfoService for cached model metadata (context windows, etc.) */
   modelInfoService?: ModelInfoService;
   /** SharingService for session sharing */
@@ -1244,6 +1248,17 @@ export function createApp(options: AppOptions): AppResult {
 
   // Git status routes
   app.route("/api/projects", createGitStatusRoutes({ scanner }));
+
+  if (options.serverSettingsService && options.workstreamService) {
+    app.route(
+      "/api/projects",
+      createWorkstreamRoutes({
+        scanner,
+        serverSettingsService: options.serverSettingsService,
+        workstreamService: options.workstreamService,
+      }),
+    );
+  }
 
   // Recents routes (recently visited sessions)
   if (options.recentsService) {

@@ -637,8 +637,7 @@ export class ConnectionManager {
 }
 
 /**
- * Singleton ConnectionManager for the app.
- * ActivityBus feeds this instance until source-runtime activity streams take
- * ownership of app-level transport health.
+ * Legacy singleton ConnectionManager for migration-only consumers.
+ * Source-owned streams and status readers use per-transport managers.
  */
 export const connectionManager = new ConnectionManager();

@@ -7,6 +7,8 @@ import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import {
   activityBus,
+  type ActivityEventMap,
+  type ActivityEventType,
   type ProcessStateEvent,
   type ProviderRuntimeStatusChangedEvent,
   type SessionCreatedEvent,
@@ -76,6 +78,7 @@ import {
   scanSessionDraftIds,
 } from "./sessionDraftStorage";
 import { useSourceRuntimeContextValue } from "./sourceRuntimeReact";
+import type { SourceTransport } from "./transport";
 
 type StoreListener = () => void;
 type BusUnsubscribe = () => void;
@@ -117,9 +120,13 @@ const clientSummaryStoresBySource = new Map<
 >();
 const currentSourceKeyListeners = new Set<StoreListener>();
 let currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
-let mountedConsumerCount = 0;
-let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
-let activityBusSubscriptionSourceKey: ClientSummarySourceKey | null = null;
+const activityBusSubscriptionsBySource = new Map<
+  ClientSummarySourceKey,
+  {
+    retainCount: number;
+    unsubscribers: BusUnsubscribe[];
+  }
+>();
 const draftDecorationSubscriptionsBySource = new Map<
   ClientSummarySourceKey,
   {
@@ -147,7 +154,7 @@ export function getCurrentClientSummarySourceKey(): ClientSummarySourceKey {
   return currentClientSummarySourceKey;
 }
 
-function subscribeClientSummarySourceKey(
+export function subscribeClientSummarySourceKey(
   listener: StoreListener,
 ): () => void {
   currentSourceKeyListeners.add(listener);
@@ -286,82 +293,107 @@ function reduceProviderRuntimeStatusChanged(
   );
 }
 
-function startActivityBusSubscription(sourceKey: ClientSummarySourceKey): void {
-  if (activityBusUnsubscribers) {
-    if (activityBusSubscriptionSourceKey === sourceKey) {
-      return;
-    }
-    stopActivityBusSubscription();
-  }
+function onActivityBusSource<K extends ActivityEventType>(
+  sourceKey: ClientSummarySourceKey,
+  eventType: K,
+  callback: (event: ActivityEventMap[K]) => void,
+): BusUnsubscribe {
+  const bus = activityBus as typeof activityBus & {
+    onSource?: typeof activityBus.onSource;
+  };
+  return bus.onSource
+    ? bus.onSource(sourceKey, eventType, callback)
+    : activityBus.on(eventType, callback);
+}
 
-  activityBusUnsubscribers = [
-    activityBus.on("process-state-changed", (event) =>
+function retainActivityBusSourceStream(
+  sourceKey: ClientSummarySourceKey,
+  transport: SourceTransport,
+): ReleaseSubscription {
+  const bus = activityBus as typeof activityBus & {
+    retainSourceStream?: typeof activityBus.retainSourceStream;
+  };
+  return bus.retainSourceStream
+    ? bus.retainSourceStream(sourceKey, transport)
+    : () => {};
+}
+
+function startActivityBusSubscription(
+  sourceKey: ClientSummarySourceKey,
+): BusUnsubscribe[] {
+  return [
+    onActivityBusSource(sourceKey, "process-state-changed", (event) =>
       reduceProcessStateChanged(sourceKey, event),
     ),
-    activityBus.on("provider-runtime-status-changed", (event) =>
-      reduceProviderRuntimeStatusChanged(sourceKey, event),
+    onActivityBusSource(
+      sourceKey,
+      "provider-runtime-status-changed",
+      (event) =>
+        reduceProviderRuntimeStatusChanged(sourceKey, event),
     ),
-    activityBus.on("session-status-changed", (event) =>
+    onActivityBusSource(sourceKey, "session-status-changed", (event) =>
       reduceSessionStatusChanged(sourceKey, event),
     ),
-    activityBus.on("session-seen", (event) =>
+    onActivityBusSource(sourceKey, "session-seen", (event) =>
       reduceSessionSeen(sourceKey, event),
     ),
-    activityBus.on("session-updated", (event) =>
+    onActivityBusSource(sourceKey, "session-updated", (event) =>
       reduceSessionUpdated(sourceKey, event),
     ),
-    activityBus.on("session-metadata-changed", (event) =>
+    onActivityBusSource(sourceKey, "session-metadata-changed", (event) =>
       reduceSessionMetadataChanged(sourceKey, event),
     ),
-    activityBus.on("session-created", (event) =>
+    onActivityBusSource(sourceKey, "session-created", (event) =>
       reduceSessionCreated(sourceKey, event),
     ),
-    activityBus.on("project-queue-changed", (event) =>
+    onActivityBusSource(sourceKey, "project-queue-changed", (event) =>
       reduceProjectQueueChanged(sourceKey, event),
     ),
   ];
-  activityBusSubscriptionSourceKey = sourceKey;
-}
-
-function stopActivityBusSubscription(): void {
-  if (!activityBusUnsubscribers) {
-    return;
-  }
-
-  for (const unsubscribe of activityBusUnsubscribers) {
-    unsubscribe();
-  }
-  activityBusUnsubscribers = null;
-  activityBusSubscriptionSourceKey = null;
-}
-
-function stopActivityBusSubscriptionIfIdle(): void {
-  if (mountedConsumerCount > 0) {
-    return;
-  }
-
-  stopActivityBusSubscription();
 }
 
 function retainActivityBusSubscription(
   sourceKey: ClientSummarySourceKey,
+  transport?: SourceTransport,
 ): () => void {
-  mountedConsumerCount += 1;
-  startActivityBusSubscription(sourceKey);
+  let record = activityBusSubscriptionsBySource.get(sourceKey);
+  if (!record) {
+    record = {
+      retainCount: 0,
+      unsubscribers: startActivityBusSubscription(sourceKey),
+    };
+    activityBusSubscriptionsBySource.set(sourceKey, record);
+  }
+  record.retainCount += 1;
+
+  const releaseStream = transport
+    ? retainActivityBusSourceStream(sourceKey, transport)
+    : () => {};
 
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    mountedConsumerCount = Math.max(0, mountedConsumerCount - 1);
-    stopActivityBusSubscriptionIfIdle();
+    releaseStream();
+    const current = activityBusSubscriptionsBySource.get(sourceKey);
+    if (!current) {
+      return;
+    }
+    current.retainCount = Math.max(0, current.retainCount - 1);
+    if (current.retainCount === 0) {
+      for (const unsubscribe of current.unsubscribers) {
+        unsubscribe();
+      }
+      activityBusSubscriptionsBySource.delete(sourceKey);
+    }
   };
 }
 
 export function retainClientSummaryActivitySubscription(
   sourceKey: ClientSummarySourceKey,
+  transport?: SourceTransport,
 ): ReleaseSubscription {
-  return retainActivityBusSubscription(sourceKey);
+  return retainActivityBusSubscription(sourceKey, transport);
 }
 
 function useClientSummaryActivitySubscription(): void {
@@ -891,14 +923,12 @@ export function resetClientSummaryStoreForTests(): void {
   clientSummaryStoresBySource.clear();
   currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
   currentSourceKeyListeners.clear();
-  mountedConsumerCount = 0;
-  if (activityBusUnsubscribers) {
-    for (const unsubscribe of activityBusUnsubscribers) {
+  for (const record of activityBusSubscriptionsBySource.values()) {
+    for (const unsubscribe of record.unsubscribers) {
       unsubscribe();
     }
-    activityBusUnsubscribers = null;
   }
-  activityBusSubscriptionSourceKey = null;
+  activityBusSubscriptionsBySource.clear();
   for (const record of draftDecorationSubscriptionsBySource.values()) {
     record.release();
   }

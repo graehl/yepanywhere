@@ -75,6 +75,7 @@ interface AttachOptions {
 
 class MultiplexTransportStatus implements SourceTransportStatus {
   private readonly listeners = new Set<() => void>();
+  private readonly visibilityRestoredListeners = new Set<() => void>();
 
   constructor(private readonly getSnapshotFn: () => SourceTransportStatusSnapshot) {}
 
@@ -89,8 +90,21 @@ class MultiplexTransportStatus implements SourceTransportStatus {
     };
   }
 
+  subscribeVisibilityRestored(listener: () => void): () => void {
+    this.visibilityRestoredListeners.add(listener);
+    return () => {
+      this.visibilityRestoredListeners.delete(listener);
+    };
+  }
+
   emit(): void {
     for (const listener of [...this.listeners]) {
+      listener();
+    }
+  }
+
+  emitVisibilityRestored(): void {
+    for (const listener of [...this.visibilityRestoredListeners]) {
       listener();
     }
   }
@@ -118,6 +132,7 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
   private disposed = false;
   private removeManagerStateListener: (() => void) | null = null;
   private removeManagerFailureListener: (() => void) | null = null;
+  private removeManagerVisibilityListener: (() => void) | null = null;
   private readonly attachWaiters = new Set<{
     resolve: (connection: TConnection) => void;
     reject: (error: Error) => void;
@@ -168,6 +183,10 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
         this.lastError = error.message;
         this.mutableStatus.emit();
       },
+    );
+    this.removeManagerVisibilityListener = this.manager.on(
+      "visibilityRestored",
+      () => this.mutableStatus.emitVisibilityRestored(),
     );
   }
 
@@ -281,8 +300,10 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
     this.rejectAttachWaiters(new SourceTransportDisposedError(this.kind));
     this.removeManagerStateListener?.();
     this.removeManagerFailureListener?.();
+    this.removeManagerVisibilityListener?.();
     this.removeManagerStateListener = null;
     this.removeManagerFailureListener = null;
+    this.removeManagerVisibilityListener = null;
     this.detachDeviceHandlers();
     this.connection?.setConnectionManager?.(null);
     this.connection?.close();
@@ -310,11 +331,9 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
       {
         sendPing: (id) => this.connection?.sendPing(id),
         label: this.managerLabel,
-        // The legacy singleton ConnectionManager still drives reconnects until
-        // T6/T7 move stream/activity consumers. This manager observes the
-        // socket and publishes SourceTransport status, but it must not start a
-        // second background reconnect loop against the same connection.
-        driveReconnect: false,
+        // T7 moves the activity stream onto this source transport, making the
+        // per-transport manager the only owner of stream reconnect policy.
+        driveReconnect: true,
       },
     );
     if (this.slotState === "ready") {

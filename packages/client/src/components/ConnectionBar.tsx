@@ -2,7 +2,7 @@
  * ConnectionBar - A thin colored bar at the top of the screen
  * showing transport connection status.
  *
- * Uses ConnectionManager as the single source of truth:
+ * Uses the current source transport as the single source of truth:
  * - Green: connected
  * - Orange (pulsing): reconnecting
  * - Red: disconnected
@@ -29,7 +29,7 @@ export function ConnectionBar() {
     return null;
   }
 
-  // Map ConnectionManager state to CSS class
+  // Map transport state to CSS class
   const status =
     connectionState === "reconnecting" ? "connecting" : connectionState;
 

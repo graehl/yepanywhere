@@ -1,33 +1,40 @@
-import { useEffect, useState } from "react";
-import { activityBus } from "../lib/activityBus";
-import { type ConnectionState, connectionManager } from "../lib/connection";
+import { useSyncExternalStore } from "react";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import type { SourceTransportState } from "../lib/transport";
+
+type ConnectionState = "connected" | "reconnecting" | "disconnected";
 
 interface ActivityBusState {
   connected: boolean;
-  /** ConnectionManager state: connected, reconnecting, or disconnected */
+  /** Transport-derived state: connected, reconnecting, or disconnected. */
   connectionState: ConnectionState;
+  transportState: SourceTransportState;
+}
+
+function mapConnectionState(state: SourceTransportState): ConnectionState {
+  if (state === "ready") return "connected";
+  if (state === "connecting" || state === "reconnecting") {
+    return "reconnecting";
+  }
+  return "disconnected";
 }
 
 /**
- * Hook to get the current activity bus connection state.
- * Event-driven via ConnectionManager — no polling.
+ * Hook to get the current source transport state.
+ * Event-driven via SourceTransportStatus — no polling.
  */
 export function useActivityBusState(): ActivityBusState {
-  const [state, setState] = useState<ActivityBusState>({
-    connected: activityBus.connected,
-    connectionState: connectionManager.state,
-  });
+  const runtime = useCurrentSourceRuntime();
+  const transportState = useSyncExternalStore(
+    (listener) => runtime.transport.status.subscribe(listener),
+    () => runtime.transport.status.getSnapshot().state,
+    () => runtime.transport.status.getSnapshot().state,
+  );
+  const connectionState = mapConnectionState(transportState);
 
-  useEffect(() => {
-    const unsub = connectionManager.on("stateChange", (newState) => {
-      setState({
-        connected: newState === "connected",
-        connectionState: newState,
-      });
-    });
-
-    return unsub;
-  }, []);
-
-  return state;
+  return {
+    connected: connectionState === "connected",
+    connectionState,
+    transportState,
+  };
 }

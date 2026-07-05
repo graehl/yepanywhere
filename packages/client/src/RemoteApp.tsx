@@ -40,10 +40,10 @@ import {
   getVisibleReloadBanners,
   useReloadNotifications,
 } from "./hooks/useReloadNotifications";
+import { useActivityBusState } from "./hooks/useActivityBusState";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { useVersion } from "./hooks/useVersion";
-import { connectionManager } from "./lib/connection";
 import { initClientLogCollection } from "./lib/diagnostics";
 
 interface Props {
@@ -157,12 +157,13 @@ export function ConnectionGate() {
     clearAutoResumeError,
     retryAutoResume,
   } = useRemoteConnection();
+  const { connectionState } = useActivityBusState();
   const location = useLocation();
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
 
   // During reconnection, stay on the current page — don't redirect to /login.
-  // ConnectionManager is the source of truth; React connection state may be stale.
-  if (connectionManager.state === "reconnecting") {
+  // SourceTransportStatus is the source of truth; React connection state may be stale.
+  if (connectionState === "reconnecting") {
     return <Outlet />;
   }
 

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { activityBus } from "../lib/activityBus";
 
 /**
@@ -7,11 +8,15 @@ import { activityBus } from "../lib/activityBus";
  * Doesn't check auth state because remote mode is already authenticated
  * via SRP when this hook runs (the connection gate ensures this).
  *
- * Visibility handling and stale detection are owned by ConnectionManager.
+ * Visibility handling and stale detection are owned by the source transport.
  */
 export function useRemoteActivityBusConnection(): void {
+  const runtime = useCurrentSourceRuntime();
+
   useEffect(() => {
-    activityBus.connect();
-    return () => activityBus.disconnect();
-  }, []);
+    return activityBus.retainCurrentSourceStream(
+      runtime.sourceKey,
+      runtime.transport,
+    );
+  }, [runtime.sourceKey, runtime.transport]);
 }

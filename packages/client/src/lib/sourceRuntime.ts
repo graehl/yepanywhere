@@ -197,6 +197,7 @@ export interface SourceRuntimeRegistryOptions {
   defaultTransportRegistration?: SourceTransportRegistration;
   createSummaryRuntime?: (
     sourceKey: ClientSummarySourceKey,
+    getTransport: () => SourceTransport,
   ) => SourceSummaryRuntime;
   getCurrentSourceKey?: () => ClientSummarySourceKey;
   setCurrentSourceKey?: (sourceKey: ClientSummarySourceKey) => void;
@@ -301,6 +302,7 @@ const currentSessionDetailRuntime: SessionDetailRuntime = {
 
 function createCurrentSourceSummaryRuntime(
   sourceKey: ClientSummarySourceKey,
+  getTransport: () => SourceTransport,
 ): SourceSummaryRuntime {
   return {
     sourceKey,
@@ -308,7 +310,7 @@ function createCurrentSourceSummaryRuntime(
     getSnapshot: () => getClientSummarySnapshotForSource(sourceKey),
     clear: () => clearClientSummarySource(sourceKey),
     retainActivitySubscription: () =>
-      retainClientSummaryActivitySubscription(sourceKey),
+      retainClientSummaryActivitySubscription(sourceKey, getTransport()),
     retainDraftDecorations: () =>
       retainClientSummaryDraftDecorations(sourceKey),
     reportGlobalSessionsCollectionSnapshot: (input, requestStartedAt) => {
@@ -365,6 +367,7 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
   private readonly defaultTransportRegistration: SourceTransportRegistration;
   private readonly createSummaryRuntime: (
     sourceKey: ClientSummarySourceKey,
+    getTransport: () => SourceTransport,
   ) => SourceSummaryRuntime;
   private readonly readCurrentSourceKey: () => ClientSummarySourceKey;
   private readonly writeCurrentSourceKey: (
@@ -424,13 +427,19 @@ class DefaultSourceRuntimeRegistry implements SourceRuntimeRegistry {
   ): YaSourceRuntime {
     let runtime = this.runtimes.get(sourceKey);
     if (!runtime) {
-      runtime = {
+      const transport = this.getOrCreateSourceTransport(sourceKey);
+      const createdRuntime: YaSourceRuntime = {
         sourceKey,
-        transport: this.getOrCreateSourceTransport(sourceKey),
+        transport,
         api: this.apiClient,
-        summary: this.createSummaryRuntime(sourceKey),
+        summary: null as unknown as SourceSummaryRuntime,
         sessionDetails: this.sessionDetails,
       };
+      createdRuntime.summary = this.createSummaryRuntime(
+        sourceKey,
+        () => createdRuntime.transport,
+      );
+      runtime = createdRuntime;
       this.runtimes.set(sourceKey, runtime);
     }
     return runtime;

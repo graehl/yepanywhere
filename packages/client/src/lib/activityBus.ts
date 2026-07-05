@@ -14,12 +14,11 @@ import type {
 } from "@yep-anywhere/shared";
 import type { SessionStatus, SessionSummary } from "../types";
 import {
-  connectionManager,
-  getGlobalConnection,
-  getWebSocketConnection,
-  isRemoteClient,
-} from "./connection";
-import type { Subscription } from "./connection/types";
+  createManagedStream,
+  type ManagedStream,
+  type ManagedStreamEvent,
+  type SourceTransport,
+} from "./transport";
 
 declare global {
   interface Window {
@@ -209,7 +208,7 @@ export interface SessionQueuePersistenceChangedEvent {
 }
 
 // Map event names to their data types
-interface ActivityEventMap {
+export interface ActivityEventMap {
   "file-change": FileChangeEvent;
   "session-status-changed": SessionStatusEvent;
   "session-created": SessionCreatedEvent;
@@ -237,6 +236,18 @@ interface ActivityEventMap {
 export type ActivityEventType = keyof ActivityEventMap;
 
 type Listener<T> = (data: T) => void;
+type SourceKey = string;
+
+interface ActivityStreamRecord {
+  sourceKey: SourceKey;
+  transport: SourceTransport;
+  stream: ManagedStream;
+  unsubscribeStream: () => void;
+  unsubscribeVisibilityRestored: (() => void) | null;
+  retainCount: number;
+  connected: boolean;
+  hasConnected: boolean;
+}
 
 function isActivityDebugEnabled(): boolean {
   if (typeof window === "undefined") return false;
@@ -249,219 +260,246 @@ function isActivityDebugEnabled(): boolean {
 }
 
 /**
- * Singleton that manages activity event subscriptions.
- * Uses WebSocket transport for both local and remote connections.
- * Hooks subscribe via on() and receive events through callbacks.
+ * Singleton compatibility facade for activity events.
  *
- * Reconnection is delegated to ConnectionManager. This class only
- * reports events in (recordEvent/recordHeartbeat/markConnected/handleError/handleClose)
- * and reacts to state changes out (re-subscribe on 'connected').
+ * The transport subscription itself is source-scoped and retained by
+ * SourceSummaryRuntime leases. Legacy consumers still subscribe through on()
+ * and receive events from the source currently bridged by the app shell.
  */
 class ActivityBus {
-  private wsSubscription: Subscription | null = null;
   private listeners = new Map<ActivityEventType, Set<Listener<unknown>>>();
-  private hasConnected = false;
-  private _connected = false;
-  private _isDisconnecting = false;
-  private _connectionManagerStarted = false;
-  private _stateChangeUnsub: (() => void) | null = null;
-  private _visibilityRestoredUnsub: (() => void) | null = null;
+  private sourceListeners = new Map<
+    SourceKey,
+    Map<ActivityEventType, Set<Listener<unknown>>>
+  >();
+  private streamRecords = new Map<SourceKey, ActivityStreamRecord>();
+  private bridgeRetainCounts = new Map<SourceKey, number>();
   private get debugEnabled(): boolean {
     return isActivityDebugEnabled();
   }
 
   get connected(): boolean {
-    return this._connected;
+    for (const [sourceKey, retainCount] of this.bridgeRetainCounts) {
+      if (retainCount > 0 && this.streamRecords.get(sourceKey)?.connected) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Connect to the activity stream. Safe to call multiple times.
-   * Uses global connection (remote mode) or WebSocket (local mode).
-   *
-   * Initializes ConnectionManager on first call with the appropriate reconnectFn.
+   * Retain a source-bound activity stream. Safe to call multiple times for the
+   * same source/transport; the returned cleanup releases one retain.
    */
-  connect(): void {
-    // Check if already connected
-    if (this.wsSubscription) {
-      if (this.debugEnabled) {
-        console.log(
-          "[ActivityBus] connect() skipped - subscription already active",
-        );
+  retainSourceStream(
+    sourceKey: SourceKey,
+    transport: SourceTransport,
+  ): () => void {
+    const record = this.getOrCreateStreamRecord(sourceKey, transport);
+    record.retainCount += 1;
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const current = this.streamRecords.get(sourceKey);
+      if (current !== record) {
+        return;
       }
-      return;
-    }
-
-    // Start ConnectionManager once (idempotent)
-    if (!this._connectionManagerStarted) {
-      this._connectionManagerStarted = true;
-
-      const sendPing = (id: string): void => {
-        const globalConn = getGlobalConnection();
-        if (globalConn && "sendPing" in globalConn) {
-          (globalConn as { sendPing: (id: string) => void }).sendPing(id);
-        } else {
-          getWebSocketConnection().sendPing(id);
-        }
-      };
-
-      const label = getGlobalConnection() ? "relay" : "ws";
-      connectionManager.start(
-        async () => {
-          const globalConn = getGlobalConnection();
-          if (globalConn?.forceReconnect) {
-            await globalConn.forceReconnect();
-          } else {
-            await getWebSocketConnection().reconnect();
-          }
-        },
-        { sendPing, label },
-      );
-
-      // Listen for ConnectionManager state changes to re-subscribe
-      this._stateChangeUnsub = connectionManager.on("stateChange", (state) => {
-        if (state === "connected" && !this.wsSubscription) {
-          this.connect();
-        }
-      });
-
-      // On visibility restore, emit refresh so hooks can fetch fresh data
-      this._visibilityRestoredUnsub = connectionManager.on(
-        "visibilityRestored",
-        () => {
-          if (this._connected) {
-            this.emit("refresh", undefined);
-          }
-        },
-      );
-    }
-
-    // Check for global connection (remote mode with SecureConnection)
-    const globalConn = getGlobalConnection();
-    if (globalConn) {
-      if (this.debugEnabled) {
-        console.log("[ActivityBus] Connecting via global connection");
+      record.retainCount = Math.max(0, record.retainCount - 1);
+      if (record.retainCount === 0) {
+        this.closeStreamRecord(sourceKey, record);
       }
-      if ("setOnPong" in globalConn) {
-        (
-          globalConn as { setOnPong: (cb: (id: string) => void) => void }
-        ).setOnPong((id) => connectionManager.receivePong(id));
-      }
-      this.connectWithConnection(globalConn);
-      return;
-    }
-
-    // In remote client mode, we MUST have a SecureConnection
-    if (isRemoteClient()) {
-      console.warn(
-        "[ActivityBus] Remote client requires SecureConnection - not authenticated",
-      );
-      return;
-    }
-
-    // Local mode: use WebSocket
-    if (this.debugEnabled) {
-      console.log("[ActivityBus] Connecting via local WebSocket");
-    }
-    const wsConn = getWebSocketConnection();
-    wsConn.setOnPong((id) => connectionManager.receivePong(id));
-    this.connectWithConnection(wsConn);
+    };
   }
 
   /**
-   * Connect using a provided connection (remote or local WebSocket).
+   * Retain the source stream and bridge its events to legacy global listeners.
    */
-  private connectWithConnection(connection: {
-    subscribeActivity: (handlers: {
-      onEvent: (
-        eventType: string,
-        eventId: string | undefined,
-        data: unknown,
-      ) => void;
-      onOpen?: () => void;
-      onError?: (err: Error) => void;
-      onClose?: (error?: Error) => void;
-    }) => Subscription;
-  }): void {
-    if (this.debugEnabled) {
-      console.log("[ActivityBus] Subscribing to activity stream");
-    }
-    this.wsSubscription = connection.subscribeActivity({
-      onEvent: (eventType, _eventId, data) => {
-        if (this.debugEnabled) {
-          console.log("[ActivityBus] Incoming WS event:", eventType, data);
-        }
-        connectionManager.recordEvent();
-        this.handleWsEvent(eventType, data);
-      },
-      onOpen: () => {
-        connectionManager.markConnected();
-        this._connected = true;
-        if (this.debugEnabled) {
-          console.log("[ActivityBus] Activity stream opened");
-        }
+  retainCurrentSourceStream(
+    sourceKey: SourceKey,
+    transport: SourceTransport,
+  ): () => void {
+    const releaseStream = this.retainSourceStream(sourceKey, transport);
+    this.bridgeRetainCounts.set(
+      sourceKey,
+      (this.bridgeRetainCounts.get(sourceKey) ?? 0) + 1,
+    );
 
-        if (this.hasConnected) {
-          this.emit("reconnect", undefined);
-        }
-        this.hasConnected = true;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const retainCount = Math.max(
+        0,
+        (this.bridgeRetainCounts.get(sourceKey) ?? 0) - 1,
+      );
+      if (retainCount === 0) {
+        this.bridgeRetainCounts.delete(sourceKey);
+      } else {
+        this.bridgeRetainCounts.set(sourceKey, retainCount);
+      }
+      releaseStream();
+    };
+  }
+
+  /**
+   * Deprecated compatibility no-op. Connection hooks should retain a source
+   * stream instead of asking the bus to choose a transport.
+   */
+  connect(): void {}
+
+  /**
+   * Deprecated compatibility no-op. Releasing the retain closes streams.
+   */
+  disconnect(): void {}
+
+  private getOrCreateStreamRecord(
+    sourceKey: SourceKey,
+    transport: SourceTransport,
+  ): ActivityStreamRecord {
+    const existing = this.streamRecords.get(sourceKey);
+    if (existing?.transport === transport) {
+      return existing;
+    }
+
+    if (existing) {
+      this.closeStreamRecord(sourceKey, existing);
+    }
+
+    const record = this.createStreamRecord(sourceKey, transport);
+    this.streamRecords.set(sourceKey, record);
+    return record;
+  }
+
+  private createStreamRecord(
+    sourceKey: SourceKey,
+    transport: SourceTransport,
+  ): ActivityStreamRecord {
+    if (this.debugEnabled) {
+      console.log("[ActivityBus] Retaining source activity stream", sourceKey);
+    }
+
+    let record: ActivityStreamRecord;
+
+    const stream = createManagedStream(
+      transport,
+      {
+        subscribe: ({ transport, handlers }) =>
+          transport.subscribeActivity(handlers),
+        captureEventId: () => undefined,
+        onEvent: (event) => this.handleStreamEvent(record, event),
+        onOpen: () => this.handleStreamOpen(record),
+        onError: (error) => this.handleStreamError(record, error),
+        onClose: (error) => this.handleStreamClose(record, error),
       },
-      onError: (err) => {
-        if (this._isDisconnecting) {
-          this._connected = false;
-          this.wsSubscription = null;
-          return;
-        }
-        const isExpectedReconnectError =
-          err.message === "Connection reconnecting";
-        if (!isExpectedReconnectError) {
-          console.error("[ActivityBus] Connection error:", err);
-        } else if (this.debugEnabled) {
-          console.log("[ActivityBus] Connection reconnecting");
-        }
-        this._connected = false;
-        this.wsSubscription = null;
-        connectionManager.handleError(err);
-      },
-      onClose: (error?: Error) => {
-        if (this._isDisconnecting) {
-          this._connected = false;
-          this.wsSubscription = null;
-          return;
-        }
-        if (this.debugEnabled) {
-          console.log("[ActivityBus] Activity stream closed", error);
-        }
-        this._connected = false;
-        this.wsSubscription = null;
-        connectionManager.handleClose(error);
-      },
+      { autoStart: false },
+    );
+    record = {
+      sourceKey,
+      transport,
+      stream,
+      unsubscribeStream: () => {},
+      unsubscribeVisibilityRestored: null,
+      retainCount: 0,
+      connected: false,
+      hasConnected: false,
+    };
+    record.unsubscribeStream = stream.subscribe(() => {
+      record.connected = stream.getSnapshot().connected;
     });
+    record.unsubscribeVisibilityRestored =
+      transport.status.subscribeVisibilityRestored?.(() => {
+        if (record.connected) {
+          this.emitFromSource(record.sourceKey, "refresh", undefined);
+        }
+      }) ?? null;
+    stream.start();
+    return record;
+  }
+
+  private closeStreamRecord(
+    sourceKey: SourceKey,
+    record: ActivityStreamRecord,
+  ): void {
+    record.unsubscribeVisibilityRestored?.();
+    record.unsubscribeVisibilityRestored = null;
+    record.unsubscribeStream();
+    record.stream.close();
+    record.connected = false;
+    this.streamRecords.delete(sourceKey);
   }
 
   /**
    * Handle events from WebSocket subscription.
    */
-  private handleWsEvent(eventType: string, data: unknown): void {
-    if (eventType === "heartbeat") {
-      connectionManager.recordHeartbeat();
-      return;
-    }
-    if (eventType === "connected") {
+  private handleStreamEvent(
+    record: ActivityStreamRecord,
+    event: ManagedStreamEvent,
+  ): void {
+    if (event.eventType === "heartbeat" || event.eventType === "connected") {
       return;
     }
 
     // Emit the event to listeners
-    if (this.isValidEventType(eventType)) {
+    if (this.isValidEventType(event.eventType)) {
       if (this.debugEnabled) {
-        console.log("[ActivityBus] Dispatching event:", eventType, data);
+        console.log(
+          "[ActivityBus] Dispatching source event:",
+          record.sourceKey,
+          event.eventType,
+          event.data,
+        );
       }
-      this.emit(eventType, data as ActivityEventMap[typeof eventType]);
+      this.emitFromSource(
+        record.sourceKey,
+        event.eventType,
+        event.data as ActivityEventMap[typeof event.eventType],
+      );
     } else if (this.debugEnabled) {
       console.log(
         "[ActivityBus] Dropping unknown event type:",
-        eventType,
-        data,
+        event.eventType,
+        event.data,
       );
+    }
+  }
+
+  private handleStreamOpen(record: ActivityStreamRecord): void {
+    record.connected = true;
+    if (this.debugEnabled) {
+      console.log(
+        "[ActivityBus] Source activity stream opened",
+        record.sourceKey,
+      );
+    }
+
+    if (record.hasConnected) {
+      this.emitFromSource(record.sourceKey, "reconnect", undefined);
+    }
+    record.hasConnected = true;
+  }
+
+  private handleStreamError(record: ActivityStreamRecord, error: Error): void {
+    record.connected = false;
+    const isExpectedReconnectError = error.message === "Connection reconnecting";
+    if (!isExpectedReconnectError) {
+      console.error("[ActivityBus] Connection error:", error);
+    } else if (this.debugEnabled) {
+      console.log("[ActivityBus] Connection reconnecting");
+    }
+  }
+
+  private handleStreamClose(
+    record: ActivityStreamRecord,
+    error: Error | undefined,
+  ): void {
+    record.connected = false;
+    if (this.debugEnabled) {
+      console.log("[ActivityBus] Source activity stream closed", {
+        sourceKey: record.sourceKey,
+        message: error?.message,
+      });
     }
   }
 
@@ -494,34 +532,35 @@ class ActivityBus {
   }
 
   /**
-   * Disconnect from the activity stream.
+   * Subscribe to a source-specific event type. Returns an unsubscribe
+   * function.
    */
-  disconnect(): void {
-    this._isDisconnecting = true;
-    try {
-      if (this.wsSubscription) {
-        if (this.debugEnabled) {
-          console.log("[ActivityBus] disconnect() closing subscription");
-        }
-        this.wsSubscription.close();
-        this.wsSubscription = null;
-      }
-
-      this._stateChangeUnsub?.();
-      this._stateChangeUnsub = null;
-      this._visibilityRestoredUnsub?.();
-      this._visibilityRestoredUnsub = null;
-
-      if (this._connectionManagerStarted) {
-        connectionManager.stop();
-        this._connectionManagerStarted = false;
-      }
-
-      this.hasConnected = false;
-      this._connected = false;
-    } finally {
-      this._isDisconnecting = false;
+  onSource<K extends ActivityEventType>(
+    sourceKey: SourceKey,
+    eventType: K,
+    callback: Listener<ActivityEventMap[K]>,
+  ): () => void {
+    let sourceMap = this.sourceListeners.get(sourceKey);
+    if (!sourceMap) {
+      sourceMap = new Map();
+      this.sourceListeners.set(sourceKey, sourceMap);
     }
+    let set = sourceMap.get(eventType);
+    if (!set) {
+      set = new Set();
+      sourceMap.set(eventType, set);
+    }
+    set.add(callback as Listener<unknown>);
+
+    return () => {
+      set.delete(callback as Listener<unknown>);
+      if (set.size === 0) {
+        sourceMap.delete(eventType);
+      }
+      if (sourceMap.size === 0) {
+        this.sourceListeners.delete(sourceKey);
+      }
+    };
   }
 
   /**
@@ -551,6 +590,9 @@ class ActivityBus {
       console.log("[ActivityBus] Dispatching local event:", eventType, data);
     }
     this.emit(eventType, data);
+    for (const sourceKey of this.bridgeRetainCounts.keys()) {
+      this.emitSource(sourceKey, eventType, data);
+    }
   }
 
   private emit<K extends ActivityEventType>(
@@ -563,6 +605,39 @@ class ActivityBus {
         listener(data);
       }
     }
+  }
+
+  private emitFromSource<K extends ActivityEventType>(
+    sourceKey: SourceKey,
+    eventType: K,
+    data: ActivityEventMap[K],
+  ): void {
+    this.emitSource(sourceKey, eventType, data);
+    if ((this.bridgeRetainCounts.get(sourceKey) ?? 0) > 0) {
+      this.emit(eventType, data);
+    }
+  }
+
+  private emitSource<K extends ActivityEventType>(
+    sourceKey: SourceKey,
+    eventType: K,
+    data: ActivityEventMap[K],
+  ): void {
+    const set = this.sourceListeners.get(sourceKey)?.get(eventType);
+    if (set) {
+      for (const listener of set) {
+        listener(data);
+      }
+    }
+  }
+
+  resetForTests(): void {
+    for (const [sourceKey, record] of [...this.streamRecords]) {
+      this.closeStreamRecord(sourceKey, record);
+    }
+    this.listeners.clear();
+    this.sourceListeners.clear();
+    this.bridgeRetainCounts.clear();
   }
 }
 

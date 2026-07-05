@@ -23,10 +23,20 @@ const mockActivityBus = vi.hoisted(() => {
       set?.delete(callback);
     };
   });
+  const onSource = vi.fn(
+    (
+      _sourceKey: string,
+      eventType: string,
+      callback: MockActivityCallback,
+    ) => on(eventType, callback),
+  );
+  const retainSourceStream = vi.fn(() => () => {});
 
   return {
     listeners,
     on,
+    onSource,
+    retainSourceStream,
     emit(eventType: string, event: unknown) {
       for (const callback of listeners.get(eventType) ?? []) {
         callback(event);
@@ -45,6 +55,8 @@ const mockActivityBus = vi.hoisted(() => {
 vi.mock("../activityBus", () => ({
   activityBus: {
     on: mockActivityBus.on,
+    onSource: mockActivityBus.onSource,
+    retainSourceStream: mockActivityBus.retainSourceStream,
   },
 }));
 
@@ -167,12 +179,16 @@ beforeEach(() => {
   resetClientSummaryStoreForTests();
   mockActivityBus.listeners.clear();
   mockActivityBus.on.mockClear();
+  mockActivityBus.onSource.mockClear();
+  mockActivityBus.retainSourceStream.mockClear();
 });
 
 afterEach(() => {
   cleanup();
   resetClientSummaryStoreForTests();
   mockActivityBus.listeners.clear();
+  mockActivityBus.onSource.mockClear();
+  mockActivityBus.retainSourceStream.mockClear();
   localStorage.clear();
   vi.useRealTimers();
 });
@@ -180,11 +196,11 @@ afterEach(() => {
 describe("clientSummaryStore", () => {
   it("subscribes to activityBus once while hooks are mounted", () => {
     const first = renderHook(() => useRecentSessionRecords());
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(8);
     expect(mockActivityBus.listenerCount()).toBe(8);
 
     const second = renderHook(() => useSessionCollectionRecord("session-1"));
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(8);
     expect(mockActivityBus.listenerCount()).toBe(8);
 
     first.unmount();
@@ -566,7 +582,11 @@ describe("clientSummaryStore", () => {
       () => useSessionCollectionRecord("runtime-event-session"),
       { wrapper: runtimeWrapper(runtimeA) },
     );
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.retainSourceStream).toHaveBeenCalledWith(
+      sourceA,
+      runtimeA.transport,
+    );
     expect(mockActivityBus.listenerCount()).toBe(8);
 
     act(() => {

@@ -93,6 +93,7 @@ function defaultCapabilities(
 
 class FakeSourceTransportStatus implements SourceTransportStatus {
   private listeners = new Set<() => void>();
+  private visibilityRestoredListeners = new Set<() => void>();
   private snapshot: SourceTransportStatusSnapshot;
 
   constructor(snapshot: SourceTransportStatusSnapshot) {
@@ -107,6 +108,13 @@ class FakeSourceTransportStatus implements SourceTransportStatus {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  subscribeVisibilityRestored(listener: () => void): () => void {
+    this.visibilityRestoredListeners.add(listener);
+    return () => {
+      this.visibilityRestoredListeners.delete(listener);
     };
   }
 
@@ -144,6 +152,12 @@ class FakeSourceTransportStatus implements SourceTransportStatus {
 
   private emit(): void {
     for (const listener of [...this.listeners]) {
+      listener();
+    }
+  }
+
+  emitVisibilityRestored(): void {
+    for (const listener of [...this.visibilityRestoredListeners]) {
       listener();
     }
   }
@@ -232,6 +246,11 @@ export class FakeSourceTransport implements SourceTransport {
   removeChannel(name: SourceTransportChannelName): void {
     this.assertNotDisposed();
     this.mutableStatus.removeChannel(name);
+  }
+
+  emitVisibilityRestored(): void {
+    this.assertNotDisposed();
+    this.mutableStatus.emitVisibilityRestored();
   }
 
   async fetch<T>(path: string, init?: RequestInit): Promise<T> {

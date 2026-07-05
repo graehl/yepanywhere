@@ -372,17 +372,22 @@ vi.mock("../../hooks/useSessionToolbarPresence", () => ({
   }),
 }));
 
-vi.mock("../../lib/clientSummaryStore", () => ({
-  reportProjectQueueCollectionSnapshot:
-    mockReportProjectQueueCollectionSnapshot,
-  useClientSummarySourceKey: () => "host:test",
-  useActiveProjectSessionIds: (projectId: string | null | undefined) => {
-    if (!projectId) return [];
-    return [...inboxState.needsAttention, ...inboxState.active]
-      .filter((item) => item.projectId === projectId)
-      .map((item) => item.sessionId);
-  },
-}));
+vi.mock("../../lib/clientSummaryStore", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../lib/clientSummaryStore")>();
+  return {
+    ...actual,
+    reportProjectQueueCollectionSnapshot:
+      mockReportProjectQueueCollectionSnapshot,
+    useClientSummarySourceKey: () => "host:test",
+    useActiveProjectSessionIds: (projectId: string | null | undefined) => {
+      if (!projectId) return [];
+      return [...inboxState.needsAttention, ...inboxState.active]
+        .filter((item) => item.projectId === projectId)
+        .map((item) => item.sessionId);
+    },
+  };
+});
 
 vi.mock("../../contexts/SourceRuntimeContext", () => ({
   useCurrentSourceRuntime: () => ({

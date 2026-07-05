@@ -83,6 +83,13 @@ export interface SourceTransportStatus {
    * may remain source-ready while still publishing stream WebSocket changes.
    */
   subscribe(listener: () => void): () => void;
+
+  /**
+   * Fires when the transport's health manager observes the tab becoming
+   * visible while connected. Consumers use this to refresh data in parallel
+   * with the wake ping/pong health check.
+   */
+  subscribeVisibilityRestored?(listener: () => void): () => void;
 }
 
 export interface DeviceSignalingChannel {

@@ -39,6 +39,7 @@ export interface LocalhostSourceTransportOptions {
 class LocalhostTransportStatus implements SourceTransportStatus {
   constructor(private readonly getSnapshotFn: () => SourceTransportStatusSnapshot) {}
   private listeners = new Set<() => void>();
+  private visibilityRestoredListeners = new Set<() => void>();
 
   getSnapshot(): SourceTransportStatusSnapshot {
     return this.getSnapshotFn();
@@ -51,8 +52,21 @@ class LocalhostTransportStatus implements SourceTransportStatus {
     };
   }
 
+  subscribeVisibilityRestored(listener: () => void): () => void {
+    this.visibilityRestoredListeners.add(listener);
+    return () => {
+      this.visibilityRestoredListeners.delete(listener);
+    };
+  }
+
   emit(): void {
     for (const listener of [...this.listeners]) {
+      listener();
+    }
+  }
+
+  emitVisibilityRestored(): void {
+    for (const listener of [...this.visibilityRestoredListeners]) {
       listener();
     }
   }
@@ -85,6 +99,7 @@ export class LocalhostSourceTransport implements SourceTransport {
   private disposed = false;
   private removeManagerStateListener: (() => void) | null = null;
   private removeManagerFailureListener: (() => void) | null = null;
+  private removeManagerVisibilityListener: (() => void) | null = null;
 
   constructor(options: LocalhostSourceTransportOptions = {}) {
     this.uploadWebSocketFactory = options.uploadWebSocketFactory;
@@ -185,8 +200,10 @@ export class LocalhostSourceTransport implements SourceTransport {
     this.disposed = true;
     this.removeManagerStateListener?.();
     this.removeManagerFailureListener?.();
+    this.removeManagerVisibilityListener?.();
     this.removeManagerStateListener = null;
     this.removeManagerFailureListener = null;
+    this.removeManagerVisibilityListener = null;
     this.streamManager.stop();
     this.streamConnection.close();
     this.streamSocketState = "disconnected";
@@ -221,6 +238,10 @@ export class LocalhostSourceTransport implements SourceTransport {
         this.lastStreamError = error.message;
         this.mutableStatus.emit();
       },
+    );
+    this.removeManagerVisibilityListener = this.streamManager.on(
+      "visibilityRestored",
+      () => this.mutableStatus.emitVisibilityRestored(),
     );
     this.streamManager.start(() => this.streamConnection.reconnect(), {
       sendPing: (id) => this.streamConnection.sendPing(id),

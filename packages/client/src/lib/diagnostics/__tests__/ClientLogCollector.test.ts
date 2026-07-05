@@ -1,5 +1,15 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  asClientSummarySourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../clientSummaryStore";
+import {
+  getSourceRuntimeRegistry,
+  resetSourceRuntimeRegistryForTests,
+} from "../../sourceRuntime";
+import { FakeSourceTransport } from "../../transport";
 import { ClientLogCollector } from "../ClientLogCollector";
 
 // Mock fetchJSON to avoid real network calls
@@ -7,33 +17,44 @@ vi.mock("../../../api/client", () => ({
   fetchJSON: vi.fn(() => Promise.resolve({ received: 0 })),
 }));
 
-// Mock connectionManager
-const stateChangeListeners = new Set<(state: string, prev: string) => void>();
-vi.mock("../../connection", () => ({
-  connectionManager: {
-    state: "disconnected",
-    on: vi.fn((event: string, cb: (state: string, prev: string) => void) => {
-      if (event === "stateChange") {
-        stateChangeListeners.add(cb);
-      }
-      return () => stateChangeListeners.delete(cb);
-    }),
-  },
-}));
-
 import { fetchJSON } from "../../../api/client";
 
 describe("ClientLogCollector", () => {
   let collector: ClientLogCollector;
+  let transport: FakeSourceTransport;
   let origLog: typeof console.log;
   let origWarn: typeof console.warn;
   let origError: typeof console.error;
+  let testLog: typeof console.log;
+  let testWarn: typeof console.warn;
+  let testError: typeof console.error;
 
   beforeEach(() => {
     origLog = console.log;
     origWarn = console.warn;
     origError = console.error;
-    stateChangeListeners.clear();
+    console.log = vi.fn();
+    console.warn = vi.fn();
+    console.error = vi.fn();
+    testLog = console.log;
+    testWarn = console.warn;
+    testError = console.error;
+    resetClientSummaryStoreForTests();
+    resetSourceRuntimeRegistryForTests();
+    const sourceKey = asClientSummarySourceKey("test:client-log");
+    setCurrentClientSummarySourceKey(sourceKey);
+    transport = new FakeSourceTransport({
+      kind: "secure",
+      initialSnapshot: {
+        kind: "secure",
+        state: "disconnected",
+        channels: [],
+      },
+    });
+    getSourceRuntimeRegistry().registerSourceTransport(sourceKey, {
+      kind: "custom",
+      createTransport: () => transport,
+    });
     vi.clearAllMocks();
     collector = new ClientLogCollector();
   });
@@ -43,6 +64,8 @@ describe("ClientLogCollector", () => {
     console.log = origLog;
     console.warn = origWarn;
     console.error = origError;
+    resetSourceRuntimeRegistryForTests();
+    resetClientSummaryStoreForTests();
   });
 
   it("captures console messages and flushes with deviceId", async () => {
@@ -101,15 +124,15 @@ describe("ClientLogCollector", () => {
 
   it("restores console on stop", async () => {
     await collector.start();
-    expect(console.log).not.toBe(origLog);
+    expect(console.log).not.toBe(testLog);
 
     collector.stop();
-    expect(console.log).toBe(origLog);
-    expect(console.warn).toBe(origWarn);
-    expect(console.error).toBe(origError);
+    expect(console.log).toBe(testLog);
+    expect(console.warn).toBe(testWarn);
+    expect(console.error).toBe(testError);
   });
 
-  it("flushes on stateChange to connected", async () => {
+  it("flushes when the current transport becomes ready", async () => {
     await collector.start();
 
     console.log("test entry");
@@ -117,9 +140,7 @@ describe("ClientLogCollector", () => {
 
     vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 1 });
 
-    for (const cb of stateChangeListeners) {
-      cb("connected", "reconnecting");
-    }
+    transport.setState("ready");
 
     await new Promise((r) => setTimeout(r, 10));
     expect(fetchJSON).toHaveBeenCalledTimes(1);

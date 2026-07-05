@@ -1,18 +1,18 @@
 {
   "limits": {
-    "warnings": 117,
-    "method.warn": 62,
+    "warnings": 112,
+    "method.warn": 61,
     "method.error": 95
   },
   "observed": {
-    "warnings": 117,
-    "info": 159,
-    "total": 276,
-    "method.log": 119,
+    "warnings": 112,
+    "info": 158,
+    "total": 270,
+    "method.log": 114,
     "method.info": 0,
     "method.debug": 0,
     "method.trace": 0,
-    "method.warn": 62,
+    "method.warn": 61,
     "method.error": 95
   },
   "updated": "2026-07-05",

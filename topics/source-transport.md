@@ -208,6 +208,13 @@ interface SourceTransportStatus {
    * WebSocket state changes for diagnostics or stream-specific consumers.
    */
   subscribe(listener: () => void): () => void;
+
+  /**
+   * Fires when the transport's health manager observes a connected tab
+   * becoming visible. Activity refresh listeners use this to refresh in
+   * parallel with the wake ping/pong check.
+   */
+  subscribeVisibilityRestored?(listener: () => void): () => void;
 }
 
 interface SourceTransportStatusSnapshot {
@@ -388,6 +395,9 @@ Generalizing the 050 product invariant from "the remote app" to any source:
   is up, so "secure connection established ⇒ activity stream up" falls out of
   lease + ready, encoded in one place instead of React mount timing against a
   mutable global.
+- The compatibility `activityBus` facade still owns process-wide `on()` fanout
+  for current-source consumers during migration, while source summary reducers
+  subscribe to source-keyed fanout from the same retained stream.
 - Local and remote follow the identical rule; they differ only in when the
   lease is held. Local gates the lease on auth state (the 401-avoidance in
   `useActivityBusConnection`); the remote shell holds it whenever mounted

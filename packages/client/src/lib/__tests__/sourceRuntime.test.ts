@@ -3,12 +3,13 @@ import {
   type ProjectQueueItemSummary,
   type ProviderRuntimeStatus,
 } from "@yep-anywhere/shared";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   asClientSummarySourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
 } from "../clientSummaryStore";
 import {
   createGlobalSessionsCollectionQueryDescriptor,
@@ -31,6 +32,7 @@ import {
   LocalhostSourceTransport,
   SecureSourceTransport,
 } from "../transport";
+import { activityBus } from "../activityBus";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -56,6 +58,11 @@ const RUNTIME_STATUS: Exclude<ProviderRuntimeStatus, null> = {
 
 beforeEach(() => {
   resetClientSummaryStoreForTests();
+  activityBus.resetForTests();
+});
+
+afterEach(() => {
+  activityBus.resetForTests();
 });
 
 function fakeApiClient(): SourceApiClient {
@@ -269,6 +276,32 @@ describe("SourceRuntimeRegistry", () => {
     expect(runtime.transport.status.getSnapshot()).toMatchObject({
       kind: "secure",
       state: "disconnected",
+    });
+  });
+
+  it("retains activity through a non-current source runtime", () => {
+    const sourceA = asClientSummarySourceKey("host:activity-a");
+    const sourceB = asClientSummarySourceKey("host:activity-b");
+    const transportA = new FakeSourceTransport();
+    const registry = createSourceRuntimeRegistry({
+      apiClient: fakeApiClient(),
+      sessionDetails: { cache: createSessionDetailMemoryCache() },
+    });
+    registry.registerSourceTransport(sourceA, {
+      kind: "custom",
+      createTransport: () => transportA,
+    });
+    const runtimeA = registry.getOrCreateSourceRuntime(sourceA);
+
+    setCurrentClientSummarySourceKey(sourceB);
+    const release = runtimeA.summary.retainActivitySubscription();
+
+    expect(transportA.getSubscriptions("activity")).toHaveLength(1);
+
+    release();
+    expect(transportA.getSubscriptions("activity")[0]).toMatchObject({
+      closed: true,
+      closeCalls: 1,
     });
   });
 

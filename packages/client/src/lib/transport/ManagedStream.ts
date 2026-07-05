@@ -271,8 +271,9 @@ class DefaultManagedStream implements ManagedStream {
       onEvent: (eventType, eventId, data) => {
         if (!this.isCurrentToken(token)) return;
         const event = { eventType, eventId, data };
-        const capturedEventId =
-          this.spec.captureEventId?.(event) ?? event.eventId;
+        const capturedEventId = this.spec.captureEventId
+          ? this.spec.captureEventId(event)
+          : event.eventId;
         if (capturedEventId) {
           this.snapshot = {
             ...this.snapshot,

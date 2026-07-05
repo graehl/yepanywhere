@@ -5,14 +5,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  type Subscription,
-  connectionManager,
-  getGlobalConnection,
-  getWebSocketConnection,
-  isNonRetryableError,
-} from "../lib/connection";
+import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
+import { isNonRetryableError } from "../lib/connection/types";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
+import {
+  createManagedStream,
+  type ManagedStream,
+  type ManagedStreamEvent,
+} from "../lib/transport";
 import {
   getStreamingEnabled,
   subscribeStreamingEnabled,
@@ -49,223 +49,108 @@ export function useSessionStream(
   options: UseSessionStreamOptions,
 ) {
   const [connected, setConnected] = useState(false);
+  const runtime = useCurrentSourceRuntime();
   const wantsLiveDeltas = useSyncExternalStore(
     subscribeStreamingEnabled,
     getStreamingEnabled,
     () => true,
   );
-  const wsSubscriptionRef = useRef<Subscription | null>(null);
+  const streamRef = useRef<ManagedStream | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  // Track connected sessionId to skip StrictMode double-mount (not reset in cleanup)
-  const mountedSessionIdRef = useRef<string | null>(null);
-  // True during intentional cleanup — suppresses reconnect in onClose handler
-  const cleaningUpRef = useRef(false);
-
-  /**
-   * Connect using a provided connection (remote or local WebSocket).
-   */
-  const connectWithConnection = useCallback(
-    (
-      sessionId: string,
-      connection: {
-        subscribeSession: (
-          sessionId: string,
-          handlers: {
-            onEvent: (
-              eventType: string,
-              eventId: string | undefined,
-              data: unknown,
-            ) => void;
-            onOpen?: () => void;
-            onError?: (err: Error) => void;
-            onClose?: () => void;
-          },
-          lastEventId?: string,
-          options?: { wantsLiveDeltas?: boolean },
-        ) => Subscription;
-      },
-    ) => {
-      // Close any existing subscription before creating a new one.
-      // Clear ref BEFORE close() so isStale() returns true for the old
-      // subscription's handlers if they fire synchronously during close.
-      if (wsSubscriptionRef.current) {
-        const old = wsSubscriptionRef.current;
-        wsSubscriptionRef.current = null;
-        old.close();
-      }
-
-      // Track this specific subscription instance for staleness detection.
-      // When ConnectionManager reconnects, a new subscription replaces this one.
-      // Without this guard, the old subscription's late-firing onClose would
-      // clear the new subscription's state (wsSubscriptionRef, mountedSessionIdRef).
-      let sub: Subscription | null = null;
-      const isStale = () => sub !== null && wsSubscriptionRef.current !== sub;
-
-      const handlers = {
-        onEvent: (
-          eventType: string,
-          eventId: string | undefined,
-          data: unknown,
-        ) => {
-          connectionManager.recordEvent();
-          if (eventType === "heartbeat") {
-            connectionManager.recordHeartbeat();
-            return;
-          }
-          logSessionUiTrace("session-stream-event", {
-            sessionId,
-            eventId: eventId ?? null,
-            ...summarizeStreamPayload(eventType, data),
-          });
-          if (eventId) {
-            lastEventIdRef.current = eventId;
-          }
-          optionsRef.current.onMessage({
-            ...(data as Record<string, unknown>),
-            eventType,
-          });
-        },
-        onOpen: () => {
-          if (isStale()) return;
-          logSessionUiTrace("session-stream-open", { sessionId });
-          setConnected(true);
-          connectionManager.markConnected();
-          optionsRef.current.onOpen?.();
-        },
-        onError: (error: Error) => {
-          if (isStale()) return;
-          logSessionUiTrace("session-stream-error", {
-            sessionId,
-            message: error.message,
-            nonRetryable: isNonRetryableError(error),
-          });
-          setConnected(false);
-          wsSubscriptionRef.current = null;
-          mountedSessionIdRef.current = null;
-          optionsRef.current.onError?.(new Event("error"));
-
-          // Don't signal ConnectionManager for subscription-level 404s
-          if (isNonRetryableError(error)) {
-            console.warn(
-              "[useSessionStream] Non-retryable error, not reconnecting:",
-              error.message,
-            );
-            return;
-          }
-          connectionManager.handleError(error);
-        },
-        onClose: () => {
-          if (cleaningUpRef.current) return;
-          if (isStale()) return;
-          logSessionUiTrace("session-stream-close", { sessionId });
-          setConnected(false);
-          wsSubscriptionRef.current = null;
-          mountedSessionIdRef.current = null;
-        },
-      };
-
-      logSessionUiTrace("session-stream-subscribe", {
-        sessionId,
-        lastEventId: lastEventIdRef.current ?? null,
-        wantsLiveDeltas,
-      });
-      sub = connection.subscribeSession(
-        sessionId,
-        handlers,
-        lastEventIdRef.current ?? undefined,
-        { wantsLiveDeltas },
-      );
-      wsSubscriptionRef.current = sub;
-    },
-    [wantsLiveDeltas],
-  );
-
-  const connect = useCallback(() => {
-    if (!sessionId) {
-      // Reset tracking when sessionId becomes null so we can reconnect later
-      // (e.g., when status goes idle → owned again for the same session)
-      mountedSessionIdRef.current = null;
-      logSessionUiTrace("session-stream-disabled");
-      return;
-    }
-
-    // Don't create duplicate connections
-    if (wsSubscriptionRef.current) return;
-
-    // Skip StrictMode double-mount (same sessionId, already connected once)
-    if (mountedSessionIdRef.current === sessionId) return;
-    mountedSessionIdRef.current = sessionId;
-
-    // Check for global connection first (remote mode with SecureConnection)
-    const globalConn = getGlobalConnection();
-    if (globalConn) {
-      connectWithConnection(sessionId, globalConn);
-      return;
-    }
-
-    // Local mode: always use WebSocket
-    connectWithConnection(sessionId, getWebSocketConnection());
-  }, [connectWithConnection, sessionId]);
-
-  // Listen for ConnectionManager state changes to re-subscribe
-  useEffect(() => {
-    return connectionManager.on("stateChange", (state) => {
-      if (state === "reconnecting" || state === "disconnected") {
-        logSessionUiTrace("session-stream-transport-state", {
-          sessionId,
-          state,
-        });
-        // Proactively tear down the session subscription. Without this,
-        // the "connected" stateChange can fire before the old subscription's
-        // onClose, causing the !wsSubscriptionRef.current guard to skip
-        // reconnection — leaving the session stream permanently disconnected
-        // while the underlying transport is fine.
-        if (wsSubscriptionRef.current) {
-          const old = wsSubscriptionRef.current;
-          wsSubscriptionRef.current = null;
-          old.close();
-        }
-        setConnected(false);
-        mountedSessionIdRef.current = null;
-      }
-      if (state === "connected" && sessionId && !wsSubscriptionRef.current) {
-        logSessionUiTrace("session-stream-transport-reconnect", { sessionId });
-        connect();
-      }
-    });
-  }, [sessionId, connect]);
 
   // Force reconnect (e.g., after process restart)
   const reconnect = useCallback(() => {
     if (!sessionId) return;
     logSessionUiTrace("session-stream-reconnect-requested", { sessionId });
-    if (wsSubscriptionRef.current) {
-      const old = wsSubscriptionRef.current;
-      wsSubscriptionRef.current = null;
-      old.close();
-    }
-    mountedSessionIdRef.current = null;
     setConnected(false);
-    // Defer so the close completes before reconnecting
-    setTimeout(() => connect(), 50);
-  }, [sessionId, connect]);
+    streamRef.current?.restart({ delayMs: 50 });
+  }, [sessionId]);
 
   useEffect(() => {
-    connect();
+    if (!sessionId) {
+      logSessionUiTrace("session-stream-disabled");
+      setConnected(false);
+      return undefined;
+    }
+
+    const transport = runtime.transport;
+    const stream = createManagedStream(transport, {
+      subscribe: ({ transport, handlers, lastEventId }) => {
+        logSessionUiTrace("session-stream-subscribe", {
+          sessionId,
+          lastEventId: lastEventId ?? lastEventIdRef.current ?? null,
+          wantsLiveDeltas,
+        });
+        return transport.subscribeSession(
+          sessionId,
+          handlers,
+          lastEventId ?? lastEventIdRef.current ?? undefined,
+          { wantsLiveDeltas },
+        );
+      },
+      captureEventId: (event) =>
+        event.eventType === "heartbeat" ? undefined : event.eventId,
+      onEvent: (event: ManagedStreamEvent) => {
+        if (event.eventType === "heartbeat") {
+          return;
+        }
+        logSessionUiTrace("session-stream-event", {
+          sessionId,
+          eventId: event.eventId ?? null,
+          ...summarizeStreamPayload(event.eventType, event.data),
+        });
+        if (event.eventId) {
+          lastEventIdRef.current = event.eventId;
+        }
+        optionsRef.current.onMessage({
+          ...(event.data as Record<string, unknown>),
+          eventType: event.eventType,
+        });
+      },
+      onOpen: () => {
+        logSessionUiTrace("session-stream-open", { sessionId });
+        setConnected(true);
+        optionsRef.current.onOpen?.();
+      },
+      onError: (error) => {
+        logSessionUiTrace("session-stream-error", {
+          sessionId,
+          message: error.message,
+          nonRetryable: isNonRetryableError(error),
+        });
+        setConnected(false);
+        optionsRef.current.onError?.(new Event("error"));
+        if (isNonRetryableError(error)) {
+          console.warn(
+            "[useSessionStream] Non-retryable error, not reconnecting:",
+            error.message,
+          );
+        }
+      },
+      onClose: (error) => {
+        logSessionUiTrace("session-stream-close", {
+          sessionId,
+          message: error?.message,
+        });
+        setConnected(false);
+      },
+    });
+    streamRef.current = stream;
+    const unsubscribe = stream.subscribe(() => {
+      setConnected(stream.getSnapshot().connected);
+    });
+    setConnected(stream.getSnapshot().connected);
 
     return () => {
-      // Set flag BEFORE close() so onClose handler doesn't schedule a ghost reconnect
-      cleaningUpRef.current = true;
-      wsSubscriptionRef.current?.close();
-      wsSubscriptionRef.current = null;
-      // Reset mountedSessionIdRef so the next mount can connect
-      // This is needed for StrictMode where cleanup runs between mounts
-      mountedSessionIdRef.current = null;
-      cleaningUpRef.current = false;
+      unsubscribe();
+      if (streamRef.current === stream) {
+        streamRef.current = null;
+      }
+      stream.close();
     };
-  }, [connect]);
+  }, [runtime.transport, sessionId, wantsLiveDeltas]);
 
   return { connected, reconnect };
 }

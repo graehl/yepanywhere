@@ -1,64 +1,53 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
+import type { YaSourceRuntime } from "../../lib/sourceRuntime";
+import { SourceRuntimeProvider } from "../../lib/sourceRuntimeReact";
+import { FakeSourceTransport } from "../../lib/transport";
 import { useSessionWatchStream } from "../useSessionWatchStream";
 
-const connectionMocks = vi.hoisted(() => ({
-  handlers: [] as Array<{
-    onOpen?: () => void;
-    onClose?: () => void;
-    onError?: (err: Error) => void;
-    onEvent: (
-      eventType: string,
-      eventId: string | undefined,
-      data: unknown,
-    ) => void;
-  }>,
-  stateListeners: [] as Array<(state: string) => void>,
-  subscriptions: [] as Array<{ close: ReturnType<typeof vi.fn> }>,
-  subscribeSessionWatch: vi.fn(),
-}));
+function createRuntime(
+  transport: FakeSourceTransport,
+  sourceKey = "test:source",
+): YaSourceRuntime {
+  return {
+    sourceKey: asClientSummarySourceKey(sourceKey),
+    transport,
+    api: {} as YaSourceRuntime["api"],
+    summary: {} as YaSourceRuntime["summary"],
+    sessionDetails: {} as YaSourceRuntime["sessionDetails"],
+  };
+}
 
-vi.mock("../../lib/connection", () => ({
-  connectionManager: {
-    handleError: vi.fn(),
-    markConnected: vi.fn(),
-    on: vi.fn((_event: string, listener: (state: string) => void) => {
-      connectionMocks.stateListeners.push(listener);
-      return vi.fn();
-    }),
-    recordEvent: vi.fn(),
-    recordHeartbeat: vi.fn(),
-  },
-  getGlobalConnection: vi.fn(() => null),
-  getWebSocketConnection: vi.fn(() => ({
-    subscribeSessionWatch: connectionMocks.subscribeSessionWatch,
-  })),
-  isNonRetryableError: vi.fn(() => false),
-}));
+function createWrapper(runtime: YaSourceRuntime) {
+  return function TestSourceRuntimeProvider({
+    children,
+  }: {
+    children: ReactNode;
+  }) {
+    return (
+      <SourceRuntimeProvider runtime={runtime}>{children}</SourceRuntimeProvider>
+    );
+  };
+}
 
 beforeEach(() => {
-  connectionMocks.handlers = [];
-  connectionMocks.stateListeners = [];
-  connectionMocks.subscriptions = [];
-  connectionMocks.subscribeSessionWatch.mockImplementation(
-    (_sessionId, handlers) => {
-      connectionMocks.handlers.push(handlers);
-      const subscription = { close: vi.fn() };
-      connectionMocks.subscriptions.push(subscription);
-      return subscription;
-    },
-  );
+  vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("useSessionWatchStream", () => {
   it("does not resubscribe for a new target object with the same values", () => {
+    const transport = new FakeSourceTransport();
+    const wrapper = createWrapper(createRuntime(transport));
+
     const { rerender, unmount } = renderHook(
       ({ target }) =>
         useSessionWatchStream(target, {
@@ -72,11 +61,17 @@ describe("useSessionWatchStream", () => {
             sessionId: "session-1",
           },
         },
+        wrapper,
       },
     );
 
-    expect(connectionMocks.subscribeSessionWatch).toHaveBeenCalledTimes(1);
-    expect(connectionMocks.subscriptions).toHaveLength(1);
+    expect(transport.getSubscriptions("session-watch")).toHaveLength(1);
+    const first = transport.getSubscriptions("session-watch")[0];
+    expect(first).toMatchObject({
+      sessionId: "session-1",
+      options: { projectId: "project-1", provider: "claude" },
+      closed: false,
+    });
 
     rerender({
       target: {
@@ -86,8 +81,12 @@ describe("useSessionWatchStream", () => {
       },
     });
 
-    expect(connectionMocks.subscribeSessionWatch).toHaveBeenCalledTimes(1);
-    expect(connectionMocks.subscriptions[0]?.close).not.toHaveBeenCalled();
+    expect(transport.getSubscriptions("session-watch")).toHaveLength(1);
+    expect(transport.getSubscriptions("session-watch")[0]).toMatchObject({
+      id: first?.id,
+      closed: false,
+      closeCalls: 0,
+    });
 
     rerender({
       target: {
@@ -97,11 +96,23 @@ describe("useSessionWatchStream", () => {
       },
     });
 
-    expect(connectionMocks.subscribeSessionWatch).toHaveBeenCalledTimes(2);
-    expect(connectionMocks.subscriptions[0]?.close).toHaveBeenCalledTimes(1);
+    expect(transport.getSubscriptions("session-watch")).toHaveLength(2);
+    expect(transport.getSubscriptions("session-watch")[0]).toMatchObject({
+      id: first?.id,
+      closed: true,
+      closeCalls: 1,
+    });
+    expect(transport.getSubscriptions("session-watch")[1]).toMatchObject({
+      sessionId: "session-1",
+      options: { projectId: "project-1", provider: "codex" },
+      closed: false,
+    });
 
     unmount();
 
-    expect(connectionMocks.subscriptions[1]?.close).toHaveBeenCalledTimes(1);
+    expect(transport.getSubscriptions("session-watch")[1]).toMatchObject({
+      closed: true,
+      closeCalls: 1,
+    });
   });
 });

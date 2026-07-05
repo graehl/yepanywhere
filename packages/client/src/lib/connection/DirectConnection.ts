@@ -36,7 +36,7 @@ async function formatBlobFetchError(response: Response): Promise<string> {
  *
  * Handles REST requests (fetch/fetchBlob) and file uploads via HTTP.
  * Subscriptions (session/activity streams) are handled separately by
- * useSessionStream and ActivityBus, which always use WebSocket.
+ * WebSocket-backed transports and ActivityBus.
  */
 export class DirectConnection implements Connection {
   readonly mode = "direct" as const;

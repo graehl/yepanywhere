@@ -108,8 +108,8 @@ const realVisibility: VisibilityInterface = {
  * Centralized connection state machine that manages reconnection.
  *
  * Replaces the multiple overlapping reconnection systems (stale timers,
- * visibility handlers, backoff logic) scattered across ActivityBus,
- * useSessionStream, useActivityBusConnection, etc.
+ * visibility handlers, backoff logic) scattered across ActivityBus and
+ * legacy connection consumers.
  *
  * States:
  * - connected: socket is up, events flowing
@@ -638,6 +638,7 @@ export class ConnectionManager {
 
 /**
  * Singleton ConnectionManager for the app.
- * Both ActivityBus and useSessionStream feed events into this instance.
+ * ActivityBus feeds this instance until source-runtime activity streams take
+ * ownership of app-level transport health.
  */
 export const connectionManager = new ConnectionManager();

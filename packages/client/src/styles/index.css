@@ -17405,6 +17405,119 @@ body:has(.session-page)
   gap: var(--space-3);
 }
 
+.workstreams-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.workstreams-action-button,
+.workstreams-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 34px;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.workstreams-action-button {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.workstreams-action-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.workstreams-secondary-button {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.workstreams-secondary-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.workstreams-action-button:disabled,
+.workstreams-secondary-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.workstreams-create-form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.workstreams-create-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.workstreams-create-field label,
+.workstreams-create-preview > span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.workstreams-create-field input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0.45rem 0.6rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-input, var(--border-color));
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.workstreams-create-preview {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.workstreams-create-preview code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workstreams-create-preview em {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-style: normal;
+}
+
+.workstreams-create-error {
+  margin: 0;
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+}
+
+.workstreams-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .workstreams-table-wrapper {
   overflow-x: auto;
   background: var(--bg-secondary);

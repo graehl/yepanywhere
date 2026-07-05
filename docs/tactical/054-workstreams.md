@@ -67,10 +67,10 @@ machinery.
 - [x] WS-002: Add default-off experimental workstreams gate.
 - [x] WS-003: Add shared workstream types and server metadata service.
 - [x] WS-004: Add read-only workstream API behind the gate.
-- [ ] WS-005: Add hidden Workstreams page shell.
+- [x] WS-005: Add hidden Workstreams page shell.
 - [ ] WS-006: Associate sessions with workstreams.
 - [ ] WS-007: Add Project Queue target metadata and hidden target picker.
-- [ ] WS-008: Add UI-backed lane checkout creation.
+- [x] WS-008: Add UI-backed lane checkout creation.
 - [ ] WS-009: Make Project Queue scheduling workstream-aware.
 - [ ] WS-010: Add shared-upstream lane sync and repair turns.
 - [ ] WS-011: Add optional `.workstream` readiness checks.
@@ -315,7 +315,18 @@ Verified 2026-07-05 with the focused test and lint commands above, plus
 
 ### WS-005: Add Hidden Workstreams Page Shell
 
-Status: proposed.
+Status: done.
+
+Implemented:
+
+- Added hidden `/projects/:projectId/workstreams` routes in local and remote
+  clients, with no navigation chrome.
+- Added a typed client API call for `GET /api/projects/:projectId/workstreams`.
+- Rendered the implicit main checkout and stored checkout lanes with label,
+  kind, branch, queue state, status, session-count placeholder, and path.
+- Kept the page inert when `workstreamsEnabled` is off.
+- Added loading, error, no-access, disabled, empty, and main-only states.
+- Added focused page tests.
 
 Goal: create the experimental UI surface without changing default navigation.
 
@@ -411,7 +422,37 @@ pnpm --filter @yep-anywhere/client test -- src/hooks/__tests__/useProjectQueues.
 
 ### WS-008: Add UI-Backed Lane Checkout Creation
 
-Status: proposed after WS-004 through WS-007 land.
+Status: first create slice done; delete/import and durable failure rows remain
+deferred.
+
+Implemented:
+
+- Added shared request/response types for checkout preview and creation.
+- Added `GET /api/projects/:projectId/workstreams/checkout-preview` so the
+  client can show the exact server-computed destination before create.
+- Added blocking `POST /api/projects/:projectId/workstreams`.
+- Created lanes as ordinary local clones under
+  `{dataDir}/checkouts/<project>/<lane-slug>`.
+- Left the canonical checkout unchanged.
+- Set the lane clone's `origin` to the canonical checkout's own origin when it
+  exists; otherwise the local clone source remains the origin.
+- Copied `.worktreeinclude` entries after clone and before metadata is stored.
+- Stored metadata only after clone and seed steps succeed; failed setup removes
+  the partial checkout root.
+- Enforced a per-project operation lock; concurrent create returns
+  `409 operation_in_progress`.
+- Added the hidden page `New workstream` form with label input, destination
+  preview, disabled submit while creating, inline error display, and response
+  refresh.
+- Taught the client activity bus to accept `workstreams-changed` so other open
+  hidden pages can refresh after server events.
+
+Still deferred from the broader WS-008 plan:
+
+- `DELETE` and `PATCH` workstream routes;
+- durable failed-operation rows with `Retry` and `Delete`;
+- progress polling or a generic operation resource;
+- import of existing checkouts.
 
 Goal: let a user press `New workstream`, have YA create the ordinary repo
 checkout for that lane, and see a durable success or failure state without

@@ -1,20 +1,34 @@
 import type {
   ProjectWorkstreamsResponse,
   Workstream,
+  WorkstreamCheckoutPreviewResponse,
   WorkstreamKind,
   WorkstreamStatus,
 } from "@yep-anywhere/shared";
-import { useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import { activityBus } from "../lib/activityBus";
 
 type WorkstreamsLoadState =
   | { status: "idle" | "loading" }
   | { status: "loaded"; data: ProjectWorkstreamsResponse }
+  | { status: "error"; error: Error; statusCode?: number };
+
+type WorkstreamsPreviewState =
+  | { status: "idle" | "loading" }
+  | { status: "loaded"; data: WorkstreamCheckoutPreviewResponse }
   | { status: "error"; error: Error; statusCode?: number };
 
 function errorStatus(error: unknown): number | undefined {
@@ -66,28 +80,83 @@ export function WorkstreamsPage() {
   const [loadState, setLoadState] = useState<WorkstreamsLoadState>({
     status: "idle",
   });
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newWorkstreamLabel, setNewWorkstreamLabel] = useState("");
+  const [previewState, setPreviewState] = useState<WorkstreamsPreviewState>({
+    status: "idle",
+  });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const loadSequenceRef = useRef(0);
   const enabled = settings?.workstreamsEnabled === true;
+
+  const loadWorkstreams = useCallback(
+    async (options: { background?: boolean } = {}) => {
+      if (!enabled || !projectId) {
+        setLoadState({ status: "idle" });
+        return;
+      }
+
+      const requestId = ++loadSequenceRef.current;
+      setLoadState((current) =>
+        options.background && current.status === "loaded"
+          ? current
+          : { status: "loading" },
+      );
+
+      try {
+        const data = await api.getProjectWorkstreams(projectId);
+        if (requestId !== loadSequenceRef.current) return;
+        setLoadState({ status: "loaded", data });
+      } catch (err) {
+        if (requestId !== loadSequenceRef.current) return;
+        setLoadState({
+          status: "error",
+          error: errorMessage(err, t("workstreamsLoadFailed")),
+          statusCode: errorStatus(err),
+        });
+      }
+    },
+    [enabled, projectId, t],
+  );
+
+  useEffect(() => {
+    void loadWorkstreams();
+  }, [loadWorkstreams]);
 
   useEffect(() => {
     if (!enabled || !projectId) {
-      setLoadState({ status: "idle" });
+      return undefined;
+    }
+
+    return activityBus.on("workstreams-changed", (event) => {
+      if (event.projectId === projectId) {
+        void loadWorkstreams({ background: true });
+      }
+    });
+  }, [enabled, loadWorkstreams, projectId]);
+
+  useEffect(() => {
+    const label = newWorkstreamLabel.trim();
+    if (!showCreateForm || !enabled || !projectId || !label) {
+      setPreviewState({ status: "idle" });
       return undefined;
     }
 
     let cancelled = false;
-    setLoadState({ status: "loading" });
+    setPreviewState({ status: "loading" });
 
     void api
-      .getProjectWorkstreams(projectId)
+      .getProjectWorkstreamCheckoutPreview(projectId, label)
       .then((data) => {
         if (cancelled) return;
-        setLoadState({ status: "loaded", data });
+        setPreviewState({ status: "loaded", data });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setLoadState({
+        setPreviewState({
           status: "error",
-          error: errorMessage(err, t("workstreamsLoadFailed")),
+          error: errorMessage(err, t("workstreamsPreviewFailed")),
           statusCode: errorStatus(err),
         });
       });
@@ -95,7 +164,54 @@ export function WorkstreamsPage() {
     return () => {
       cancelled = true;
     };
-  }, [enabled, projectId, t]);
+  }, [enabled, newWorkstreamLabel, projectId, showCreateForm, t]);
+
+  const handleCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!projectId || !enabled || creating) {
+      return;
+    }
+
+    const label = newWorkstreamLabel.trim();
+    if (!label) {
+      return;
+    }
+
+    setCreating(true);
+    setCreateError(null);
+
+    try {
+      const response = await api.createProjectWorkstream(projectId, { label });
+      setLoadState({
+        status: "loaded",
+        data: {
+          projectId: response.projectId,
+          workstreams: response.workstreams,
+        },
+      });
+      setShowCreateForm(false);
+      setNewWorkstreamLabel("");
+      setPreviewState({ status: "idle" });
+    } catch (err) {
+      const statusCode = errorStatus(err);
+      if (statusCode === 409) {
+        setCreateError(t("workstreamsCreateBusy"));
+      } else {
+        setCreateError(
+          err instanceof Error ? err.message : t("workstreamsCreateFailed"),
+        );
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const canShowCreate = enabled && Boolean(projectId);
+  const canSubmitCreate =
+    canShowCreate &&
+    !creating &&
+    newWorkstreamLabel.trim().length > 0 &&
+    previewState.status === "loaded";
 
   const content = useMemo(() => {
     if (!projectId) {
@@ -186,9 +302,147 @@ export function WorkstreamsPage() {
       />
 
       <main className="page-scroll-container">
-        <div className="page-content-inner workstreams-page">{content}</div>
+        <div className="page-content-inner workstreams-page">
+          {canShowCreate ? (
+            <div className="workstreams-toolbar">
+              <button
+                type="button"
+                className="workstreams-action-button"
+                onClick={() => {
+                  setShowCreateForm(true);
+                  setCreateError(null);
+                }}
+                disabled={showCreateForm || creating}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                {t("workstreamsNewAction")}
+              </button>
+            </div>
+          ) : null}
+
+          {canShowCreate && showCreateForm ? (
+            <WorkstreamCreateForm
+              label={newWorkstreamLabel}
+              previewState={previewState}
+              creating={creating}
+              createError={createError}
+              canSubmit={canSubmitCreate}
+              onLabelChange={(value) => {
+                setNewWorkstreamLabel(value);
+                setCreateError(null);
+              }}
+              onCancel={() => {
+                if (creating) return;
+                setShowCreateForm(false);
+                setNewWorkstreamLabel("");
+                setCreateError(null);
+                setPreviewState({ status: "idle" });
+              }}
+              onSubmit={handleCreateSubmit}
+              t={t}
+            />
+          ) : null}
+
+          {content}
+        </div>
       </main>
     </MainContent>
+  );
+}
+
+function WorkstreamCreateForm({
+  label,
+  previewState,
+  creating,
+  createError,
+  canSubmit,
+  onLabelChange,
+  onCancel,
+  onSubmit,
+  t,
+}: {
+  label: string;
+  previewState: WorkstreamsPreviewState;
+  creating: boolean;
+  createError: string | null;
+  canSubmit: boolean;
+  onLabelChange: (value: string) => void;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  t: ReturnType<typeof useI18n>["t"];
+}) {
+  return (
+    <form className="workstreams-create-form" onSubmit={onSubmit}>
+      <div className="workstreams-create-field">
+        <label htmlFor="workstream-label-input">
+          {t("workstreamsLabelLabel")}
+        </label>
+        <input
+          id="workstream-label-input"
+          type="text"
+          value={label}
+          onChange={(event) => onLabelChange(event.target.value)}
+          placeholder={t("workstreamsLabelPlaceholder")}
+          disabled={creating}
+        />
+      </div>
+
+      <div className="workstreams-create-preview">
+        <span>{t("workstreamsDestinationLabel")}</span>
+        {previewState.status === "loaded" ? (
+          <code title={previewState.data.checkoutPath}>
+            {previewState.data.checkoutPath}
+          </code>
+        ) : previewState.status === "loading" ? (
+          <em>{t("workstreamsDestinationLoading")}</em>
+        ) : previewState.status === "error" ? (
+          <em className="workstreams-create-error">
+            {previewState.error.message}
+          </em>
+        ) : (
+          <em>{t("workstreamsDestinationPending")}</em>
+        )}
+      </div>
+
+      {createError ? (
+        <p className="workstreams-create-error" role="alert">
+          {createError}
+        </p>
+      ) : null}
+
+      <div className="workstreams-create-actions">
+        <button
+          type="button"
+          className="workstreams-secondary-button"
+          onClick={onCancel}
+          disabled={creating}
+        >
+          {t("modalCancel")}
+        </button>
+        <button
+          type="submit"
+          className="workstreams-action-button"
+          disabled={!canSubmit}
+        >
+          {creating
+            ? t("workstreamsCreatingAction")
+            : t("workstreamsCreateAction")}
+        </button>
+      </div>
+    </form>
   );
 }
 

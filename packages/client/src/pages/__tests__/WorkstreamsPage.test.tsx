@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import type { ProjectWorkstreamsResponse } from "@yep-anywhere/shared";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { I18nProvider } from "../../i18n";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -15,11 +21,16 @@ const state = vi.hoisted(() => ({
   settingsLoading: false,
   settingsError: null as string | null,
   getProjectWorkstreams: vi.fn(),
+  getProjectWorkstreamCheckoutPreview: vi.fn(),
+  createProjectWorkstream: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
   api: {
     getProjectWorkstreams: state.getProjectWorkstreams,
+    getProjectWorkstreamCheckoutPreview:
+      state.getProjectWorkstreamCheckoutPreview,
+    createProjectWorkstream: state.createProjectWorkstream,
   },
 }));
 
@@ -120,6 +131,8 @@ describe("WorkstreamsPage", () => {
     state.settingsLoading = false;
     state.settingsError = null;
     state.getProjectWorkstreams.mockReset();
+    state.getProjectWorkstreamCheckoutPreview.mockReset();
+    state.createProjectWorkstream.mockReset();
   });
 
   afterEach(() => {
@@ -173,5 +186,69 @@ describe("WorkstreamsPage", () => {
     await waitFor(() =>
       expect(screen.getByText("No checkout lanes")).toBeTruthy(),
     );
+  });
+
+  it("previews and creates a checkout lane", async () => {
+    state.getProjectWorkstreams.mockResolvedValue(makeResponse([mainWorkstream()]));
+    state.getProjectWorkstreamCheckoutPreview.mockResolvedValue({
+      projectId: "project-1",
+      label: "Feature checkout",
+      slug: "feature-checkout",
+      checkoutRootPath: "/tmp/checkouts/project/feature-checkout",
+      checkoutPath: "/tmp/checkouts/project/feature-checkout",
+    });
+    state.createProjectWorkstream.mockResolvedValue({
+      projectId: "project-1",
+      workstream: checkoutWorkstream(),
+      workstreams: [mainWorkstream(), checkoutWorkstream()],
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "New workstream" }));
+    fireEvent.change(screen.getByLabelText("Label"), {
+      target: { value: "Feature checkout" },
+    });
+
+    expect(
+      await screen.findByText("/tmp/checkouts/project/feature-checkout"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(state.createProjectWorkstream).toHaveBeenCalledWith("project-1", {
+        label: "Feature checkout",
+      }),
+    );
+    expect(await screen.findByText("Feature checkout")).toBeTruthy();
+  });
+
+  it("shows a busy error when another create is running", async () => {
+    state.getProjectWorkstreams.mockResolvedValue(makeResponse([mainWorkstream()]));
+    state.getProjectWorkstreamCheckoutPreview.mockResolvedValue({
+      projectId: "project-1",
+      label: "Feature checkout",
+      slug: "feature-checkout",
+      checkoutRootPath: "/tmp/checkouts/project/feature-checkout",
+      checkoutPath: "/tmp/checkouts/project/feature-checkout",
+    });
+    state.createProjectWorkstream.mockRejectedValue(
+      Object.assign(new Error("busy"), { status: 409 }),
+    );
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "New workstream" }));
+    fireEvent.change(screen.getByLabelText("Label"), {
+      target: { value: "Feature checkout" },
+    });
+    await screen.findByText("/tmp/checkouts/project/feature-checkout");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(
+      await screen.findByText(
+        "Another workstream operation is already running for this project.",
+      ),
+    ).toBeTruthy();
   });
 });

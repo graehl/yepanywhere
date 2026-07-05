@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import {
   type StoredWorkstream,
   type UrlProjectId,
@@ -17,6 +19,17 @@ const CURRENT_VERSION = 1;
 const FILE_NAME = "workstreams.json";
 const DEFAULT_BASE_BRANCH = "main";
 const IMPLICIT_MAIN_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+const CHECKOUTS_DIR_NAME = "checkouts";
+const DEFAULT_PROJECT_SLUG = "project";
+const DEFAULT_LANE_SLUG = "lane";
+const MAX_PROJECT_SLUG_LENGTH = 42;
+const MAX_LANE_SLUG_LENGTH = 48;
+const PROJECT_ID_SUFFIX_LENGTH = 10;
+const MAX_DESTINATION_ATTEMPTS = 100;
+const GIT_DEFAULT_TIMEOUT_MS = 30_000;
+const GIT_CLONE_TIMEOUT_MS = 5 * 60_000;
+
+const execFileAsync = promisify(execFile);
 
 interface WorkstreamsState {
   version: number;
@@ -46,10 +59,56 @@ export interface CreateWorkstreamInput {
   managedByYa?: boolean;
 }
 
+export interface CheckoutWorkstreamInput {
+  projectId: UrlProjectId;
+  projectPath: string;
+  projectName?: string;
+  label: string;
+}
+
+export interface WorkstreamCheckoutDestination {
+  label: string;
+  slug: string;
+  checkoutRootPath: string;
+  checkoutPath: string;
+}
+
+export interface CreateCheckoutWorkstreamResult {
+  workstream: StoredWorkstream;
+  destination: WorkstreamCheckoutDestination;
+}
+
 export class WorkstreamValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "WorkstreamValidationError";
+  }
+}
+
+export class WorkstreamOperationInProgressError extends Error {
+  readonly code = "operation_in_progress";
+
+  constructor(projectId: UrlProjectId) {
+    super(`A workstream operation is already running for project ${projectId}`);
+    this.name = "WorkstreamOperationInProgressError";
+  }
+}
+
+export class WorkstreamCheckoutError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly detail: string | undefined;
+
+  constructor(
+    code: string,
+    message: string,
+    options: { status?: number; detail?: string } = {},
+  ) {
+    super(message);
+    this.name = "WorkstreamCheckoutError";
+    this.code = code;
+    this.status = options.status ?? 500;
+    this.detail = options.detail;
   }
 }
 
@@ -162,6 +221,135 @@ function workstreamsEqual(a: StoredWorkstream[], b: unknown[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function isErrno(error: unknown, code: string): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === code;
+}
+
+function isPathInside(parent: string, candidate: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function slugifyPathSegment(
+  value: string | undefined,
+  fallback: string,
+  maxLength: number,
+): string {
+  const slug = (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLength)
+    .replace(/-+$/g, "");
+  return slug || fallback;
+}
+
+function getProjectCheckoutSegment(
+  projectId: UrlProjectId,
+  projectName: string | undefined,
+  projectPath: string,
+): string {
+  const projectSlug = slugifyPathSegment(
+    projectName ?? path.basename(projectPath),
+    DEFAULT_PROJECT_SLUG,
+    MAX_PROJECT_SLUG_LENGTH,
+  );
+  return `${projectSlug}-${projectId.slice(0, PROJECT_ID_SUFFIX_LENGTH)}`;
+}
+
+function getGitErrorDetail(error: unknown): string {
+  const gitError = error as {
+    stderr?: string;
+    stdout?: string;
+    message?: string;
+  };
+  return (
+    gitError.stderr?.trim() ||
+    gitError.stdout?.trim() ||
+    gitError.message?.trim() ||
+    "Unknown git error"
+  );
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
+async function runGit(
+  args: string[],
+  options: { timeoutMs?: number } = {},
+): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, {
+    timeout: options.timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024,
+    env: {
+      ...process.env,
+      GCM_INTERACTIVE: "Never",
+      GIT_TERMINAL_PROMPT: "0",
+    },
+  });
+  return String(stdout).trim();
+}
+
+async function getGitTopLevel(projectPath: string): Promise<string> {
+  try {
+    const topLevel = path.resolve(
+      await runGit(["-C", projectPath, "rev-parse", "--show-toplevel"]),
+    );
+    return await fs.realpath(topLevel);
+  } catch (error) {
+    throw new WorkstreamCheckoutError(
+      "not_git_repository",
+      "Project is not a Git repository",
+      { status: 400, detail: getGitErrorDetail(error) },
+    );
+  }
+}
+
+async function gitRefExists(
+  projectPath: string,
+  refName: string,
+): Promise<boolean> {
+  try {
+    await runGit(["-C", projectPath, "show-ref", "--verify", "--quiet", refName]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getCurrentBranch(projectPath: string): Promise<string | null> {
+  try {
+    const branch = await runGit(["-C", projectPath, "branch", "--show-current"]);
+    return branch || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getHeadCommit(projectPath: string): Promise<string | null> {
+  try {
+    return await runGit(["-C", projectPath, "rev-parse", "--verify", "HEAD"]);
+  } catch {
+    return null;
+  }
+}
+
+async function getRemoteOriginUrl(projectPath: string): Promise<string | null> {
+  try {
+    return await runGit(["-C", projectPath, "remote", "get-url", "origin"]);
+  } catch {
+    return null;
+  }
+}
+
 function synthesizeMainWorkstream(
   options: ListProjectWorkstreamsOptions,
 ): Workstream {
@@ -197,6 +385,7 @@ export class WorkstreamService {
   };
   private initialized = false;
   private mutationQueue: Promise<void> = Promise.resolve();
+  private projectOperations = new Set<UrlProjectId>();
 
   constructor(options: WorkstreamServiceOptions) {
     this.dataDir = options.dataDir;
@@ -299,6 +488,92 @@ export class WorkstreamService {
     return this.upsertWorkstream(workstream);
   }
 
+  async previewCheckoutWorkstream(
+    input: CheckoutWorkstreamInput,
+  ): Promise<WorkstreamCheckoutDestination> {
+    this.ensureInitialized();
+    return this.resolveCheckoutDestination(input);
+  }
+
+  async createCheckoutWorkstream(
+    input: CheckoutWorkstreamInput,
+  ): Promise<CreateCheckoutWorkstreamResult> {
+    return this.withProjectOperation(input.projectId, async () => {
+      const destination = await this.resolveCheckoutDestination(input);
+      const sourceRoot = await getGitTopLevel(input.projectPath);
+      const cloneBranch = (await gitRefExists(sourceRoot, "refs/heads/main"))
+        ? DEFAULT_BASE_BRANCH
+        : null;
+      const originUrl = await getRemoteOriginUrl(sourceRoot);
+      const cloneArgs = ["clone", "--local"];
+      if (cloneBranch) {
+        cloneArgs.push("--branch", cloneBranch);
+      }
+      cloneArgs.push(sourceRoot, destination.checkoutRootPath);
+
+      try {
+        await fs.mkdir(path.dirname(destination.checkoutRootPath), {
+          recursive: true,
+        });
+        await runGit(cloneArgs, { timeoutMs: GIT_CLONE_TIMEOUT_MS });
+      } catch (error) {
+        await fs.rm(destination.checkoutRootPath, {
+          recursive: true,
+          force: true,
+        });
+        throw new WorkstreamCheckoutError(
+          "clone_failed",
+          "Failed to create checkout",
+          { detail: getGitErrorDetail(error) },
+        );
+      }
+
+      try {
+        if (originUrl) {
+          await runGit([
+            "-C",
+            destination.checkoutRootPath,
+            "remote",
+            "set-url",
+            "origin",
+            originUrl,
+          ]);
+        }
+        await this.copyWorktreeInclude(sourceRoot, destination.checkoutRootPath);
+
+        const branch =
+          (await getCurrentBranch(destination.checkoutPath)) ??
+          cloneBranch ??
+          (await getCurrentBranch(sourceRoot)) ??
+          DEFAULT_BASE_BRANCH;
+        const baseCommit = await getHeadCommit(destination.checkoutPath);
+        const workstream = await this.createWorkstream({
+          projectId: input.projectId,
+          label: destination.label,
+          path: destination.checkoutPath,
+          branch,
+          baseBranch: branch,
+          baseCommit,
+          managedByYa: true,
+        });
+        return { workstream, destination };
+      } catch (error) {
+        await fs.rm(destination.checkoutRootPath, {
+          recursive: true,
+          force: true,
+        });
+        if (error instanceof WorkstreamCheckoutError) {
+          throw error;
+        }
+        throw new WorkstreamCheckoutError(
+          "checkout_seed_failed",
+          "Failed to finish checkout setup",
+          { detail: getGitErrorDetail(error) },
+        );
+      }
+    });
+  }
+
   async upsertWorkstream(
     workstream: StoredWorkstream,
   ): Promise<StoredWorkstream> {
@@ -380,6 +655,132 @@ export class WorkstreamService {
       () => undefined,
     );
     return run;
+  }
+
+  private async withProjectOperation<T>(
+    projectId: UrlProjectId,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    this.ensureInitialized();
+    if (this.projectOperations.has(projectId)) {
+      throw new WorkstreamOperationInProgressError(projectId);
+    }
+
+    this.projectOperations.add(projectId);
+    try {
+      return await fn();
+    } catch (error) {
+      this.emitChange(projectId, "operation-failed");
+      throw error;
+    } finally {
+      this.projectOperations.delete(projectId);
+    }
+  }
+
+  private async resolveCheckoutDestination(
+    input: CheckoutWorkstreamInput,
+  ): Promise<WorkstreamCheckoutDestination> {
+    this.ensureInitialized();
+    const label = requiredString(input.label, "label");
+    const projectPath = await fs.realpath(path.resolve(input.projectPath));
+    const sourceRoot = await getGitTopLevel(projectPath);
+    if (!isPathInside(sourceRoot, projectPath)) {
+      throw new WorkstreamCheckoutError(
+        "project_outside_repository",
+        "Project path is outside the Git repository",
+        { status: 400 },
+      );
+    }
+
+    const projectRelativePath = path.relative(sourceRoot, projectPath);
+    const checkoutBasePath = path.join(
+      this.dataDir,
+      CHECKOUTS_DIR_NAME,
+      getProjectCheckoutSegment(input.projectId, input.projectName, projectPath),
+    );
+    const baseSlug = slugifyPathSegment(
+      label,
+      DEFAULT_LANE_SLUG,
+      MAX_LANE_SLUG_LENGTH,
+    );
+    const storedPaths = new Set(
+      this.state.workstreams
+        .filter((workstream) => workstream.projectId === input.projectId)
+        .map((workstream) => path.resolve(workstream.path)),
+    );
+
+    for (let attempt = 0; attempt < MAX_DESTINATION_ATTEMPTS; attempt += 1) {
+      const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+      const checkoutRootPath = path.join(checkoutBasePath, slug);
+      const checkoutPath = projectRelativePath
+        ? path.join(checkoutRootPath, projectRelativePath)
+        : checkoutRootPath;
+      if (storedPaths.has(path.resolve(checkoutPath))) {
+        continue;
+      }
+      if (!(await pathExists(checkoutRootPath))) {
+        return {
+          label,
+          slug,
+          checkoutRootPath,
+          checkoutPath,
+        };
+      }
+    }
+
+    throw new WorkstreamCheckoutError(
+      "checkout_destination_unavailable",
+      "No available checkout destination found for this label",
+      { status: 409 },
+    );
+  }
+
+  private async copyWorktreeInclude(
+    sourceRoot: string,
+    checkoutRootPath: string,
+  ): Promise<void> {
+    let content: string;
+    try {
+      content = await fs.readFile(
+        path.join(sourceRoot, ".worktreeinclude"),
+        "utf-8",
+      );
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return;
+      throw error;
+    }
+
+    for (const rawLine of content.split(/\r?\n/)) {
+      const entry = rawLine.trim();
+      if (!entry || entry.startsWith("#")) continue;
+
+      const sourcePath = path.resolve(sourceRoot, entry);
+      const targetPath = path.resolve(checkoutRootPath, entry);
+      if (
+        !isPathInside(sourceRoot, sourcePath) ||
+        !isPathInside(checkoutRootPath, targetPath)
+      ) {
+        throw new WorkstreamCheckoutError(
+          "worktreeinclude_invalid_path",
+          ".worktreeinclude contains a path outside the checkout",
+          { status: 400, detail: entry },
+        );
+      }
+
+      try {
+        await fs.lstat(sourcePath);
+      } catch (error) {
+        if (isErrno(error, "ENOENT")) continue;
+        throw error;
+      }
+
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.cp(sourcePath, targetPath, {
+        recursive: true,
+        force: true,
+        preserveTimestamps: true,
+      });
+    }
   }
 
   private async save(): Promise<void> {

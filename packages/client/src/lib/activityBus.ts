@@ -10,6 +10,7 @@ import type {
   SafeRestartState,
   TranscriptDisplayObject,
   UrlProjectId,
+  WorkstreamsChangedEvent,
 } from "@yep-anywhere/shared";
 import type { SessionStatus, SessionSummary } from "../types";
 import {
@@ -217,6 +218,7 @@ interface ActivityEventMap {
   "process-state-changed": ProcessStateEvent;
   "provider-runtime-status-changed": ProviderRuntimeStatusChangedEvent;
   "project-queue-changed": ProjectQueueChangedEvent;
+  "workstreams-changed": WorkstreamsChangedEvent;
   "session-queue-persistence-changed": SessionQueuePersistenceChangedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
   // Connection events
@@ -476,6 +478,7 @@ class ActivityBus {
       "process-state-changed",
       "provider-runtime-status-changed",
       "project-queue-changed",
+      "workstreams-changed",
       "session-queue-persistence-changed",
       "session-metadata-changed",
       "browser-tab-connected",

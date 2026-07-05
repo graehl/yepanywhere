@@ -30,6 +30,7 @@ export type WorkstreamsChangedReason =
   | "created"
   | "updated"
   | "deleted"
+  | "operation-failed"
   | "replaced";
 
 export interface WorkstreamsChangedEvent {
@@ -42,6 +43,24 @@ export interface WorkstreamsChangedEvent {
 
 export interface ProjectWorkstreamsResponse {
   projectId: UrlProjectId;
+  workstreams: Workstream[];
+}
+
+export interface CreateProjectWorkstreamRequest {
+  label: string;
+}
+
+export interface WorkstreamCheckoutPreviewResponse {
+  projectId: UrlProjectId;
+  label: string;
+  slug: string;
+  checkoutRootPath: string;
+  checkoutPath: string;
+}
+
+export interface CreateProjectWorkstreamResponse {
+  projectId: UrlProjectId;
+  workstream: StoredWorkstream;
   workstreams: Workstream[];
 }
 

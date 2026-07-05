@@ -6,6 +6,8 @@ import type {
   CacheMissBillingSettings,
   ClientDefaults,
   ConnectionsResponse,
+  CreateProjectWorkstreamRequest,
+  CreateProjectWorkstreamResponse,
   CreateProjectQueueItemRequest,
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
@@ -28,6 +30,7 @@ import type {
   ProjectQueuePromoteNowResponse,
   ProjectQueueResponse,
   ProjectWorkstreamsResponse,
+  WorkstreamCheckoutPreviewResponse,
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
   ProviderInfo,
@@ -583,6 +586,25 @@ export const api = {
   getProjectWorkstreams: (projectId: string) =>
     fetchJSON<ProjectWorkstreamsResponse>(
       `/projects/${projectId}/workstreams`,
+    ),
+
+  getProjectWorkstreamCheckoutPreview: (projectId: string, label: string) => {
+    const params = new URLSearchParams({ label });
+    return fetchJSON<WorkstreamCheckoutPreviewResponse>(
+      `/projects/${projectId}/workstreams/checkout-preview?${params}`,
+    );
+  },
+
+  createProjectWorkstream: (
+    projectId: string,
+    request: CreateProjectWorkstreamRequest,
+  ) =>
+    fetchJSON<CreateProjectWorkstreamResponse>(
+      `/projects/${projectId}/workstreams`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
     ),
 
   getProjectQueueItems: () =>

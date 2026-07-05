@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import {
   type StoredWorkstream,
   type WorkstreamId,
@@ -9,15 +11,38 @@ import {
   type UrlProjectId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkstreamCheckoutError } from "../../src/services/WorkstreamService.js";
 import {
+  WorkstreamOperationInProgressError,
   WorkstreamService,
   WorkstreamValidationError,
 } from "../../src/services/WorkstreamService.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
+const execFileAsync = promisify(execFile);
 const FILE_NAME = "workstreams.json";
 const NOW = "2026-07-04T10:00:00.000Z";
 const PROJECT_PATH = "/tmp/workstreams-project";
+
+async function runGit(args: string[]): Promise<void> {
+  await execFileAsync("git", args, {
+    env: {
+      ...process.env,
+      GCM_INTERACTIVE: "Never",
+      GIT_TERMINAL_PROMPT: "0",
+    },
+  });
+}
+
+async function initGitProject(projectPath: string): Promise<void> {
+  await fs.mkdir(projectPath, { recursive: true });
+  try {
+    await runGit(["init", "-b", "main", projectPath]);
+  } catch {
+    await runGit(["init", projectPath]);
+    await runGit(["-C", projectPath, "checkout", "-b", "main"]);
+  }
+}
 
 describe("WorkstreamService", () => {
   let testDir: string;
@@ -188,6 +213,126 @@ describe("WorkstreamService", () => {
     expect(created.id).toMatch(
       /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/,
     );
+  });
+
+  it("previews checkout destinations under the data directory", async () => {
+    const projectPath = path.join(testDir, "repo");
+    await initGitProject(projectPath);
+    const service = await createService();
+
+    const preview = await service.previewCheckoutWorkstream({
+      projectId,
+      projectPath,
+      projectName: "Example Repo",
+      label: "Feature Lane",
+    });
+
+    expect(preview).toMatchObject({
+      label: "Feature Lane",
+      slug: "feature-lane",
+    });
+    expect(preview.checkoutRootPath).toBe(
+      path.join(
+        testDir,
+        "checkouts",
+        `example-repo-${projectId.slice(0, 10)}`,
+        "feature-lane",
+      ),
+    );
+    expect(preview.checkoutPath).toBe(preview.checkoutRootPath);
+  });
+
+  it("creates a real checkout lane and persists metadata after setup", async () => {
+    const projectPath = path.join(testDir, "repo");
+    await initGitProject(projectPath);
+    await fs.writeFile(
+      path.join(projectPath, ".worktreeinclude"),
+      ".env.local\ncache/config.json\n",
+    );
+    await fs.writeFile(path.join(projectPath, ".env.local"), "TOKEN=local\n");
+    await fs.mkdir(path.join(projectPath, "cache"), { recursive: true });
+    await fs.writeFile(
+      path.join(projectPath, "cache/config.json"),
+      "{\"ok\":true}\n",
+    );
+    const service = await createService();
+
+    const { workstream, destination } = await service.createCheckoutWorkstream({
+      projectId,
+      projectPath,
+      projectName: "Example Repo",
+      label: "Feature Lane",
+    });
+
+    await expect(
+      fs.access(path.join(destination.checkoutRootPath, ".git")),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.readFile(path.join(destination.checkoutRootPath, ".env.local"), "utf-8"),
+    ).resolves.toBe("TOKEN=local\n");
+    await expect(
+      fs.readFile(
+        path.join(destination.checkoutRootPath, "cache/config.json"),
+        "utf-8",
+      ),
+    ).resolves.toBe("{\"ok\":true}\n");
+    expect(workstream).toMatchObject({
+      projectId,
+      label: "Feature Lane",
+      kind: "checkout",
+      path: destination.checkoutPath,
+      branch: "main",
+      baseBranch: "main",
+      managedByYa: true,
+      queuePaused: false,
+      status: "active",
+    });
+    expect(service.listStoredProject(projectId)).toHaveLength(1);
+  });
+
+  it("rejects checkout creation for non-git projects", async () => {
+    const projectPath = path.join(testDir, "not-git");
+    await fs.mkdir(projectPath, { recursive: true });
+    const service = await createService();
+
+    await expect(
+      service.createCheckoutWorkstream({
+        projectId,
+        projectPath,
+        label: "Feature Lane",
+      }),
+    ).rejects.toMatchObject({
+      code: "not_git_repository",
+      status: 400,
+    } satisfies Partial<WorkstreamCheckoutError>);
+  });
+
+  it("allows only one checkout operation per project at a time", async () => {
+    const projectPath = path.join(testDir, "repo");
+    await initGitProject(projectPath);
+    const service = await createService();
+
+    const results = await Promise.allSettled([
+      service.createCheckoutWorkstream({
+        projectId,
+        projectPath,
+        label: "First Lane",
+      }),
+      service.createCheckoutWorkstream({
+        projectId,
+        projectPath,
+        label: "Second Lane",
+      }),
+    ]);
+
+    expect(results.some((result) => result.status === "fulfilled")).toBe(true);
+    expect(
+      results.some(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason instanceof WorkstreamOperationInProgressError,
+      ),
+    ).toBe(true);
   });
 
   it("serializes concurrent upserts and preserves insertion order", async () => {

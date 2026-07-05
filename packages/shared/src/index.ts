@@ -236,9 +236,12 @@ export {
 } from "./project-queue.js";
 
 export type {
+  CreateProjectWorkstreamRequest,
+  CreateProjectWorkstreamResponse,
   ProjectWorkstreamsResponse,
   StoredWorkstream,
   Workstream,
+  WorkstreamCheckoutPreviewResponse,
   WorkstreamId,
   WorkstreamKind,
   WorkstreamStatus,

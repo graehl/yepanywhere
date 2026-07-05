@@ -64,6 +64,7 @@ export class WebSocketConnection implements Connection {
   private connectionPromise: Promise<void> | null = null;
   private protocol: RelayProtocol;
   private options: WebSocketConnectionOptions;
+  private externalOnPong: ((id: string) => void) | undefined;
 
   constructor(options: WebSocketConnectionOptions = {}) {
     this.options = options;
@@ -81,8 +82,27 @@ export class WebSocketConnection implements Connection {
       },
       {
         logPrefix: "[WebSocketConnection]",
-        onPong: (id) => this.options.connectionManager?.receivePong(id),
       },
+    );
+    this.setConnectionManager(options.connectionManager ?? null);
+  }
+
+  setConnectionManager(manager: ConnectionManager | null): void {
+    this.options.connectionManager = manager ?? undefined;
+    this.updateProtocolPongHandler();
+    this.protocol.setOnInboundEvent(
+      manager
+        ? (event) => {
+            if (event.eventType === "heartbeat") {
+              manager.recordHeartbeat();
+            } else {
+              manager.recordEvent();
+            }
+          }
+        : undefined,
+    );
+    this.protocol.setBeginCriticalOperation(
+      manager ? (label) => manager.beginCriticalOperation(label) : undefined,
     );
   }
 
@@ -155,6 +175,7 @@ export class WebSocketConnection implements Connection {
         clearTimeout(timeout);
         console.log("[WebSocketConnection] Connected");
         this.ws = ws;
+        this.options.connectionManager?.markConnected();
         this.options.onSocketStateChange?.("connected");
         resolve();
       };
@@ -271,7 +292,21 @@ export class WebSocketConnection implements Connection {
    * Register a callback for pong responses.
    */
   setOnPong(cb: (id: string) => void): void {
-    this.protocol.setOnPong(cb);
+    this.externalOnPong = cb;
+    this.updateProtocolPongHandler();
+  }
+
+  private updateProtocolPongHandler(): void {
+    const manager = this.options.connectionManager;
+    const externalOnPong = this.externalOnPong;
+    this.protocol.setOnPong(
+      manager || externalOnPong
+        ? (id) => {
+            manager?.receivePong(id);
+            externalOnPong?.(id);
+          }
+        : undefined,
+    );
   }
 
   /**

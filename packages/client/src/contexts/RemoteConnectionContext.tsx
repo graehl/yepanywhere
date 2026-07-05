@@ -35,6 +35,7 @@ import {
   type StoredSession,
 } from "../lib/connection/SecureConnection";
 import type { Connection } from "../lib/connection/types";
+import { SecureSourceTransport } from "../lib/transport";
 import {
   clearRelayHostSession,
   getHostByDirectWsUrl,
@@ -302,6 +303,23 @@ export function RemoteConnectionProvider({ children }: Props) {
   const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
   // Track intentional disconnect (to prevent auto-redirect back to host after Switch Host)
   const [isIntentionalDisconnect, setIsIntentionalDisconnect] = useState(false);
+  const secureTransportRef = useRef<SecureSourceTransport | null>(null);
+  if (!secureTransportRef.current) {
+    secureTransportRef.current = new SecureSourceTransport();
+  }
+
+  const publishConnection = useCallback((conn: SecureConnection) => {
+    // T3 dual-write bridge: keep the legacy global connection for current
+    // consumers while also attaching the stable source transport slot.
+    setGlobalConnection(conn);
+    secureTransportRef.current?.attach(conn);
+    setConnection(conn);
+  }, []);
+
+  const detachTransport = useCallback(() => {
+    secureTransportRef.current?.detach();
+    setGlobalConnection(null);
+  }, []);
 
   // Keep stored credentials in ref for updates during the component lifecycle
   const storedRef = useRef(initialStored);
@@ -375,8 +393,7 @@ export function RemoteConnectionProvider({ children }: Props) {
 
         // Set global connection BEFORE setConnection to avoid race condition
         // where children render and try to use fetchJSON before globalConnection is set
-        setGlobalConnection(conn);
-        setConnection(conn);
+        publishConnection(conn);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Connection failed";
@@ -387,7 +404,12 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished, handleDisconnect, handleAuthenticated],
+    [
+      handleSessionEstablished,
+      handleDisconnect,
+      handleAuthenticated,
+      publishConnection,
+    ],
   );
 
   const resumeSession = useCallback(
@@ -418,8 +440,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         await conn.fetch("/auth/status");
 
         // Set global connection BEFORE setConnection to avoid race condition
-        setGlobalConnection(conn);
-        setConnection(conn);
+        publishConnection(conn);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Session resume failed";
@@ -430,7 +451,12 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished, handleDisconnect, handleAuthenticated],
+    [
+      handleSessionEstablished,
+      handleDisconnect,
+      handleAuthenticated,
+      publishConnection,
+    ],
   );
 
   const connectViaRelay = useCallback(
@@ -571,8 +597,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         await conn.fetch("/auth/status");
 
         // Set global connection
-        setGlobalConnection(conn);
-        setConnection(conn);
+        publishConnection(conn);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Connection failed";
@@ -583,7 +608,12 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished, handleDisconnect, handleAuthenticated],
+    [
+      handleSessionEstablished,
+      handleDisconnect,
+      handleAuthenticated,
+      publishConnection,
+    ],
   );
 
   const disconnect = useCallback(
@@ -594,7 +624,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       flushSync(() => {
         if (connection) {
           connection.close();
-          setGlobalConnection(null);
+          detachTransport();
           setConnection(null);
         }
         clearStoredCredentials();
@@ -607,7 +637,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsIntentionalDisconnect(isIntentional);
       });
     },
-    [connection, setCurrentHostId],
+    [connection, detachTransport, setCurrentHostId],
   );
 
   const clearAutoResumeError = useCallback(() => {
@@ -763,8 +793,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           setCurrentHostId(host?.id ?? null);
         }
         // Set global connection BEFORE setConnection to avoid race condition
-        setGlobalConnection(conn);
-        setConnection(conn);
+        publishConnection(conn);
       } catch (err) {
         if (currentStored.mode !== "relay") {
           setCurrentHostId(null);
@@ -811,6 +840,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     handleSessionEstablished,
     handleDisconnect,
     handleAuthenticated,
+    publishConnection,
     setCurrentHostId,
   ]);
 
@@ -826,6 +856,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           console.log(
             "[RemoteConnection] ConnectionManager connected, restoring React state",
           );
+          secureTransportRef.current?.attach(globalConn as SecureConnection);
           setConnection(globalConn as SecureConnection);
           setError(null);
           setAutoResumeError(null);
@@ -875,10 +906,12 @@ export function RemoteConnectionProvider({ children }: Props) {
     return () => {
       if (connectionRef.current) {
         connectionRef.current.close();
-        setGlobalConnection(null);
+        detachTransport();
       }
+      secureTransportRef.current?.dispose();
+      secureTransportRef.current = null;
     };
-  }, []);
+  }, [detachTransport]);
 
   const currentRelayUsername = useMemo(
     () =>

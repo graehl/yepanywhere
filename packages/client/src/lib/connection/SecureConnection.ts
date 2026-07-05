@@ -43,6 +43,7 @@ import {
 } from "@yep-anywhere/shared";
 import { getRelayDebugEnabled } from "../../hooks/useDeveloperMode";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
+import type { ConnectionManager } from "./ConnectionManager";
 import { RelayProtocol } from "./RelayProtocol";
 import {
   decrypt,
@@ -160,6 +161,8 @@ export class SecureConnection implements Connection {
   private pendingResumeClientNonce: string | null = null;
   private pendingResumeServerNonce: string | null = null;
   private minimumResumeProtocolVersion: number | null = null;
+  private connectionManager: ConnectionManager | null = null;
+  private externalOnPong: ((id: string) => void) | undefined;
 
   // Credentials for authentication
   private username: string;
@@ -230,6 +233,25 @@ export class SecureConnection implements Connection {
         debugEnabled: () => getRelayDebugEnabled(),
         logPrefix: "[SecureConnection]",
       },
+    );
+  }
+
+  setConnectionManager(manager: ConnectionManager | null): void {
+    this.connectionManager = manager;
+    this.updateProtocolPongHandler();
+    this.protocol.setOnInboundEvent(
+      manager
+        ? (event) => {
+            if (event.eventType === "heartbeat") {
+              manager.recordHeartbeat();
+            } else {
+              manager.recordEvent();
+            }
+          }
+        : undefined,
+    );
+    this.protocol.setBeginCriticalOperation(
+      manager ? (label) => manager.beginCriticalOperation(label) : undefined,
     );
   }
 
@@ -729,6 +751,7 @@ export class SecureConnection implements Connection {
 
         this.onSessionEstablished?.(this.storedSession);
         this.sendCapabilities();
+        this.connectionManager?.markConnected();
         this.onAuthenticated?.();
         resolve();
         return;
@@ -827,6 +850,7 @@ export class SecureConnection implements Connection {
       authRejectHandler?.(closeError);
     } else {
       this.connectionState = "disconnected";
+      this.connectionManager?.handleClose(closeError);
       this.onDisconnect?.(closeError);
     }
 
@@ -1306,6 +1330,7 @@ export class SecureConnection implements Connection {
       this.onSessionEstablished?.(this.storedSession);
 
       this.sendCapabilities();
+      this.connectionManager?.markConnected();
       this.onAuthenticated?.();
 
       console.log("[SecureConnection] Authentication complete");
@@ -1568,7 +1593,21 @@ export class SecureConnection implements Connection {
    * Register a callback for pong responses.
    */
   setOnPong(cb: (id: string) => void): void {
-    this.protocol.setOnPong(cb);
+    this.externalOnPong = cb;
+    this.updateProtocolPongHandler();
+  }
+
+  private updateProtocolPongHandler(): void {
+    const manager = this.connectionManager;
+    const externalOnPong = this.externalOnPong;
+    this.protocol.setOnPong(
+      manager || externalOnPong
+        ? (id) => {
+            manager?.receivePong(id);
+            externalOnPong?.(id);
+          }
+        : undefined,
+    );
   }
 
   sendMessage(msg: RemoteClientMessage): void {

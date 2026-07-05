@@ -29,6 +29,8 @@ import type {
 } from "./types";
 import { SubscriptionError } from "./types";
 
+export type BeginCriticalOperation = (label?: string) => () => void;
+
 /**
  * Transport callbacks injected by the owning connection class.
  * These abstract the difference between plain WS and encrypted WS.
@@ -51,6 +53,8 @@ export interface RelayProtocolOptions {
   debugEnabled?: () => boolean;
   logPrefix?: string;
   onPong?: (id: string) => void;
+  onInboundEvent?: (event: RelayEvent) => void;
+  beginCriticalOperation?: BeginCriticalOperation;
 }
 
 function generateId(): string {
@@ -174,8 +178,32 @@ export class RelayProtocol {
   /**
    * Set the callback for pong responses.
    */
-  setOnPong(cb: (id: string) => void): void {
+  setOnPong(cb: ((id: string) => void) | undefined): void {
     this.options.onPong = cb;
+  }
+
+  /**
+   * Set the callback for inbound relay events.
+   *
+   * Used by source-bound transports to feed their owning ConnectionManager
+   * without relying on consumer stream handlers. Existing direct users omit
+   * this hook and keep today's handler-owned health feeding.
+   */
+  setOnInboundEvent(cb: ((event: RelayEvent) => void) | undefined): void {
+    this.options.onInboundEvent = cb;
+  }
+
+  /**
+   * Override the critical-operation guard used by multiplex uploads.
+   *
+   * Defaults to the legacy singleton ConnectionManager so existing
+   * WebSocketConnection/SecureConnection users are unchanged until the source
+   * transport migration is complete.
+   */
+  setBeginCriticalOperation(
+    cb: BeginCriticalOperation | undefined,
+  ): void {
+    this.options.beginCriticalOperation = cb;
   }
 
   /**
@@ -250,6 +278,8 @@ export class RelayProtocol {
   }
 
   private handleEvent(event: RelayEvent): void {
+    this.options.onInboundEvent?.(event);
+
     const handlers = this.subscriptions.get(event.subscriptionId);
     const logEventDebug = this.debugEnabled || isActivityDebugEnabled();
 
@@ -717,8 +747,10 @@ export class RelayProtocol {
     file: File,
     options?: UploadOptions,
   ): Promise<UploadedFile> {
-    const endCriticalOperation =
-      connectionManager.beginCriticalOperation("upload");
+    const endCriticalOperation = (
+      this.options.beginCriticalOperation ??
+      ((label) => connectionManager.beginCriticalOperation(label))
+    )("upload");
     try {
       await this.transport.ensureConnected();
 
@@ -803,8 +835,10 @@ export class RelayProtocol {
     file: File,
     options?: UploadOptions & { batchId?: string },
   ): Promise<StagedAttachmentRef> {
-    const endCriticalOperation =
-      connectionManager.beginCriticalOperation("upload");
+    const endCriticalOperation = (
+      this.options.beginCriticalOperation ??
+      ((label) => connectionManager.beginCriticalOperation(label))
+    )("upload");
     try {
       await this.transport.ensureConnected();
 

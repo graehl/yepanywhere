@@ -103,6 +103,26 @@ describe("ConnectionManager", () => {
       ]);
     });
 
+    it("passive start observes reconnecting without driving reconnect", async () => {
+      const { cm, reconnectFn, timers, stateChanges } = setup();
+      cm.start(reconnectFn, { driveReconnect: false });
+      stateChanges.length = 0;
+
+      cm.handleClose();
+      expect(cm.state).toBe("reconnecting");
+
+      timers.advance(1000);
+      await flush();
+
+      expect(reconnectFn).not.toHaveBeenCalled();
+      cm.markConnected();
+      expect(cm.state).toBe("connected");
+      expect(stateChanges).toEqual([
+        { state: "reconnecting", prev: "connected" },
+        { state: "connected", prev: "reconnecting" },
+      ]);
+    });
+
     it("connected → reconnecting → disconnected (max attempts)", async () => {
       const { cm, reconnectFn, timers, stateChanges, reconnectFailures } =
         setup({ maxAttempts: 3 });

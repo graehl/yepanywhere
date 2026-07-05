@@ -17,6 +17,7 @@ export {
   connectionManager,
   type ConnectionState,
   type ConnectionManagerConfig,
+  type ConnectionManagerStartOptions,
   type ReconnectFn,
   type SendPingFn,
   type TimerInterface,

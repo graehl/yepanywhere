@@ -27,6 +27,24 @@ export interface ConnectionManagerConfig {
 
 export type ReconnectFn = () => Promise<void>;
 
+export interface ConnectionManagerStartOptions {
+  /**
+   * Optional function to send a keepalive ping with a given ID. When provided,
+   * visibility changes trigger a ping/pong check instead of blindly forcing
+   * reconnect.
+   */
+  sendPing?: SendPingFn;
+  /** Optional label for log messages (e.g., "ws", "relay"). */
+  label?: string;
+  /**
+   * Whether this manager is allowed to execute reconnectFn from background
+   * health signals. SourceTransport facades created before T6/T7 start their
+   * managers in passive mode so they can observe the same socket as the legacy
+   * singleton without becoming a second reconnect driver.
+   */
+  driveReconnect?: boolean;
+}
+
 /**
  * Injectable timer interface for deterministic testing.
  */
@@ -107,6 +125,7 @@ export class ConnectionManager {
   private _reconnectFn: ReconnectFn | null = null;
   private _sendPing: SendPingFn | null = null;
   private _label: string | null = null;
+  private _driveReconnect = true;
   private _started = false;
 
   // Stale detection
@@ -186,11 +205,12 @@ export class ConnectionManager {
    */
   start(
     reconnectFn: ReconnectFn,
-    options?: { sendPing?: SendPingFn; label?: string },
+    options?: ConnectionManagerStartOptions,
   ): void {
     this._reconnectFn = reconnectFn;
     this._sendPing = options?.sendPing ?? null;
     this._label = options?.label ?? null;
+    this._driveReconnect = options?.driveReconnect ?? true;
     if (this._started) return;
     this._started = true;
     this._setState("connected");
@@ -206,6 +226,7 @@ export class ConnectionManager {
     this._reconnectFn = null;
     this._sendPing = null;
     this._label = null;
+    this._driveReconnect = true;
     this._stopStaleCheck();
     this._stopVisibilityListener();
     this._cancelBackoff();
@@ -389,6 +410,11 @@ export class ConnectionManager {
 
   private _scheduleReconnect(): void {
     if (!this._started || !this._reconnectFn) return;
+
+    if (!this._driveReconnect) {
+      this._log("passive manager observing reconnect state");
+      return;
+    }
 
     if (this._reconnectAttempts >= this.config.maxAttempts) {
       this._setState("disconnected");

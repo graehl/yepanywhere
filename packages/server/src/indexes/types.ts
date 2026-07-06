@@ -61,6 +61,25 @@ export interface ISessionIndexService {
   ): Promise<SessionSummary | null>;
 
   /**
+   * Get one session summary only when a fresh cached row already exists.
+   *
+   * This validates the cached file mtime/size but must not call the provider
+   * reader to parse on miss. It is intended for lightweight display paths that
+   * can fall back to a head read instead of triggering full summary parsing.
+   *
+   * @param sessionDir - Directory containing session files
+   * @param projectId - The project ID
+   * @param sessionId - The session ID
+   * @param reader - Session reader for provider-specific file path/index scope
+   */
+  getCachedSessionSummary(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+    reader: ISessionReader,
+  ): Promise<SessionSummary | null>;
+
+  /**
    * Get just the title for a single session, using cache when possible.
    * More efficient than getSessionsWithCache when you only need one session.
    *

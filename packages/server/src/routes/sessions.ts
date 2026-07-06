@@ -33,6 +33,7 @@ import { mkdir } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { Hono } from "hono";
 import { augmentTextBlocks } from "../augments/markdown-augments.js";
+import type { ISessionIndexService } from "../indexes/types.js";
 import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
@@ -187,6 +188,7 @@ export interface SessionsDeps {
   readerFactory: (project: Project) => ISessionReader;
   externalTracker?: ExternalSessionTracker;
   notificationService?: NotificationService;
+  sessionIndexService?: ISessionIndexService;
   sessionMetadataService?: SessionMetadataService;
   eventBus?: EventBus;
   codexScanner?: CodexSessionScanner;
@@ -220,6 +222,7 @@ export interface SessionsDeps {
 function providerResolutionDeps(deps: SessionsDeps): ProviderResolutionDeps {
   return {
     readerFactory: deps.readerFactory,
+    sessionIndexService: deps.sessionIndexService,
     codexSessionsDir: deps.codexSessionsDir,
     codexReaderFactory: deps.codexReaderFactory,
     geminiSessionsDir: deps.geminiSessionsDir,

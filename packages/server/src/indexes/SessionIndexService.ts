@@ -2092,6 +2092,52 @@ export class SessionIndexService implements ISessionIndexService {
   }
 
   /**
+   * Get one session summary only if the existing index row is fresh.
+   *
+   * Unlike getSessionSummaryWithCache, this method never parses on a cache miss.
+   * It is for lightweight routes that can fall back to provider head metadata
+   * without creating full-summary parse churn.
+   */
+  async getCachedSessionSummary(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+    reader: ISessionReader,
+  ): Promise<SessionSummary | null> {
+    const scopeKey = this.getScopeKey(sessionDir, reader);
+    const index = await this.loadIndex(sessionDir, projectId, reader);
+    const cached = index.sessions[sessionId];
+    if (!cached || cached.isEmpty) {
+      return null;
+    }
+
+    const dirtySessions = this.dirtySessionsByDir.get(scopeKey);
+    if (dirtySessions?.has(sessionId)) {
+      return null;
+    }
+
+    const filePath =
+      (await reader.getSessionFilePath?.(sessionId)) ??
+      path.join(sessionDir, `${sessionId}.jsonl`);
+
+    let stats: Stats;
+    try {
+      stats = await fs.stat(filePath);
+    } catch {
+      return null;
+    }
+
+    if (
+      cached.fileMtime !== stats.mtimeMs ||
+      cached.indexedBytes !== stats.size
+    ) {
+      return null;
+    }
+
+    return this.toSessionSummary(sessionId, cached, projectId);
+  }
+
+  /**
    * Get just the title for a single session, using cache when possible.
    * More efficient than getSessionsWithCache when you only need one session.
    */

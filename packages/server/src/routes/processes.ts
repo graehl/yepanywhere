@@ -49,24 +49,32 @@ async function enrichProcessInfo(
     const reader = sessionSource?.reader ?? deps.readerFactory(project);
     const sessionDir = sessionSource?.sessionDir ?? project.sessionDir;
 
-    // Always get the session summary for model and contextUsage
-    const summary = await reader.getSessionSummary(
-      process.sessionId,
-      process.projectId as UrlProjectId,
-    );
+    // Process rows need model/contextUsage when available, so ask the summary
+    // index for the full cached row before falling back to a direct reader
+    // parse. This avoids re-scanning large provider transcripts on every
+    // process-list refresh when the file version is unchanged.
+    const summary =
+      (deps.sessionIndexService
+        ? await deps.sessionIndexService.getSessionSummaryWithCache(
+            sessionDir,
+            process.projectId as UrlProjectId,
+            process.sessionId,
+            reader,
+          )
+        : null) ??
+      (await reader.getSessionSummary(
+        process.sessionId,
+        process.projectId as UrlProjectId,
+      ));
 
-    // Prefer cached titles, but fall back to the live summary when the cache
-    // misses. This matters for providers like Codex whose session files are
-    // not stored in project.sessionDir.
     let title = summary?.title ?? null;
-    if (deps.sessionIndexService) {
-      const cachedTitle = await deps.sessionIndexService.getSessionTitle(
+    if (!title && deps.sessionIndexService) {
+      title = await deps.sessionIndexService.getSessionTitle(
         sessionDir,
         process.projectId as UrlProjectId,
         process.sessionId,
         reader,
       );
-      title = cachedTitle ?? title;
     }
 
     // Get custom title and provider from persisted metadata if available.

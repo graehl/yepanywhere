@@ -1125,6 +1125,7 @@ export function createApp(options: AppOptions): AppResult {
       readerFactory,
       externalTracker,
       notificationService: options.notificationService,
+      sessionIndexService: options.sessionIndexService,
       sessionMetadataService: options.sessionMetadataService,
       eventBus: options.eventBus,
       codexScanner,

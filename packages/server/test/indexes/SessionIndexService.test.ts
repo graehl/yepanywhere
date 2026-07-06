@@ -138,6 +138,42 @@ describe("SessionIndexService", () => {
       expect(second?.title).toBe("Hello world");
       expect(getSessionSummary).toHaveBeenCalledTimes(1);
     });
+
+    it("returns fresh cached summaries without parsing", async () => {
+      await createSession("session-1", "Hello world");
+      const getSessionSummary = vi.spyOn(reader, "getSessionSummary");
+
+      await service.getSessionSummaryWithCache(
+        sessionDir,
+        projectId,
+        "session-1",
+        reader,
+      );
+      expect(getSessionSummary).toHaveBeenCalledTimes(1);
+
+      const cached = await service.getCachedSessionSummary(
+        sessionDir,
+        projectId,
+        "session-1",
+        reader,
+      );
+
+      expect(cached?.id).toBe("session-1");
+      expect(cached?.title).toBe("Hello world");
+      expect(getSessionSummary).toHaveBeenCalledTimes(1);
+
+      await createSession("session-1", "Changed content");
+
+      const changed = await service.getCachedSessionSummary(
+        sessionDir,
+        projectId,
+        "session-1",
+        reader,
+      );
+
+      expect(changed).toBeNull();
+      expect(getSessionSummary).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("cache miss", () => {

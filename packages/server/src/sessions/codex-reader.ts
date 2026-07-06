@@ -89,6 +89,7 @@ const CODEX_SCAN_CACHE_TTL_MS = 5000;
 const DEFAULT_SLOW_LOG_THRESHOLD_MS = 250;
 const CODEX_HEAD_SUMMARY_MAX_LINES = 200;
 const CODEX_HEAD_SUMMARY_MAX_BYTES = 1024 * 1024;
+const CODEX_FULL_SUMMARY_CACHE_MAX_ENTRIES = 256;
 const LOG_ENTRY_READS = process.env.CODEX_READER_LOG_PARSE === "true";
 
 function isCompressedCodexSessionFile(filePath: string): boolean {
@@ -106,6 +107,49 @@ interface CodexSharedScanCacheEntry {
 }
 
 const codexSharedScanCache = new Map<string, CodexSharedScanCacheEntry>();
+
+interface CodexFullSummaryCacheEntry {
+  promise: Promise<SessionSummary | null>;
+  lastAccessedAt: number;
+}
+
+const codexFullSummaryCache = new Map<string, CodexFullSummaryCacheEntry>();
+
+function getCodexFullSummaryCacheKey(
+  filePath: string,
+  stats: Awaited<ReturnType<typeof stat>>,
+): string {
+  return `${filePath}\0${Number(stats.mtimeMs)}\0${Number(stats.size)}`;
+}
+
+function cloneSessionSummary(
+  summary: SessionSummary | null,
+): SessionSummary | null {
+  if (!summary) return null;
+  return {
+    ...summary,
+    ownership: { ...summary.ownership },
+    ...(summary.contextUsage
+      ? { contextUsage: { ...summary.contextUsage } }
+      : {}),
+  };
+}
+
+function trimCodexFullSummaryCache(): void {
+  if (codexFullSummaryCache.size <= CODEX_FULL_SUMMARY_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entriesToDelete = Array.from(codexFullSummaryCache.entries())
+    .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt)
+    .slice(
+      0,
+      codexFullSummaryCache.size - CODEX_FULL_SUMMARY_CACHE_MAX_ENTRIES,
+    );
+  for (const [cacheKey] of entriesToDelete) {
+    codexFullSummaryCache.delete(cacheKey);
+  }
+}
 
 export type CodexSessionReaderScanCacheStatus = "hit" | "in-flight" | "miss";
 
@@ -507,35 +551,57 @@ export class CodexSessionReader implements ISessionReader {
         options?.readMode === "head" ||
         this.summaryParserWorkerMode === "off"
       ) {
-        return await inProcessParser();
+        if (options?.readMode === "head") {
+          return await inProcessParser();
+        }
+
+        const stats = await stat(sessionFile.filePath);
+        return await this.getCoalescedFullSessionSummary(
+          sessionFile.filePath,
+          stats,
+          () =>
+            this.buildSessionSummaryFromKnownStats(
+              sessionId,
+              projectId,
+              sessionFile.filePath,
+              stats,
+              options,
+            ),
+        );
       }
 
       const stats = await stat(sessionFile.filePath);
-      const request: SummaryParserWorkerRequest = {
-        type: "parse",
-        requestId: randomUUID(),
-        provider: "codex",
-        filePath: sessionFile.filePath,
-        sessionId,
-        projectId,
-        stats: {
-          size: Number(stats.size),
-          mtimeMs: Number(stats.mtimeMs),
-          mtimeIso: stats.mtime.toISOString(),
+      return await this.getCoalescedFullSessionSummary(
+        sessionFile.filePath,
+        stats,
+        async () => {
+          const request: SummaryParserWorkerRequest = {
+            type: "parse",
+            requestId: randomUUID(),
+            provider: "codex",
+            filePath: sessionFile.filePath,
+            sessionId,
+            projectId,
+            stats: {
+              size: Number(stats.size),
+              mtimeMs: Number(stats.mtimeMs),
+              mtimeIso: stats.mtime.toISOString(),
+            },
+            sourceHints: {
+              codex: {
+                sessionsDir: this.sessionsDir,
+                ...(this.projectPath ? { projectPath: this.projectPath } : {}),
+                ...(this.dataDir ? { dataDir: this.dataDir } : {}),
+              },
+            },
+          };
+          const result = await this.getSummaryParserClient().parse(
+            request,
+            inProcessParser,
+          );
+          return result.summary;
         },
-        sourceHints: {
-          codex: {
-            sessionsDir: this.sessionsDir,
-            ...(this.projectPath ? { projectPath: this.projectPath } : {}),
-            ...(this.dataDir ? { dataDir: this.dataDir } : {}),
-          },
-        },
-      };
-      const result = await this.getSummaryParserClient().parse(
-        request,
-        inProcessParser,
       );
-      return result.summary;
     } catch {
       return null;
     }
@@ -1062,6 +1128,22 @@ export class CodexSessionReader implements ISessionReader {
     options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null> {
     const stats = await stat(filePath);
+    return this.buildSessionSummaryFromKnownStats(
+      sessionId,
+      projectId,
+      filePath,
+      stats,
+      options,
+    );
+  }
+
+  private async buildSessionSummaryFromKnownStats(
+    sessionId: string,
+    projectId: UrlProjectId,
+    filePath: string,
+    stats: Awaited<ReturnType<typeof stat>>,
+    options?: GetSessionSummaryOptions,
+  ): Promise<SessionSummary | null> {
     const read = await this.readSummaryStream(
       sessionId,
       filePath,
@@ -1074,6 +1156,35 @@ export class CodexSessionReader implements ISessionReader {
       stats,
       read.state,
     );
+  }
+
+  private async getCoalescedFullSessionSummary(
+    filePath: string,
+    stats: Awaited<ReturnType<typeof stat>>,
+    parse: () => Promise<SessionSummary | null>,
+  ): Promise<SessionSummary | null> {
+    const cacheKey = getCodexFullSummaryCacheKey(filePath, stats);
+    const cached = codexFullSummaryCache.get(cacheKey);
+    if (cached) {
+      cached.lastAccessedAt = Date.now();
+      return cloneSessionSummary(await cached.promise);
+    }
+
+    const promise = parse();
+    codexFullSummaryCache.set(cacheKey, {
+      promise,
+      lastAccessedAt: Date.now(),
+    });
+    trimCodexFullSummaryCache();
+
+    try {
+      return cloneSessionSummary(await promise);
+    } catch (error) {
+      if (codexFullSummaryCache.get(cacheKey)?.promise === promise) {
+        codexFullSummaryCache.delete(cacheKey);
+      }
+      throw error;
+    }
   }
 
   private getSummaryParserClient(): SummaryParserClient {

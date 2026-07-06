@@ -322,7 +322,7 @@ describe("Project Queue Routes", () => {
       targetTitle: "Target session title",
       targetFullTitle: "Full Target session title",
     });
-    expect(sessionIndexService.getSessionSummaryWithCache).toHaveBeenCalledWith(
+    expect(sessionIndexService.getCachedSessionSummary).toHaveBeenCalledWith(
       project.sessionDir,
       project.id,
       "session-1",
@@ -565,6 +565,7 @@ function makeSessionIndexService(
     initialize: vi.fn(async () => {}),
     getSessionsWithCache: vi.fn(async () => (summary ? [summary] : [])),
     getSessionSummaryWithCache: vi.fn(async () => summary),
+    getCachedSessionSummary: vi.fn(async () => summary),
     getSessionTitle: vi.fn(async () => summary?.title ?? null),
     invalidateSession: vi.fn(),
     clearCache: vi.fn(),

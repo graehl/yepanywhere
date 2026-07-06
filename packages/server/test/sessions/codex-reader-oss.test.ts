@@ -5,9 +5,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as zlib from "node:zlib";
 import type { UrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
+import type { SummaryParserClient } from "../../src/sessions/summary-parser-worker-client.js";
 import { isZstdJsonlSupported } from "../../src/utils/jsonl.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -485,6 +486,90 @@ describe("CodexSessionReader - OSS Support", () => {
       stoppedEarly: false,
       stopReason: "eof",
     });
+  });
+
+  it("coalesces full summary parses for the same Codex file version", async () => {
+    const sessionId = "coalesced-full-summary";
+    const filePath = join(testDir, `${sessionId}.jsonl`);
+    const now = new Date().toISOString();
+    await writeFile(
+      filePath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: {
+            type: "user_message",
+            message: "Coalesce this full parse",
+          },
+        }),
+      ].join("\n")}\n`,
+    );
+
+    let releaseParse!: () => void;
+    const parseGate = new Promise<void>((resolve) => {
+      releaseParse = resolve;
+    });
+    let firstParseStarted!: () => void;
+    const firstParseStart = new Promise<void>((resolve) => {
+      firstParseStarted = resolve;
+    });
+    const parse = vi.fn<SummaryParserClient["parse"]>(
+      async (request, inProcessParser) => {
+        firstParseStarted();
+        await parseGate;
+        const summary = await inProcessParser?.(request);
+        return {
+          summary: summary ?? null,
+          status: summary ? "ok" : "empty",
+          source: "worker",
+        };
+      },
+    );
+    const coalescingReader = new CodexSessionReader({
+      sessionsDir: testDir,
+      summaryParserWorkerMode: "required",
+      summaryParserClient: { parse } as unknown as SummaryParserClient,
+    });
+    const projectId = "test-project" as UrlProjectId;
+
+    const first = coalescingReader.getSessionSummary(sessionId, projectId);
+    await firstParseStart;
+    const second = coalescingReader.getSessionSummary(sessionId, projectId);
+    releaseParse();
+    const [firstSummary, secondSummary] = await Promise.all([first, second]);
+
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(firstSummary?.title).toBe("Coalesce this full parse");
+    expect(secondSummary?.title).toBe("Coalesce this full parse");
+    expect(firstSummary).not.toBe(secondSummary);
+
+    await coalescingReader.getSessionSummary(sessionId, projectId);
+    expect(parse).toHaveBeenCalledTimes(1);
+
+    await appendFile(
+      filePath,
+      `${JSON.stringify({
+        type: "event_msg",
+        timestamp: new Date().toISOString(),
+        payload: {
+          type: "agent_message",
+          message: "A new version should parse again.",
+        },
+      })}\n`,
+    );
+    await coalescingReader.getSessionSummary(sessionId, projectId);
+    expect(parse).toHaveBeenCalledTimes(2);
   });
 
   itIfNativeZstd("loads zstd-compressed rollout files", async () => {

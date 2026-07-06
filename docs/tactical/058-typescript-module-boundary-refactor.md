@@ -202,7 +202,8 @@ of their planned slices.
 | 3.1 | Done 2026-07-06 | `useSessionMessages.ts` adapter cutdown | Continue the existing session-detail data-layer migration by shaving reveal/progress/pagination bookkeeping into tested helpers. | Moved returned-detail reveal gating, store-backed return selection, empty transcript fallbacks, returned tool-use map construction, and exported agent-content types into `sessionDetail/returnedDetail.ts` / `sessionDetail/types.ts`; hook still owns async load/reveal timing and stream/scroll side effects. |
 | 3.2 | Done 2026-07-06 | `clientSummaryState.ts` source-store helpers | Split pure collection/reducer/query helpers only when touching summary-state behavior. | Moved shared summary collection model/defaults into `clientSummaryCollections.ts` and read-only query/selector helpers into `clientSummaryQueries.ts`; reducer/update paths stay in `clientSummaryState.ts`. |
 | 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Owned by `topics/source-transport.md` / doc 057; preserve parity rows and full transport tests. |
-| 3.4 | Not started | `api/client.ts` domain clients | Consider domain-specific API modules once source transport shims are stable. | Keep the exported `api` facade stable until callers migrate deliberately (the contract's one re-export exception). |
+| 3.4 | Done 2026-07-06 | `api/client.ts` Git domain client | Extract the first domain-specific API module once source transport shims are stable. | Moved Git endpoint wrappers into `gitClient.ts` and the current-source JSON fetch helper into `sourceApiFetch.ts`; kept the exported `api` facade and `fetchJSON` export stable. |
+| 3.5 | Not started | `api/client.ts` additional domain clients | Continue with standalone endpoint clusters only when they stay behind the stable facade. | Good candidates: server metadata/settings/auth or public-share clusters. Avoid session-heavy methods until a dedicated higher-risk slice. |
 
 Phase 3 scope note:
 - Further `useSessionMessages` / `SessionDetailCoordinator` orchestration is
@@ -273,6 +274,44 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 3.4 — api/client Git Domain Client (Landed 2026-07-06, this commit)
+
+Moved:
+- Current-source JSON fetch helper -> `sourceApiFetch.ts`.
+- Git status, untracked-folder, remote-check, integration-options, pull, push,
+  and diff endpoint wrappers -> `gitClient.ts`.
+
+Signature conversions:
+- None. `api/client.ts` still exports `fetchJSON`, and the exported `api`
+  facade still exposes the same `api.getGit*` / `api.pullGit` / `api.pushGit`
+  methods.
+
+Behavior changes:
+- None intended. Endpoint paths, HTTP methods, request bodies, current-source
+  transport routing, and public call sites were preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/api/client.test.ts src/hooks/__tests__/useGitStatus.test.tsx
+  src/pages/__tests__/GitStatusPage.test.tsx`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`;
+  `pnpm console:scan` unchanged from the current budget.
+- Tier 3 not run. This slice moved API wrappers behind the same facade and
+  added facade-path tests; it did not change route registration, transport
+  framing, or rendered UI behavior.
+- Residual output: focused API tests still print the existing
+  `ConnectionManager` transition lines, and the broad suite still prints
+  existing negative-path server/client transport logs. No new chatter was
+  attributed to this slice.
+
+Follow-ups recorded:
+- Row 3.5 tracks additional `api/client.ts` domain-client candidates. Session
+  methods remain explicitly higher risk because they mix resume, queue,
+  recap, provider-option, permission, and process-control behavior.
 
 ### Slice 3.2 — clientSummaryState Source-Store Queries (Landed 2026-07-06, this commit)
 

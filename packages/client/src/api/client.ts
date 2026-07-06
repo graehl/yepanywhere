@@ -14,14 +14,7 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
-  GitDiffResult,
-  GitIntegrationOptionsResult,
-  GitPullResult,
-  GitPushResult,
-  GitRemoteCheckResult,
   FreezePublicSessionLiveSharesResponse,
-  GitStatusInfo,
-  GitUntrackedFolderInfo,
   HelperTargetConfig,
   ModelInfo,
   NewSessionDefaults,
@@ -56,7 +49,6 @@ import type {
   UserMessageMetadata,
   WorkstreamId,
 } from "@yep-anywhere/shared";
-import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import type {
   AgentSession,
   InputRequest,
@@ -66,7 +58,9 @@ import type {
   SessionMetadata,
   SessionStatus,
 } from "../types";
+import { gitApi } from "./gitClient";
 import { getDesktopAuthToken } from "./plainFetch";
+import { fetchJSON } from "./sourceApiFetch";
 
 /** Pagination metadata for compact-boundary-based session loading */
 export interface PaginationInfo {
@@ -219,14 +213,7 @@ export interface AuthStatus {
   localhostOpen: boolean;
 }
 
-export async function fetchJSON<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
-  return getSourceRuntimeRegistry()
-    .getCurrentSourceRuntime()
-    .transport.fetch<T>(path, options);
-}
+export { fetchJSON } from "./sourceApiFetch";
 
 // Re-export upload functions
 export {
@@ -1414,47 +1401,7 @@ export const api = {
     }),
 
   // Git status API
-  getGitStatus: (projectId: string) =>
-    fetchJSON<GitStatusInfo>(`/projects/${projectId}/git`),
-
-  getGitUntrackedFolder: (projectId: string, path: string) =>
-    fetchJSON<GitUntrackedFolderInfo>(
-      `/projects/${projectId}/git/untracked-folder?path=${encodeURIComponent(path)}`,
-    ),
-
-  checkGitRemote: (projectId: string) =>
-    fetchJSON<GitRemoteCheckResult>(`/projects/${projectId}/git/check-remote`, {
-      method: "POST",
-    }),
-
-  getGitIntegrationOptions: (projectId: string) =>
-    fetchJSON<GitIntegrationOptionsResult>(
-      `/projects/${projectId}/git/integration-options`,
-    ),
-
-  pullGit: (projectId: string) =>
-    fetchJSON<GitPullResult>(`/projects/${projectId}/git/pull`, {
-      method: "POST",
-    }),
-
-  pushGit: (projectId: string) =>
-    fetchJSON<GitPushResult>(`/projects/${projectId}/git/push`, {
-      method: "POST",
-    }),
-
-  getGitDiff: (
-    projectId: string,
-    params: {
-      path: string;
-      staged: boolean;
-      status: string;
-      fullContext?: boolean;
-    },
-  ) =>
-    fetchJSON<GitDiffResult>(`/projects/${projectId}/git/diff`, {
-      method: "POST",
-      body: JSON.stringify(params),
-    }),
+  ...gitApi,
 
   // Inbox API
   getInbox: (projectId?: string) =>

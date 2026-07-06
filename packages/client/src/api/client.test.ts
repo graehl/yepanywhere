@@ -159,3 +159,79 @@ describe("fetchJSON source transport routing", () => {
     await assertion;
   });
 });
+
+describe("api git facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves git endpoint paths and methods", async () => {
+    await api.getGitStatus("project-a");
+    await api.getGitUntrackedFolder("project-a", "src/a b.ts");
+    await api.checkGitRemote("project-a");
+    await api.getGitIntegrationOptions("project-a");
+    await api.pullGit("project-a");
+    await api.pushGit("project-a");
+    await api.getGitDiff("project-a", {
+      path: "src/a.ts",
+      staged: false,
+      status: "modified",
+      fullContext: true,
+    });
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/projects/project-a/git", method: "GET", body: undefined },
+      {
+        url: "/api/projects/project-a/git/untracked-folder?path=src%2Fa%20b.ts",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/check-remote",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/integration-options",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/pull",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/push",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/git/diff",
+        method: "POST",
+        body: JSON.stringify({
+          path: "src/a.ts",
+          staged: false,
+          status: "modified",
+          fullContext: true,
+        }),
+      },
+    ]);
+  });
+});

@@ -124,3 +124,5 @@
   multiplex WebSocket, and secure/relay modes with visible channel status.
 - session-exit-navigation-latency - Large transcript routes must not delay
   first paint of Settings or other lightweight routes when leaving a session.
+- typescript-module-boundary-refactor - Tracking-first refactor series for
+  extracting large TypeScript/TSX files along existing module boundaries.

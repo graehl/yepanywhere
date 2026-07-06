@@ -55,6 +55,15 @@ export function getSlashCommandMenuParts(command: string): {
   };
 }
 
+export function getLeadingSlashQuery(text: string): string | null {
+  const match = text.match(/^\/([^\s/]*)$/);
+  return match ? (match[1] ?? "").toLowerCase() : null;
+}
+
+export function normalizeSlashCommandForMatch(command: string): string {
+  return command.replace(/^\/+/, "").toLowerCase();
+}
+
 export function parseComposerSlashCommand(
   text: string,
 ): ComposerSlashCommand | null {

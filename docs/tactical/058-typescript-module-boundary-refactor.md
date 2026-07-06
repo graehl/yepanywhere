@@ -185,7 +185,7 @@ and props stable.
 | 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
 | 2.6 | Done 2026-07-06 | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Moved React state, match projections, visible-group filtering, panel rendering, guide dispatch, and repeat timers into `useMessageListIsearch.tsx`; pure search selectors stay in `lib/sessionDetail/search.ts`. Tier 3 substitute with focused client E2E. |
 | 2.7 | Done 2026-07-06 | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Moved bottom-row overflow measurement helpers, layout signature, measured tier hook, and layout refs into `useMessageInputToolbarLayout.ts`; compact status/liveness display behavior remains in the toolbar. Tier 3 with client E2E. |
-| 2.8 | Not started | `MessageInput.tsx` textarea mechanics | Extract undoable text edits, resize, slash matching, and speech target helpers. | Preserve browser undo stack and focus behavior. |
+| 2.8 | Done 2026-07-06 | `MessageInput.tsx` textarea mechanics | Move undoable textarea edits, resize/collapsed cursor scrolling, slash suggestion matching, and speech target id helpers. | Browser undo/focus call sites stayed in `MessageInput.tsx`; focused helper/MessageInput tests and client E2E preserve behavior. |
 | 2.9 | Done 2026-07-06 | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Moved pure helpers only; i18n copy, workstream selector behavior, and staged upload/submission effects stayed in the form. Focused helper tests were added. |
 | 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; do not refactor around an unbounded preview path. |
 
@@ -261,6 +261,45 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.8 — MessageInput Textarea Mechanics (Landed 2026-07-06, this commit)
+
+Moved:
+- Undoable textarea clear/range replacement, inserted-text derivation,
+  expanded textarea resize, collapsed cursor scrolling, and draft line counting
+  -> `composerTextarea.ts`.
+- Leading slash suggestion query and slash command matching normalization ->
+  `slashCommands.ts`.
+- Client speech turn id and speech target id generation -> `speechTargets.ts`.
+
+Signature conversions:
+- None. The moved helpers already accepted their DOM/text dependencies as
+  parameters.
+
+Behavior changes:
+- None intended. `MessageInput.tsx` still owns draft state, focus/ref timing,
+  speech transaction state, submission routing, and slash command selection.
+- Browser undo/focus preservation remains at the same call sites: `Ctrl+G`
+  clear still edits the textarea before React state, and range replacement still
+  goes through the textarea before updating draft state.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter client exec tsc --noEmit`; focused
+  `pnpm --filter client test --
+  src/lib/__tests__/composerTextarea.test.ts
+  src/lib/__tests__/slashCommands.test.ts
+  src/lib/__tests__/speechTargets.test.ts
+  src/components/__tests__/MessageInput.test.tsx`;
+  file-scoped `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 3: `pnpm --filter client test:e2e --grep-invert "physical Android"`.
+  The run passed with the documented Vite chunk-size/browser-compatibility and
+  Node `NO_COLOR`/`FORCE_COLOR` baseline warnings.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Console budget: `pnpm console:scan` stayed at warnings `110/110`, method.warn
+  `61/61`, and method.error `95/95`, all `+0`.
+- Chatter: root `pnpm test` passed with the existing broad suite logging and
+  negative-path stderr already documented for this refactor series.
 
 ### Slice 4.5 — Codex Recap/Summary Helpers (Landed 2026-07-06, this commit)
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRunExactlyPrompt,
+  getLeadingSlashQuery,
   getSlashCommandMenuParts,
+  normalizeSlashCommandForMatch,
   parseComposerSlashCommand,
   resolveComposerSlashTurn,
 } from "../slashCommands";
@@ -113,6 +115,14 @@ describe("slashCommands", () => {
       rest: "/compact",
       label: "/compact",
     });
+  });
+
+  it("matches leading slash command drafts for composer suggestions", () => {
+    expect(getLeadingSlashQuery("/")).toBe("");
+    expect(getLeadingSlashQuery("/Fo")).toBe("fo");
+    expect(getLeadingSlashQuery("/foo bar")).toBeNull();
+    expect(getLeadingSlashQuery(" /foo")).toBeNull();
+    expect(normalizeSlashCommandForMatch("///Fast")).toBe("fast");
   });
 
   it("turns /fast into a thinking-off message", () => {

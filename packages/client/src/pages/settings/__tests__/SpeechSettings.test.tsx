@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { VOICE_INPUT_CAPABILITY } from "@yep-anywhere/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpeechSettings } from "../SpeechSettings";
 
 const modelSettings = vi.hoisted(() => {
@@ -38,6 +39,7 @@ const browserXaiKey = vi.hoisted(() => ({
   setBrowserXaiSttApiKey: vi.fn(),
 }));
 const versionState = vi.hoisted(() => ({
+  capabilities: [] as string[],
   voiceBackends: ["ya-grok", "ya-parakeet", "ya-nemo"],
   voiceBackendStatuses: [] as Array<{
     id: string;
@@ -68,7 +70,7 @@ vi.mock("../../../hooks/useRemoteBasePath", () => ({
 vi.mock("../../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: {
-      capabilities: ["voiceInput"],
+      capabilities: versionState.capabilities,
       voiceBackends: versionState.voiceBackends,
       voiceBackendStatuses: versionState.voiceBackendStatuses,
       voiceBackendCapabilities: {
@@ -95,6 +97,10 @@ vi.mock("../../../lib/speechProviders/YaServerProvider", () => ({
 }));
 
 describe("SpeechSettings", () => {
+  beforeEach(() => {
+    versionState.capabilities = [VOICE_INPUT_CAPABILITY];
+  });
+
   afterEach(() => {
     cleanup();
     modelSettings.speechMethod = "ya-parakeet";

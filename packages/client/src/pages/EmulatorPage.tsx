@@ -1,4 +1,9 @@
-import type { DeviceInfo } from "@yep-anywhere/shared";
+import {
+  DEVICE_BRIDGE_CAPABILITY,
+  DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
+  type DeviceInfo,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { EmulatorNavButtons } from "../components/EmulatorNavButtons";
@@ -463,12 +468,11 @@ export function EmulatorPage() {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const { version: versionInfo, refetch: refetchVersion } = useVersion();
-  const capabilities = versionInfo?.capabilities ?? [];
   const bridgeRuntimeMode =
     versionInfo?.deviceBridgeState === "update-available"
       ? "update"
-      : capabilities.includes("deviceBridge-download") &&
-          !capabilities.includes("deviceBridge")
+      : serverHasCapability(versionInfo, DEVICE_BRIDGE_DOWNLOAD_CAPABILITY) &&
+          !serverHasCapability(versionInfo, DEVICE_BRIDGE_CAPABILITY)
         ? "download"
         : null;
   const needsDownload = bridgeRuntimeMode !== null;

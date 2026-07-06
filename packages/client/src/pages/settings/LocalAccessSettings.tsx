@@ -1,3 +1,7 @@
+import {
+  APPROVAL_AUDIT_LOG_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
@@ -15,8 +19,6 @@ import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndo } from "./SettingsUndoContext";
-
-const APPROVAL_AUDIT_LOG_CAPABILITY = "approvalAuditLog";
 
 /** File-access form state — `custom` is edited as newline-separated text. */
 interface FileAccessForm {
@@ -90,8 +92,10 @@ export function LocalAccessSettings() {
     updateSettings: updateServerSettings,
     updateSetting: updateServerSetting,
   } = useServerSettings();
-  const supportsApprovalAuditLog =
-    versionInfo?.capabilities?.includes(APPROVAL_AUDIT_LOG_CAPABILITY) ?? false;
+  const supportsApprovalAuditLog = serverHasCapability(
+    versionInfo,
+    APPROVAL_AUDIT_LOG_CAPABILITY,
+  );
   const approvalAuditLogEnabled = supportsApprovalAuditLog
     ? (serverSettings?.approvalAuditLogEnabled ?? false)
     : true;

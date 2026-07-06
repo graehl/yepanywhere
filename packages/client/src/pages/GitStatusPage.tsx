@@ -15,6 +15,7 @@ import {
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
   memo,
@@ -143,18 +144,20 @@ export function GitStatusPage() {
     loading: versionLoading,
     error: versionError,
   } = useVersion();
-  const supportsEnhancedGitStatus =
-    version?.capabilities?.includes(GIT_STATUS_ENHANCED_CAPABILITY) ?? false;
-  const supportsRemoteCheck =
-    version?.capabilities?.includes(GIT_STATUS_REMOTE_CHECK_CAPABILITY) ??
-    false;
-  const supportsPull =
-    version?.capabilities?.includes(GIT_STATUS_PULL_CAPABILITY) ?? false;
-  const supportsPush =
-    version?.capabilities?.includes(GIT_STATUS_PUSH_CAPABILITY) ?? false;
-  const supportsIntegrationOptions =
-    version?.capabilities?.includes(GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY) ??
-    false;
+  const supportsEnhancedGitStatus = serverHasCapability(
+    version,
+    GIT_STATUS_ENHANCED_CAPABILITY,
+  );
+  const supportsRemoteCheck = serverHasCapability(
+    version,
+    GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+  );
+  const supportsPull = serverHasCapability(version, GIT_STATUS_PULL_CAPABILITY);
+  const supportsPush = serverHasCapability(version, GIT_STATUS_PUSH_CAPABILITY);
+  const supportsIntegrationOptions = serverHasCapability(
+    version,
+    GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
+  );
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );

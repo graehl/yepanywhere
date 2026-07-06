@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { APPROVAL_AUDIT_LOG_CAPABILITY } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileAccessInfo, ServerSettings } from "../../../api/client";
 import { LocalAccessSettings } from "../LocalAccessSettings";
@@ -33,7 +34,7 @@ const {
     connection: null as null | { disconnect: () => void },
   },
   versionState: {
-    capabilities: ["approvalAuditLog"] as string[],
+    capabilities: [] as string[],
   },
 }));
 
@@ -132,7 +133,7 @@ describe("LocalAccessSettings", () => {
     mockGetFileAccessInfo.mockResolvedValue(fileAccessInfo);
     mockUpdateSetting.mockResolvedValue(undefined);
     mockUpdateSettings.mockResolvedValue(undefined);
-    versionState.capabilities = ["approvalAuditLog"];
+    versionState.capabilities = [APPROVAL_AUDIT_LOG_CAPABILITY];
   });
 
   afterEach(() => {

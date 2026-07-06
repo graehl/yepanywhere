@@ -9,7 +9,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
+import {
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  PROJECT_QUEUE_CAPABILITY,
+} from "@yep-anywhere/shared";
 import type { ServerSettings } from "../../../api/client";
 import { MessageDeliverySettings } from "../MessageDeliverySettings";
 import {
@@ -25,7 +28,7 @@ const { mockUpdateSettings, hookState, versionState } = vi.hoisted(() => ({
     error: null as string | null,
   },
   versionState: {
-    version: { capabilities: ["projectQueue"] as string[] } as {
+    version: { capabilities: [] as string[] } as {
       capabilities?: string[];
     },
   },
@@ -62,7 +65,7 @@ describe("MessageDeliverySettings", () => {
     hookState.settings = { ...baseSettings };
     hookState.isLoading = false;
     hookState.error = null;
-    versionState.version = { capabilities: ["projectQueue"] };
+    versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     mockUpdateSettings.mockReset();
     mockUpdateSettings.mockResolvedValue(undefined);
   });

@@ -4,6 +4,11 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
+  APPROVAL_AUDIT_LOG_CAPABILITY,
+  DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
+  DEVICE_BRIDGE_CAPABILITY,
+  DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
+  DEVICE_BRIDGE_UPDATE_CAPABILITY,
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
@@ -11,6 +16,7 @@ import {
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
+  VOICE_INPUT_CAPABILITY,
   type ClientDefaults,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -229,10 +235,7 @@ export const RESUME_PROTOCOL_VERSION = 3;
 /** Coarse hosted remote UI/server compatibility generation. */
 export const REMOTE_COMPATIBILITY_LEVEL = 10;
 
-/** Base capabilities always advertised. */
-export const APPROVAL_AUDIT_LOG_CAPABILITY = "approvalAuditLog";
-
-const BASE_CAPABILITIES = [
+const BASE_CAPABILITIES: string[] = [
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
@@ -299,27 +302,27 @@ function getCapabilitiesForDeviceBridgeState(
     return [];
   }
 
-  const capabilities = ["deviceBridge-available"];
+  const capabilities: string[] = [DEVICE_BRIDGE_AVAILABLE_CAPABILITY];
   if (!enabled) {
     return capabilities;
   }
 
   if (state === "available") {
-    capabilities.push("deviceBridge");
+    capabilities.push(DEVICE_BRIDGE_CAPABILITY);
     return capabilities;
   }
 
-  capabilities.push("deviceBridge-download");
+  capabilities.push(DEVICE_BRIDGE_DOWNLOAD_CAPABILITY);
   if (state === "update-available") {
-    capabilities.push("deviceBridge-update");
+    capabilities.push(DEVICE_BRIDGE_UPDATE_CAPABILITY);
   }
   return capabilities;
 }
 
 export function getServerCapabilities(options?: VersionRouteOptions): string[] {
-  const capabilities = [...BASE_CAPABILITIES];
+  const capabilities: string[] = [...BASE_CAPABILITIES];
   if (options?.voiceInputEnabled !== false) {
-    capabilities.push("voiceInput");
+    capabilities.push(VOICE_INPUT_CAPABILITY);
   }
   const deviceBridgeState = options?.getDeviceBridgeState?.() ?? "unavailable";
   const enabled = options?.isDeviceBridgeEnabled?.() ?? false;
@@ -375,7 +378,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
     const enabled = options?.isDeviceBridgeEnabled?.() ?? false;
     const capabilities = [
       ...BASE_CAPABILITIES,
-      ...(options?.voiceInputEnabled !== false ? ["voiceInput"] : []),
+      ...(options?.voiceInputEnabled !== false ? [VOICE_INPUT_CAPABILITY] : []),
       ...getCapabilitiesForDeviceBridgeState(deviceBridgeStatus.state, enabled),
     ];
     const voiceBackends = getEnabledVoiceBackends(options);

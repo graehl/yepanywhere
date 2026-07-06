@@ -1,3 +1,9 @@
+import {
+  DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
+  DEVICE_BRIDGE_CAPABILITY,
+  DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
@@ -188,7 +194,6 @@ export function SettingsLayout() {
   );
   const { isManualReloadMode } = useReloadNotifications();
   const { version: versionInfo } = useVersion();
-  const capabilities = versionInfo?.capabilities ?? [];
   const {
     registration: undoRegistration,
     setRegistration: setUndoRegistration,
@@ -200,9 +205,9 @@ export function SettingsLayout() {
     ...getSettingsCategories((key) => t(key as never)),
   ];
   if (
-    capabilities.includes("deviceBridge") ||
-    capabilities.includes("deviceBridge-download") ||
-    capabilities.includes("deviceBridge-available")
+    serverHasCapability(versionInfo, DEVICE_BRIDGE_CAPABILITY) ||
+    serverHasCapability(versionInfo, DEVICE_BRIDGE_DOWNLOAD_CAPABILITY) ||
+    serverHasCapability(versionInfo, DEVICE_BRIDGE_AVAILABLE_CAPABILITY)
   ) {
     const aboutIndex = categories.findIndex((c) => c.id === "about");
     categories.splice(

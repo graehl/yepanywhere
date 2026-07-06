@@ -8,6 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
 import {
   forwardRef,
   useCallback,
@@ -650,7 +651,7 @@ describe("NewSessionForm", () => {
     draftKeys.length = 0;
     draftAttachmentState.value = null;
     remoteBasePathState.basePath = "";
-    versionState.version = { capabilities: ["projectQueue"] };
+    versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     modelSettingsState.voiceInputEnabled = true;
     modelSettingsState.speechMethod = "browser-native";
     modelSettingsState.hasStoredSpeechMethod = false;

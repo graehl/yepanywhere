@@ -1,4 +1,8 @@
 import {
+  VOICE_INPUT_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
+import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useId,
@@ -95,7 +99,9 @@ export function SpeechSettings() {
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
   const serverVoiceEnabled =
-    versionInfo?.capabilities?.includes("voiceInput") ?? true;
+    versionInfo?.capabilities === undefined
+      ? true
+      : serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
   const serverBackends = versionInfo?.voiceBackends ?? [];
   const backendStatuses = versionInfo?.voiceBackendStatuses ?? [];
   const discoverableServerBackends =

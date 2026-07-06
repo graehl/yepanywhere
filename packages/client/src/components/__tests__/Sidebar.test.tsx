@@ -2,6 +2,7 @@
 
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
+  PROJECT_QUEUE_CAPABILITY,
   type ProjectQueueItemSummary,
   type ProjectQueueProjectStatus,
 } from "@yep-anywhere/shared";
@@ -458,7 +459,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("marks sidebar rows that have Project Queue items", () => {
-    versionState.capabilities = ["projectQueue"];
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     globalSessionsState.sessions = [
       makeSession("queued-session", new Date().toISOString()),
       makeSession("plain-session", new Date(Date.now() - 60_000).toISOString()),
@@ -485,7 +486,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("hides the sidebar thinking dot for queue-only active rows", () => {
-    versionState.capabilities = ["projectQueue"];
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     globalSessionsState.sessions = [
       makeSession("queued-session", new Date().toISOString(), {
         activity: "in-turn",
@@ -515,7 +516,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("keeps the sidebar thinking dot for real in-turn queued rows", () => {
-    versionState.capabilities = ["projectQueue"];
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     globalSessionsState.sessions = [
       makeSession("active-queued-session", new Date().toISOString(), {
         activity: "in-turn",
@@ -541,7 +542,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("shows the Project Queue count on the Projects nav item", () => {
-    versionState.capabilities = ["projectQueue"];
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     projectQueueSidebarCountState.count = 3;
 
     renderSidebar();
@@ -628,7 +629,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("links pending new-session Project Queue items to the Projects page", () => {
-    versionState.capabilities = ["projectQueue"];
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     projectsState.projects = [
       {
         id: "project-1",
@@ -655,7 +656,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("starts queued new-session sidebar rows before navigating", async () => {
-    versionState.capabilities = ["projectQueue"];
+    versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     projectsState.projects = [
       {
         id: "project-1",

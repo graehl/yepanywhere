@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
 import { GlobalSessionsPage } from "../GlobalSessionsPage";
 
 const {
@@ -20,7 +21,7 @@ const {
   mockLoadMore: vi.fn(),
   mockUseProjectQueues: vi.fn(),
   versionState: {
-    version: { capabilities: ["projectQueue"] as string[] } as {
+    version: { capabilities: [] as string[] } as {
       capabilities?: string[];
     },
   },
@@ -266,7 +267,7 @@ describe("GlobalSessionsPage", () => {
     globalSessionsState.error = null;
     globalSessionsState.hasMore = false;
     globalSessionsState.loadMore = mockLoadMore;
-    versionState.version = { capabilities: ["projectQueue"] };
+    versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     mockNavigate.mockReset();
     mockSetNewSessionPrefill.mockReset();
     mockLoadMore.mockReset();

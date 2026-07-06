@@ -8,7 +8,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ClientDefaults } from "@yep-anywhere/shared";
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  VOICE_INPUT_CAPABILITY,
+  type ClientDefaults,
+} from "@yep-anywhere/shared";
 import {
   type ComponentProps,
   useCallback,
@@ -52,7 +56,7 @@ const {
       current: "test",
       latest: null,
       updateAvailable: false,
-      capabilities: ["voiceInput", "projectQueue"],
+      capabilities: [] as string[],
       voiceBackends: [] as string[],
       voiceBackendCapabilities: {} as Record<
         string,
@@ -593,7 +597,7 @@ describe("MessageInput", () => {
       current: "test",
       latest: null,
       updateAvailable: false,
-      capabilities: ["voiceInput", "projectQueue"],
+      capabilities: [VOICE_INPUT_CAPABILITY, PROJECT_QUEUE_CAPABILITY],
       voiceBackends: [],
       voiceBackendCapabilities: {},
       clientDefaults: undefined,
@@ -2833,7 +2837,7 @@ describe("MessageInput", () => {
   it("does not steal Ctrl+Enter from queue when Project Queue is unsupported", () => {
     versionState.version = {
       ...versionState.version,
-      capabilities: ["voiceInput"],
+      capabilities: [VOICE_INPUT_CAPABILITY],
       clientDefaults: { patientQueueDefault: true },
     };
     const onQueue = vi.fn();
@@ -2912,7 +2916,7 @@ describe("MessageInput", () => {
   it("hides the project queue action without server capability", () => {
     versionState.version = {
       ...versionState.version,
-      capabilities: ["voiceInput"],
+      capabilities: [VOICE_INPUT_CAPABILITY],
     };
     const onProjectQueue = vi.fn();
     const textarea = renderMessageInput(vi.fn(), { onProjectQueue });

@@ -1,4 +1,8 @@
 import {
+  VOICE_INPUT_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
+import {
   type ForwardedRef,
   forwardRef,
   useCallback,
@@ -129,7 +133,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const basePath = useRemoteBasePath();
   const { keepMicWarm, micDeviceId } = useSpeechCaptureSettings();
   const serverVoiceEnabled =
-    versionInfo?.capabilities?.includes("voiceInput") ?? true;
+    versionInfo?.capabilities === undefined
+      ? true
+      : serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
   const speechMethod = useMemo(() => {
     const resolved =
       selectedSpeechMethod ??

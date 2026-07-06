@@ -1,10 +1,11 @@
-export const GIT_STATUS_CAPABILITY = "git-status";
-export const GIT_STATUS_ENHANCED_CAPABILITY = "git-status-enhanced";
-export const GIT_STATUS_REMOTE_CHECK_CAPABILITY = "git-status-remote-check";
-export const GIT_STATUS_PULL_CAPABILITY = "git-status-pull";
-export const GIT_STATUS_PUSH_CAPABILITY = "git-status-push";
-export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
-  "git-status-integration-options";
+export {
+  GIT_STATUS_CAPABILITY,
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
+  GIT_STATUS_PULL_CAPABILITY,
+  GIT_STATUS_PUSH_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+} from "./server-capabilities.js";
 
 export interface GitFileChange {
   /** Relative path within the repo. May be a compact untracked directory. */

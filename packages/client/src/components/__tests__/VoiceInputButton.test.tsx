@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { VOICE_INPUT_CAPABILITY } from "@yep-anywhere/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseSpeechRecognitionOptions } from "../../hooks/useSpeechRecognition";
 import { VoiceInputButton } from "../VoiceInputButton";
 
@@ -10,6 +11,7 @@ const {
   openSpeechSocket,
   sourceTransport,
   speechState,
+  versionState,
 } =
   vi.hoisted(() => {
     const openSpeechSocket = vi.fn();
@@ -33,6 +35,9 @@ const {
           | "finalizing"
           | "reconnecting"
           | "error",
+      },
+      versionState: {
+        capabilities: [] as string[],
       },
     };
   });
@@ -94,7 +99,7 @@ vi.mock("../../hooks/useSpeechRecognition", () => ({
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: {
-      capabilities: ["voiceInput"],
+      capabilities: versionState.capabilities,
       voiceBackends: [],
       voiceBackendCapabilities: {},
     },
@@ -116,6 +121,10 @@ vi.mock("../../lib/deviceDetection", () => ({
 }));
 
 describe("VoiceInputButton", () => {
+  beforeEach(() => {
+    versionState.capabilities = [VOICE_INPUT_CAPABILITY];
+  });
+
   afterEach(() => {
     cleanup();
     observedSpeechOptions.length = 0;

@@ -1,4 +1,10 @@
-import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  DEVICE_BRIDGE_CAPABILITY,
+  DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
+  DEVICE_BRIDGE_UPDATE_CAPABILITY,
+  PROJECT_QUEUE_CAPABILITY,
+  VOICE_INPUT_CAPABILITY,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Dynamic import so vi.resetModules() gives us fresh module state (clears cache)
@@ -224,7 +230,7 @@ describe("GET /version", () => {
     const res = await routes.request("/");
     const json = await res.json();
 
-    expect(json.capabilities).toContain("voiceInput");
+    expect(json.capabilities).toContain(VOICE_INPUT_CAPABILITY);
     expect(json.voiceBackends).toEqual(["ya-dummy"]);
     expect(json.voiceBackendCapabilities).toEqual({ "ya-dummy": {} });
   });
@@ -318,7 +324,7 @@ describe("GET /version", () => {
     const res = await routes.request("/");
     const json = await res.json();
 
-    expect(json.capabilities).not.toContain("voiceInput");
+    expect(json.capabilities).not.toContain(VOICE_INPUT_CAPABILITY);
     expect(json.voiceBackends).toEqual([]);
     expect(json.voiceBackendCapabilities).toEqual({});
   });
@@ -347,9 +353,9 @@ describe("GET /version", () => {
     expect(json.deviceBridgeState).toBe("update-available");
     expect(json.deviceBridgeVersion).toBe("0.1.0");
     expect(json.latestDeviceBridgeVersion).toBe("0.2.0");
-    expect(json.capabilities).toContain("deviceBridge-download");
-    expect(json.capabilities).toContain("deviceBridge-update");
-    expect(json.capabilities).not.toContain("deviceBridge");
+    expect(json.capabilities).toContain(DEVICE_BRIDGE_DOWNLOAD_CAPABILITY);
+    expect(json.capabilities).toContain(DEVICE_BRIDGE_UPDATE_CAPABILITY);
+    expect(json.capabilities).not.toContain(DEVICE_BRIDGE_CAPABILITY);
   });
 
   it("preserves legacy sync bridge state for compatibility helpers", async () => {
@@ -359,7 +365,7 @@ describe("GET /version", () => {
       isDeviceBridgeEnabled: () => true,
     });
 
-    expect(capabilities).toContain("deviceBridge-download");
-    expect(capabilities).not.toContain("deviceBridge-update");
+    expect(capabilities).toContain(DEVICE_BRIDGE_DOWNLOAD_CAPABILITY);
+    expect(capabilities).not.toContain(DEVICE_BRIDGE_UPDATE_CAPABILITY);
   });
 });

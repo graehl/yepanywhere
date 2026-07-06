@@ -1,6 +1,9 @@
 import {
+  DEVICE_BRIDGE_CAPABILITY,
+  DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   type ProjectQueueItemSummary,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
 import {
   useCallback,
@@ -344,8 +347,14 @@ export function Sidebar({
 
   // Server capabilities for feature gating
   const { version: versionInfo } = useVersion();
-  const capabilities = versionInfo?.capabilities ?? [];
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
+  const supportsSourceControl = serverHasCapability(
+    versionInfo,
+    GIT_STATUS_ENHANCED_CAPABILITY,
+  );
+  const supportsDeviceBridgeNav =
+    serverHasCapability(versionInfo, DEVICE_BRIDGE_CAPABILITY) ||
+    serverHasCapability(versionInfo, DEVICE_BRIDGE_DOWNLOAD_CAPABILITY);
 
   // Global inbox count. Title badge updates are owned by the app shell.
   const { needsAttention: inboxCount } = useInboxCounts();
@@ -975,7 +984,7 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
-            {capabilities.includes(GIT_STATUS_ENHANCED_CAPABILITY) && (
+            {supportsSourceControl && (
               <SidebarNavItem
                 to={sourceControlPath}
                 icon={SidebarIcons.sourceControl}
@@ -984,8 +993,7 @@ export function Sidebar({
                 basePath={basePath}
               />
             )}
-            {(capabilities.includes("deviceBridge") ||
-              capabilities.includes("deviceBridge-download")) && (
+            {supportsDeviceBridgeNav && (
               <SidebarNavItem
                 to="/devices"
                 icon={SidebarIcons.emulator}

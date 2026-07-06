@@ -1,4 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLIENT_STORAGE_DEFAULT } from "../../lib/defaultedStorage";
 import { UI_KEYS } from "../../lib/storageKeys";
@@ -174,7 +175,7 @@ describe("useSessionToolbarPresence", () => {
   it("can reveal Project Queue from server client defaults", async () => {
     stubToolbarLayout(false);
     mocks.version = {
-      capabilities: ["projectQueue"],
+      capabilities: [PROJECT_QUEUE_CAPABILITY],
       clientDefaults: {
         sessionToolbarPresence: {
           projectQueue: "pin",

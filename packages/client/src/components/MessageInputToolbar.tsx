@@ -5,7 +5,11 @@ import type {
   SessionLivenessSnapshot,
   ShowThinking,
 } from "@yep-anywhere/shared";
-import { DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED } from "@yep-anywhere/shared";
+import {
+  DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
+  VOICE_INPUT_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import {
   type Dispatch,
@@ -2572,7 +2576,9 @@ export function MessageInputToolbar({
   const showStopButton = !!(isRunning && onStop && isThinking && !canSend);
   const showSendButton = !!(onSend && (!showStopButton || canSend));
   const serverVoiceEnabled =
-    versionInfo?.capabilities?.includes("voiceInput") ?? true;
+    versionInfo?.capabilities === undefined
+      ? true
+      : serverHasCapability(versionInfo, VOICE_INPUT_CAPABILITY);
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
   const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
     const serverBackends = versionInfo?.voiceBackends ?? [];

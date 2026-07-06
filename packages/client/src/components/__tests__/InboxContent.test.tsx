@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +24,7 @@ const {
   mockUseProjectQueues: vi.fn(),
   mockUseProjectQueuedSessionIds: vi.fn(),
   versionState: {
-    version: { capabilities: ["projectQueue"] as string[] } as {
+    version: { capabilities: [] as string[] } as {
       capabilities?: string[];
     },
   },
@@ -218,7 +219,7 @@ describe("InboxContent", () => {
     inboxState.loading = false;
     inboxState.error = null;
     projectQueueItems.length = 0;
-    versionState.version = { capabilities: ["projectQueue"] };
+    versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     draftSessionIds.clear();
     queuedSessionIds.clear();
     mockRefresh.mockReset();
@@ -361,9 +362,7 @@ describe("InboxContent", () => {
 
   it("hides project queue rows and decorations without the server capability", () => {
     versionState.version = { capabilities: [] };
-    inboxState.needsAttention = [
-      makeInboxItem("queued-session", "project-1"),
-    ];
+    inboxState.needsAttention = [makeInboxItem("queued-session", "project-1")];
     queuedSessionIds.add("queued-session");
     projectQueueItems.push(
       makeProjectQueueItem("queue-new-session", "project-1", "Build the docs"),

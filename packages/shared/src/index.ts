@@ -236,8 +236,14 @@ export {
   clampProjectQueueQuietSeconds,
 } from "./project-queue.js";
 export {
+  APPROVAL_AUDIT_LOG_CAPABILITY,
+  DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
+  DEVICE_BRIDGE_CAPABILITY,
+  DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
+  DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   SERVER_CAPABILITIES,
+  VOICE_INPUT_CAPABILITY,
   serverHasCapability,
   type ServerCapabilityDefinition,
   type ServerCapabilityKey,

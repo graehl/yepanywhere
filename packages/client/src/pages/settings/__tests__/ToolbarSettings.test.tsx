@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PROJECT_QUEUE_CAPABILITY } from "../../../lib/projectQueueVisibility";
 import { ToolbarSettings } from "../ToolbarSettings";
 
 const state = vi.hoisted(() => {
@@ -185,7 +186,7 @@ describe("ToolbarSettings", () => {
   });
 
   it("shows the Project Queue option with server capability", () => {
-    state.version = { capabilities: ["projectQueue"] };
+    state.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
 
     render(<ToolbarSettings />);
 

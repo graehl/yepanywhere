@@ -466,6 +466,12 @@ export class CodexSessionReader implements ISessionReader {
     this.summaryParserClient = options.summaryParserClient;
   }
 
+  async close(): Promise<void> {
+    const client = this.summaryParserClient;
+    this.summaryParserClient = undefined;
+    await client?.close();
+  }
+
   invalidateCache(): void {
     this.sessionFileCache.clear();
     this.entryCache.clear();

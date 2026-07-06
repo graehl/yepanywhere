@@ -129,6 +129,9 @@ const ATTACHMENT_STAGING_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 let supervisorForShutdown:
   | Awaited<ReturnType<typeof createApp>>["supervisor"]
   | null = null;
+let disposeAppForShutdown:
+  | Awaited<ReturnType<typeof createApp>>["disposeSessionReaders"]
+  | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
 let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
@@ -170,6 +173,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
           }
         }),
       );
+    }
+  }
+
+  if (disposeAppForShutdown) {
+    try {
+      await disposeAppForShutdown();
+      console.log("[Shutdown] Session readers disposed");
+    } catch (error) {
+      console.error("[Shutdown] Error disposing session readers:", error);
     }
   }
 
@@ -676,7 +688,7 @@ async function startServer() {
 
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
-  const { app, supervisor, scanner } = createApp({
+  const { app, supervisor, scanner, disposeSessionReaders } = createApp({
     realSdk,
     projectsDir: config.claudeProjectsDir,
     idleTimeoutMs: config.idleTimeoutMs,
@@ -729,6 +741,7 @@ async function startServer() {
     allowedImagePaths: config.allowedImagePaths,
   });
   markStartup("app created");
+  disposeAppForShutdown = disposeSessionReaders;
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({
     scanner,

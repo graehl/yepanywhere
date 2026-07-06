@@ -186,6 +186,12 @@ export class ClaudeSessionReader implements ISessionReader {
     this.summaryParserClient = options.summaryParserClient;
   }
 
+  async close(): Promise<void> {
+    const client = this.summaryParserClient;
+    this.summaryParserClient = undefined;
+    await client?.close();
+  }
+
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
     const summaries: SessionSummary[] = [];
     const seenIds = new Set<string>();

@@ -185,7 +185,7 @@ export interface AppOptions {
   sessionIndexService?: SessionIndexService;
   /** Claude summary parser child-process mode. Default off. */
   claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
-  /** Codex summary parser child-process mode. Default off. */
+  /** Codex summary parser child-process mode. Default on when unset. */
   codexSummaryParserWorkerMode?: SummaryParserWorkerMode;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
   projectScanCacheTtlMs?: number;
@@ -288,6 +288,8 @@ export interface AppResult {
   scanner: ProjectScanner;
   /** Session reader factory for debug API access */
   readerFactory: (project: Project) => ISessionReader;
+  /** Close cached session readers and their owned parser workers. */
+  disposeSessionReaders: () => Promise<void>;
 }
 
 function getMessageContentBlocks(message: Message): AppContentBlock[] {
@@ -452,6 +454,24 @@ export function createApp(options: AppOptions): AppResult {
   });
   const readerCache = new Map<string, ISessionReader>();
   const maxReaderCacheSize = 500;
+  const closeReader = async (
+    key: string,
+    reader: ISessionReader,
+  ): Promise<void> => {
+    if (!reader.close) return;
+    try {
+      await reader.close();
+    } catch (error) {
+      console.warn(`[App] Failed to close session reader ${key}:`, error);
+    }
+  };
+  const disposeSessionReaders = async (): Promise<void> => {
+    const entries = Array.from(readerCache.entries());
+    readerCache.clear();
+    await Promise.all(
+      entries.map(([key, reader]) => closeReader(key, reader)),
+    );
+  };
 
   const getOrCreateReader = <T extends ISessionReader>(
     key: string,
@@ -466,7 +486,9 @@ export function createApp(options: AppOptions): AppResult {
     while (readerCache.size > maxReaderCacheSize) {
       const oldestKey = readerCache.keys().next().value;
       if (!oldestKey) break;
+      const oldestReader = readerCache.get(oldestKey);
       readerCache.delete(oldestKey);
+      if (oldestReader) void closeReader(oldestKey, oldestReader);
     }
 
     return reader;
@@ -871,6 +893,7 @@ export function createApp(options: AppOptions): AppResult {
           restart: () =>
             triggerServerRestart({
               notificationService: options.notificationService,
+              beforeRestart: disposeSessionReaders,
             }),
           pauseProjectQueueDispatch: async () => {
             const service = options.projectQueueService;
@@ -990,6 +1013,7 @@ export function createApp(options: AppOptions): AppResult {
     createServerAdminRoutes({
       supervisor,
       notificationService: options.notificationService,
+      beforeRestart: disposeSessionReaders,
     }),
   );
 
@@ -1645,7 +1669,7 @@ export function createApp(options: AppOptions): AppResult {
     });
   }
 
-  return { app, supervisor, scanner, readerFactory };
+  return { app, supervisor, scanner, readerFactory, disposeSessionReaders };
 }
 
 // Default app for backwards compatibility (health check only)

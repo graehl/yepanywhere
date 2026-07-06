@@ -767,6 +767,35 @@ describe("summary parser worker harness", () => {
     expect(response.metrics.workerPid).toBe(process.pid);
   });
 
+  it("closes reader-owned summary parser clients", async () => {
+    const claudeClose = vi.fn(async () => {});
+    const codexClose = vi.fn(async () => {});
+    const claudeReader = new ClaudeSessionReader({
+      sessionDir: testDir,
+      summaryParserWorkerMode: "on",
+      summaryParserClient: {
+        close: claudeClose,
+      } as unknown as SummaryParserClient,
+    });
+    const codexReader = new CodexSessionReader({
+      sessionsDir: testDir,
+      projectPath: "/test/project",
+      dataDir,
+      summaryParserWorkerMode: "on",
+      summaryParserClient: {
+        close: codexClose,
+      } as unknown as SummaryParserClient,
+    });
+
+    await claudeReader.close();
+    await claudeReader.close();
+    await codexReader.close();
+    await codexReader.close();
+
+    expect(claudeClose).toHaveBeenCalledTimes(1);
+    expect(codexClose).toHaveBeenCalledTimes(1);
+  });
+
   itIfSourceWorker("routes ClaudeSessionReader summaries through the worker", async () => {
     const sessionId = "reader-worker-session";
     const filePath = join(testDir, `${sessionId}.jsonl`);

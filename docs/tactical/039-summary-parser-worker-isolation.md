@@ -616,6 +616,12 @@ parse, or scanner failure events. The worker still uses structured
 events as the rollout telemetry; `/api/session-index/status` worker counters
 remain a possible follow-up.
 
+Follow-up defense in depth: manual dev reloads and safe restarts now close the
+app's cached session readers before exiting, and the SIGTERM/SIGINT graceful
+shutdown path runs the same disposer. Claude and Codex readers forward close to
+their cached `SummaryParserClient`, so an active parser child receives an
+explicit stop before the existing IPC-disconnect exit hook has to act.
+
 ## Open Design Questions
 
 - When should the worker gate graduate from default-off to default-on for

@@ -44,6 +44,11 @@ export interface LoadedSession {
  */
 export interface ISessionReader {
   /**
+   * Release any reader-owned resources such as parser child processes.
+   */
+  close?(): void | Promise<void>;
+
+  /**
    * List all sessions in this reader's session directory.
    */
   listSessions(projectId: UrlProjectId): Promise<SessionSummary[]>;

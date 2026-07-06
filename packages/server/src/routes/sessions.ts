@@ -36,6 +36,7 @@ import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import { DETACHED_PROJECT_PATH, encodeProjectId } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { resolveCanonicalProjectRedirect } from "./session-project-routing.js";
 import { ensureRemoteDirectory } from "../sdk/remote-spawn.js";
 import { parseSlashCommandSubmission } from "../sdk/slashCommandEmulation.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
@@ -1651,18 +1652,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   > => {
     const workingProjectId =
       deps.sessionMetadataService?.getMetadata(sessionId)?.workingProjectId;
-    if (workingProjectId && workingProjectId !== requestProjectId) {
-      return { redirectProjectId: workingProjectId };
-    }
-
     const activeProcess = deps.supervisor.getProcessForSession(sessionId);
-    if (
-      activeProcess &&
-      typeof activeProcess.projectId === "string" &&
-      isUrlProjectId(activeProcess.projectId) &&
-      activeProcess.projectId !== requestProjectId
-    ) {
-      return { redirectProjectId: activeProcess.projectId };
+    const redirectProjectId = resolveCanonicalProjectRedirect({
+      requestProjectId,
+      workingProjectId,
+      activeProcessProjectId:
+        typeof activeProcess?.projectId === "string"
+          ? activeProcess.projectId
+          : undefined,
+    });
+    if (redirectProjectId) {
+      return { redirectProjectId };
     }
 
     const workingProject =
@@ -1672,17 +1672,43 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
-    const transcriptProjectId =
+    const overlayTranscriptProjectId =
       metadata?.workingProjectId === requestProjectId &&
-      metadata.transcriptProjectId
+      metadata.transcriptProjectId &&
+      metadata.transcriptProjectId !== requestProjectId
         ? metadata.transcriptProjectId
-        : requestProjectId;
-    const transcriptProject =
-      transcriptProjectId === requestProjectId
-        ? workingProject
-        : await deps.scanner.getOrCreateProject(transcriptProjectId);
-    if (!transcriptProject) {
-      return { error: "Transcript project not found", status: 404 };
+        : undefined;
+
+    // Default: the transcript lives under the working (request) project.
+    let transcriptProjectId: UrlProjectId = requestProjectId;
+    let transcriptProject: Project = workingProject;
+
+    // Overlay case (session "moved" to a different working project): the
+    // transcript may live under a distinct project. Trust the recorded pointer
+    // only if the transcript is actually findable there — a stale/wrong pointer
+    // must not permanently brick viewing, so fall back to the working project.
+    if (overlayTranscriptProjectId) {
+      const overlayProject = await deps.scanner.getOrCreateProject(
+        overlayTranscriptProjectId,
+      );
+      const overlayHasTranscript = overlayProject
+        ? Boolean(
+            await findSessionSummaryAcrossProviders(
+              overlayProject,
+              sessionId,
+              overlayTranscriptProjectId,
+              providerResolutionDeps(deps),
+              deps.sessionMetadataService?.getProvider(sessionId) as
+                | ProviderName
+                | undefined,
+              { readMode: "head" },
+            ),
+          )
+        : false;
+      if (overlayProject && overlayHasTranscript) {
+        transcriptProjectId = overlayTranscriptProjectId;
+        transcriptProject = overlayProject;
+      }
     }
 
     return {

@@ -237,7 +237,6 @@ export {
 } from "./project-queue.js";
 export {
   PROJECT_QUEUE_CAPABILITY,
-  PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
   SERVER_CAPABILITIES,
   serverHasCapability,
   type ServerCapabilityDefinition,

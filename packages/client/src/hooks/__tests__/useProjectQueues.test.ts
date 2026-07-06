@@ -36,7 +36,6 @@ const apiMock = vi.hoisted(() => ({
   deleteProjectQueueItem: vi.fn(),
   retryProjectQueueItem: vi.fn(),
   moveProjectQueueItemToTop: vi.fn(),
-  moveProjectQueueItemToGlobalTop: vi.fn(),
   pauseProjectQueueDispatch: vi.fn(),
   resumeProjectQueueDispatch: vi.fn(),
   promoteProjectQueueNow: vi.fn(),
@@ -76,10 +75,7 @@ vi.mock("../useVersion", () => ({
 
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
-import {
-  PROJECT_QUEUE_CAPABILITY,
-  PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
-} from "../../lib/projectQueueVisibility";
+import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
 import { useProjectQueues } from "../useProjectQueues";
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
@@ -150,7 +146,6 @@ beforeEach(() => {
   apiMock.deleteProjectQueueItem.mockReset();
   apiMock.retryProjectQueueItem.mockReset();
   apiMock.moveProjectQueueItemToTop.mockReset();
-  apiMock.moveProjectQueueItemToGlobalTop.mockReset();
   apiMock.pauseProjectQueueDispatch.mockReset();
   apiMock.resumeProjectQueueDispatch.mockReset();
   apiMock.promoteProjectQueueNow.mockReset();
@@ -472,52 +467,7 @@ describe("useProjectQueues", () => {
     expect(result.current.items.map((item) => item.id)).toEqual(["2", "1"]);
   });
 
-  it("uses the global move-to-top endpoint while dispatch is paused", async () => {
-    versionMock.version = {
-      capabilities: [
-        PROJECT_QUEUE_CAPABILITY,
-        PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
-      ],
-    };
-    apiMock.getProjectQueueItems.mockResolvedValue({
-      items: [makeItem("3", PROJECT_ID_2), makeItem("1", PROJECT_ID)],
-      dispatchState: {
-        status: "paused",
-        reason: "manual",
-        pausedAt: "2026-06-30T00:00:00.000Z",
-      },
-    });
-    apiMock.moveProjectQueueItemToGlobalTop.mockResolvedValue({
-      item: makeItem("1", PROJECT_ID),
-      queue: {
-        items: [makeItem("1", PROJECT_ID), makeItem("3", PROJECT_ID_2)],
-        dispatchState: {
-          status: "paused",
-          reason: "manual",
-          pausedAt: "2026-06-30T00:00:00.000Z",
-        },
-      },
-    });
-
-    const { result } = renderHook(() =>
-      useProjectQueues(["project-1", "project-2"]),
-    );
-
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
-    expect(result.current.items.map((item) => item.id)).toEqual(["3", "1"]);
-    await act(async () => {
-      await result.current.moveItemToTop("project-1", "1");
-    });
-
-    expect(apiMock.moveProjectQueueItemToGlobalTop).toHaveBeenCalledWith(
-      "project-1",
-      "1",
-    );
-    expect(apiMock.moveProjectQueueItemToTop).not.toHaveBeenCalled();
-    expect(result.current.items.map((item) => item.id)).toEqual(["1", "3"]);
-  });
-
-  it("keeps project-local move-to-top while paused without the global capability", async () => {
+  it("keeps project-local move-to-top while paused", async () => {
     apiMock.getProjectQueueItems.mockResolvedValue({
       items: [makeItem("1", PROJECT_ID), makeItem("2", PROJECT_ID)],
       dispatchState: {
@@ -537,12 +487,10 @@ describe("useProjectQueues", () => {
     const { result } = renderHook(() => useProjectQueues(["project-1"]));
 
     await waitFor(() => expect(result.current.items).toHaveLength(2));
-    expect(result.current.supportsGlobalMoveToTop).toBe(false);
     await act(async () => {
       await result.current.moveItemToTop("project-1", "2");
     });
 
-    expect(apiMock.moveProjectQueueItemToGlobalTop).not.toHaveBeenCalled();
     expect(apiMock.moveProjectQueueItemToTop).toHaveBeenCalledWith(
       "project-1",
       "2",

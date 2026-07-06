@@ -22,7 +22,6 @@ interface ProjectQueueSectionProps {
   mutatingDispatchState: boolean;
   mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
-  canMoveItemsToGlobalTop?: boolean;
   projectStatusesByProject?: Record<string, ProjectQueueProjectStatus>;
   highlightedItemId?: string | null;
   basePath?: string;
@@ -297,16 +296,6 @@ function isFirstMovableProjectQueueItem(
   return firstMovable?.id === item.id;
 }
 
-function isFirstMovableQueueItem(
-  item: ProjectQueueItemSummary,
-  items: readonly ProjectQueueItemSummary[],
-): boolean {
-  const firstMovable = items.find(
-    (candidate) => candidate.status !== "dispatching",
-  );
-  return firstMovable?.id === item.id;
-}
-
 export function ProjectQueueSection({
   projects,
   items,
@@ -317,7 +306,6 @@ export function ProjectQueueSection({
   mutatingDispatchState,
   mutatingPromoteItemId,
   dispatchState,
-  canMoveItemsToGlobalTop = false,
   projectStatusesByProject = {},
   highlightedItemId,
   basePath = "",
@@ -496,12 +484,8 @@ export function ProjectQueueSection({
               item.status === "queued" &&
               projectStatus?.state !== "paused" &&
               projectStatus?.state !== "dispatching";
-            const useGlobalMoveToTop = !!pausedState && canMoveItemsToGlobalTop;
             const canMoveToTop =
-              canEdit &&
-              (useGlobalMoveToTop
-                ? !isFirstMovableQueueItem(item, items)
-                : !isFirstMovableProjectQueueItem(item, items));
+              canEdit && !isFirstMovableProjectQueueItem(item, items);
             const canSaveEdit =
               !isMutating &&
               (editText.trim().length > 0 ||

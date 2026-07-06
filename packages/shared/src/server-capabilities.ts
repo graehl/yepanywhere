@@ -57,27 +57,6 @@ export const SERVER_CAPABILITIES = {
         "Project Queue availability remains a server feature boundary for older servers and hosted remote clients.",
     },
   },
-  projectQueueGlobalMoveToTop: {
-    name: "projectQueueGlobalMoveToTop",
-    kind: "transitional",
-    area: "projectQueue",
-    introducedIn: "0.6.0",
-    description:
-      "Server supports moving a Project Queue item to the visible global queue top while Project Queue dispatch is paused.",
-    clientFallback:
-      "Hide paused global Move to top; keep project-local reorder, edit, delete, retry, pause, and resume.",
-    serverContract: {
-      routes: ["POST /api/project-queue/:projectId/queue/:itemId/move-to-top"],
-    },
-    lifecycle: {
-      kind: "transitional",
-      reviewAfter: "2026-08-15",
-      removeClientGateWhen:
-        "Hosted client minimum supported server compatibility/version excludes servers without this route.",
-      removeServerAdvertisementWhen:
-        "No maintained client release still branches on this capability.",
-    },
-  },
 } as const satisfies Record<string, ServerCapabilityDefinition>;
 
 export type ServerCapabilityKey = keyof typeof SERVER_CAPABILITIES;
@@ -85,9 +64,6 @@ export type ServerCapabilityName =
   (typeof SERVER_CAPABILITIES)[ServerCapabilityKey]["name"];
 
 export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;
-
-export const PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY =
-  SERVER_CAPABILITIES.projectQueueGlobalMoveToTop.name;
 
 export function serverHasCapability(
   source: ServerCapabilitySource | null | undefined,

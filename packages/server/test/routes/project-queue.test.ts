@@ -182,43 +182,6 @@ describe("Project Queue Routes", () => {
     ).toEqual([second.item.id, first.item.id]);
   });
 
-  it("moves a project queue item to the global top while paused", async () => {
-    const otherProjectId = toUrlProjectId("/tmp/project-queue-route-other");
-    const first = await service.createItem({
-      projectId,
-      projectPath: project.path,
-      request: {
-        target: { type: "existing-session", sessionId: "session-1" },
-        message: { text: "first queued item" },
-      },
-    });
-    const other = await service.createItem({
-      projectId: otherProjectId,
-      projectPath: "/tmp/project-queue-route-other",
-      request: {
-        target: { type: "new-session", title: "Start later" },
-        message: { text: "second queued item" },
-      },
-    });
-    await service.pauseDispatch();
-
-    const moveResponse = await createGlobalRoutes().request(
-      `/${otherProjectId}/queue/${other.id}/move-to-top`,
-      { method: "POST" },
-    );
-
-    expect(moveResponse.status).toBe(200);
-    const moved = await moveResponse.json();
-    expect(moved.item).toMatchObject({
-      id: other.id,
-      messagePreview: "second queued item",
-    });
-    expect(moved.queue.dispatchState).toMatchObject({ status: "paused" });
-    expect(
-      moved.queue.items.map((item: ProjectQueueItemSummary) => item.id),
-    ).toEqual([other.id, first.id]);
-  });
-
   it("rejects invalid queue requests", async () => {
     const routes = createRoutes();
 

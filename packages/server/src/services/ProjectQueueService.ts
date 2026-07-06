@@ -836,53 +836,6 @@ export class ProjectQueueService {
     });
   }
 
-  async moveItemToGlobalTop(
-    projectId: UrlProjectId,
-    itemId: string,
-  ): Promise<ProjectQueueItemSummary | null> {
-    return this.withMutation(async () => {
-      this.ensureInitialized();
-      if (this.state.dispatchState.status !== "paused") {
-        throw new ProjectQueueValidationError(
-          "Cannot move an item to the global queue top unless Project Queue dispatch is paused",
-        );
-      }
-      const index = this.findProjectItemIndex(projectId, itemId);
-      if (index === -1) return null;
-      const existing = this.state.items[index]!;
-      if (existing.status === "dispatching") {
-        throw new ProjectQueueValidationError(
-          "Cannot reorder an item while it is dispatching",
-        );
-      }
-
-      const firstMovableIndex = this.state.items.findIndex(
-        (item) => item.status !== "dispatching",
-      );
-      if (index === firstMovableIndex) {
-        return summarizeItem(existing);
-      }
-
-      const [removed] = this.state.items.splice(index, 1);
-      const moved: ProjectQueueItem = {
-        ...removed!,
-        updatedAt: new Date().toISOString(),
-      };
-      const insertIndex = this.state.items.findIndex(
-        (item) => item.status !== "dispatching",
-      );
-      this.state.items.splice(
-        insertIndex === -1 ? this.state.items.length : insertIndex,
-        0,
-        moved,
-      );
-
-      await this.save();
-      this.emitChange(projectId, "reordered", itemId);
-      return summarizeItem(moved);
-    });
-  }
-
   async claimNextDispatchableItem(
     projectId: UrlProjectId,
   ): Promise<ProjectQueueItem | null> {

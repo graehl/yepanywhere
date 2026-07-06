@@ -380,60 +380,6 @@ describe("ProjectQueueService", () => {
     ).toEqual([second.id, first.id, third.id]);
   });
 
-  it("moves an item to the global queue top while dispatch is paused", async () => {
-    const eventBus = new EventBus();
-    const events: string[] = [];
-    eventBus.subscribe((event) => {
-      if (event.type === "project-queue-changed") {
-        events.push(`${event.reason}:${event.itemId ?? ""}`);
-      }
-    });
-    const service = await createService(eventBus);
-    const otherProjectId = toUrlProjectId("/tmp/project-queue-other");
-    const first = await service.createItem({
-      projectId,
-      projectPath: "/tmp/project-queue",
-      request: {
-        target: { type: "existing-session", sessionId: "session-1" },
-        message: { text: "first project item" },
-      },
-    });
-    const other = await service.createItem({
-      projectId: otherProjectId,
-      projectPath: "/tmp/project-queue-other",
-      request: {
-        target: { type: "existing-session", sessionId: "session-other" },
-        message: { text: "other project item" },
-      },
-    });
-
-    await expect(
-      service.moveItemToGlobalTop(otherProjectId, other.id),
-    ).rejects.toBeInstanceOf(ProjectQueueValidationError);
-
-    await service.pauseDispatch();
-    const moved = await service.moveItemToGlobalTop(otherProjectId, other.id);
-
-    expect(moved).toMatchObject({
-      id: other.id,
-      messagePreview: "other project item",
-    });
-    expect(service.listAll().map((item) => item.id)).toEqual([
-      other.id,
-      first.id,
-    ]);
-    expect(service.listProject(projectId).items.map((item) => item.id)).toEqual(
-      [first.id],
-    );
-    expect(events).toContain(`reordered:${other.id}`);
-
-    const reloaded = await createService();
-    expect(reloaded.listAll().map((item) => item.id)).toEqual([
-      other.id,
-      first.id,
-    ]);
-  });
-
   it("guards dispatching items from user-facing mutations", async () => {
     const service = await createService();
     const created = await service.createItem({

@@ -86,7 +86,6 @@ function renderSection(
   dispatchState: ProjectQueueDispatchState = { status: "running" },
   recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[] = [],
   projectStatusesByProject: Record<string, ProjectQueueProjectStatus> = {},
-  canMoveItemsToGlobalTop = false,
 ) {
   render(
     <I18nProvider>
@@ -101,7 +100,6 @@ function renderSection(
           mutatingDispatchState={false}
           mutatingPromoteItemId={null}
           dispatchState={dispatchState}
-          canMoveItemsToGlobalTop={canMoveItemsToGlobalTop}
           projectStatusesByProject={projectStatusesByProject}
           highlightedItemId={highlightedItemId}
           onPauseDispatch={handlers.onPauseDispatch}
@@ -260,37 +258,7 @@ describe("ProjectQueueSection", () => {
     expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "2");
   });
 
-  it("offers move-to-top for paused items that are not first globally", () => {
-    const handlers = renderSection(
-      [
-        makeItem("other", "queued", { projectId: OTHER_PROJECT_ID }),
-        makeItem("1"),
-      ],
-      undefined,
-      undefined,
-      {
-        status: "paused",
-        reason: "manual",
-        pausedAt: "2026-06-30T00:00:00.000Z",
-      },
-      [],
-      {
-        [PROJECT_ID]: makeProjectStatus("paused"),
-        [OTHER_PROJECT_ID]: makeProjectStatus("paused", {
-          projectId: OTHER_PROJECT_ID,
-        }),
-      },
-      true,
-    );
-
-    const moveButtons = screen.getAllByRole("button", { name: "Move to top" });
-    expect(moveButtons).toHaveLength(1);
-    fireEvent.click(moveButtons[0]!);
-
-    expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "1");
-  });
-
-  it("falls back to project-local move-to-top on paused older servers", () => {
+  it("keeps move-to-top project-local while paused", () => {
     const handlers = renderSection(
       [
         makeItem("other", "queued", { projectId: OTHER_PROJECT_ID }),

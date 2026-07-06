@@ -48,36 +48,6 @@ export function createGlobalProjectQueueRoutes(
     return c.json(await globalQueueResponse(deps, dispatchState));
   });
 
-  routes.post("/:projectId/queue/:itemId/move-to-top", async (c) => {
-    const projectId = c.req.param("projectId");
-    if (!isUrlProjectId(projectId)) {
-      return c.json({ error: "Invalid project ID format" }, 400);
-    }
-
-    let item: ProjectQueueItemSummary | null;
-    try {
-      item = await deps.projectQueueService.moveItemToGlobalTop(
-        projectId,
-        c.req.param("itemId"),
-      );
-      if (!item) {
-        return c.json({ error: "Project queue item not found" }, 404);
-      }
-      const queue = await globalQueueResponse(deps);
-      const enrichedItem =
-        queue.items.find((candidate) => candidate.id === item?.id) ?? item;
-      return c.json({
-        item: enrichedItem,
-        queue,
-      });
-    } catch (error) {
-      if (error instanceof ProjectQueueValidationError) {
-        return c.json(validationError(error.message), 400);
-      }
-      throw error;
-    }
-  });
-
   routes.post("/:projectId/promote-now", async (c) => {
     const projectId = c.req.param("projectId");
     if (!isUrlProjectId(projectId)) {

@@ -12,10 +12,7 @@ import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { createClientQueryKey } from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
-import {
-  serverSupportsProjectQueue,
-  serverSupportsProjectQueueGlobalMoveToTop,
-} from "../lib/projectQueueVisibility";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
   useProjectQueueDispatchState,
   useProjectQueueGlobalItems,
@@ -37,7 +34,6 @@ export interface UseProjectQueuesResult {
   mutatingDispatchState: boolean;
   mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
-  supportsGlobalMoveToTop: boolean;
   refetch: () => Promise<void>;
   pauseDispatch: () => Promise<void>;
   resumeDispatch: () => Promise<void>;
@@ -88,8 +84,6 @@ export function useProjectQueues(
   const sourceSummary = runtime.summary;
   const remoteConnection = useOptionalRemoteConnection();
   const enabled = serverSupportsProjectQueue(version);
-  const supportsGlobalMoveToTop =
-    serverSupportsProjectQueueGlobalMoveToTop(version);
   const ready =
     !isRemoteClient() ||
     (remoteConnection !== null && remoteConnection.connection !== null);
@@ -200,24 +194,8 @@ export function useProjectQueues(
       setMutationError(null);
       const requestSummary = sourceSummary;
       try {
-        if (
-          storedDispatchState.status === "paused" &&
-          supportsGlobalMoveToTop
-        ) {
-          const response = await api.moveProjectQueueItemToGlobalTop(
-            projectId,
-            itemId,
-          );
-          requestSummary.reportProjectQueueGlobalCollectionSnapshot(
-            response.queue,
-          );
-        } else {
-          const response = await api.moveProjectQueueItemToTop(
-            projectId,
-            itemId,
-          );
-          requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
-        }
+        const response = await api.moveProjectQueueItemToTop(projectId, itemId);
+        requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
       } catch (err) {
         setMutationError(err instanceof Error ? err : new Error(String(err)));
         throw err;
@@ -225,7 +203,7 @@ export function useProjectQueues(
         setMutatingItemId(null);
       }
     },
-    [sourceSummary, storedDispatchState.status, supportsGlobalMoveToTop],
+    [sourceSummary],
   );
 
   const refetchQueues = useCallback(async () => {
@@ -336,7 +314,6 @@ export function useProjectQueues(
     mutatingDispatchState,
     mutatingPromoteItemId,
     dispatchState: enabled ? storedDispatchState : RUNNING_DISPATCH_STATE,
-    supportsGlobalMoveToTop: enabled && supportsGlobalMoveToTop,
     refetch: refetchQueues,
     pauseDispatch,
     resumeDispatch,

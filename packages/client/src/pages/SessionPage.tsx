@@ -5,7 +5,6 @@ import type {
   ProviderName,
   ProjectQueueItemSummary,
   PublicSessionShareSessionStatusResponse,
-  StagedAttachmentRef,
   ThinkingMode,
   ThinkingOption,
   TranscriptDisplayObject,
@@ -133,6 +132,15 @@ import {
 } from "../lib/liveThinkingConfig";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
+import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
+import {
+  type ComposerAttachment,
+  type ComposerStagedAttachment,
+  type ComposerUploadedAttachment,
+  isComposerStagedAttachment,
+  revokeAttachmentPreviewUrls,
+  toPersistedStagedAttachmentRef,
+} from "../lib/sessionComposerAttachments";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import {
   serverSupportsProjectQueue,
@@ -142,6 +150,10 @@ import {
   createSessionDraftStorageKey,
   saveSessionDraft,
 } from "../lib/sessionDraftStorage";
+import {
+  messageContentToPlainText,
+  turnContentText,
+} from "../lib/sessionMessageText";
 import {
   getEstimatedServerOffsetMs,
   getServerClockTimestamp,
@@ -153,17 +165,21 @@ import {
   createSessionNavigationState,
   parseSessionNavigationState,
 } from "../lib/sessionNavigationState";
+import { getPublicShareInitialPrompt } from "../lib/sessionPublicSharePrompt";
+import {
+  composeGeneratedRetitle,
+  createSessionRetitleSubmittedTurnText,
+  type GeneratedRetitleInsertion,
+  resolveSessionPageTitle,
+} from "../lib/sessionTitleHelpers";
 import {
   CLIENT_SLASH_COMMANDS,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
 import type { Message, Project } from "../types";
-import { sanitizeSessionTitle } from "@yep-anywhere/shared";
-import { getSessionDisplayTitle } from "../utils";
 
 const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
-const PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH = 700;
 const BTW_ASIDE_POLL_MS = 1500;
 const BTW_ASIDE_MAX_POLLS = 160;
 const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
@@ -177,43 +193,6 @@ const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "codex",
   "codex-oss",
 ]);
-
-type ComposerUploadedAttachment = UploadedFile & { previewUrl?: string };
-type ComposerStagedAttachment = StagedAttachmentRef & { previewUrl?: string };
-type ComposerAttachment = ComposerUploadedAttachment | ComposerStagedAttachment;
-
-function isComposerStagedAttachment(
-  attachment: ComposerAttachment,
-): attachment is ComposerStagedAttachment {
-  return "batchId" in attachment;
-}
-
-function toPersistedStagedAttachmentRef(
-  attachment: ComposerStagedAttachment,
-): StagedAttachmentRef {
-  return {
-    id: attachment.id,
-    batchId: attachment.batchId,
-    originalName: attachment.originalName,
-    name: attachment.name,
-    size: attachment.size,
-    mimeType: attachment.mimeType,
-    ...(attachment.width !== undefined ? { width: attachment.width } : {}),
-    ...(attachment.height !== undefined ? { height: attachment.height } : {}),
-    createdAt: attachment.createdAt,
-    updatedAt: attachment.updatedAt,
-  };
-}
-
-function revokeAttachmentPreviewUrls(
-  attachmentsToRevoke: readonly ComposerAttachment[],
-): void {
-  for (const attachment of attachmentsToRevoke) {
-    if (attachment.previewUrl) {
-      URL.revokeObjectURL(attachment.previewUrl);
-    }
-  }
-}
 
 interface PreparedComposerSubmission {
   outgoingText: string;
@@ -261,21 +240,6 @@ function providerSupportsBtwAsideFork(
   provider: ProviderName | undefined,
 ): boolean {
   return provider ? BTW_ASIDE_FORK_PROVIDERS.has(provider) : false;
-}
-
-/** Plain text of a turn's content (string or text blocks); for fork-prefill
- *  and the turn-notch copy action. See topics/fork-from-turn.md. */
-function turnContentText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter(
-      (b): b is { type: "text"; text: string } =>
-        (b as { type?: string })?.type === "text" &&
-        typeof (b as { text?: unknown }).text === "string",
-    )
-    .map((b) => b.text)
-    .join("\n");
 }
 
 function messageKey(message: Message | undefined): string | undefined {
@@ -377,31 +341,6 @@ function requiresHandoffAfterClaudeResumeError(
     message.includes("Start a handoff session") ||
     message.includes("API error: 409")
   );
-}
-
-function messageContentToPlainText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .map((block) => {
-      if (!block || typeof block !== "object") {
-        return "";
-      }
-      const value = block as AppContentBlock;
-      if (value.type === "text" && typeof value.text === "string") {
-        return value.text;
-      }
-      if (value.type === "thinking" && typeof value.thinking === "string") {
-        return value.thinking;
-      }
-      return typeof value.content === "string" ? value.content : "";
-    })
-    .filter(Boolean)
-    .join("\n");
 }
 
 function messageContentToBtwLiveText(content: unknown): string {
@@ -603,93 +542,10 @@ function buildBtwAsideFollowupPrompt(prompt: string): string {
   ].join("\n");
 }
 
-function normalizePublicShareInitialPrompt(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (
-    trimmed.startsWith("# AGENTS.md instructions") ||
-    trimmed.startsWith("<environment_context>")
-  ) {
-    return null;
-  }
-  const normalized = trimmed.replace(/\s+/g, " ");
-  return normalized.length > PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH
-    ? `${normalized.slice(0, PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH - 3).trimEnd()}...`
-    : normalized;
-}
-
 function parsePositiveIntegerParam(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function getPublicShareInitialPrompt(messages: unknown[]): string | null {
-  for (const message of messages) {
-    if (!message || typeof message !== "object") {
-      continue;
-    }
-    const entry = message as {
-      content?: unknown;
-      message?: { content?: unknown };
-      type?: unknown;
-    };
-    if (entry.type !== "user") {
-      continue;
-    }
-    const content =
-      messageContentToPlainText(entry.content) ||
-      messageContentToPlainText(entry.message?.content);
-    const preview = normalizePublicShareInitialPrompt(content);
-    if (preview) {
-      return preview;
-    }
-  }
-  return null;
-}
-
-function parseCodexConfigAck(
-  message: { [key: string]: unknown } | null | undefined,
-): {
-  model?: string;
-  thinking?: { type: string };
-  effort?: string;
-} | null {
-  if (message?.type !== "system" || message.subtype !== "config_ack") {
-    return null;
-  }
-
-  const configModel =
-    typeof message.configModel === "string" ? message.configModel.trim() : "";
-  const configThinking =
-    typeof message.configThinking === "string"
-      ? message.configThinking.trim().toLowerCase()
-      : "";
-
-  const ack: {
-    model?: string;
-    thinking?: { type: string };
-    effort?: string;
-  } = {};
-
-  if (configModel) {
-    ack.model = configModel;
-  }
-
-  if (configThinking.startsWith("effort ")) {
-    const acknowledgedEffort = configThinking.slice("effort ".length).trim();
-    if (acknowledgedEffort === "none") {
-      ack.thinking = { type: "disabled" };
-      ack.effort = "none";
-    } else if (acknowledgedEffort) {
-      ack.thinking = { type: "enabled" };
-      ack.effort = acknowledgedEffort;
-    }
-  }
-
-  return ack.model || ack.thinking || ack.effort ? ack : null;
 }
 
 function isSameLiveModelConfig(
@@ -708,11 +564,6 @@ function isSameLiveModelConfig(
 
 type TitleEditMode = "manual" | "retitle";
 
-interface GeneratedRetitleInsertion {
-  prefix: string;
-  suffix: string;
-}
-
 interface GeneratedRetitleState {
   requestId: number;
   status: "generating" | "ready" | "error";
@@ -720,23 +571,6 @@ interface GeneratedRetitleState {
   title?: string;
   error?: string;
   deferredInsertion?: GeneratedRetitleInsertion;
-}
-
-function createSessionRetitleSubmittedTurnText(
-  currentTitle: string,
-  lengthTarget: number,
-): string {
-  const title = currentTitle.trim();
-  return [
-    "What is a good new title for this session?",
-    "",
-    `Target length: under ${lengthTarget} characters.`,
-    title ? `Current title: ${title}` : undefined,
-    "Prefer a concrete task/result phrase over a generic chat title.",
-    "Return only the title. Do not quote it. Do not add a trailing period.",
-  ]
-    .filter((part): part is string => part !== undefined)
-    .join("\n");
 }
 
 export interface SessionPageRouteLocation {
@@ -4416,33 +4250,12 @@ function SessionPageContent({
     [actualSessionId, clientSummarySourceKey],
   );
 
-  // Compute display title - priority:
-  // 1. Local custom title (user renamed in this session)
-  // 2. Session title from server
-  // 3. Initial title from navigation state (optimistic, before server responds)
-  // 4. "Untitled" as final fallback
-  const sessionTitle = getSessionDisplayTitle(session);
-  // The indexed auto-title is hard-capped at 120 chars for list surfaces,
-  // which starves the wide header row. With no custom title, prefer the full
-  // first message and let the CSS ellipsis truncate to the actual available
-  // width. The 600-char cap only bounds DOM/document.title cost — it is far
-  // beyond what any viewport renders and cuts silently, so a visible "…"
-  // here is always layout-generated, never baked into the string.
-  const headerAutoTitle =
-    !session?.customTitle && session?.fullTitle
-      ? sanitizeSessionTitle(session.fullTitle).slice(0, 600).trimEnd()
-      : null;
-  const displayTitle =
-    localCustomTitle ??
-    headerAutoTitle ??
-    (sessionTitle !== "Untitled" ? sessionTitle : null) ??
-    initialTitle ??
-    t("sessionUntitled");
-  const titleTooltip =
-    localCustomTitle ??
-    session?.customTitle ??
-    session?.fullTitle ??
-    displayTitle;
+  const { displayTitle, titleTooltip } = resolveSessionPageTitle({
+    initialTitle,
+    localCustomTitle,
+    session,
+    untitledTitle: t("sessionUntitled"),
+  });
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
   const heartbeatTurnsEnabled =
@@ -4514,11 +4327,6 @@ function SessionPageContent({
       suffix: value.slice(end),
     };
   };
-
-  const composeGeneratedRetitle = (
-    title: string,
-    insertion: GeneratedRetitleInsertion,
-  ): string => `${insertion.prefix}${title}${insertion.suffix}`;
 
   const saveTitleValue = async (nextTitle: string) => {
     const trimmed = nextTitle.trim();

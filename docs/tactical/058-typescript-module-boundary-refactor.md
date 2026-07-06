@@ -2,7 +2,8 @@
 
 Topic: typescript-module-boundary-refactor
 
-Status: Phase 1 in progress; slice 1.1 landed.
+Status: Phase 2 in progress; low-risk Phase 1 helper slices landed and the
+remaining `sessions.ts` route-registrar extractions are deferred.
 
 ## Contract
 
@@ -153,11 +154,11 @@ not create a `routes/sessions/` directory or a shared helpers bucket.
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
 | 1.1 | Done 2026-07-06 as SRR-010/SRR-011 | `sessions.ts` queue summary shaping + provider guards | Land SRR-010 (patient/deferred queue summary shaping into `session-queue-summaries.ts`) and SRR-011 (provider name guards and resolution deps into `session-provider-resolution.ts`). | Move-only; shaping and guards, not queue behavior. Restart/fork helpers are excluded — they are larger and behavior-heavy. Tier 1. |
-| 1.2 | Not started | Session detail routes | Extract metadata, agent content, and `GET /projects/:projectId/sessions/:sessionId` handlers behind a local registrar; propose as an SRR item first. | Preserve pagination, compact-tail, augment, and unread semantics. Tier 3: session-detail tests plus server E2E. |
-| 1.3 | Not started | Start/create/resume/reactivate routes | Extract new-session, two-phase create, resume, and reactivation handlers; propose as an SRR item first. | Preserve provider selection, YA-visible session ids, executor persistence, queue-full behavior, and remote sync behavior. Overlaps SRR-004 (launch option normalization) — sequence with it. |
-| 1.4 | Not started | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows; propose as an SRR item first. | Higher risk than 1.2/1.3; preserve handoff/fork semantics and recap background behavior. Tier 3. |
-| 1.5 | Not started | Queue/deferred routes | Extract message queue, deferred patient queue, steer/cancel, pending input, and mode routes. Builds on SRR-005 (recovered queue helpers, done in doc 053). | Tripwire matrix: architecture-mandates row. Queue timers and idle ownership are load-bearing. Tier 3 with `test:e2e:sdk`. |
-| 1.6 | Not started | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. Builds on SRR-009 (metadata patch parsing, done in doc 053). | Lower risk; preserve event-bus update emissions. |
+| 1.2 | Deferred 2026-07-06 | Session detail routes | Extract metadata, agent content, and `GET /projects/:projectId/sessions/:sessionId` handlers behind a local registrar; propose as an SRR item first if revived. | Deferred because this is a route registrar move with pagination, compact-tail, augment, unread, and server-E2E tripwires; broader easier slices now have better value/risk. |
+| 1.3 | Deferred 2026-07-06 | Start/create/resume/reactivate routes | Extract new-session, two-phase create, resume, and reactivation handlers; propose as an SRR item first if revived. | Deferred with the sessions route-registrar lane. Preserve provider selection, YA-visible session ids, executor persistence, queue-full behavior, and remote sync behavior if revived. |
+| 1.4 | Deferred 2026-07-06 | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows; propose as an SRR item first if revived. | Deferred with the sessions route-registrar lane. Higher risk; preserve handoff/fork semantics and recap background behavior if revived. |
+| 1.5 | Deferred 2026-07-06 | Queue/deferred routes | Extract message queue, deferred patient queue, steer/cancel, pending input, and mode routes. Builds on SRR-005 (recovered queue helpers, done in doc 053). | Deferred with the sessions route-registrar lane. Queue timers and idle ownership are load-bearing; read architecture mandates and run `test:e2e:sdk` if revived. |
+| 1.6 | Deferred 2026-07-06 | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. Builds on SRR-009 (metadata patch parsing, done in doc 053). | Deferred with the sessions route-registrar lane. Preserve event-bus update emissions if revived. |
 | 1.7 | Not started | `routes/settings.ts` parser split | Move settings parsers/discovery helpers out of the route factory. | Good follow-up once the `sessions.ts` pattern is proven. |
 | 1.8 | Not started | `app.ts` route composition cleanup | Extract app dependency construction or route mounting groups only after route modules are stable. | Do not alter middleware order, auth policy, or hosted-client endpoint selection. Coordinate with doc 054: workstreams slices (WS-004, WS-008, and later) actively mount routes in `app.ts`. |
 
@@ -169,7 +170,7 @@ and props stable.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 2.1 | Not started | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent domain-named modules. | Move-only. Add or keep focused helper tests where extraction exposes pure behavior. Tier 1. |
+| 2.1 | Done 2026-07-06 | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent domain-named modules. | Move-only. Added focused helper tests; client console budget unchanged. Tier 2 because this is a client-visible page surface. |
 | 2.2 | Not started | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Read `topics/provider-agnostic-btw-asides.md`; preserve composer routing and default provider-like behavior. Tier 3 with client E2E. |
 | 2.3 | Not started | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserve object URL cleanup and staged attachment batch invariants. Run attachment/upload tests; Tier 3 with client E2E. |
 | 2.4 | Not started | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | DOM-local behavior; run `MessageList` tests; Tier 3 with client E2E. |
@@ -252,6 +253,46 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.1 — SessionPage Pure Helpers (Landed 2026-07-06, this commit)
+
+Moved:
+- Composer attachment type guards/conversion/preview cleanup ->
+  `sessionComposerAttachments.ts`.
+- Turn/message text extraction -> `sessionMessageText.ts`.
+- Public-share initial prompt parsing -> `sessionPublicSharePrompt.ts`.
+- Codex config-ack parsing -> `sessionCodexConfigAck.ts`.
+- Session page title display, retitle prompt, and generated-title insertion
+  helpers -> `sessionTitleHelpers.ts`.
+
+Signature conversions:
+- Title display resolution now takes an explicit structural input object and
+  returns `{ sessionTitle, headerAutoTitle, displayTitle, titleTooltip }`.
+  `SessionPage.tsx` uses the same `displayTitle` and `titleTooltip` values as
+  before.
+
+Behavior changes:
+- None intended. This is a pure helper move; `SessionPage.tsx` call sites,
+  state ownership, API calls, rendering, and UI copy are unchanged.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused client helper tests; file-scoped `node scripts/biome.cjs lint`;
+  `git diff --check`; staged diff reviewed with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Client tripwire: `topics/console-chatter.md` was read before editing and
+  `pnpm console:scan` stayed within the committed budget.
+- Client E2E: focused `pnpm --filter client test:e2e --
+  e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
+  `pnpm test:e2e` was attempted; the session/page specs passed, but the run
+  failed in the environment-gated physical Android stream smoke because the
+  attached device `2G0YC1ZF93041Z` reported `failed` instead of `connected`.
+
+Follow-ups recorded:
+- `SessionPage.tsx` still owns `/btw` orchestration, composer submission, and
+  title-edit UI state; rows 2.2 and 2.3 are the next high-value page slices.
 
 ### SRR-009 — Session Metadata Patch Parsing (Landed 2026-07-06, this commit)
 

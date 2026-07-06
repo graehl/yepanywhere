@@ -1,7 +1,9 @@
 # Sessions Route Refactor Ledger
 
-Status: Active running list for small, reviewable refactors in
-`packages/server/src/routes/sessions.ts`.
+Status: Closed (historical) as of 2026-07-06. The small helper-oriented
+`sessions.ts` SRR items are done or deferred, and the remaining route registrar
+extractions from doc 058 are deferred while the campaign pivots to broader,
+higher-value module-boundary slices.
 
 See also: `topics/core-service-api.md` — the sessions REST surface this
 ledger refactors is the surface that topic proposes exposing as an
@@ -14,15 +16,20 @@ module-boundary campaign. This ledger remains the owning process for
 `sessions.ts`: campaign slices touching this file are proposed and tracked
 here as SRR items, and their commits carry both topic trailers.
 
-Sequencing: this ledger is the campaign's starting point and stays active
-only for the campaign's Phase 1 (the `sessions.ts` splits). Work the open SRR
-items here first, then the remaining Phase 1 slices from doc 058, specifying
-each as an SRR item here before implementation.
+Sequencing: this ledger was the campaign's starting point and stayed active
+for the helper-sized `sessions.ts` splits. On 2026-07-06 the remaining
+route-registrar `sessions.ts` extractions were deferred so the broader
+module-boundary campaign could move to more valuable/easier slices in doc 058.
 
 Closing criterion: when every SRR item is done, deferred, or dropped and no
 058 Phase 1 slice touching `sessions.ts` remains, mark this ledger
 `Closed (historical)`. From then on doc 058 is the campaign's only worklog;
 Phases 2-6 never involve this document.
+
+Pivot note, 2026-07-06: SRR-003 remains deferred, all other SRR items are
+done, and doc 058 rows 1.2-1.6 are deferred for now. Future `sessions.ts`
+route-registrar extraction should reopen or supersede this ledger deliberately
+rather than assuming the old narrow lane is still active.
 
 ## Purpose
 

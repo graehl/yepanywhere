@@ -211,7 +211,7 @@ extracting pure protocol/model/normalization modules with strong fixtures.
 |---|---|---|---|---|
 | 4.1 | Not started | `sdk/providers/codex.ts` app-server client | Move `CodexAppServerClient`, JSON-RPC queueing, process termination, and raw request helpers into focused modules. | Tripwire matrix: Codex row. Run Codex provider tests and server E2E. |
 | 4.2 | Done 2026-07-06 | Codex model catalog helpers | Move fallback model data, semver parsing, model sorting, and model metadata normalization. | App-server process/query/cache ownership stayed in `codex.ts`; focused catalog tests pin fallback selection and normalized ordering. |
-| 4.3 | Not started | Codex notification guards | Move `as*Notification` guards and raw notification classifiers into a protocol module. | Fixture-heavy; compare stream and persisted render parity where relevant. |
+| 4.3 | Done 2026-07-06 | Codex notification guards | Move `as*Notification` guards and raw notification classifiers into a protocol module. | Guard-only extraction; approval request param guards stay in `codex.ts`. Focused guard tests and existing Codex provider fixtures preserve stream/persisted conversion behavior. |
 | 4.4 | Not started | Codex live event conversion | Move live turn state, streaming message construction, and item-to-SDK conversion. | Higher risk; preserve live-delta suppression and replay behavior. Tier 3. |
 | 4.5 | Not started | Codex recap/summary helpers | Move recap prompts, fork-backed summary, retitle prompt, and summary capture helpers. | Preserve helper model resolution and provider-visible prompt behavior. |
 | 4.6 | Not started | Claude/OpenCode provider helper splits | Apply the proven Codex split pattern only where clear seams exist. | Avoid abstracting providers together unless duplication becomes real and tested. |
@@ -261,6 +261,43 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 4.3 — Codex Notification Guards (Landed 2026-07-06, this commit)
+
+Moved:
+- Codex notification shape guards and the live-delta method/env classifiers ->
+  `codex-notification-guards.ts`.
+
+Signature conversions:
+- Private provider methods such as `asTurnCompletedNotification(...)` and
+  `asRawResponseItemCompletedNotification(...)` became exported
+  `asCodex...Notification(...)` functions. Callers still pass the same unknown
+  payloads and receive the same typed object-or-null result.
+
+Behavior changes:
+- None intended. The guard predicates and live-delta suppression env check are
+  preserved.
+- Command/file/permission/user-input approval request guards intentionally stay
+  in `codex.ts`; they validate server request params, not notifications.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `pnpm --filter @yep-anywhere/server test --
+  test/sdk/providers/codex-notification-guards.test.ts
+  test/sdk/providers/codex.test.ts`; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Existing Codex provider fixtures were the relevant stream/persisted parity
+  check for this slice because only guard/classifier placement changed; live
+  conversion and durable item rendering stayed in `codex.ts`.
+- Explicit parity: `pnpm --filter @yep-anywhere/server test --
+  test/render-parity.test.ts`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Chatter: the root `pnpm test` run still emits existing unrelated suite
+  stdout/stderr and, in the normal local environment, an existing Codex reader
+  slow-scan warning from default app-test access to `~/.codex/sessions`. The
+  focused Codex guard/provider/render-parity runs for this slice were
+  warning-free.
 
 ### Slice 6.2 — Process Scenario Test Split (Landed 2026-07-06, this commit)
 

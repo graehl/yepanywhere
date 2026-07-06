@@ -42,18 +42,10 @@ import type {
 } from "../types.js";
 import type { ToolApprovalResult } from "../types.js";
 import type {
-  AgentMessageDeltaNotification,
   AskForApproval as CodexAskForApproval,
-  CommandExecutionOutputDeltaNotification,
-  ErrorNotification as CodexErrorNotification,
-  FileChangeOutputDeltaNotification,
-  ItemCompletedNotification as CodexItemCompletedNotification,
-  ItemStartedNotification as CodexItemStartedNotification,
-  PlanDeltaNotification,
   PermissionsRequestApprovalParams,
   PermissionsRequestApprovalResponse,
   RawResponseItemCompletedNotification,
-  ReasoningSummaryTextDeltaNotification,
   SandboxMode as CodexSandboxMode,
   ThreadForkParams,
   ThreadForkResponse,
@@ -72,10 +64,8 @@ import type {
   ThreadResumeResponse,
   ThreadStartParams,
   ThreadStartResponse,
-  ThreadTokenUsageUpdatedNotification,
   ToolRequestUserInputParams,
   ToolRequestUserInputResponse,
-  TurnCompletedNotification,
   TurnInterruptParams,
   TurnInterruptResponse,
   TurnStartParams,
@@ -90,6 +80,21 @@ import {
   normalizeCodexModelList,
   normalizeSemver,
 } from "./codex-model-catalog.js";
+import {
+  asCodexAgentMessageDeltaNotification,
+  asCodexCommandExecutionOutputDeltaNotification,
+  asCodexErrorNotification,
+  asCodexFileChangeOutputDeltaNotification,
+  asCodexItemCompletedNotification,
+  asCodexItemStartedNotification,
+  asCodexPlanDeltaNotification,
+  asCodexRawResponseItemCompletedNotification,
+  asCodexReasoningSummaryTextDeltaNotification,
+  asCodexThreadTokenUsageUpdatedNotification,
+  asCodexTurnCompletedNotification,
+  isCodexLiveDeltaNotificationMethod,
+  isCodexLiveDeltaSuppressionEnabled,
+} from "./codex-notification-guards.js";
 import { CODEX_BUILTIN_COMMANDS } from "./staticSlashCommands.js";
 import type {
   AgentProvider,
@@ -167,20 +172,6 @@ const CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES = [
   "gpt-5.1-codex-mini",
   "gpt-5.3-codex-spark",
 ] as const;
-const CODEX_DISABLE_LIVE_DELTAS_ENV = "YEP_CODEX_DISABLE_LIVE_DELTAS";
-const CODEX_LIVE_DELTA_NOTIFICATION_METHODS = new Set<string>([
-  "item/agentMessage/delta",
-  "item/plan/delta",
-  "item/reasoning/summaryTextDelta",
-  "item/commandExecution/outputDelta",
-  "item/fileChange/outputDelta",
-]);
-function isCodexLiveDeltaSuppressionEnabled(): boolean {
-  return process.env[CODEX_DISABLE_LIVE_DELTAS_ENV] === "true";
-}
-function isCodexLiveDeltaNotificationMethod(method: string): boolean {
-  return CODEX_LIVE_DELTA_NOTIFICATION_METHODS.has(method);
-}
 const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
   "gpt-5.3-codex-spark",
 ] as const;
@@ -1812,12 +1803,12 @@ export class CodexProvider implements AgentProvider {
     turnId: string,
   ): boolean {
     if (notification.method === "turn/completed") {
-      const params = this.asTurnCompletedNotification(notification.params);
+      const params = asCodexTurnCompletedNotification(notification.params);
       return params?.turn.id === turnId;
     }
 
     if (notification.method === "error") {
-      const params = this.asErrorNotification(notification.params);
+      const params = asCodexErrorNotification(notification.params);
       return params?.turnId === turnId && !params.willRetry;
     }
 
@@ -1829,7 +1820,7 @@ export class CodexProvider implements AgentProvider {
     runtimeState: CodexTurnRuntimeState,
   ): void {
     if (notification.method === "rawResponseItem/completed") {
-      const params = this.asRawResponseItemCompletedNotification(
+      const params = asCodexRawResponseItemCompletedNotification(
         notification.params,
       );
       const item =
@@ -1861,7 +1852,7 @@ export class CodexProvider implements AgentProvider {
     }
 
     if (notification.method === "item/completed") {
-      const params = this.asItemCompletedNotification(notification.params);
+      const params = asCodexItemCompletedNotification(notification.params);
       if (!params) return;
       const normalized = this.normalizeThreadItem(params.item);
       if (normalized?.type === "command_execution") {
@@ -1872,7 +1863,7 @@ export class CodexProvider implements AgentProvider {
     }
 
     if (notification.method === "item/started") {
-      const params = this.asItemStartedNotification(notification.params);
+      const params = asCodexItemStartedNotification(notification.params);
       if (!params) return;
       const normalized = this.normalizeThreadItem(params.item);
       if (normalized && this.isResultBackedThreadItem(normalized)) {
@@ -2227,7 +2218,7 @@ export class CodexProvider implements AgentProvider {
         if (notification.method !== "turn/completed") {
           continue;
         }
-        const completed = this.asTurnCompletedNotification(notification.params);
+        const completed = asCodexTurnCompletedNotification(notification.params);
         if (completed?.turn.status === "failed") {
           throw new Error(
             completed.turn.error?.message ?? "Codex recap generation failed",
@@ -2380,7 +2371,7 @@ export class CodexProvider implements AgentProvider {
         this.captureRecapTextFromNotification(notification, textByItemId);
 
         if (notification.method === "turn/completed") {
-          const completed = this.asTurnCompletedNotification(
+          const completed = asCodexTurnCompletedNotification(
             notification.params,
           );
           if (completed?.turn.id !== turnId) {
@@ -2401,7 +2392,7 @@ export class CodexProvider implements AgentProvider {
         }
 
         if (notification.method === "error") {
-          const error = this.asErrorNotification(notification.params);
+          const error = asCodexErrorNotification(notification.params);
           if (error?.turnId === turnId && !error.willRetry) {
             throw new Error(
               error.error.message ?? "Codex summary generation failed",
@@ -2595,7 +2586,7 @@ export class CodexProvider implements AgentProvider {
     textByItemId: Map<string, string>,
   ): void {
     if (notification.method === "item/agentMessage/delta") {
-      const params = this.asAgentMessageDeltaNotification(notification.params);
+      const params = asCodexAgentMessageDeltaNotification(notification.params);
       if (!params?.delta) return;
       textByItemId.set(
         params.itemId,
@@ -2605,7 +2596,7 @@ export class CodexProvider implements AgentProvider {
     }
 
     if (notification.method === "item/completed") {
-      const params = this.asItemCompletedNotification(notification.params);
+      const params = asCodexItemCompletedNotification(notification.params);
       if (!params || textByItemId.has(params.item.id)) return;
       const normalized = this.normalizeThreadItem(params.item);
       if (normalized?.type === "agent_message" && normalized.text.trim()) {
@@ -2617,7 +2608,7 @@ export class CodexProvider implements AgentProvider {
     if (notification.method !== "rawResponseItem/completed") {
       return;
     }
-    const params = this.asRawResponseItemCompletedNotification(
+    const params = asCodexRawResponseItemCompletedNotification(
       notification.params,
     );
     const text = this.extractRawResponseMessageText(params?.item);
@@ -2782,8 +2773,8 @@ export class CodexProvider implements AgentProvider {
       case "item/completed": {
         const params =
           notification.method === "item/started"
-            ? this.asItemStartedNotification(notification.params)
-            : this.asItemCompletedNotification(notification.params);
+            ? asCodexItemStartedNotification(notification.params)
+            : asCodexItemCompletedNotification(notification.params);
         const item =
           params?.item && typeof params.item === "object"
             ? (params.item as Record<string, unknown>)
@@ -2832,7 +2823,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "rawResponseItem/completed": {
-        const params = this.asRawResponseItemCompletedNotification(
+        const params = asCodexRawResponseItemCompletedNotification(
           notification.params,
         );
         const item =
@@ -2867,7 +2858,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "turn/completed": {
-        const params = this.asTurnCompletedNotification(notification.params);
+        const params = asCodexTurnCompletedNotification(notification.params);
         return base({
           sourceEvent: notification.method,
           turnId: params?.turn.id,
@@ -2885,7 +2876,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "error": {
-        const params = this.asErrorNotification(notification.params);
+        const params = asCodexErrorNotification(notification.params);
         const fallbackError = this.extractErrorRecord(notification.params);
         const errorMessage =
           params?.error.message ??
@@ -3072,7 +3063,7 @@ export class CodexProvider implements AgentProvider {
     turnId: string;
     snapshot: TokenUsageSnapshot;
   } | null {
-    const notification = this.asThreadTokenUsageUpdatedNotification(params);
+    const notification = asCodexThreadTokenUsageUpdatedNotification(params);
     if (!notification) return null;
 
     return {
@@ -3471,7 +3462,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "turn/completed": {
-        const params = this.asTurnCompletedNotification(notification.params);
+        const params = asCodexTurnCompletedNotification(notification.params);
         const turnId = params?.turn.id ?? null;
         const turnStatus = params?.turn.status;
         const usage = turnId ? usageByTurnId.get(turnId) : undefined;
@@ -3555,7 +3546,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "error": {
-        const params = this.asErrorNotification(notification.params);
+        const params = asCodexErrorNotification(notification.params);
         const errorMessage = params?.error.message;
         const message =
           (typeof errorMessage === "string" && errorMessage) ||
@@ -3591,8 +3582,8 @@ export class CodexProvider implements AgentProvider {
       case "item/completed": {
         const params =
           notification.method === "item/started"
-            ? this.asItemStartedNotification(notification.params)
-            : this.asItemCompletedNotification(notification.params);
+            ? asCodexItemStartedNotification(notification.params)
+            : asCodexItemCompletedNotification(notification.params);
         if (!params) return [];
 
         const normalized = this.normalizeThreadItem(params.item);
@@ -3633,7 +3624,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "item/agentMessage/delta": {
-        const params = this.asAgentMessageDeltaNotification(
+        const params = asCodexAgentMessageDeltaNotification(
           notification.params,
         );
         if (!params?.delta) return [];
@@ -3650,7 +3641,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "item/plan/delta": {
-        const params = this.asPlanDeltaNotification(notification.params);
+        const params = asCodexPlanDeltaNotification(notification.params);
         if (!params?.delta) return [];
         return [
           this.buildStreamingAssistantMessage(
@@ -3665,7 +3656,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "item/reasoning/summaryTextDelta": {
-        const params = this.asReasoningSummaryTextDeltaNotification(
+        const params = asCodexReasoningSummaryTextDeltaNotification(
           notification.params,
         );
         if (!params?.delta) return [];
@@ -3682,7 +3673,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "item/commandExecution/outputDelta": {
-        const params = this.asCommandExecutionOutputDeltaNotification(
+        const params = asCodexCommandExecutionOutputDeltaNotification(
           notification.params,
         );
         if (!params?.delta) return [];
@@ -3699,7 +3690,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "item/fileChange/outputDelta": {
-        const params = this.asFileChangeOutputDeltaNotification(
+        const params = asCodexFileChangeOutputDeltaNotification(
           notification.params,
         );
         if (!params?.delta) return [];
@@ -3716,7 +3707,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "rawResponseItem/completed": {
-        const params = this.asRawResponseItemCompletedNotification(
+        const params = asCodexRawResponseItemCompletedNotification(
           notification.params,
         );
         if (!params) return [];
@@ -3988,64 +3979,6 @@ export class CodexProvider implements AgentProvider {
     return status.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
   }
 
-  private asTurnCompletedNotification(
-    params: unknown,
-  ): TurnCompletedNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      !record.turn ||
-      typeof record.turn !== "object" ||
-      typeof (record.turn as { id?: unknown }).id !== "string"
-    ) {
-      return null;
-    }
-    return params as TurnCompletedNotification;
-  }
-
-  private asErrorNotification(params: unknown): CodexErrorNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      typeof record.willRetry !== "boolean" ||
-      !record.error ||
-      typeof record.error !== "object" ||
-      typeof (record.error as { message?: unknown }).message !== "string"
-    ) {
-      return null;
-    }
-    return params as CodexErrorNotification;
-  }
-
-  private asThreadTokenUsageUpdatedNotification(
-    params: unknown,
-  ): ThreadTokenUsageUpdatedNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    const tokenUsage =
-      record.tokenUsage && typeof record.tokenUsage === "object"
-        ? (record.tokenUsage as Record<string, unknown>)
-        : null;
-    const last =
-      tokenUsage?.last && typeof tokenUsage.last === "object"
-        ? (tokenUsage.last as Record<string, unknown>)
-        : null;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      !last ||
-      typeof last.inputTokens !== "number" ||
-      typeof last.outputTokens !== "number" ||
-      typeof last.cachedInputTokens !== "number"
-    ) {
-      return null;
-    }
-    return params as ThreadTokenUsageUpdatedNotification;
-  }
-
   private asCommandExecutionRequestApprovalParams(
     params: unknown,
   ): CommandExecutionRequestApprovalParams | null {
@@ -4108,136 +4041,6 @@ export class CodexProvider implements AgentProvider {
       return null;
     }
     return params as ToolRequestUserInputParams;
-  }
-
-  private asItemStartedNotification(
-    params: unknown,
-  ): CodexItemStartedNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      !record.item ||
-      typeof record.item !== "object"
-    ) {
-      return null;
-    }
-    return params as CodexItemStartedNotification;
-  }
-
-  private asItemCompletedNotification(
-    params: unknown,
-  ): CodexItemCompletedNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      !record.item ||
-      typeof record.item !== "object"
-    ) {
-      return null;
-    }
-    return params as CodexItemCompletedNotification;
-  }
-
-  private asAgentMessageDeltaNotification(
-    params: unknown,
-  ): AgentMessageDeltaNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      typeof record.itemId !== "string" ||
-      typeof record.delta !== "string"
-    ) {
-      return null;
-    }
-    return params as AgentMessageDeltaNotification;
-  }
-
-  private asPlanDeltaNotification(
-    params: unknown,
-  ): PlanDeltaNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      typeof record.itemId !== "string" ||
-      typeof record.delta !== "string"
-    ) {
-      return null;
-    }
-    return params as PlanDeltaNotification;
-  }
-
-  private asReasoningSummaryTextDeltaNotification(
-    params: unknown,
-  ): ReasoningSummaryTextDeltaNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      typeof record.itemId !== "string" ||
-      typeof record.delta !== "string" ||
-      typeof record.summaryIndex !== "number"
-    ) {
-      return null;
-    }
-    return params as ReasoningSummaryTextDeltaNotification;
-  }
-
-  private asCommandExecutionOutputDeltaNotification(
-    params: unknown,
-  ): CommandExecutionOutputDeltaNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      typeof record.itemId !== "string" ||
-      typeof record.delta !== "string"
-    ) {
-      return null;
-    }
-    return params as CommandExecutionOutputDeltaNotification;
-  }
-
-  private asFileChangeOutputDeltaNotification(
-    params: unknown,
-  ): FileChangeOutputDeltaNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      typeof record.itemId !== "string" ||
-      typeof record.delta !== "string"
-    ) {
-      return null;
-    }
-    return params as FileChangeOutputDeltaNotification;
-  }
-
-  private asRawResponseItemCompletedNotification(
-    params: unknown,
-  ): RawResponseItemCompletedNotification | null {
-    if (!params || typeof params !== "object") return null;
-    const record = params as Record<string, unknown>;
-    if (
-      typeof record.threadId !== "string" ||
-      typeof record.turnId !== "string" ||
-      !record.item ||
-      typeof record.item !== "object" ||
-      typeof (record.item as { type?: unknown }).type !== "string"
-    ) {
-      return null;
-    }
-    return params as RawResponseItemCompletedNotification;
   }
 
   private buildItemEventKey(turnId: string, itemId: string): string {

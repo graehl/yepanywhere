@@ -1,0 +1,220 @@
+import type {
+  AgentMessageDeltaNotification,
+  CommandExecutionOutputDeltaNotification,
+  ErrorNotification as CodexErrorNotification,
+  FileChangeOutputDeltaNotification,
+  ItemCompletedNotification as CodexItemCompletedNotification,
+  ItemStartedNotification as CodexItemStartedNotification,
+  PlanDeltaNotification,
+  RawResponseItemCompletedNotification,
+  ReasoningSummaryTextDeltaNotification,
+  ThreadTokenUsageUpdatedNotification,
+  TurnCompletedNotification,
+} from "./codex-protocol/index.js";
+
+const CODEX_DISABLE_LIVE_DELTAS_ENV = "YEP_CODEX_DISABLE_LIVE_DELTAS";
+const CODEX_LIVE_DELTA_NOTIFICATION_METHODS = new Set<string>([
+  "item/agentMessage/delta",
+  "item/plan/delta",
+  "item/reasoning/summaryTextDelta",
+  "item/commandExecution/outputDelta",
+  "item/fileChange/outputDelta",
+]);
+
+export function isCodexLiveDeltaSuppressionEnabled(): boolean {
+  return process.env[CODEX_DISABLE_LIVE_DELTAS_ENV] === "true";
+}
+
+export function isCodexLiveDeltaNotificationMethod(method: string): boolean {
+  return CODEX_LIVE_DELTA_NOTIFICATION_METHODS.has(method);
+}
+
+export function asCodexTurnCompletedNotification(
+  params: unknown,
+): TurnCompletedNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    !record.turn ||
+    typeof record.turn !== "object" ||
+    typeof (record.turn as { id?: unknown }).id !== "string"
+  ) {
+    return null;
+  }
+  return params as TurnCompletedNotification;
+}
+
+export function asCodexErrorNotification(
+  params: unknown,
+): CodexErrorNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    typeof record.willRetry !== "boolean" ||
+    !record.error ||
+    typeof record.error !== "object" ||
+    typeof (record.error as { message?: unknown }).message !== "string"
+  ) {
+    return null;
+  }
+  return params as CodexErrorNotification;
+}
+
+export function asCodexThreadTokenUsageUpdatedNotification(
+  params: unknown,
+): ThreadTokenUsageUpdatedNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  const tokenUsage =
+    record.tokenUsage && typeof record.tokenUsage === "object"
+      ? (record.tokenUsage as Record<string, unknown>)
+      : null;
+  const last =
+    tokenUsage?.last && typeof tokenUsage.last === "object"
+      ? (tokenUsage.last as Record<string, unknown>)
+      : null;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    !last ||
+    typeof last.inputTokens !== "number" ||
+    typeof last.outputTokens !== "number" ||
+    typeof last.cachedInputTokens !== "number"
+  ) {
+    return null;
+  }
+  return params as ThreadTokenUsageUpdatedNotification;
+}
+
+export function asCodexItemStartedNotification(
+  params: unknown,
+): CodexItemStartedNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    !record.item ||
+    typeof record.item !== "object"
+  ) {
+    return null;
+  }
+  return params as CodexItemStartedNotification;
+}
+
+export function asCodexItemCompletedNotification(
+  params: unknown,
+): CodexItemCompletedNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    !record.item ||
+    typeof record.item !== "object"
+  ) {
+    return null;
+  }
+  return params as CodexItemCompletedNotification;
+}
+
+export function asCodexAgentMessageDeltaNotification(
+  params: unknown,
+): AgentMessageDeltaNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    typeof record.itemId !== "string" ||
+    typeof record.delta !== "string"
+  ) {
+    return null;
+  }
+  return params as AgentMessageDeltaNotification;
+}
+
+export function asCodexPlanDeltaNotification(
+  params: unknown,
+): PlanDeltaNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    typeof record.itemId !== "string" ||
+    typeof record.delta !== "string"
+  ) {
+    return null;
+  }
+  return params as PlanDeltaNotification;
+}
+
+export function asCodexReasoningSummaryTextDeltaNotification(
+  params: unknown,
+): ReasoningSummaryTextDeltaNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    typeof record.itemId !== "string" ||
+    typeof record.delta !== "string" ||
+    typeof record.summaryIndex !== "number"
+  ) {
+    return null;
+  }
+  return params as ReasoningSummaryTextDeltaNotification;
+}
+
+export function asCodexCommandExecutionOutputDeltaNotification(
+  params: unknown,
+): CommandExecutionOutputDeltaNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    typeof record.itemId !== "string" ||
+    typeof record.delta !== "string"
+  ) {
+    return null;
+  }
+  return params as CommandExecutionOutputDeltaNotification;
+}
+
+export function asCodexFileChangeOutputDeltaNotification(
+  params: unknown,
+): FileChangeOutputDeltaNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    typeof record.itemId !== "string" ||
+    typeof record.delta !== "string"
+  ) {
+    return null;
+  }
+  return params as FileChangeOutputDeltaNotification;
+}
+
+export function asCodexRawResponseItemCompletedNotification(
+  params: unknown,
+): RawResponseItemCompletedNotification | null {
+  if (!params || typeof params !== "object") return null;
+  const record = params as Record<string, unknown>;
+  if (
+    typeof record.threadId !== "string" ||
+    typeof record.turnId !== "string" ||
+    !record.item ||
+    typeof record.item !== "object" ||
+    typeof (record.item as { type?: unknown }).type !== "string"
+  ) {
+    return null;
+  }
+  return params as RawResponseItemCompletedNotification;
+}

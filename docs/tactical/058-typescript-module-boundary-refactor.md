@@ -131,7 +131,7 @@ Test TS/TSX top offenders:
 |---|---|---|---|---|
 | 0.1 | Recorded 2026-07-06 | Baseline gate | Run and record the baseline command set above. | Pass/fail baseline recorded; warning-free status is not clean because existing test/E2E chatter was observed. |
 | 0.2 | Recorded 2026-07-06 | Large-file inventory | Refresh the production/test LoC inventory. | Recorded above; refresh at phase boundaries. |
-| 0.3 | Done 2026-07-06 | Contract/worklog split | Extract the binding rules into `topics/typescript-module-boundary-refactor.md` and reconcile this plan with the active doc 053 ledger. | This doc is the handoff surface for future sessions. |
+| 0.3 | Done 2026-07-06 | Contract/worklog split | Extract the binding rules into `topics/typescript-module-boundary-refactor.md` and reconcile this plan with the former doc 053 child ledger. | This doc is the handoff surface for future sessions. |
 | 0.4 | In progress | Slice ledger upkeep | After each slice, update the slice row and append a landing note. | Ledger update lands in the same commit as the slice. |
 
 ## Phase 1: Server Route Mechanical Splits
@@ -139,10 +139,13 @@ Test TS/TSX top offenders:
 High value and comparatively low risk: route files have obvious endpoint
 groups, and `create*Routes()` aggregators can remain stable.
 
-**Ownership:** all `sessions.ts` extraction runs through the active ledger in
+**Ownership:** future `packages/server/src/routes/sessions.ts` extraction
+should revive or supersede the dormant child ledger in
 [`053-sessions-route-refactor-ledger.md`](053-sessions-route-refactor-ledger.md)
-as SRR items, following its proposed/accepted/done process. That ledger has
-already landed SRR-001 (request parsing helpers), SRR-002
+and use SRR items there. That child ledger applies only to the server route
+file and its `routes/session-*.ts` helper modules; it does not gate Phase 2
+client session work, Phase 4 provider work, or Phase 6 test organization. The
+ledger has already landed SRR-001 (request parsing helpers), SRR-002
 (`providerResolutionDeps` dedup), SRR-004 (thinking launch options), SRR-005
 (recovered queue helpers), SRR-006 (Claude resume guard), SRR-007 (worker queue
 routes), SRR-008 (compact thresholds), SRR-009 (metadata patch parsing),

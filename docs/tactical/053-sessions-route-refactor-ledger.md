@@ -1,8 +1,8 @@
 # Sessions Route Refactor Ledger
 
-Status: Closed (historical) as of 2026-07-06. The small helper-oriented
+Status: Dormant child ledger as of 2026-07-06. The small helper-oriented
 `sessions.ts` SRR items are done or deferred, and the remaining route registrar
-extractions from doc 058 are deferred while the campaign pivots to broader,
+extractions from doc 058 are deferred while the active campaign works broader,
 higher-value module-boundary slices.
 
 See also: `topics/core-service-api.md` — the sessions REST surface this
@@ -12,19 +12,27 @@ extraction.
 
 See also: `topics/typescript-module-boundary-refactor.md` and
 `docs/tactical/058-typescript-module-boundary-refactor.md` — the repo-wide
-module-boundary campaign. This ledger remains the owning process for
-`sessions.ts`: campaign slices touching this file are proposed and tracked
-here as SRR items, and their commits carry both topic trailers.
+module-boundary campaign. This ledger is not the active campaign lane; it is
+the revival ledger for future `packages/server/src/routes/sessions.ts`
+refactors. Campaign slices that touch that file should reopen or supersede this
+ledger deliberately, be tracked here as SRR items, and carry both topic
+trailers.
+
+Scope: this document applies only to the server route file
+`packages/server/src/routes/sessions.ts` and the narrow `routes/session-*.ts`
+helpers split out of it. It does not gate client session work such as
+`SessionPage.tsx`, `useSession.ts`, session-detail selectors, provider adapter
+splits, or test-fixture organization in doc 058.
 
 Sequencing: this ledger was the campaign's starting point and stayed active
 for the helper-sized `sessions.ts` splits. On 2026-07-06 the remaining
 route-registrar `sessions.ts` extractions were deferred so the broader
 module-boundary campaign could move to more valuable/easier slices in doc 058.
 
-Closing criterion: when every SRR item is done, deferred, or dropped and no
-058 Phase 1 slice touching `sessions.ts` remains, mark this ledger
-`Closed (historical)`. From then on doc 058 is the campaign's only worklog;
-Phases 2-6 never involve this document.
+Dormant-state criterion: when every SRR item is done, deferred, or dropped and
+no active 058 Phase 1 slice touching `sessions.ts` remains, leave this ledger
+in the dormant state. Doc 058 is the campaign worklog for all non-`sessions.ts`
+slices; Phases 2-6 do not involve this document.
 
 Pivot note, 2026-07-06: SRR-003 remains deferred, all other SRR items are
 done, and doc 058 rows 1.2-1.6 are deferred for now. Future `sessions.ts`

@@ -10,6 +10,13 @@ import type { PaginationInfo } from "../api/client";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { getMessageId } from "../lib/mergeMessages";
 import type { SessionDetailRevealSnapshotResult } from "../lib/sessionDetail/revealSnapshot";
+import {
+  buildReturnedToolUseToAgent,
+  canRevealReturnedSessionDetail,
+  createStoreBackedSessionDetailSelector,
+  getReturnedAgentContent,
+  getReturnedSessionMessages,
+} from "../lib/sessionDetail/returnedDetail";
 import type {
   SessionLoadProgress,
   SessionLoadProgressStage,
@@ -45,31 +52,19 @@ import {
 } from "../lib/sessionDetail/sessionDetailStore";
 import type { GetSessionResult } from "../lib/sourceRuntime";
 import type {
+  AgentContent,
+  AgentContentMap,
   AgentContextUsage,
   SessionDetailAction,
-  SessionDetailState,
 } from "../lib/sessionDetail/types";
 import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../lib/sessionRouteSnapshots";
 
-/** Content from a subagent (Task tool) */
-export interface AgentContent {
-  messages: Message[];
-  status: "pending" | "running" | "completed" | "failed";
-  /** Real-time context usage from message_start events */
-  contextUsage?: {
-    inputTokens: number;
-    percentage: number;
-  };
-}
-
-/** Map of agentId → agent content */
-export type AgentContentMap = Record<string, AgentContent>;
-
 /** Result from initial session load */
 export type SessionLoadResult = SessionDetailLoadCompleteResult;
+export type { AgentContent, AgentContentMap } from "../lib/sessionDetail/types";
 
 export type SessionMetadataUpdate =
   | SessionMetadata
@@ -143,24 +138,6 @@ export interface UseSessionMessagesResult {
   updateRouteScrollSnapshot: (snapshot: SessionRouteScrollSnapshot) => void;
   /** True when the initial render was hydrated from a retained route snapshot */
   restoredFromSnapshot: boolean;
-}
-
-const EMPTY_RETURNED_MESSAGES: Message[] = [];
-const EMPTY_RETURNED_AGENT_CONTENT: AgentContentMap = {};
-
-interface ReturnedDetailStoreState {
-  messages: Message[];
-  agentContent: AgentContentMap;
-  toolUseToAgentEntries: Array<[string, string]>;
-}
-
-interface StoreBackedSessionDetail {
-  /** Transcript fields, gated until the route reveal completes. */
-  revealed: ReturnedDetailStoreState | undefined;
-  /** Loaded-window pagination; not reveal-gated so warm values stay visible. */
-  pagination: PaginationInfo | undefined;
-  /** Session metadata; null until reveal so loading semantics hold. */
-  session: SessionMetadata | null;
 }
 
 function readSessionLoadCache(
@@ -383,45 +360,13 @@ export function useSessionMessages(
     });
   }, [warnSessionDetailStore]);
 
-  const canRevealReturnedDetail =
-    revealedSnapshotKey === snapshotKeyString && !loading;
+  const canRevealReturnedDetail = canRevealReturnedSessionDetail({
+    revealedSnapshotKey,
+    snapshotKeyString,
+    loading,
+  });
   const selectStoreBackedDetail = useMemo(() => {
-    let previous: StoreBackedSessionDetail | undefined;
-    let previousRevealed: ReturnedDetailStoreState | undefined;
-    return (
-      state: SessionDetailState | undefined,
-    ): StoreBackedSessionDetail | undefined => {
-      if (!state) {
-        return undefined;
-      }
-      let revealed: ReturnedDetailStoreState | undefined;
-      if (canRevealReturnedDetail) {
-        revealed =
-          previousRevealed &&
-          previousRevealed.messages === state.messages &&
-          previousRevealed.agentContent === state.agentContent &&
-          previousRevealed.toolUseToAgentEntries ===
-            state.toolUseToAgentEntries
-            ? previousRevealed
-            : {
-                messages: state.messages,
-                agentContent: state.agentContent,
-                toolUseToAgentEntries: state.toolUseToAgentEntries,
-              };
-        previousRevealed = revealed;
-      }
-      const session = canRevealReturnedDetail ? state.session : null;
-      if (
-        previous &&
-        previous.revealed === revealed &&
-        previous.pagination === state.pagination &&
-        previous.session === session
-      ) {
-        return previous;
-      }
-      previous = { revealed, pagination: state.pagination, session };
-      return previous;
-    };
+    return createStoreBackedSessionDetailSelector(canRevealReturnedDetail);
   }, [canRevealReturnedDetail]);
   const storeBackedDetail = useSyncExternalStore(
     useCallback(
@@ -436,15 +381,10 @@ export function useSessionMessages(
     ),
     () => undefined,
   );
-  const returnedMessages =
-    storeBackedDetail?.revealed?.messages ?? EMPTY_RETURNED_MESSAGES;
-  const returnedAgentContent =
-    storeBackedDetail?.revealed?.agentContent ?? EMPTY_RETURNED_AGENT_CONTENT;
+  const returnedMessages = getReturnedSessionMessages(storeBackedDetail);
+  const returnedAgentContent = getReturnedAgentContent(storeBackedDetail);
   const returnedToolUseToAgent = useMemo(
-    () =>
-      storeBackedDetail?.revealed
-        ? new Map(storeBackedDetail.revealed.toolUseToAgentEntries)
-        : new Map<string, string>(),
+    () => buildReturnedToolUseToAgent(storeBackedDetail?.revealed),
     [storeBackedDetail?.revealed],
   );
   useEffect(() => {

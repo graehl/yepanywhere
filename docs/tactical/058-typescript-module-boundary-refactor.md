@@ -198,7 +198,7 @@ of their planned slices.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 3.1 | Not started | `useSessionMessages.ts` adapter cutdown | Continue the existing session-detail data-layer migration by shaving reveal/progress/pagination bookkeeping into tested helpers. | Owned by `docs/tactical/043-session-detail-data-layer-plan.md`; do not start a parallel transcript rewrite. |
+| 3.1 | Done 2026-07-06 | `useSessionMessages.ts` adapter cutdown | Continue the existing session-detail data-layer migration by shaving reveal/progress/pagination bookkeeping into tested helpers. | Moved returned-detail reveal gating, store-backed return selection, empty transcript fallbacks, returned tool-use map construction, and exported agent-content types into `sessionDetail/returnedDetail.ts` / `sessionDetail/types.ts`; hook still owns async load/reveal timing and stream/scroll side effects. |
 | 3.2 | Not started | `clientSummaryState.ts` source-store helpers | Split pure collection/reducer/query helpers only when touching summary-state behavior. | Follow source-runtime topology docs. |
 | 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Owned by `topics/source-transport.md` / doc 057; preserve parity rows and full transport tests. |
 | 3.4 | Not started | `api/client.ts` domain clients | Consider domain-specific API modules once source transport shims are stable. | Keep the exported `api` facade stable until callers migrate deliberately (the contract's one re-export exception). |
@@ -262,6 +262,48 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 3.1 — useSessionMessages Returned-Detail Adapter Cutdown (Landed 2026-07-06, this commit)
+
+Moved:
+- Returned-detail reveal gating, store-backed return selector memoization, empty
+  returned transcript fallbacks, and returned tool-use `Map` construction ->
+  `sessionDetail/returnedDetail.ts`.
+- `AgentContent` / `AgentContentMap` hook exports now re-export the existing
+  reducer/store types from `sessionDetail/types.ts` instead of duplicating the
+  shape inside `useSessionMessages.ts`.
+
+Signature conversions:
+- `buildReturnedToolUseToAgent` accepts the revealed returned-detail slice
+  explicitly so `useSessionMessages.ts` keeps the same memoization dependency
+  as before.
+
+Behavior changes:
+- None intended. `useSessionMessages.ts` still owns initial load and warm
+  hydration timing, `useSyncExternalStore` subscription wiring, stream-buffer
+  readiness, scroll refs, cache writes, and missing-store diagnostics.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/lib/sessionDetail/__tests__/returnedDetail.test.ts
+  src/hooks/__tests__/useSessionMessages.cache.test.tsx
+  src/lib/sessionDetail/__tests__/loadProgress.test.ts
+  src/lib/sessionDetail/__tests__/revealSnapshot.test.ts
+  src/lib/sessionDetail/__tests__/streamBuffer.test.ts`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2/3: `pnpm test`; `pnpm lint`; `pnpm typecheck`;
+  `pnpm console:scan`; Android-excluded client E2E via
+  `pnpm --filter @yep-anywhere/client test:e2e --grep-invert "physical Android"`.
+- Residual chatter: full tests and client E2E still emit the baseline
+  server/client log chatter, Vite chunk/browser-compatibility warnings, and
+  Node `NO_COLOR`/`FORCE_COLOR` warnings tracked in the baseline notes.
+
+Follow-ups recorded:
+- `useSessionMessages.ts` still owns the initial-load/warm-hydration effect,
+  cache-write policy checks, and scroll bookkeeping; future adapter cutdown
+  should keep targeting those policy seams rather than transcript reducer
+  behavior.
 
 ### Slice 2.2 — SessionPage /btw Aside Orchestration (Landed 2026-07-06, this commit)
 

@@ -109,6 +109,11 @@ What is already in place:
   and tool-use mapping entries. Metadata, pagination, scroll, and other
   non-transcript store updates no longer notify that returned transcript
   subscription.
+- Returned-detail reveal gating, store-backed return selection, empty returned
+  transcript fallbacks, and returned tool-use `Map` construction now live in a
+  tested `sessionDetail/returnedDetail` helper. The hook still owns the
+  `useSyncExternalStore` subscription, reveal timing, and missing-store
+  diagnostic emission.
 - Warm-refresh merge and pagination preparation now lives in a tested
   `sessionDetail/warmRefresh` helper that shares persisted-message merge/tagging
   helpers with the reducer. The hook still coordinates loading progress and

@@ -175,7 +175,7 @@ and props stable.
 |---|---|---|---|---|
 | 2.1 | Done 2026-07-06 | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent domain-named modules. | Move-only. Added focused helper tests; client console budget unchanged. Tier 2 because this is a client-visible page surface. |
 | 2.2 | Not started | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Read `topics/provider-agnostic-btw-asides.md`; preserve composer routing and default provider-like behavior. Tier 3 with client E2E. |
-| 2.3 | Not started | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserve object URL cleanup and staged attachment batch invariants. Run attachment/upload tests; Tier 3 with client E2E. |
+| 2.3 | Done 2026-07-06 | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserved object URL cleanup and staged attachment batch invariants. Added focused helper tests; client console budget unchanged. Tier 3 substitute with focused client E2E. |
 | 2.4 | Not started | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | DOM-local behavior; run `MessageList` tests; Tier 3 with client E2E. |
 | 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
 | 2.6 | Not started | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Keep pure selector work in `lib/sessionDetail/`; avoid duplicating selector ownership. |
@@ -256,6 +256,56 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.3 — SessionPage Composer Submission/Attachments (Landed 2026-07-06, this commit)
+
+Moved:
+- Composer draft-transfer helpers -> `sessionComposerSubmission.ts`:
+  `getComposerTransferReplacement`, `appendComposerTransferDraft`, and
+  `appendSlashCommandDraft`.
+- Submission attachment collection/materialization helpers ->
+  `sessionComposerSubmission.ts`: `collectComposerAttachmentsForSubmission`,
+  `createComposerDraftAttachmentState`,
+  `splitComposerAttachmentsForSubmission`, and
+  `materializeComposerAttachmentsForSubmission`.
+- Core per-file composer upload preparation -> `sessionComposerSubmission.ts`
+  as `uploadComposerAttachmentFile`.
+
+Signature conversions:
+- Attachment collection now takes explicit current attachments, pending upload
+  promises, pending-message update callbacks, and composer-setter callback
+  instead of closing over `SessionPage.tsx` refs/state.
+- Materialization and upload helpers take explicit `sourceTransport`,
+  `projectId`, `sessionId`, upload sizing, and progress callback parameters.
+  `SessionPage.tsx` still owns React state transitions, API send branches,
+  toasts, pending-message rows, and preview-cache side effects.
+
+Behavior changes:
+- None intended. Draft clearing/restoring, object URL revocation, staged batch
+  validation, pending upload waiting, and send/queue/project-queue API calls
+  preserve the existing flow.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused attachment/draft tests; file-scoped `node scripts/biome.cjs lint`;
+  `git diff --check`; staged diff reviewed with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Client tripwire: `topics/console-chatter.md` was read before editing and
+  `pnpm console:scan` stayed within the committed budget.
+- Client E2E substitute: focused `pnpm --filter client test:e2e --
+  e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
+  `pnpm test:e2e` was not rerun for this docs/code slice because the previous
+  run in this environment failed only in the environment-gated physical
+  Android stream smoke (`2G0YC1ZF93041Z` reported `failed` instead of
+  `connected`); the focused session/page specs are the relevant substitute.
+
+Follow-ups recorded:
+- `SessionPage.tsx` still owns `/btw` orchestration and title-edit UI state;
+  rows 2.2 and 2.4 remain the next high-value client-page/component slices.
+- `NewSessionForm.tsx` has similar staged/direct attachment upload structure;
+  leave that for row 2.9 rather than widening this slice.
 
 ### Slice 2.1 — SessionPage Pure Helpers (Landed 2026-07-06, this commit)
 

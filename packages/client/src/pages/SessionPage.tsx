@@ -6,7 +6,6 @@ import type {
   ProjectQueueItemSummary,
   PublicSessionShareSessionStatusResponse,
   ThinkingMode,
-  ThinkingOption,
   TranscriptDisplayObject,
   UploadedFile,
   UserQuestionAnswers,
@@ -88,10 +87,8 @@ import type { SessionLoadProgress } from "../hooks/useSessionMessages";
 import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
 import { useVersion } from "../hooks/useVersion";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
-import type { DraftAttachmentState } from "../lib/draftEnvelope";
 import {
   deleteDraftAttachmentRef,
-  materializeDraftAttachmentsForSession,
   validateDraftAttachmentRefs,
 } from "../lib/draftAttachmentStaging";
 import {
@@ -124,7 +121,6 @@ import {
 } from "../lib/composerRecall";
 import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
-import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import {
   liveThinkingSelectionFromProcess,
   thinkingOptionFromProcess,
@@ -135,12 +131,20 @@ import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
 import {
   type ComposerAttachment,
-  type ComposerStagedAttachment,
-  type ComposerUploadedAttachment,
   isComposerStagedAttachment,
   revokeAttachmentPreviewUrls,
   toPersistedStagedAttachmentRef,
 } from "../lib/sessionComposerAttachments";
+import {
+  appendComposerTransferDraft,
+  appendSlashCommandDraft,
+  collectComposerAttachmentsForSubmission as collectComposerAttachmentsForSubmissionHelper,
+  createComposerDraftAttachmentState,
+  getComposerTransferReplacement,
+  materializeComposerAttachmentsForSubmission,
+  type PreparedComposerSubmission,
+  uploadComposerAttachmentFile,
+} from "../lib/sessionComposerSubmission";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import {
   serverSupportsProjectQueue,
@@ -193,12 +197,6 @@ const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "codex",
   "codex-oss",
 ]);
-
-interface PreparedComposerSubmission {
-  outgoingText: string;
-  thinking?: ThinkingOption;
-  slashCommand?: "fast" | "run";
-}
 
 interface LiveModelConfig {
   model?: string;
@@ -256,63 +254,6 @@ function isSessionSetupTurnText(text: string): boolean {
     trimmed.startsWith("# AGENTS.md instructions") ||
     trimmed.startsWith("<environment_context>")
   );
-}
-
-interface ComposerTransferReplacement {
-  start: number;
-  end: number;
-  replacement: string;
-  nextDraft: string;
-}
-
-function getComposerTransferReplacement(
-  currentDraft: string,
-  text: string,
-): ComposerTransferReplacement {
-  const current = currentDraft.trimEnd();
-  const addition = text.trim();
-  if (!current) {
-    return {
-      start: 0,
-      end: currentDraft.length,
-      replacement: addition,
-      nextDraft: addition,
-    };
-  }
-  if (!addition) {
-    return {
-      start: current.length,
-      end: currentDraft.length,
-      replacement: "",
-      nextDraft: current,
-    };
-  }
-  const replacement = `\n\n${addition}`;
-  return {
-    start: current.length,
-    end: currentDraft.length,
-    replacement,
-    nextDraft: `${current}${replacement}`,
-  };
-}
-
-function appendComposerTransferDraft(
-  currentDraft: string,
-  text: string,
-): string {
-  return getComposerTransferReplacement(currentDraft, text).nextDraft;
-}
-
-function appendSlashCommandDraft(
-  currentDraft: string,
-  command: string,
-): string {
-  const normalizedCommand = command.startsWith("/") ? command : `/${command}`;
-  const current = currentDraft.trimEnd();
-  if (/^\/[^\s/]*$/.test(current)) {
-    return `${normalizedCommand} `;
-  }
-  return current ? `${current} ${normalizedCommand} ` : `${normalizedCommand} `;
 }
 
 function isMissingDeferredQueueEntryError(error: unknown): boolean {
@@ -1033,27 +974,15 @@ function SessionPageContent({
 
   const writeDraftAttachmentState = useCallback(
     (nextAttachments: readonly ComposerAttachment[]) => {
-      const stagedRefs = nextAttachments
-        .filter(isComposerStagedAttachment)
-        .map(toPersistedStagedAttachmentRef);
-      if (stagedRefs.length === 0) {
+      const draftState = createComposerDraftAttachmentState(nextAttachments);
+      if (!draftState) {
         draftAttachmentBatchIdRef.current = null;
         draftControlsRef.current?.setAttachmentState(null);
         return;
       }
 
-      const batchId = stagedRefs[0]?.batchId;
-      if (!batchId) {
-        draftControlsRef.current?.setAttachmentState(null);
-        return;
-      }
-
-      draftAttachmentBatchIdRef.current = batchId;
-      draftControlsRef.current?.setAttachmentState({
-        batchId,
-        refs: stagedRefs,
-        updatedAt: new Date().toISOString(),
-      });
+      draftAttachmentBatchIdRef.current = draftState.batchId;
+      draftControlsRef.current?.setAttachmentState(draftState);
     },
     [],
   );
@@ -1110,33 +1039,12 @@ function SessionPageContent({
     async (
       composerAttachments: readonly ComposerAttachment[],
     ): Promise<UploadedFile[]> => {
-      const uploadedFiles = composerAttachments.filter(
-        (attachment): attachment is ComposerUploadedAttachment =>
-          !isComposerStagedAttachment(attachment),
-      );
-      const stagedRefs = composerAttachments
-        .filter(isComposerStagedAttachment)
-        .map(toPersistedStagedAttachmentRef);
-      if (stagedRefs.length === 0) {
-        return uploadedFiles;
-      }
-
-      const batchId = stagedRefs[0]?.batchId;
-      if (!batchId || stagedRefs.some((ref) => ref.batchId !== batchId)) {
-        throw new Error("Draft attachments are split across staging batches");
-      }
-
-      const materializedFiles = await materializeDraftAttachmentsForSession(
+      return materializeComposerAttachmentsForSubmission({
+        attachments: composerAttachments,
         sourceTransport,
         projectId,
         sessionId,
-        {
-          batchId,
-          refs: stagedRefs,
-          updatedAt: new Date().toISOString(),
-        },
-      );
-      return [...uploadedFiles, ...materializedFiles];
+      });
     },
     [sourceTransport, projectId, sessionId],
   );
@@ -2182,43 +2090,14 @@ function SessionPageContent({
 
   const collectComposerAttachmentsForSubmission = useCallback(
     async (options?: { pendingMessageId?: string }) => {
-      const currentAttachments = [...attachmentsRef.current];
-      const pendingAtSendTime = [...pendingUploadsRef.current.values()];
-      const pendingMessageId = options?.pendingMessageId;
-      const showUploadStatus =
-        !!pendingMessageId && pendingAtSendTime.length > 0;
-
-      if (showUploadStatus) {
-        updatePendingMessage(pendingMessageId, {
-          status: t("sessionUploading"),
-        });
-      }
-
-      try {
-        if (pendingAtSendTime.length > 0) {
-          setComposerAttachments([], { persistDraft: false });
-          const results = await Promise.all(pendingAtSendTime);
-          for (const result of results) {
-            if (result) currentAttachments.push(result);
-          }
-
-          const sentIds = new Set(
-            currentAttachments.map((attachment) => attachment.id),
-          );
-          setComposerAttachments(
-            (prev) => prev.filter((attachment) => !sentIds.has(attachment.id)),
-            { persistDraft: false },
-          );
-        } else {
-          setComposerAttachments([], { persistDraft: false });
-        }
-      } finally {
-        if (showUploadStatus && pendingMessageId) {
-          updatePendingMessage(pendingMessageId, { status: undefined });
-        }
-      }
-
-      return currentAttachments;
+      return collectComposerAttachmentsForSubmissionHelper({
+        currentAttachments: attachmentsRef.current,
+        pendingUploads: [...pendingUploadsRef.current.values()],
+        setComposerAttachments,
+        pendingMessageId: options?.pendingMessageId,
+        updatePendingMessage,
+        uploadingStatus: t("sessionUploading"),
+      });
     },
     [setComposerAttachments, t, updatePendingMessage],
   );
@@ -3679,14 +3558,7 @@ function SessionPageContent({
         if (draftAttachmentHydrationRef.current !== hydrationId) {
           return;
         }
-        const nextState: DraftAttachmentState | null =
-          refs.length > 0
-            ? {
-                batchId: refs[0]?.batchId ?? state.batchId,
-                refs,
-                updatedAt: new Date().toISOString(),
-              }
-            : null;
+        const nextState = createComposerDraftAttachmentState(refs);
         draftAttachmentBatchIdRef.current = nextState?.batchId ?? null;
         controls.setAttachmentState(nextState);
         setComposerAttachments(refs, {
@@ -4051,7 +3923,6 @@ function SessionPageContent({
         : null;
       for (const file of files) {
         const tempId = generateUUID();
-        let previewUrl: string | undefined;
 
         // Add to progress tracking
         setUploadProgress((prev) => [
@@ -4066,81 +3937,32 @@ function SessionPageContent({
         ]);
 
         // Start upload and track promise for handleSend to await
-        const uploadPromise = (async () => {
-          const preparedImage = file.type.startsWith("image/")
-            ? await prepareImageUpload(
-                file,
-                getAttachmentUploadLongEdgePx(attachmentQuality),
-              )
-            : { file };
-          const uploadFile = preparedImage.file;
-          if (stagedAttachmentUploadsEnabled && draftBatchId) {
-            previewUrl = uploadFile.type.startsWith("image/")
-              ? URL.createObjectURL(uploadFile)
-              : undefined;
-            const stagedRef = await sourceTransport.uploadStagedAttachment(
-              uploadFile,
-              {
-                batchId: draftBatchId,
-                onProgress: (bytesUploaded) => {
-                  setUploadProgress((prev) =>
-                    prev.map((p) =>
-                      p.fileId === tempId
-                        ? {
-                            ...p,
-                            bytesUploaded,
-                            percent: Math.round(
-                              (bytesUploaded / uploadFile.size) * 100,
-                            ),
-                          }
-                        : p,
-                    ),
-                  );
-                },
-                ...(preparedImage.width !== undefined &&
-                preparedImage.height !== undefined
+        const uploadPromise = uploadComposerAttachmentFile({
+          file,
+          sourceTransport,
+          projectId,
+          sessionId,
+          maxLongEdgePx: getAttachmentUploadLongEdgePx(attachmentQuality),
+          stagedBatchId:
+            stagedAttachmentUploadsEnabled && draftBatchId
+              ? draftBatchId
+              : null,
+          onProgress: (bytesUploaded, uploadFile) => {
+            setUploadProgress((prev) =>
+              prev.map((p) =>
+                p.fileId === tempId
                   ? {
-                      imageDimensions: {
-                        width: preparedImage.width,
-                        height: preparedImage.height,
-                      },
+                      ...p,
+                      bytesUploaded,
+                      percent: Math.round(
+                        (bytesUploaded / uploadFile.size) * 100,
+                      ),
                     }
-                  : {}),
-              },
+                  : p,
+              ),
             );
-            return {
-              ...stagedRef,
-              ...(previewUrl ? { previewUrl } : {}),
-            } satisfies ComposerStagedAttachment;
-          }
-
-          return sourceTransport.upload(projectId, sessionId, uploadFile, {
-            onProgress: (bytesUploaded) => {
-              setUploadProgress((prev) =>
-                prev.map((p) =>
-                  p.fileId === tempId
-                    ? {
-                        ...p,
-                        bytesUploaded,
-                        percent: Math.round(
-                          (bytesUploaded / uploadFile.size) * 100,
-                        ),
-                      }
-                    : p,
-                ),
-              );
-            },
-            ...(preparedImage.width !== undefined &&
-            preparedImage.height !== undefined
-              ? {
-                  imageDimensions: {
-                    width: preparedImage.width,
-                    height: preparedImage.height,
-                  },
-                }
-              : {}),
-          });
-        })()
+          },
+        })
           .then(
             (uploaded) => {
               if (
@@ -4160,9 +3982,6 @@ function SessionPageContent({
               return uploaded;
             },
             (err) => {
-              if (previewUrl) {
-                URL.revokeObjectURL(previewUrl);
-              }
               console.error("Upload failed:", err);
               const errorMsg =
                 err instanceof Error ? err.message : t("sessionShareFailed");

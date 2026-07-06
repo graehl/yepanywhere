@@ -144,8 +144,9 @@ as SRR items, following its proposed/accepted/done process. That ledger has
 already landed SRR-001 (request parsing helpers), SRR-002
 (`providerResolutionDeps` dedup), SRR-004 (thinking launch options), SRR-005
 (recovered queue helpers), SRR-006 (Claude resume guard), SRR-007 (worker queue
-routes), SRR-008 (compact thresholds), SRR-010 (queue summary shaping), and
-SRR-011 (provider resolution helpers) — the flat domain-named
+routes), SRR-008 (compact thresholds), SRR-009 (metadata patch parsing),
+SRR-010 (queue summary shaping), and SRR-011 (provider resolution helpers) —
+the flat domain-named
 `routes/session-*.ts` pattern those items established is the pattern here. Do
 not create a `routes/sessions/` directory or a shared helpers bucket.
 
@@ -156,7 +157,7 @@ not create a `routes/sessions/` directory or a shared helpers bucket.
 | 1.3 | Not started | Start/create/resume/reactivate routes | Extract new-session, two-phase create, resume, and reactivation handlers; propose as an SRR item first. | Preserve provider selection, YA-visible session ids, executor persistence, queue-full behavior, and remote sync behavior. Overlaps SRR-004 (launch option normalization) — sequence with it. |
 | 1.4 | Not started | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows; propose as an SRR item first. | Higher risk than 1.2/1.3; preserve handoff/fork semantics and recap background behavior. Tier 3. |
 | 1.5 | Not started | Queue/deferred routes | Extract message queue, deferred patient queue, steer/cancel, pending input, and mode routes. Builds on SRR-005 (recovered queue helpers, done in doc 053). | Tripwire matrix: architecture-mandates row. Queue timers and idle ownership are load-bearing. Tier 3 with `test:e2e:sdk`. |
-| 1.6 | Not started | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. Builds on SRR-009 (metadata patch parsing, proposed in doc 053). | Lower risk; preserve event-bus update emissions. |
+| 1.6 | Not started | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. Builds on SRR-009 (metadata patch parsing, done in doc 053). | Lower risk; preserve event-bus update emissions. |
 | 1.7 | Not started | `routes/settings.ts` parser split | Move settings parsers/discovery helpers out of the route factory. | Good follow-up once the `sessions.ts` pattern is proven. |
 | 1.8 | Not started | `app.ts` route composition cleanup | Extract app dependency construction or route mounting groups only after route modules are stable. | Do not alter middleware order, auth policy, or hosted-client endpoint selection. Coordinate with doc 054: workstreams slices (WS-004, WS-008, and later) actively mount routes in `app.ts`. |
 
@@ -251,6 +252,38 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### SRR-009 — Session Metadata Patch Parsing (Landed 2026-07-06, this commit)
+
+Moved:
+- `PUT /sessions/:sessionId/metadata` request-body validation and
+  normalization -> `session-metadata-patch.ts` as
+  `parseSessionMetadataPatch`.
+
+Signature conversions:
+- The route now parses `unknown` JSON, receives either a normalized
+  `SessionMetadataPatch` or an error/status pair, and passes the normalized
+  patch to `SessionMetadataService.updateMetadata`.
+
+Behavior changes:
+- None intended. Metadata service updates, SSE event emission, route path, and
+  response shape stayed in `sessions.ts`; parser tests pin the existing error
+  strings and normalization rules.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`;
+  `pnpm --filter @yep-anywhere/server test -- test/routes/session-metadata-patch.test.ts test/routes/sessions-metadata.test.ts`;
+  `node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-metadata-patch.ts packages/server/test/routes/session-metadata-patch.test.ts`;
+  `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Residual risk: the focused route test run still emits the preexisting
+  sessions-metadata WARN/INFO log chatter for negative-path Claude
+  resume/compact cases, and root `pnpm test` still emits the baseline suite
+  chatter recorded above.
+
+Follow-ups recorded:
+- Phase 1.6 remains the larger metadata/notifications route extraction.
 
 ### SRR-005 — Recovered Queue Helpers (Landed 2026-07-06, this commit)
 

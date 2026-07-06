@@ -469,13 +469,13 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/serv
 
 ### SRR-009: Extract Session Metadata Patch Parsing
 
-Status: proposed.
+Status: done.
 
 Destination: new file
 `packages/server/src/routes/session-metadata-patch.ts`.
 
-Estimated line delta: about `-90` to `-130` lines from `sessions.ts`, with a
-similar-size parser module added.
+Line delta: about `-166` net lines from `sessions.ts`, with a 198-line parser
+module and focused parser test coverage added.
 
 Problem:
 
@@ -489,6 +489,16 @@ Likely change:
   metadata patch or an API error message/status;
 - keep metadata service updates and event emission in `sessions.ts`;
 - preserve every existing validation range and error string.
+
+Implemented:
+
+- moved the `PUT /sessions/:sessionId/metadata` request-body validation and
+  normalization into `session-metadata-patch.ts`;
+- added focused parser coverage for empty patches, clear values, heartbeat
+  interval bounds, parent-session normalization, prompt-suggestion validation,
+  recap validation, and heartbeat text truncation;
+- kept metadata service updates, SSE event emission, route path, and response
+  shape in `sessions.ts`.
 
 Value:
 
@@ -505,9 +515,16 @@ Suggested verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
-pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
-node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-metadata-patch.ts
+pnpm --filter @yep-anywhere/server test -- test/routes/session-metadata-patch.test.ts test/routes/sessions-metadata.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-metadata-patch.ts packages/server/test/routes/session-metadata-patch.test.ts
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
 ```
+
+Focused route tests passed with the preexisting sessions-metadata WARN/INFO
+log chatter for negative-path Claude resume/compact cases.
 
 ### SRR-010: Move Patient Queue Summary Shaping
 

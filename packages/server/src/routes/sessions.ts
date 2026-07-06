@@ -3,7 +3,6 @@ import {
   type ContextUsage,
   type DurableRecapMessage,
   type PermissionRules,
-  PROMPT_SUGGESTION_MODES,
   type PromptSuggestionMode,
   type ProviderName,
   type RecapMode,
@@ -18,7 +17,6 @@ import {
   type UrlProjectId,
   type WorkstreamId,
   buildEffectiveAgentContext,
-  clampRecapAfterSeconds,
   getModelContextWindow,
   isUrlProjectId,
   isWorkstreamId,
@@ -118,6 +116,7 @@ import {
   isCodexProviderName,
   providerResolutionDeps,
 } from "./session-provider-resolution.js";
+import { parseSessionMetadataPatch } from "./session-metadata-patch.js";
 import {
   recoveredPatientQueueSummaries,
   sessionQueueSummaries,
@@ -5605,201 +5604,36 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Session metadata service not available" }, 503);
     }
 
-    let body: {
-      title?: string;
-      archived?: boolean;
-      starred?: boolean;
-      parentSessionId?: string | null;
-      heartbeatTurnsEnabled?: boolean;
-      heartbeatTurnsAfterMinutes?: number | null;
-      heartbeatTurnText?: string | null;
-      heartbeatForceAfterMinutes?: number | null;
-      promptSuggestionMode?: unknown;
-      recapAfterSeconds?: unknown;
-    } = {};
+    let body: unknown = {};
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    // At least one field must be provided
-    if (
-      body.title === undefined &&
-      body.archived === undefined &&
-      body.starred === undefined &&
-      body.parentSessionId === undefined &&
-      body.heartbeatTurnsEnabled === undefined &&
-      body.heartbeatTurnsAfterMinutes === undefined &&
-      body.heartbeatTurnText === undefined &&
-      body.heartbeatForceAfterMinutes === undefined &&
-      body.promptSuggestionMode === undefined &&
-      body.recapAfterSeconds === undefined
-    ) {
-      return c.json(
-        {
-          error: "At least one session metadata field must be provided",
-        },
-        400,
-      );
+    const parsed = parseSessionMetadataPatch(body);
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, parsed.status);
     }
+    const { patch } = parsed;
 
-    let heartbeatForceAfterMinutes: number | null | undefined;
-    if (body.heartbeatForceAfterMinutes !== undefined) {
-      if (
-        body.heartbeatForceAfterMinutes === null ||
-        body.heartbeatForceAfterMinutes === 0
-      ) {
-        heartbeatForceAfterMinutes = null;
-      } else if (
-        typeof body.heartbeatForceAfterMinutes === "number" &&
-        Number.isInteger(body.heartbeatForceAfterMinutes) &&
-        body.heartbeatForceAfterMinutes >= 1 &&
-        body.heartbeatForceAfterMinutes <= 1440
-      ) {
-        heartbeatForceAfterMinutes = body.heartbeatForceAfterMinutes;
-      } else {
-        return c.json(
-          {
-            error:
-              "heartbeatForceAfterMinutes must be null or an integer between 1 and 1440",
-          },
-          400,
-        );
-      }
-    }
-
-    let heartbeatTurnsAfterMinutes: number | null | undefined;
-    if (body.heartbeatTurnsAfterMinutes !== undefined) {
-      if (
-        body.heartbeatTurnsAfterMinutes === null ||
-        body.heartbeatTurnsAfterMinutes === 0
-      ) {
-        heartbeatTurnsAfterMinutes = null;
-      } else if (
-        typeof body.heartbeatTurnsAfterMinutes === "number" &&
-        Number.isInteger(body.heartbeatTurnsAfterMinutes) &&
-        body.heartbeatTurnsAfterMinutes >= 1 &&
-        body.heartbeatTurnsAfterMinutes <= 1440
-      ) {
-        heartbeatTurnsAfterMinutes = body.heartbeatTurnsAfterMinutes;
-      } else {
-        return c.json(
-          {
-            error:
-              "heartbeatTurnsAfterMinutes must be null or an integer between 1 and 1440",
-          },
-          400,
-        );
-      }
-    }
-
-    const heartbeatTurnText =
-      body.heartbeatTurnText === undefined
-        ? undefined
-        : body.heartbeatTurnText === null || body.heartbeatTurnText === ""
-          ? null
-          : typeof body.heartbeatTurnText === "string"
-            ? body.heartbeatTurnText.slice(0, 200)
-            : null;
-
-    if (
-      body.heartbeatTurnText !== undefined &&
-      body.heartbeatTurnText !== null &&
-      body.heartbeatTurnText !== "" &&
-      typeof body.heartbeatTurnText !== "string"
-    ) {
-      return c.json(
-        { error: "heartbeatTurnText must be a string or null" },
-        400,
-      );
-    }
-
-    if (
-      body.parentSessionId !== undefined &&
-      body.parentSessionId !== null &&
-      typeof body.parentSessionId !== "string"
-    ) {
-      return c.json({ error: "parentSessionId must be a string or null" }, 400);
-    }
-
-    const parentSessionId =
-      body.parentSessionId === undefined
-        ? undefined
-        : typeof body.parentSessionId === "string"
-          ? body.parentSessionId.trim() || null
-          : null;
-
-    // promptSuggestionMode: null/"" clears the preference (revert to default);
-    // a valid enum value is stored; any other value is rejected.
-    let promptSuggestionMode: PromptSuggestionMode | null | undefined;
-    if (body.promptSuggestionMode !== undefined) {
-      if (
-        body.promptSuggestionMode === null ||
-        body.promptSuggestionMode === ""
-      ) {
-        promptSuggestionMode = null;
-      } else if (
-        typeof body.promptSuggestionMode === "string" &&
-        PROMPT_SUGGESTION_MODES.includes(
-          body.promptSuggestionMode as PromptSuggestionMode,
-        )
-      ) {
-        promptSuggestionMode =
-          body.promptSuggestionMode as PromptSuggestionMode;
-      } else {
-        return c.json(
-          { error: "promptSuggestionMode must be one of: off, native" },
-          400,
-        );
-      }
-    }
-
-    let recapAfterSeconds: number | null | undefined;
-    if (body.recapAfterSeconds !== undefined) {
-      if (body.recapAfterSeconds === null || body.recapAfterSeconds === "") {
-        recapAfterSeconds = null;
-      } else if (
-        typeof body.recapAfterSeconds === "number" &&
-        Number.isFinite(body.recapAfterSeconds)
-      ) {
-        recapAfterSeconds = clampRecapAfterSeconds(body.recapAfterSeconds);
-      } else {
-        return c.json(
-          { error: "recapAfterSeconds must be null or a finite number" },
-          400,
-        );
-      }
-    }
-
-    await deps.sessionMetadataService.updateMetadata(sessionId, {
-      title: body.title,
-      archived: body.archived,
-      starred: body.starred,
-      parentSessionId,
-      heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
-      heartbeatTurnsAfterMinutes,
-      heartbeatTurnText,
-      heartbeatForceAfterMinutes,
-      promptSuggestionMode,
-      recapAfterSeconds,
-    });
+    await deps.sessionMetadataService.updateMetadata(sessionId, patch);
 
     // Emit SSE event so sidebar and other clients can update
     if (deps.eventBus) {
       deps.eventBus.emit({
         type: "session-metadata-changed",
         sessionId,
-        title: body.title,
-        archived: body.archived,
-        starred: body.starred,
-        parentSessionId,
-        heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
-        heartbeatTurnsAfterMinutes,
-        heartbeatTurnText,
-        heartbeatForceAfterMinutes,
-        promptSuggestionMode: promptSuggestionMode ?? undefined,
-        recapAfterSeconds: recapAfterSeconds ?? undefined,
+        title: patch.title,
+        archived: patch.archived,
+        starred: patch.starred,
+        parentSessionId: patch.parentSessionId,
+        heartbeatTurnsEnabled: patch.heartbeatTurnsEnabled,
+        heartbeatTurnsAfterMinutes: patch.heartbeatTurnsAfterMinutes,
+        heartbeatTurnText: patch.heartbeatTurnText,
+        heartbeatForceAfterMinutes: patch.heartbeatForceAfterMinutes,
+        promptSuggestionMode: patch.promptSuggestionMode ?? undefined,
+        recapAfterSeconds: patch.recapAfterSeconds ?? undefined,
         timestamp: new Date().toISOString(),
       });
     }

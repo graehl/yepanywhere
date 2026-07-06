@@ -697,9 +697,9 @@ describe("clientSummaryStore", () => {
     expect(inbox.result.current.active).toMatchObject([
       {
         sessionId: "active",
-        activity: "in-turn",
       },
     ]);
+    expect(inbox.result.current.active[0]?.activity).toBeUndefined();
   });
 
   it("reports inbox snapshots to targeted count selectors", () => {

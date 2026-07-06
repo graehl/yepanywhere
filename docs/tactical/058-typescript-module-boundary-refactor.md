@@ -167,7 +167,7 @@ not create a `routes/sessions/` directory or a shared helpers bucket.
 | 1.4 | Deferred 2026-07-06 | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows; propose as an SRR item first if revived. | Deferred with the sessions route-registrar lane. Higher risk; preserve handoff/fork semantics and recap background behavior if revived. |
 | 1.5 | Deferred 2026-07-06 | Queue/deferred routes | Extract message queue, deferred patient queue, steer/cancel, pending input, and mode routes. Builds on SRR-005 (recovered queue helpers, done in doc 053). | Deferred with the sessions route-registrar lane. Queue timers and idle ownership are load-bearing; read architecture mandates and run `test:e2e:sdk` if revived. |
 | 1.6 | Deferred 2026-07-06 | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. Builds on SRR-009 (metadata patch parsing, done in doc 053). | Deferred with the sessions route-registrar lane. Preserve event-bus update emissions if revived. |
-| 1.7 | Not started | `routes/settings.ts` parser split | Move settings parsers/discovery helpers out of the route factory. | Good follow-up once the `sessions.ts` pattern is proven. |
+| 1.7 | Done 2026-07-06 | `routes/settings.ts` parser split | Move settings parsers/discovery helpers out of the route factory. | Moved parser/discovery helpers into `settings-parsers.ts`; route factory still owns endpoints, callbacks, config precedence, and response shapes. |
 | 1.8 | Not started | `app.ts` route composition cleanup | Extract app dependency construction or route mounting groups only after route modules are stable. | Do not alter middleware order, auth policy, or hosted-client endpoint selection. Coordinate with doc 054: workstreams slices (WS-004, WS-008, and later) actively mount routes in `app.ts`. |
 
 ## Phase 2: Client Page And Component Boundaries
@@ -261,6 +261,40 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 1.7 — Settings Parser Split (Landed 2026-07-06, this commit)
+
+Moved:
+- Settings request parsers, client-default merging, OpenAI-compatible helper
+  target URL/model discovery helpers, file-access setting parsing, speech audio
+  retention parsing, prompt-cache keepalive parsing, and cache-miss billing
+  parsing -> `settings-parsers.ts`.
+
+Signature conversions:
+- None. The route factory imports the same parser functions and still passes
+  the same raw payload/current-setting values.
+
+Behavior changes:
+- None intended. `settings.ts` still owns endpoint registration, runtime
+  callbacks, `ServerSettingsService` calls, config default/precedence handling,
+  public-share revocation, remote executor SSH testing, and response/error
+  shapes.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `settings.test.ts`; file-scoped `node scripts/biome.cjs lint`;
+  `git diff --check`; staged diff reviewed with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Settings/config tripwire: `topics/hard-development-rules.md` was read before
+  editing; the slice does not alter defaults, environment precedence, hosted
+  endpoints, relay selection, migrations, provider/model defaults, or
+  configuration persistence.
+
+Follow-ups recorded:
+- `settings.ts` still contains the large `PUT /api/settings` update flow. A
+  later slice could extract a request-update builder only if it preserves the
+  current error strings, callback order, and settings-service update shape.
 
 ### Slice 6.3 — Codex Provider Event Fixtures (Landed 2026-07-06, this commit)
 

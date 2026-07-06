@@ -396,3 +396,39 @@ describe("api onboarding facade", () => {
     ]);
   });
 });
+
+describe("api browser profiles facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves browser profile endpoint paths and methods", async () => {
+    await api.getBrowserProfiles();
+    await api.deleteBrowserProfile("browser profile/a");
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/browser-profiles", method: "GET", body: undefined },
+      {
+        url: "/api/browser-profiles/browser%20profile%2Fa",
+        method: "DELETE",
+        body: undefined,
+      },
+    ]);
+  });
+});

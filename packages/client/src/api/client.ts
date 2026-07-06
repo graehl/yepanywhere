@@ -1,7 +1,6 @@
 import type {
   AgentActivity,
   AgentContextHints,
-  BrowserProfilesResponse,
   CacheMissBillingRecord,
   CacheMissBillingSettings,
   ClientDefaults,
@@ -58,6 +57,7 @@ import type {
   SessionStatus,
 } from "../types";
 import { authApi } from "./authClient";
+import { browserProfilesApi } from "./browserProfilesClient";
 import { gitApi } from "./gitClient";
 import { onboardingApi } from "./onboardingClient";
 import { getDesktopAuthToken } from "./plainFetch";
@@ -1436,14 +1436,7 @@ export const api = {
   ...onboardingApi,
 
   // Browser profiles API (device origin tracking)
-  getBrowserProfiles: () =>
-    fetchJSON<BrowserProfilesResponse>("/browser-profiles"),
-
-  deleteBrowserProfile: (browserProfileId: string) =>
-    fetchJSON<{ deleted: boolean }>(
-      `/browser-profiles/${encodeURIComponent(browserProfileId)}`,
-      { method: "DELETE" },
-    ),
+  ...browserProfilesApi,
 
   // Server settings API (persistent server configuration)
   getServerSettings: () => fetchJSON<{ settings: ServerSettings }>("/settings"),

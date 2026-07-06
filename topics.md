@@ -128,3 +128,5 @@
   extracting large TypeScript/TSX files along existing module boundaries.
 - server-capabilities - Shared registry and lifecycle policy for `/api/version`
   capability strings and transitional compatibility gates.
+- session-id-remap - Public remap event and client summary-store merge for
+  startup-time temporary session IDs that later canonicalize.

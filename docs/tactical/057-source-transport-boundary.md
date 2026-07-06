@@ -2,9 +2,10 @@
 
 Topic: source-transport
 
-Status: Completed; T1-T10 landed 2026-07-05, with reconnect-overlap
-hardening landed 2026-07-06. This is the implementation runbook for the
-contract in [`topics/source-transport.md`](../../topics/source-transport.md).
+Status: Completed; T1-T10 landed 2026-07-05, with reconnect-overlap and
+terminal demand fast-fail hardening landed 2026-07-06. This is the
+implementation runbook for the contract in
+[`topics/source-transport.md`](../../topics/source-transport.md).
 It continues Phase 6 of
 [`051-client-source-runtime-topology.md`](051-client-source-runtime-topology.md)
 (whose near-term slices 4–6 it supersedes) and delivers the ownership
@@ -427,13 +428,15 @@ hook level, the 050 convergence regression, and the T10 smoke.
   before deciding whether teardown is still needed; if the in-flight recovery
   succeeds, forced teardown is skipped, and if it fails the forced reconnect
   continues with a fresh attempt.
+- 2026-07-06: Fast-fail demand fetch/blob/upload calls once a multiplex
+  source manager reaches terminal `disconnected`. Reconnecting demand work
+  still delegates to the backing connection for request-driven recovery, and
+  empty-slot demand work still uses the bounded retryable not-ready wait.
 
 ## Deferred Follow-Ups
 
 Explicitly out of scope; each is a deliberate future slice:
 
-- Fast-fail demand fetches when the manager has given up, instead of the 15s
-  bounded wait.
 - Per-source auth-required signaling (today 401s broadcast through the global
   `authEvents`).
 - Transport-owned `lastEventId` tracking (managed stream owns it for now).

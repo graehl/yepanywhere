@@ -303,9 +303,12 @@ arbiter for demand traffic; callers only opt *optional* work out.
 
 - **Demand traffic** (user navigated, tapped, or mounted a screen): call
   `fetch` unconditionally.
-  - Backing connection attached: the facade delegates verbatim to the backing
-    `fetch`, preserving request coalescing on the in-flight connect promise
-    and request-driven inline recovery. This is today's behavior exactly.
+  - Backing connection attached and manager ready or reconnecting: the facade
+    delegates verbatim to the backing `fetch`, preserving request coalescing on
+    the in-flight connect promise and request-driven inline recovery.
+  - Backing connection attached but manager terminally `disconnected`: the
+    facade rejects immediately with a typed, non-retryable disconnected error
+    instead of entering lower transport timeouts.
   - Slot empty (initial connect, teardown, instance being replaced): the
     facade waits bounded (default 15s, matching `whenConnectionReady`) for an
     attach, then delegates; otherwise rejects with a typed, retryable
@@ -432,12 +435,12 @@ document**, never as a side effect of a move.
 | 13 | Session/watch resubscribe resumes from `lastEventId` | hooks (moves to managed stream) | `ReconnectSubscriptions.test.ts` |
 | 14 | Teardown exactly once; late handler fire from a replaced subscription cannot clear the new one; StrictMode double-mount safe | hook guards (move to managed stream) | hook tests |
 | 15 | Activity resubscribes on connected transition; connect is idempotent | `ActivityBus` stateChange listener (moves to managed stream) | `ReconnectSubscriptions.test.ts` |
-| 16 | Known issue, preserved not widened: `forceReconnect()` overlapping an in-flight `ensureConnected()` can strand a fetch until the 30s timeout (050 aggravation 2) | pre-existing race | recorded; fix deferred |
+| 16 | `forceReconnect()` overlapping an in-flight `ensureConnected()` joins the in-flight recovery before deciding whether forced teardown is still needed | `SecureConnection.forceReconnect()` serialization | `SecureConnection.compatibility.test.ts` |
+| 17 | Terminal disconnected demand traffic fails fast without blocking reconnecting or empty-slot behavior | multiplex facade demand guard | `MultiplexSourceTransport.test.ts` |
 
 Explicitly deferred semantic improvements (each its own future slice, opted
-into deliberately): fast-fail demand fetches when the manager has given up
-(instead of the 15s wait); per-source auth-required signaling replacing the
-global `authEvents` broadcast; transport-owned `lastEventId` tracking.
+into deliberately): per-source auth-required signaling replacing the global
+`authEvents` broadcast; transport-owned `lastEventId` tracking.
 
 ## Mode Semantics
 

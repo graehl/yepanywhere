@@ -139,8 +139,10 @@ export interface SessionWatchSubscriptionOptions {
  *
  * - Demand traffic, caused by user navigation, taps, or mounted screens, calls
  *   `fetch` unconditionally. The transport is the single readiness arbiter. A
- *   backing connection delegates verbatim and preserves request-driven
- *   recovery; an empty slot waits bounded, then rejects with a typed retryable
+ *   backing connection delegates while ready or reconnecting and preserves
+ *   request-driven recovery; once the manager reaches terminal disconnected,
+ *   demand work rejects immediately with a typed non-retryable disconnected
+ *   error. An empty slot waits bounded, then rejects with a typed retryable
  *   not-ready error.
  * - Elective traffic, such as pollers, prefetch, and log flushing, observes
  *   `status` and pauses while not ready instead of queueing optional work.
@@ -196,6 +198,7 @@ export interface SourceTransport {
 
 export type SourceTransportErrorCode =
   | "SOURCE_TRANSPORT_NOT_READY"
+  | "SOURCE_TRANSPORT_DISCONNECTED"
   | "SOURCE_TRANSPORT_UNSUPPORTED"
   | "SOURCE_TRANSPORT_DISPOSED"
   | "SOURCE_TRANSPORT_SUBSCRIPTION_FAILED";
@@ -265,6 +268,35 @@ export class SourceTransportNotReadyError extends SourceTransportError {
     );
     this.name = "SourceTransportNotReadyError";
     this.timeoutMs = init.timeoutMs;
+  }
+}
+
+export interface SourceTransportDisconnectedErrorInit {
+  readonly kind: SourceTransportKind;
+  readonly channel?: SourceTransportChannelName;
+  readonly lastError?: string;
+  readonly message?: string;
+  readonly cause?: unknown;
+}
+
+export class SourceTransportDisconnectedError extends SourceTransportError {
+  readonly lastError?: string;
+
+  constructor(init: SourceTransportDisconnectedErrorInit) {
+    const detail = init.lastError ? `: ${init.lastError}` : "";
+    super(
+      init.message ?? `Source transport ${init.kind} is disconnected${detail}`,
+      {
+        code: "SOURCE_TRANSPORT_DISCONNECTED",
+        retryable: false,
+        transportKind: init.kind,
+        state: "disconnected",
+        channel: init.channel,
+        cause: init.cause,
+      },
+    );
+    this.name = "SourceTransportDisconnectedError";
+    this.lastError = init.lastError;
   }
 }
 

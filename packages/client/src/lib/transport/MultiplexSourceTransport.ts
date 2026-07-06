@@ -31,6 +31,7 @@ import type {
   UploadOptions,
 } from "./types";
 import {
+  SourceTransportDisconnectedError,
   SourceTransportDisposedError,
   SourceTransportNotReadyError,
   SourceTransportUnsupportedError,
@@ -405,6 +406,9 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
     fn: (connection: TConnection) => Promise<T>,
   ): Promise<T> {
     const connection = await this.waitForConnection();
+    if (this.manager.state === "disconnected") {
+      throw this.createDisconnectedError();
+    }
     return fn(connection);
   }
 
@@ -456,6 +460,14 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
       state: this.getSourceState(),
       channel: this.channelName,
       timeoutMs: this.readyTimeoutMs,
+    });
+  }
+
+  private createDisconnectedError(): SourceTransportDisconnectedError {
+    return new SourceTransportDisconnectedError({
+      kind: this.kind,
+      channel: this.channelName,
+      lastError: this.lastError,
     });
   }
 

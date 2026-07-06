@@ -28,6 +28,7 @@ export type {
   WebSocketSourceTransportOptions,
 } from "./MultiplexSourceTransport";
 export {
+  SourceTransportDisconnectedError,
   SourceTransportDisposedError,
   SourceTransportError,
   SourceTransportNotReadyError,

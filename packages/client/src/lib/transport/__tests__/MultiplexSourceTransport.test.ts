@@ -235,4 +235,58 @@ describe("multiplex source transports", () => {
     expect(streamChannel(transport)).toMatchObject({ state: "connected" });
     transport.dispose();
   });
+
+  it("delegates demand fetches while reconnecting", async () => {
+    vi.useFakeTimers();
+    const transport = new WebSocketSourceTransport({ readyTimeoutMs: 25 });
+    const connection = new FakeMultiplexConnection("ws");
+
+    transport.attach(connection as unknown as WebSocketConnection);
+    connection.manager?.handleClose(new Error("socket dropped"));
+
+    expect(transport.status.getSnapshot().state).toBe("reconnecting");
+    await expect(transport.fetch("/projects")).resolves.toEqual({
+      from: "ws",
+      path: "/projects",
+    });
+    expect(connection.fetchMock).toHaveBeenCalledWith("/projects", undefined);
+    expect(connection.reconnect).not.toHaveBeenCalled();
+
+    transport.dispose();
+  });
+
+  it("fast-fails demand fetches after the manager gives up", async () => {
+    vi.useFakeTimers();
+    const transport = new WebSocketSourceTransport({
+      readyTimeoutMs: 25,
+      connectionManagerConfig: {
+        baseDelayMs: 1,
+        jitterFactor: 0,
+        maxAttempts: 1,
+      },
+    });
+    const connection = new FakeMultiplexConnection("ws");
+    connection.reconnect.mockRejectedValueOnce(new Error("server offline"));
+
+    transport.attach(connection as unknown as WebSocketConnection);
+    connection.manager?.handleClose(new Error("socket dropped"));
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(transport.status.getSnapshot().state).toBe("disconnected");
+    expect(streamChannel(transport)).toMatchObject({
+      state: "disconnected",
+      lastError: "Reconnection failed after 1 attempts",
+    });
+    await expect(transport.fetch("/projects")).rejects.toMatchObject({
+      code: "SOURCE_TRANSPORT_DISCONNECTED",
+      retryable: false,
+      transportKind: "websocket",
+      state: "disconnected",
+      channel: "multiplex-websocket",
+      lastError: "Reconnection failed after 1 attempts",
+    });
+    expect(connection.fetchMock).not.toHaveBeenCalled();
+
+    transport.dispose();
+  });
 });

@@ -1,0 +1,349 @@
+import type { ModelInfo } from "@yep-anywhere/shared";
+
+export const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
+
+const PREFERRED_MODEL_ORDER = [
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.3-codex",
+  "gpt-5.3-codex-spark",
+  "gpt-5.2-codex",
+  "gpt-5.1-codex-max",
+  "gpt-5.2",
+  "gpt-5.1-codex-mini",
+] as const;
+
+export const FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    description:
+      "Frontier model for complex coding, research, and real-world work.",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      {
+        reasoningEffort: "low",
+        description: "Fast responses with lighter reasoning",
+      },
+      {
+        reasoningEffort: "medium",
+        description: "Balances speed and reasoning depth for everyday tasks",
+      },
+      {
+        reasoningEffort: "high",
+        description: "Greater reasoning depth for complex problems",
+      },
+      {
+        reasoningEffort: "xhigh",
+        description: "Extra high reasoning depth for complex problems",
+      },
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: true,
+    serviceTiers: [
+      {
+        id: "priority",
+        name: "Fast",
+        description: "1.5x speed, increased usage",
+      },
+    ],
+  },
+  {
+    id: "gpt-5.4",
+    name: "GPT-5.4",
+    description: "Strong model for everyday coding.",
+    isDefault: true,
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      {
+        reasoningEffort: "low",
+        description: "Fast responses with lighter reasoning",
+      },
+      {
+        reasoningEffort: "medium",
+        description: "Balances speed and reasoning depth for everyday tasks",
+      },
+      {
+        reasoningEffort: "high",
+        description: "Greater reasoning depth for complex problems",
+      },
+      {
+        reasoningEffort: "xhigh",
+        description: "Extra high reasoning depth for complex problems",
+      },
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: true,
+    serviceTiers: [
+      {
+        id: "priority",
+        name: "Fast",
+        description: "1.5x speed, increased usage",
+      },
+    ],
+  },
+  {
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4-Mini",
+    description:
+      "Small, fast, and cost-efficient model for simpler coding tasks.",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      {
+        reasoningEffort: "low",
+        description: "Fast responses with lighter reasoning",
+      },
+      {
+        reasoningEffort: "medium",
+        description: "Balances speed and reasoning depth for everyday tasks",
+      },
+      {
+        reasoningEffort: "high",
+        description: "Greater reasoning depth for complex problems",
+      },
+      {
+        reasoningEffort: "xhigh",
+        description: "Extra high reasoning depth for complex problems",
+      },
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: true,
+  },
+  { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
+  { id: "gpt-5.3-codex-spark", name: "GPT-5.3-Codex-Spark" },
+  { id: "gpt-5.2", name: "GPT-5.2" },
+];
+
+export const LEGACY_FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
+  { id: "gpt-5.2-codex", name: "GPT-5.2-Codex" },
+  { id: "gpt-5.1-codex-max", name: "GPT-5.1-Codex-Max" },
+  { id: "gpt-5.2", name: "GPT-5.2" },
+  { id: "gpt-5.1-codex-mini", name: "GPT-5.1-Codex-Mini" },
+];
+
+export interface AppServerModel {
+  id: string;
+  model?: string;
+  displayName?: string;
+  description?: string;
+  upgrade?: string | null;
+  upgradeInfo?: { model?: string | null } | null;
+  hidden?: boolean | null;
+  isDefault?: boolean | null;
+  defaultReasoningEffort?: string | null;
+  supportedReasoningEfforts?: Array<{
+    reasoningEffort?: string | null;
+    description?: string | null;
+  }> | null;
+  inputModalities?: string[] | null;
+  supportsPersonality?: boolean | null;
+  serviceTiers?: Array<{
+    id?: string | null;
+    name?: string | null;
+    description?: string | null;
+  }> | null;
+}
+
+export function normalizeSemver(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+)\.(\d+)\.(\d+)(?:-([\w.]+))?/);
+  if (!match) return null;
+  const [, major, minor, patch, pre] = match;
+  return pre
+    ? `${major}.${minor}.${patch}-${pre}`
+    : `${major}.${minor}.${patch}`;
+}
+
+export function compareSemver(a: string, b: string): number {
+  const parsedA = splitSemver(a);
+  const parsedB = splitSemver(b);
+  for (let i = 0; i < 3; i++) {
+    const partA = parsedA.parts[i] ?? 0;
+    const partB = parsedB.parts[i] ?? 0;
+    if (partA !== partB) return partA < partB ? -1 : 1;
+  }
+  if (parsedA.pre === null && parsedB.pre === null) return 0;
+  if (parsedA.pre === null) return 1;
+  if (parsedB.pre === null) return -1;
+  return parsedA.pre < parsedB.pre ? -1 : parsedA.pre > parsedB.pre ? 1 : 0;
+}
+
+function splitSemver(version: string): { parts: number[]; pre: string | null } {
+  const dashIndex = version.indexOf("-");
+  const core = dashIndex === -1 ? version : version.slice(0, dashIndex);
+  const pre = dashIndex === -1 ? null : version.slice(dashIndex + 1);
+  return {
+    parts: core.split(".").map((part) => {
+      const parsed = Number.parseInt(part, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }),
+    pre,
+  };
+}
+
+export function getFallbackCodexModelsForCliVersion(
+  version: string | null,
+): ModelInfo[] {
+  if (
+    version &&
+    compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0
+  ) {
+    return LEGACY_FALLBACK_CODEX_MODELS;
+  }
+  return FALLBACK_CODEX_MODELS;
+}
+
+export function normalizeCodexModelList(models: AppServerModel[]): ModelInfo[] {
+  const orderLookup = new Map<string, number>(
+    PREFERRED_MODEL_ORDER.map((id, idx) => [id, idx]),
+  );
+  const deduped = new Map<
+    string,
+    { model: ModelInfo; serverIndex: number }
+  >();
+
+  for (const [serverIndex, model] of models.entries()) {
+    if (model.hidden === true) continue;
+
+    const modelId = (model.model || model.id || "").trim();
+    if (!modelId) continue;
+
+    deduped.set(modelId, {
+      model: {
+        id: modelId,
+        name: formatModelName(model.displayName || modelId),
+        description: model.description,
+        ...(model.isDefault === true ? { isDefault: true } : {}),
+        ...normalizeModelReasoningMetadata(model),
+        ...(Array.isArray(model.inputModalities)
+          ? { inputModalities: model.inputModalities }
+          : {}),
+        ...(typeof model.supportsPersonality === "boolean"
+          ? { supportsPersonality: model.supportsPersonality }
+          : {}),
+        ...normalizeModelServiceTierMetadata(model),
+      },
+      serverIndex,
+    });
+
+    const upgradeId =
+      model.upgrade?.trim() ||
+      (typeof model.upgradeInfo?.model === "string"
+        ? model.upgradeInfo.model.trim()
+        : "");
+    if (upgradeId && !deduped.has(upgradeId)) {
+      deduped.set(upgradeId, {
+        model: {
+          id: upgradeId,
+          name: formatModelName(upgradeId),
+        },
+        serverIndex,
+      });
+    }
+  }
+
+  return [...deduped.values()]
+    .map((entry, index) => ({
+      model: entry.model,
+      index,
+      rank: getModelSortRank(entry.model, entry.serverIndex, orderLookup),
+    }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.model);
+}
+
+function normalizeModelReasoningMetadata(
+  model: AppServerModel,
+): Pick<ModelInfo, "defaultReasoningEffort" | "supportedReasoningEfforts"> {
+  const metadata: Pick<
+    ModelInfo,
+    "defaultReasoningEffort" | "supportedReasoningEfforts"
+  > = {};
+  if (typeof model.defaultReasoningEffort === "string") {
+    metadata.defaultReasoningEffort = model.defaultReasoningEffort;
+  }
+  if (Array.isArray(model.supportedReasoningEfforts)) {
+    const efforts = model.supportedReasoningEfforts
+      .map((effort) => {
+        if (typeof effort.reasoningEffort !== "string") return null;
+        return {
+          reasoningEffort: effort.reasoningEffort,
+          ...(typeof effort.description === "string"
+            ? { description: effort.description }
+            : {}),
+        };
+      })
+      .filter(
+        (
+          effort,
+        ): effort is {
+          reasoningEffort: string;
+          description?: string;
+        } => effort !== null,
+      );
+    if (efforts.length > 0) {
+      metadata.supportedReasoningEfforts = efforts;
+    }
+  }
+  return metadata;
+}
+
+function normalizeModelServiceTierMetadata(
+  model: AppServerModel,
+): Pick<ModelInfo, "serviceTiers"> {
+  if (!Array.isArray(model.serviceTiers)) {
+    return {};
+  }
+  const serviceTiers = model.serviceTiers
+    .map((tier) => {
+      const id = typeof tier.id === "string" ? tier.id.trim() : "";
+      const name = typeof tier.name === "string" ? tier.name.trim() : "";
+      if (!id || !name) return null;
+      return {
+        id,
+        name,
+        ...(typeof tier.description === "string"
+          ? { description: tier.description }
+          : {}),
+      };
+    })
+    .filter((tier): tier is NonNullable<typeof tier> => tier !== null);
+
+  return serviceTiers.length > 0 ? { serviceTiers } : {};
+}
+
+function getModelSortRank(
+  model: ModelInfo,
+  serverIndex: number,
+  orderLookup: Map<string, number>,
+): number {
+  if (model.id === "gpt-5.5") {
+    return 0;
+  }
+  if (model.isDefault) {
+    return 1;
+  }
+  const preferredRank = orderLookup.get(model.id);
+  if (preferredRank !== undefined) {
+    return 2 + preferredRank;
+  }
+  return 2 + PREFERRED_MODEL_ORDER.length + serverIndex;
+}
+
+function formatModelName(value: string): string {
+  return value
+    .trim()
+    .split("-")
+    .map((part) => {
+      const lower = part.toLowerCase();
+      if (lower === "gpt") return "GPT";
+      if (lower === "codex") return "Codex";
+      if (lower === "mini") return "Mini";
+      if (lower === "max") return "Max";
+      if (lower.length === 0) return "";
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join("-");
+}

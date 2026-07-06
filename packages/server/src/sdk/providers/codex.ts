@@ -84,6 +84,12 @@ import type {
   TurnSteerResponse,
 } from "./codex-protocol/index.js";
 import { createAgentctlSessionEnvBridge } from "./agentctl-session-env.js";
+import {
+  type AppServerModel,
+  getFallbackCodexModelsForCliVersion,
+  normalizeCodexModelList,
+  normalizeSemver,
+} from "./codex-model-catalog.js";
 import { CODEX_BUILTIN_COMMANDS } from "./staticSlashCommands.js";
 import type {
   AgentProvider,
@@ -151,7 +157,6 @@ const MODEL_LIST_TIMEOUT_MS = 8000;
 const APP_SERVER_INIT_REQUEST_ID = 1;
 const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
-const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
 const CODEX_RECAP_TIMEOUT_MS = 20_000;
@@ -219,127 +224,6 @@ const DECLARE_CODEX_ORIGINATOR = false;
 const DECLARED_CODEX_ORIGINATOR = "Codex Desktop";
 const YEP_ANYWHERE_ORIGINATOR = "yep-anywhere";
 
-const PREFERRED_MODEL_ORDER = [
-  "gpt-5.5",
-  "gpt-5.4",
-  "gpt-5.4-mini",
-  "gpt-5.3-codex",
-  "gpt-5.3-codex-spark",
-  "gpt-5.2-codex",
-  "gpt-5.1-codex-max",
-  "gpt-5.2",
-  "gpt-5.1-codex-mini",
-] as const;
-
-const FALLBACK_CODEX_MODELS: ModelInfo[] = [
-  {
-    id: "gpt-5.5",
-    name: "GPT-5.5",
-    description:
-      "Frontier model for complex coding, research, and real-world work.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: [
-      {
-        reasoningEffort: "low",
-        description: "Fast responses with lighter reasoning",
-      },
-      {
-        reasoningEffort: "medium",
-        description: "Balances speed and reasoning depth for everyday tasks",
-      },
-      {
-        reasoningEffort: "high",
-        description: "Greater reasoning depth for complex problems",
-      },
-      {
-        reasoningEffort: "xhigh",
-        description: "Extra high reasoning depth for complex problems",
-      },
-    ],
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-    serviceTiers: [
-      {
-        id: "priority",
-        name: "Fast",
-        description: "1.5x speed, increased usage",
-      },
-    ],
-  },
-  {
-    id: "gpt-5.4",
-    name: "GPT-5.4",
-    description: "Strong model for everyday coding.",
-    isDefault: true,
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: [
-      {
-        reasoningEffort: "low",
-        description: "Fast responses with lighter reasoning",
-      },
-      {
-        reasoningEffort: "medium",
-        description: "Balances speed and reasoning depth for everyday tasks",
-      },
-      {
-        reasoningEffort: "high",
-        description: "Greater reasoning depth for complex problems",
-      },
-      {
-        reasoningEffort: "xhigh",
-        description: "Extra high reasoning depth for complex problems",
-      },
-    ],
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-    serviceTiers: [
-      {
-        id: "priority",
-        name: "Fast",
-        description: "1.5x speed, increased usage",
-      },
-    ],
-  },
-  {
-    id: "gpt-5.4-mini",
-    name: "GPT-5.4-Mini",
-    description:
-      "Small, fast, and cost-efficient model for simpler coding tasks.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: [
-      {
-        reasoningEffort: "low",
-        description: "Fast responses with lighter reasoning",
-      },
-      {
-        reasoningEffort: "medium",
-        description: "Balances speed and reasoning depth for everyday tasks",
-      },
-      {
-        reasoningEffort: "high",
-        description: "Greater reasoning depth for complex problems",
-      },
-      {
-        reasoningEffort: "xhigh",
-        description: "Extra high reasoning depth for complex problems",
-      },
-    ],
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-  },
-  { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
-  { id: "gpt-5.3-codex-spark", name: "GPT-5.3-Codex-Spark" },
-  { id: "gpt-5.2", name: "GPT-5.2" },
-];
-
-const LEGACY_FALLBACK_CODEX_MODELS: ModelInfo[] = [
-  { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
-  { id: "gpt-5.2-codex", name: "GPT-5.2-Codex" },
-  { id: "gpt-5.1-codex-max", name: "GPT-5.1-Codex-Max" },
-  { id: "gpt-5.2", name: "GPT-5.2" },
-  { id: "gpt-5.1-codex-mini", name: "GPT-5.1-Codex-Mini" },
-];
-
 type JsonRpcId = string | number;
 
 interface JsonRpcError {
@@ -363,29 +247,6 @@ interface JsonRpcServerRequest extends JsonRpcNotification {
   id: JsonRpcId;
 }
 
-interface AppServerModel {
-  id: string;
-  model?: string;
-  displayName?: string;
-  description?: string;
-  upgrade?: string | null;
-  upgradeInfo?: { model?: string | null } | null;
-  hidden?: boolean | null;
-  isDefault?: boolean | null;
-  defaultReasoningEffort?: string | null;
-  supportedReasoningEfforts?: Array<{
-    reasoningEffort?: string | null;
-    description?: string | null;
-  }> | null;
-  inputModalities?: string[] | null;
-  supportsPersonality?: boolean | null;
-  serviceTiers?: Array<{
-    id?: string | null;
-    name?: string | null;
-    description?: string | null;
-  }> | null;
-}
-
 interface TokenUsageSnapshot {
   inputTokens: number;
   outputTokens: number;
@@ -398,43 +259,6 @@ interface CodexTurnRuntimeState {
   activeTurnId: string | null;
   activeToolCallIds: Set<string>;
   backgroundToolCallIds: Set<string>;
-}
-
-function normalizeSemver(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const match = raw.match(/(\d+)\.(\d+)\.(\d+)(?:-([\w.]+))?/);
-  if (!match) return null;
-  const [, major, minor, patch, pre] = match;
-  return pre
-    ? `${major}.${minor}.${patch}-${pre}`
-    : `${major}.${minor}.${patch}`;
-}
-
-function compareSemver(a: string, b: string): number {
-  const parsedA = splitSemver(a);
-  const parsedB = splitSemver(b);
-  for (let i = 0; i < 3; i++) {
-    const partA = parsedA.parts[i] ?? 0;
-    const partB = parsedB.parts[i] ?? 0;
-    if (partA !== partB) return partA < partB ? -1 : 1;
-  }
-  if (parsedA.pre === null && parsedB.pre === null) return 0;
-  if (parsedA.pre === null) return 1;
-  if (parsedB.pre === null) return -1;
-  return parsedA.pre < parsedB.pre ? -1 : parsedA.pre > parsedB.pre ? 1 : 0;
-}
-
-function splitSemver(version: string): { parts: number[]; pre: string | null } {
-  const dashIndex = version.indexOf("-");
-  const core = dashIndex === -1 ? version : version.slice(0, dashIndex);
-  const pre = dashIndex === -1 ? null : version.slice(dashIndex + 1);
-  return {
-    parts: core.split(".").map((part) => {
-      const parsed = Number.parseInt(part, 10);
-      return Number.isFinite(parsed) ? parsed : 0;
-    }),
-    pre,
-  };
 }
 
 async function terminateChildProcess(
@@ -1109,7 +933,7 @@ export class CodexProvider implements AgentProvider {
   private async getModelsFromAppServer(): Promise<ModelInfo[]> {
     try {
       const appServerModels = await this.requestAppServerModelList();
-      return this.normalizeModelList(appServerModels);
+      return normalizeCodexModelList(appServerModels);
     } catch (error) {
       log.debug(
         { error },
@@ -1262,153 +1086,9 @@ export class CodexProvider implements AgentProvider {
     });
   }
 
-  private normalizeModelList(models: AppServerModel[]): ModelInfo[] {
-    const orderLookup = new Map<string, number>(
-      PREFERRED_MODEL_ORDER.map((id, idx) => [id, idx]),
-    );
-    const deduped = new Map<
-      string,
-      { model: ModelInfo; serverIndex: number }
-    >();
-
-    for (const [serverIndex, model] of models.entries()) {
-      if (model.hidden === true) continue;
-
-      const modelId = (model.model || model.id || "").trim();
-      if (!modelId) continue;
-
-      deduped.set(modelId, {
-        model: {
-          id: modelId,
-          name: this.formatModelName(model.displayName || modelId),
-          description: model.description,
-          ...(model.isDefault === true ? { isDefault: true } : {}),
-          ...this.normalizeModelReasoningMetadata(model),
-          ...(Array.isArray(model.inputModalities)
-            ? { inputModalities: model.inputModalities }
-            : {}),
-          ...(typeof model.supportsPersonality === "boolean"
-            ? { supportsPersonality: model.supportsPersonality }
-            : {}),
-          ...this.normalizeModelServiceTierMetadata(model),
-        },
-        serverIndex,
-      });
-
-      const upgradeId =
-        model.upgrade?.trim() ||
-        (typeof model.upgradeInfo?.model === "string"
-          ? model.upgradeInfo.model.trim()
-          : "");
-      if (upgradeId && !deduped.has(upgradeId)) {
-        deduped.set(upgradeId, {
-          model: {
-            id: upgradeId,
-            name: this.formatModelName(upgradeId),
-          },
-          serverIndex,
-        });
-      }
-    }
-
-    return [...deduped.values()]
-      .map((entry, index) => ({
-        model: entry.model,
-        index,
-        rank: this.getModelSortRank(
-          entry.model,
-          entry.serverIndex,
-          orderLookup,
-        ),
-      }))
-      .sort((a, b) => a.rank - b.rank || a.index - b.index)
-      .map((entry) => entry.model);
-  }
-
-  private normalizeModelReasoningMetadata(
-    model: AppServerModel,
-  ): Pick<ModelInfo, "defaultReasoningEffort" | "supportedReasoningEfforts"> {
-    const metadata: Pick<
-      ModelInfo,
-      "defaultReasoningEffort" | "supportedReasoningEfforts"
-    > = {};
-    if (typeof model.defaultReasoningEffort === "string") {
-      metadata.defaultReasoningEffort = model.defaultReasoningEffort;
-    }
-    if (Array.isArray(model.supportedReasoningEfforts)) {
-      const efforts = model.supportedReasoningEfforts
-        .map((effort) => {
-          if (typeof effort.reasoningEffort !== "string") return null;
-          return {
-            reasoningEffort: effort.reasoningEffort,
-            ...(typeof effort.description === "string"
-              ? { description: effort.description }
-              : {}),
-          };
-        })
-        .filter(
-          (
-            effort,
-          ): effort is {
-            reasoningEffort: string;
-            description?: string;
-          } => effort !== null,
-        );
-      if (efforts.length > 0) {
-        metadata.supportedReasoningEfforts = efforts;
-      }
-    }
-    return metadata;
-  }
-
-  private normalizeModelServiceTierMetadata(
-    model: AppServerModel,
-  ): Pick<ModelInfo, "serviceTiers"> {
-    if (!Array.isArray(model.serviceTiers)) {
-      return {};
-    }
-    const serviceTiers = model.serviceTiers
-      .map((tier) => {
-        const id = typeof tier.id === "string" ? tier.id.trim() : "";
-        const name = typeof tier.name === "string" ? tier.name.trim() : "";
-        if (!id || !name) return null;
-        return {
-          id,
-          name,
-          ...(typeof tier.description === "string"
-            ? { description: tier.description }
-            : {}),
-        };
-      })
-      .filter((tier): tier is NonNullable<typeof tier> => tier !== null);
-
-    return serviceTiers.length > 0 ? { serviceTiers } : {};
-  }
-
-  private getModelSortRank(
-    model: ModelInfo,
-    serverIndex: number,
-    orderLookup: Map<string, number>,
-  ): number {
-    if (model.id === "gpt-5.5") {
-      return 0;
-    }
-    if (model.isDefault) {
-      return 1;
-    }
-    const preferredRank = orderLookup.get(model.id);
-    if (preferredRank !== undefined) {
-      return 2 + preferredRank;
-    }
-    return 2 + PREFERRED_MODEL_ORDER.length + serverIndex;
-  }
-
   private async getFallbackCodexModels(): Promise<ModelInfo[]> {
     const version = await this.getInstalledCodexCliVersion();
-    if (version && compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0) {
-      return LEGACY_FALLBACK_CODEX_MODELS;
-    }
-    return FALLBACK_CODEX_MODELS;
+    return getFallbackCodexModelsForCliVersion(version);
   }
 
   private async getInstalledCodexCliVersion(): Promise<string | null> {
@@ -1422,22 +1102,6 @@ export class CodexProvider implements AgentProvider {
     } catch {
       return null;
     }
-  }
-
-  private formatModelName(value: string): string {
-    return value
-      .trim()
-      .split("-")
-      .map((part) => {
-        const lower = part.toLowerCase();
-        if (lower === "gpt") return "GPT";
-        if (lower === "codex") return "Codex";
-        if (lower === "mini") return "Mini";
-        if (lower === "max") return "Max";
-        if (lower.length === 0) return "";
-        return lower.charAt(0).toUpperCase() + lower.slice(1);
-      })
-      .join("-");
   }
 
   private mapEffortToReasoningEffort(

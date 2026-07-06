@@ -210,7 +210,7 @@ extracting pure protocol/model/normalization modules with strong fixtures.
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
 | 4.1 | Not started | `sdk/providers/codex.ts` app-server client | Move `CodexAppServerClient`, JSON-RPC queueing, process termination, and raw request helpers into focused modules. | Tripwire matrix: Codex row. Run Codex provider tests and server E2E. |
-| 4.2 | Not started | Codex model catalog helpers | Move fallback model data, semver parsing, model sorting, and model metadata normalization. | Low risk if tests pin catalog output. Tier 1. |
+| 4.2 | Done 2026-07-06 | Codex model catalog helpers | Move fallback model data, semver parsing, model sorting, and model metadata normalization. | App-server process/query/cache ownership stayed in `codex.ts`; focused catalog tests pin fallback selection and normalized ordering. |
 | 4.3 | Not started | Codex notification guards | Move `as*Notification` guards and raw notification classifiers into a protocol module. | Fixture-heavy; compare stream and persisted render parity where relevant. |
 | 4.4 | Not started | Codex live event conversion | Move live turn state, streaming message construction, and item-to-SDK conversion. | Higher risk; preserve live-delta suppression and replay behavior. Tier 3. |
 | 4.5 | Not started | Codex recap/summary helpers | Move recap prompts, fork-backed summary, retitle prompt, and summary capture helpers. | Preserve helper model resolution and provider-visible prompt behavior. |
@@ -261,6 +261,48 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 4.2 — Codex Model Catalog Helpers (Landed 2026-07-06, this commit)
+
+Moved:
+- Current and legacy fallback Codex model lists, preferred model ordering, the
+  GPT-5.5 fallback cutoff, semver normalization/comparison, app-server model
+  shape, model list normalization, model metadata normalization, service-tier
+  cleanup, sort ranking, and display-name formatting ->
+  `codex-model-catalog.ts`.
+- The former provider-private model-list assertion moved from the large
+  `codex.test.ts` file to `codex-model-catalog.test.ts`, with added semver and
+  fallback-selection coverage.
+
+Signature conversions:
+- `CodexProvider.getModelsFromAppServer()` now passes app-server model data to
+  `normalizeCodexModelList()`.
+- `CodexProvider.getFallbackCodexModels()` still owns CLI version discovery,
+  then passes the normalized version to
+  `getFallbackCodexModelsForCliVersion()`.
+
+Behavior changes:
+- None intended. `codex.ts` still owns model cache timing, CLI/app-server
+  process execution, JSON-RPC model/list handling, and fallback-on-query-error
+  behavior. The Codex CLI target version and compatibility markers were not
+  changed.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `codex-model-catalog.test.ts` and `codex.test.ts`; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`; staged diff reviewed
+  with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Codex tripwire: `references/codex` was present; the Codex provider tests ran.
+- Skipped: provider stream/persisted render parity, because this slice only
+  moved model catalog selection/normalization and does not touch event
+  conversion, persistence, or transcript rendering.
+
+Follow-ups recorded:
+- `CodexProvider` still owns app-server model/list process startup, JSON-RPC
+  handshake parsing, cache TTL, and fallback decision timing. Those belong with
+  the app-server client or provider lifecycle slices, not this catalog move.
 
 ### Slice 2.9 — NewSessionForm Helper Modules (Landed 2026-07-06, this commit)
 

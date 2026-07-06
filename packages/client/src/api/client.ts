@@ -12,7 +12,6 @@ import type {
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
   DeviceInfo,
-  EnrichedRecentEntry,
   FileContentResponse,
   FreezePublicSessionLiveSharesResponse,
   HelperTargetConfig,
@@ -61,6 +60,7 @@ import type {
 import { authApi } from "./authClient";
 import { gitApi } from "./gitClient";
 import { getDesktopAuthToken } from "./plainFetch";
+import { recentsApi } from "./recentsClient";
 import { fetchJSON } from "./sourceApiFetch";
 
 /** Pagination metadata for compact-boundary-based session loading */
@@ -1429,21 +1429,7 @@ export const api = {
   ...authApi,
 
   // Recents API
-  getRecents: (limit?: number) =>
-    fetchJSON<{
-      recents: Array<EnrichedRecentEntry>;
-    }>(limit ? `/recents?limit=${limit}` : "/recents"),
-
-  recordVisit: (sessionId: string, projectId: string) =>
-    fetchJSON<{ recorded: boolean }>("/recents/visit", {
-      method: "POST",
-      body: JSON.stringify({ sessionId, projectId }),
-    }),
-
-  clearRecents: () =>
-    fetchJSON<{ cleared: boolean }>("/recents", {
-      method: "DELETE",
-    }),
+  ...recentsApi,
 
   // Onboarding API (first-run wizard state)
   getOnboardingStatus: () => fetchJSON<{ complete: boolean }>("/onboarding"),

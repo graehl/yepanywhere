@@ -307,3 +307,50 @@ describe("api auth facade", () => {
     ]);
   });
 });
+
+describe("api recents facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves recents endpoint paths, methods, and bodies", async () => {
+    await api.getRecents();
+    await api.getRecents(25);
+    await api.recordVisit("session-a", "project-a");
+    await api.clearRecents();
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/recents", method: "GET", body: undefined },
+      { url: "/api/recents?limit=25", method: "GET", body: undefined },
+      {
+        url: "/api/recents/visit",
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "session-a",
+          projectId: "project-a",
+        }),
+      },
+      {
+        url: "/api/recents",
+        method: "DELETE",
+        body: undefined,
+      },
+    ]);
+  });
+});

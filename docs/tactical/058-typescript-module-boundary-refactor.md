@@ -203,6 +203,16 @@ of their planned slices.
 | 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Owned by `topics/source-transport.md` / doc 057; preserve parity rows and full transport tests. |
 | 3.4 | Not started | `api/client.ts` domain clients | Consider domain-specific API modules once source transport shims are stable. | Keep the exported `api` facade stable until callers migrate deliberately (the contract's one re-export exception). |
 
+Phase 3 scope note:
+- Further `useSessionMessages` / `SessionDetailCoordinator` orchestration is
+  out of scope for this lower-risk 058 pass. Doc 051 identifies the next
+  coordinator move as consolidating the remaining initial-load effect into
+  named hook/coordinator phases; that touches warm hydration order, reveal
+  timing, progress state, stream-gate opening, cache writes, and missing-store
+  diagnostics. That is real session-detail lifecycle work, not a small
+  move-only module-boundary cleanup. Revive it through the session-detail/source
+  runtime plans when those semantics are the priority.
+
 ## Phase 4: Provider Adapter Splits
 
 Provider files are large, but they touch upstream-facing behavior. Prefer
@@ -300,10 +310,12 @@ Verification:
   Node `NO_COLOR`/`FORCE_COLOR` warnings tracked in the baseline notes.
 
 Follow-ups recorded:
-- `useSessionMessages.ts` still owns the initial-load/warm-hydration effect,
-  cache-write policy checks, and scroll bookkeeping; future adapter cutdown
-  should keep targeting those policy seams rather than transcript reducer
-  behavior.
+- Out of scope for the current lower-risk 058 lane: moving the remaining
+  initial-load/warm-hydration orchestration into `SessionDetailCoordinator`.
+  That work coordinates warm snapshot reveal, progress state, stream-buffer
+  gate opening, cache writes, and missing-store diagnostics, so it should be a
+  dedicated session-detail/source-runtime slice rather than a follow-up in this
+  module-boundary cleanup.
 
 ### Slice 2.2 — SessionPage /btw Aside Orchestration (Landed 2026-07-06, this commit)
 

@@ -176,7 +176,7 @@ and props stable.
 | 2.1 | Done 2026-07-06 | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent domain-named modules. | Move-only. Added focused helper tests; client console budget unchanged. Tier 2 because this is a client-visible page surface. |
 | 2.2 | Not started | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Read `topics/provider-agnostic-btw-asides.md`; preserve composer routing and default provider-like behavior. Tier 3 with client E2E. |
 | 2.3 | Done 2026-07-06 | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserved object URL cleanup and staged attachment batch invariants. Added focused helper tests; client console budget unchanged. Tier 3 substitute with focused client E2E. |
-| 2.4 | Not started | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | DOM-local behavior; run `MessageList` tests; Tier 3 with client E2E. |
+| 2.4 | Done 2026-07-06 | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | Moved DOM-local selection/quote behavior into `useMessageListSelectionQuote.tsx`; `MessageList.tsx` still owns transcript rendering, scroll/follow state, search, and row actions. Tier 3 substitute with focused client E2E. |
 | 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
 | 2.6 | Not started | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Keep pure selector work in `lib/sessionDetail/`; avoid duplicating selector ownership. |
 | 2.7 | Not started | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Preserve compact mobile overflow and liveness display. |
@@ -256,6 +256,51 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.4 — MessageList Selection/Quote Behavior (Landed 2026-07-06, this commit)
+
+Moved:
+- Transcript selection copy listener, coarse-pointer chrome shielding,
+  selected-text quote button state/placement/rendering, keyboard quote typing,
+  quote-anchor tint reconciliation, and text-block quote-circle mode handling
+  -> `useMessageListSelectionQuote.tsx`.
+
+Signature conversions:
+- The hook takes explicit `containerRef`, `inert`, quote composer callbacks,
+  composer draft state, `quoteClearSignal`, follow-button visibility, and an
+  `isInteractiveTarget` predicate instead of closing over `MessageList.tsx`
+  locals.
+
+Behavior changes:
+- None intended. The hook is called at the old selection-effect position so
+  copy, selection, pointer, resize, scroll, and key listener registration order
+  relative to the surrounding `MessageList` effects stays aligned with the
+  pre-extraction code. `MessageList.tsx` still owns transcript rendering,
+  scroll/follow state, search state, and row action wiring.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `MessageList`, markdown-selection-copy, and comment-anchor tests;
+  file-scoped `node scripts/biome.cjs lint`; `git diff --check`; staged diff
+  reviewed with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`. The root test run
+  still emitted the baseline suite chatter recorded above.
+- Client tripwire: `packages/client/RENDERING_PERFORMANCE.md`,
+  `topics/scrollback-view-stability.md`, and `topics/console-chatter.md` were
+  read before editing; `pnpm console:scan` stayed within the committed budget.
+- Client E2E substitute: focused `pnpm --filter client test:e2e --
+  e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
+  `pnpm test:e2e` was not rerun for this docs/code slice because the previous
+  run in this environment failed only in the environment-gated physical
+  Android stream smoke (`2G0YC1ZF93041Z` reported `failed` instead of
+  `connected`); the focused transcript/session specs are the relevant
+  substitute.
+
+Follow-ups recorded:
+- `MessageList.tsx` still owns scroll/follow snapshots and isearch UI state;
+  rows 2.5 and 2.6 remain the next `MessageList` boundary slices.
 
 ### Slice 2.3 — SessionPage Composer Submission/Attachments (Landed 2026-07-06, this commit)
 

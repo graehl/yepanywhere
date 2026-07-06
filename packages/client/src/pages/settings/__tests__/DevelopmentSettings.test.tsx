@@ -2,7 +2,10 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { __resetDeveloperModeForTest } from "../../../hooks/useDeveloperMode";
+import {
+  __resetDeveloperModeForTest,
+  getRelayDebugEnabled,
+} from "../../../hooks/useDeveloperMode";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { DevelopmentSettings } from "../DevelopmentSettings";
 
@@ -46,6 +49,8 @@ vi.mock("../../../i18n", () => ({
           developmentSectionTitle: "Development",
           developmentSchemaTitle: "Schema Validation",
           developmentSchemaDescription: "Validate tool results",
+          developmentRelayDebugTitle: "Relay Debug Logging",
+          developmentRelayDebugDescription: "Capture relay traffic",
           developmentDiagnosticsTitle: "Browser Diagnostics",
           developmentDiagnosticsDescription: "Capture browser logs",
           developmentServiceWorkerTitle: "Service Worker",
@@ -100,6 +105,7 @@ describe("DevelopmentSettings", () => {
     render(<DevelopmentSettings />);
 
     expect(screen.getByText("Schema Validation")).toBeTruthy();
+    expect(screen.getByText("Relay Debug Logging")).toBeTruthy();
     expect(screen.getByText("Browser Diagnostics")).toBeTruthy();
     expect(screen.getByText("Service Worker")).toBeTruthy();
     expect(screen.getByText("Workstreams")).toBeTruthy();
@@ -120,5 +126,25 @@ describe("DevelopmentSettings", () => {
       "remember-place",
     );
     expect(screen.getByText("Reopen at last viewed row")).toBeTruthy();
+  });
+
+  it("toggles relay debug logging from development settings", () => {
+    render(<DevelopmentSettings />);
+
+    const toggle = screen.getByRole("checkbox", {
+      name: "Relay Debug Logging",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(getRelayDebugEnabled()).toBe(false);
+
+    fireEvent.click(toggle);
+
+    expect(toggle.checked).toBe(true);
+    expect(getRelayDebugEnabled()).toBe(true);
+    expect(
+      JSON.parse(localStorage.getItem(UI_KEYS.developerMode) ?? "{}"),
+    ).toMatchObject({
+      relayDebugEnabled: true,
+    });
   });
 });

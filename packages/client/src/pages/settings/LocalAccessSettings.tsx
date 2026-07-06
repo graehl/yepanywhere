@@ -8,7 +8,6 @@ import {
 import { FilterDropdown } from "../../components/FilterDropdown";
 import { useOptionalAuth } from "../../contexts/AuthContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
-import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useNetworkBinding } from "../../hooks/useNetworkBinding";
 import { useServerInfo } from "../../hooks/useServerInfo";
 import { useServerSettings } from "../../hooks/useServerSettings";
@@ -76,7 +75,6 @@ export function LocalAccessSettings() {
   useSettingsPaneTitle(t("settingsLocalAccessTitle"));
   const auth = useOptionalAuth();
   const remoteConnection = useOptionalRemoteConnection();
-  const { relayDebugEnabled, setRelayDebugEnabled } = useDeveloperMode();
   const { serverInfo, loading: serverInfoLoading } = useServerInfo();
   const { version: versionInfo } = useVersion();
   const {
@@ -1055,20 +1053,6 @@ export function LocalAccessSettings() {
             >
               {t("remoteAccessLogout")}
             </button>
-          </div>
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("localAccessRelayDebugTitle")}</strong>
-              <p>{t("localAccessRelayDebugDescription")}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={relayDebugEnabled}
-                onChange={(e) => setRelayDebugEnabled(e.target.checked)}
-              />
-              <span className="toggle-slider" />
-            </label>
           </div>
         </div>
       </section>

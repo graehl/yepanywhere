@@ -59,6 +59,8 @@ export function DevelopmentSettings() {
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
   const {
+    relayDebugEnabled,
+    setRelayDebugEnabled,
     remoteLogCollectionEnabled,
     setRemoteLogCollectionEnabled,
   } = useDeveloperMode();
@@ -75,6 +77,7 @@ export function DevelopmentSettings() {
       serverSettings
         ? {
             validationEnabled: validationSettings.enabled,
+            relayDebugEnabled,
             remoteLogCollectionEnabled,
             sessionScrollBehaviorMode,
             serviceWorkerEnabled: serverSettings.serviceWorkerEnabled ?? true,
@@ -83,6 +86,7 @@ export function DevelopmentSettings() {
         : null,
     [
       validationSettings.enabled,
+      relayDebugEnabled,
       remoteLogCollectionEnabled,
       serverSettings,
       sessionScrollBehaviorMode,
@@ -91,6 +95,7 @@ export function DevelopmentSettings() {
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setValidationEnabled(snapshot.validationEnabled);
+      setRelayDebugEnabled(snapshot.relayDebugEnabled);
       setRemoteLogCollectionEnabled(snapshot.remoteLogCollectionEnabled);
       setSessionScrollBehaviorMode(snapshot.sessionScrollBehaviorMode);
       void updateServerSetting(
@@ -104,6 +109,7 @@ export function DevelopmentSettings() {
     },
     [
       setValidationEnabled,
+      setRelayDebugEnabled,
       setRemoteLogCollectionEnabled,
       setSessionScrollBehaviorMode,
       updateServerSetting,
@@ -168,6 +174,21 @@ export function DevelopmentSettings() {
             </button>
           </div>
         )}
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("developmentRelayDebugTitle")}</strong>
+            <p>{t("developmentRelayDebugDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              aria-label={t("developmentRelayDebugTitle")}
+              checked={relayDebugEnabled}
+              onChange={(e) => setRelayDebugEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
         <div className="settings-item">
           <div className="settings-item-info">
             <strong>{t("developmentDiagnosticsTitle")}</strong>

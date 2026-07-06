@@ -15,7 +15,6 @@ const {
   hookState,
   mockDisconnect,
   mockGetFileAccessInfo,
-  mockSetRelayDebugEnabled,
   mockUpdateSetting,
   mockUpdateSettings,
   remoteState,
@@ -28,7 +27,6 @@ const {
   },
   mockDisconnect: vi.fn(),
   mockGetFileAccessInfo: vi.fn(),
-  mockSetRelayDebugEnabled: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockUpdateSettings: vi.fn(),
   remoteState: {
@@ -58,13 +56,6 @@ vi.mock("../../../contexts/AuthContext", () => ({
 
 vi.mock("../../../contexts/RemoteConnectionContext", () => ({
   useOptionalRemoteConnection: () => remoteState.connection,
-}));
-
-vi.mock("../../../hooks/useDeveloperMode", () => ({
-  useDeveloperMode: () => ({
-    relayDebugEnabled: false,
-    setRelayDebugEnabled: mockSetRelayDebugEnabled,
-  }),
 }));
 
 vi.mock("../../../hooks/useNetworkBinding", () => ({
@@ -159,7 +150,8 @@ describe("LocalAccessSettings", () => {
     expect(fileAccessPanel.contains(screen.getByText("fileAccessHome"))).toBe(
       true,
     );
-    expect(screen.getByText("localAccessRelayDebugTitle")).toBeTruthy();
+    expect(screen.queryByText("developmentRelayDebugTitle")).toBeNull();
+    expect(screen.queryByText("localAccessRelayDebugTitle")).toBeNull();
     expect(screen.queryByText("localAccessListeningPortTitle")).toBeNull();
   });
 

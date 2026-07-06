@@ -38,6 +38,12 @@ last seen marker. It is not limited to "an idle assistant produced output and
 now needs a user response"; that narrower state belongs in `needsAttention`
 only when the provider exposes pending input.
 
+Known caveat: for Claude JSONL sessions, `session.updatedAt` currently comes
+from file mtime. YA's one-hour idle reap can abort the Claude SDK stream and
+cause a mtime-only transcript touch, which may flip a previously read session
+back to unread without a new visible provider message. See
+[`2026-07-06-claude-idle-reap-mtime-unread.md`](../docs/project/2026-07-06-claude-idle-reap-mtime-unread.md).
+
 ## Project Queue Visibility
 
 Inbox can show Project Queue work only when the work targets an existing session

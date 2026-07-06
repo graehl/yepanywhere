@@ -17,12 +17,17 @@ import {
   type SettingsUndoRegistration,
 } from "../SettingsUndoContext";
 
-const { mockUpdateSettings, hookState } = vi.hoisted(() => ({
+const { mockUpdateSettings, hookState, versionState } = vi.hoisted(() => ({
   mockUpdateSettings: vi.fn(),
   hookState: {
     settings: null as ServerSettings | null,
     isLoading: false,
     error: null as string | null,
+  },
+  versionState: {
+    version: { capabilities: ["projectQueue"] as string[] } as {
+      capabilities?: string[];
+    },
   },
 }));
 
@@ -33,6 +38,10 @@ vi.mock("../../../hooks/useServerSettings", () => ({
     updateSettings: mockUpdateSettings,
     refetch: vi.fn(),
   }),
+}));
+
+vi.mock("../../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: versionState.version }),
 }));
 
 vi.mock("../../../i18n", () => ({
@@ -53,6 +62,7 @@ describe("MessageDeliverySettings", () => {
     hookState.settings = { ...baseSettings };
     hookState.isLoading = false;
     hookState.error = null;
+    versionState.version = { capabilities: ["projectQueue"] };
     mockUpdateSettings.mockReset();
     mockUpdateSettings.mockResolvedValue(undefined);
   });
@@ -158,6 +168,19 @@ describe("MessageDeliverySettings", () => {
     expect(mockUpdateSettings).toHaveBeenCalledWith({
       clientDefaults: { projectQueueCtrlEnterEnabled: false },
     });
+  });
+
+  it("hides Project Queue-only controls without the server capability", () => {
+    versionState.version = { capabilities: [] };
+
+    render(<MessageDeliverySettings />);
+
+    expect(
+      screen.queryByLabelText("messageDeliveryProjectQueueQuietTitle"),
+    ).toBe(null);
+    expect(
+      screen.queryByLabelText("messageDeliveryProjectQueueShortcutTitle"),
+    ).toBe(null);
   });
 
   it("registers a header undo that reverts to the open-time snapshot", async () => {

@@ -458,6 +458,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("marks sidebar rows that have Project Queue items", () => {
+    versionState.capabilities = ["projectQueue"];
     globalSessionsState.sessions = [
       makeSession("queued-session", new Date().toISOString()),
       makeSession("plain-session", new Date(Date.now() - 60_000).toISOString()),
@@ -484,6 +485,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("hides the sidebar thinking dot for queue-only active rows", () => {
+    versionState.capabilities = ["projectQueue"];
     globalSessionsState.sessions = [
       makeSession("queued-session", new Date().toISOString(), {
         activity: "in-turn",
@@ -513,6 +515,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("keeps the sidebar thinking dot for real in-turn queued rows", () => {
+    versionState.capabilities = ["projectQueue"];
     globalSessionsState.sessions = [
       makeSession("active-queued-session", new Date().toISOString(), {
         activity: "in-turn",
@@ -625,6 +628,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("links pending new-session Project Queue items to the Projects page", () => {
+    versionState.capabilities = ["projectQueue"];
     projectsState.projects = [
       {
         id: "project-1",
@@ -651,6 +655,7 @@ describe("Sidebar collapsed toggle", () => {
   });
 
   it("starts queued new-session sidebar rows before navigating", async () => {
+    versionState.capabilities = ["projectQueue"];
     projectsState.projects = [
       {
         id: "project-1",
@@ -705,6 +710,29 @@ describe("Sidebar collapsed toggle", () => {
       ),
     );
     expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides pending Project Queue rows without the server capability", () => {
+    projectsState.projects = [
+      {
+        id: "project-1",
+        name: "Alpha",
+        projectQueueCount: 1,
+      },
+    ];
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        makeProjectQueueItem("queue-new-session", {
+          target: { type: "new-session", title: "Queued launch" },
+          messagePreview: "Queued launch",
+        }),
+      ],
+    };
+
+    renderSidebar();
+
+    expect(screen.queryByText("Pending Sessions")).toBe(null);
+    expect(screen.queryByRole("link", { name: /Queued launch/i })).toBe(null);
   });
 
   it("keeps the highest-message duplicate session visible", () => {

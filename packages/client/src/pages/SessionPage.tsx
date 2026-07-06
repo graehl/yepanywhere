@@ -170,6 +170,7 @@ const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
 const BTW_ASIDE_PROMPT_MARKER = "[YA /btw aside]";
 const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
   "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
+const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "claude",
@@ -845,7 +846,13 @@ function SessionPageContent({
     () => createSessionDraftStorageKey(sessionDraftReference),
     [sessionDraftReference],
   );
-  const projectQueueProjectIds = useMemo(() => [projectId], [projectId]);
+  const { version: versionInfo } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
+  const projectQueueProjectIds = useMemo(
+    () =>
+      supportsProjectQueue ? [projectId] : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
+    [projectId, supportsProjectQueue],
+  );
   const projectQueues = useProjectQueues(projectQueueProjectIds);
   const navigate = useNavigate();
   const currentLocation = useLocation();
@@ -1017,8 +1024,9 @@ function SessionPageContent({
     (sessionLiveness !== null &&
       sessionLiveness.derivedStatus !== "verified-idle") ||
     deferredMessages.length > 0;
-  const projectQueueItemsForProject =
-    projectQueues.queuesByProject[projectId] ?? EMPTY_PROJECT_QUEUE_ITEMS;
+  const projectQueueItemsForProject = supportsProjectQueue
+    ? (projectQueues.queuesByProject[projectId] ?? EMPTY_PROJECT_QUEUE_ITEMS)
+    : EMPTY_PROJECT_QUEUE_ITEMS;
   const projectQueueItemCount = projectQueueItemsForProject.length;
   const inlineProjectQueueMessages = useMemo(
     () =>
@@ -1048,15 +1056,17 @@ function SessionPageContent({
       }),
     [projectQueueItemsForProject, projectQueues.mutatingItemId, sessionId, t],
   );
-  const showProjectQueueAction = shouldShowProjectQueueAffordance({
-    projectId,
-    currentSessionId: sessionId,
-    currentSessionBlocksProjectQueue,
-    currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
-    activeProjectSessionIds,
-    projectQueueBlockingCount,
-    projectQueueItemCount,
-  });
+  const showProjectQueueAction =
+    supportsProjectQueue &&
+    shouldShowProjectQueueAffordance({
+      projectId,
+      currentSessionId: sessionId,
+      currentSessionBlocksProjectQueue,
+      currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
+      activeProjectSessionIds,
+      projectQueueBlockingCount,
+      projectQueueItemCount,
+    });
 
   // Session connection bar state for active session update streams
   const { connectionState } = useActivityBusState();
@@ -1171,9 +1181,7 @@ function SessionPageContent({
     lastComposerSubmissionRef.current = submission;
   }, []);
 
-  const { version: versionInfo } = useVersion();
-  const stagedAttachmentUploadsEnabled =
-    serverSupportsProjectQueue(versionInfo);
+  const stagedAttachmentUploadsEnabled = supportsProjectQueue;
   const stagedComposerAttachmentRefs = attachments
     .filter(isComposerStagedAttachment)
     .map(toPersistedStagedAttachmentRef);

@@ -8,7 +8,9 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import { serverSupportsProjectQueue } from "../../lib/projectQueueVisibility";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndo } from "./SettingsUndoContext";
 
@@ -53,6 +55,8 @@ export function MessageDeliverySettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("messageDeliveryTitle"));
   const { settings, isLoading, error, updateSettings } = useServerSettings();
+  const { version } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(version);
 
   // null drafts mirror the server value; non-null while the user is editing
   // or a save is in flight, cleared once the server catches up.
@@ -138,6 +142,7 @@ export function MessageDeliverySettings() {
   }, [draftJoinWindow, serverJoinWindowSeconds, updateSettings]);
 
   useEffect(() => {
+    if (!supportsProjectQueue) return;
     if (draftProjectQueueQuiet === null) return;
     const parsed = parseProjectQueueQuietSeconds(draftProjectQueueQuiet);
     if (parsed === serverProjectQueueQuietSeconds) return;
@@ -147,7 +152,12 @@ export function MessageDeliverySettings() {
       });
     }, SECONDS_SLIDER_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [draftProjectQueueQuiet, serverProjectQueueQuietSeconds, updateSettings]);
+  }, [
+    draftProjectQueueQuiet,
+    serverProjectQueueQuietSeconds,
+    supportsProjectQueue,
+    updateSettings,
+  ]);
 
   // Drop drafts once the server reflects them.
   useEffect(() => {
@@ -206,12 +216,14 @@ export function MessageDeliverySettings() {
   const canUndo =
     !!baseline &&
     (shownJoinWindowSeconds !== baseline.joinWindowSeconds ||
-      shownProjectQueueQuietSeconds !== baseline.projectQueueQuietSeconds ||
+      (supportsProjectQueue &&
+        shownProjectQueueQuietSeconds !== baseline.projectQueueQuietSeconds) ||
       shownAnchors !== baseline.composeAnchorsEnabled ||
       shownBusyDefaultAction !== baseline.busyComposerDefaultAction ||
       shownSteerNowDefault !== baseline.steerNowDefault ||
       shownPatientQueueDefault !== baseline.patientQueueDefault ||
-      shownProjectQueueCtrlEnter !== baseline.projectQueueCtrlEnterEnabled);
+      (supportsProjectQueue &&
+        shownProjectQueueCtrlEnter !== baseline.projectQueueCtrlEnterEnabled));
 
   const undo = useCallback(async () => {
     const snapshot = baselineRef.current;
@@ -225,18 +237,25 @@ export function MessageDeliverySettings() {
     setDraftProjectQueueCtrlEnter(null);
     await updateSettings({
       deferredJoinWindowSeconds: snapshot.joinWindowSeconds,
-      projectQueueQuietSeconds: snapshot.projectQueueQuietSeconds,
+      ...(supportsProjectQueue
+        ? { projectQueueQuietSeconds: snapshot.projectQueueQuietSeconds }
+        : {}),
       composeAnchorsEnabled: snapshot.composeAnchorsEnabled,
       clientDefaults: {
         busyComposerDefaultAction: snapshot.busyComposerDefaultAction,
         steerNowDefault: snapshot.steerNowDefault,
         patientQueueDefault: snapshot.patientQueueDefault,
-        projectQueueCtrlEnterEnabled: snapshot.projectQueueCtrlEnterEnabled,
+        ...(supportsProjectQueue
+          ? {
+              projectQueueCtrlEnterEnabled:
+                snapshot.projectQueueCtrlEnterEnabled,
+            }
+          : {}),
       },
     }).catch(() => {
       // surfaced via the hook's error state
     });
-  }, [updateSettings]);
+  }, [supportsProjectQueue, updateSettings]);
 
   useSettingsUndo(canUndo, undo);
 
@@ -297,42 +316,44 @@ export function MessageDeliverySettings() {
           </span>
         </div>
 
-        <div className="settings-item model-settings-item">
-          <div className="settings-item-info">
-            <strong>{t("messageDeliveryProjectQueueQuietTitle")}</strong>
-            <p>{t("messageDeliveryProjectQueueQuietDescription")}</p>
-          </div>
-          <span className="output-appearance-slider-row">
-            <CommittedRangeInput
-              id="message-delivery-project-queue-quiet"
-              min={0}
-              max={MAX_PROJECT_QUEUE_QUIET_SECONDS}
-              step={5}
-              value={shownProjectQueueQuietSeconds}
-              aria-label={t("messageDeliveryProjectQueueQuietTitle")}
-              onCommit={(value) => setDraftProjectQueueQuiet(String(value))}
-            />
-            <span className="output-appearance-number-wrap">
-              <input
-                type="number"
-                className="settings-input-small output-appearance-number"
+        {supportsProjectQueue && (
+          <div className="settings-item model-settings-item">
+            <div className="settings-item-info">
+              <strong>{t("messageDeliveryProjectQueueQuietTitle")}</strong>
+              <p>{t("messageDeliveryProjectQueueQuietDescription")}</p>
+            </div>
+            <span className="output-appearance-slider-row">
+              <CommittedRangeInput
+                id="message-delivery-project-queue-quiet"
                 min={0}
                 max={MAX_PROJECT_QUEUE_QUIET_SECONDS}
-                value={shownProjectQueueQuietText}
-                onChange={(e) => setDraftProjectQueueQuiet(e.target.value)}
+                step={5}
+                value={shownProjectQueueQuietSeconds}
                 aria-label={t("messageDeliveryProjectQueueQuietTitle")}
+                onCommit={(value) => setDraftProjectQueueQuiet(String(value))}
               />
-              <span className="output-appearance-unit">s</span>
+              <span className="output-appearance-number-wrap">
+                <input
+                  type="number"
+                  className="settings-input-small output-appearance-number"
+                  min={0}
+                  max={MAX_PROJECT_QUEUE_QUIET_SECONDS}
+                  value={shownProjectQueueQuietText}
+                  onChange={(e) => setDraftProjectQueueQuiet(e.target.value)}
+                  aria-label={t("messageDeliveryProjectQueueQuietTitle")}
+                />
+                <span className="output-appearance-unit">s</span>
+              </span>
             </span>
-          </span>
-          <span className="settings-hint">
-            {shownProjectQueueQuietSeconds === 0
-              ? t("messageDeliveryProjectQueueQuietOffHint")
-              : t("messageDeliveryProjectQueueQuietOnHint", {
-                  seconds: String(shownProjectQueueQuietSeconds),
-                })}
-          </span>
-        </div>
+            <span className="settings-hint">
+              {shownProjectQueueQuietSeconds === 0
+                ? t("messageDeliveryProjectQueueQuietOffHint")
+                : t("messageDeliveryProjectQueueQuietOnHint", {
+                    seconds: String(shownProjectQueueQuietSeconds),
+                  })}
+            </span>
+          </div>
+        )}
 
         <label className="settings-item">
           <div className="settings-item-info">
@@ -424,26 +445,28 @@ export function MessageDeliverySettings() {
           />
         </label>
 
-        <label className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("messageDeliveryProjectQueueShortcutTitle")}</strong>
-            <p>{t("messageDeliveryProjectQueueShortcutDescription")}</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={shownProjectQueueCtrlEnter}
-            onChange={(e) => {
-              const next = e.target.checked;
-              setDraftProjectQueueCtrlEnter(next);
-              void updateSettings({
-                clientDefaults: { projectQueueCtrlEnterEnabled: next },
-              }).catch(() => {
-                // surfaced via the hook's error state
-              });
-            }}
-            aria-label={t("messageDeliveryProjectQueueShortcutTitle")}
-          />
-        </label>
+        {supportsProjectQueue && (
+          <label className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("messageDeliveryProjectQueueShortcutTitle")}</strong>
+              <p>{t("messageDeliveryProjectQueueShortcutDescription")}</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={shownProjectQueueCtrlEnter}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setDraftProjectQueueCtrlEnter(next);
+                void updateSettings({
+                  clientDefaults: { projectQueueCtrlEnterEnabled: next },
+                }).catch(() => {
+                  // surfaced via the hook's error state
+                });
+              }}
+              aria-label={t("messageDeliveryProjectQueueShortcutTitle")}
+            />
+          </label>
+        )}
 
         {error && <p className="settings-warning">{error}</p>}
       </div>

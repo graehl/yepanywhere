@@ -27,6 +27,10 @@ const state = vi.hoisted(() => ({
     string,
     { needsAttention: number; active: number; total: number }
   >(),
+  version: { capabilities: ["projectQueue"] as string[] } as {
+    capabilities?: string[];
+  },
+  mockUseProjectQueues: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -50,26 +54,33 @@ vi.mock("../../hooks/useProjects", () => ({
 }));
 
 vi.mock("../../hooks/useProjectQueues", () => ({
-  useProjectQueues: () => ({
-    queuesByProject: { "project-1": state.queueItems },
-    items: state.queueItems,
-    projectStatusesByProject: state.projectStatusesByProject,
-    recoveredSessionQueues: [],
-    loading: false,
-    error: null,
-    mutatingItemId: null,
-    mutatingDispatchState: false,
-    mutatingPromoteItemId: null,
-    dispatchState: state.dispatchState,
-    refetch: vi.fn(),
-    pauseDispatch: vi.fn(),
-    resumeDispatch: vi.fn(),
-    promoteNow: vi.fn(),
-    updateItem: vi.fn(),
-    deleteItem: vi.fn(),
-    retryItem: vi.fn(),
-    moveItemToTop: vi.fn(),
-  }),
+  useProjectQueues: (projectIds: readonly string[]) => {
+    state.mockUseProjectQueues(projectIds);
+    return {
+      queuesByProject: { "project-1": state.queueItems },
+      items: state.queueItems,
+      projectStatusesByProject: state.projectStatusesByProject,
+      recoveredSessionQueues: [],
+      loading: false,
+      error: null,
+      mutatingItemId: null,
+      mutatingDispatchState: false,
+      mutatingPromoteItemId: null,
+      dispatchState: state.dispatchState,
+      refetch: vi.fn(),
+      pauseDispatch: vi.fn(),
+      resumeDispatch: vi.fn(),
+      promoteNow: vi.fn(),
+      updateItem: vi.fn(),
+      deleteItem: vi.fn(),
+      retryItem: vi.fn(),
+      moveItemToTop: vi.fn(),
+    };
+  },
+}));
+
+vi.mock("../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: state.version }),
 }));
 
 vi.mock("../../hooks/useRemoteBasePath", () => ({
@@ -112,6 +123,8 @@ describe("ProjectsPage", () => {
     state.projectStatusesByProject = {};
     state.dispatchState = { status: "running" };
     state.inboxCountsByProject = new Map();
+    state.version = { capabilities: ["projectQueue"] };
+    state.mockUseProjectQueues.mockReset();
   });
 
   afterEach(() => {
@@ -147,5 +160,24 @@ describe("ProjectsPage", () => {
     );
     expect(highlighted?.classList.contains("project-queue-item--highlighted"))
       .toBe(true);
+  });
+
+  it("hides project queue UI without the server capability", () => {
+    state.version = { capabilities: [] };
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(state.mockUseProjectQueues).toHaveBeenCalledWith([]);
+    expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(
+      null,
+    );
+    expect(screen.queryByText("Queued project work")).toBe(null);
+    expect(screen.queryByTitle("Project Queue items: 1")).toBe(null);
   });
 });

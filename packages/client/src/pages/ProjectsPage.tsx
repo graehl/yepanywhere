@@ -8,14 +8,20 @@ import { ProjectQueueSection } from "../components/ProjectQueueSection";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { useInboxCountsByProject } from "../lib/clientSummaryStore";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import type { Project } from "../types";
+
+const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
 
 export function ProjectsPage() {
   const { t } = useI18n();
   const { projects, loading, error, refetch } = useProjects();
+  const { version } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(version);
   const inboxCountsByProject = useInboxCountsByProject();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProjectPath, setNewProjectPath] = useState("");
@@ -37,8 +43,12 @@ export function ProjectsPage() {
     () => projects.map((project) => project.id),
     [projects],
   );
-  const projectQueues = useProjectQueues(projectIds);
+  const projectQueueProjectIds = supportsProjectQueue
+    ? projectIds
+    : EMPTY_PROJECT_QUEUE_PROJECT_IDS;
+  const projectQueues = useProjectQueues(projectQueueProjectIds);
   const queueCountByProject = useMemo(() => {
+    if (!supportsProjectQueue) return new Map<string, number>();
     const counts = new Map<string, number>();
     for (const [projectId, items] of Object.entries(
       projectQueues.queuesByProject,
@@ -51,7 +61,7 @@ export function ProjectsPage() {
       }
     }
     return counts;
-  }, [projectQueues.queuesByProject]);
+  }, [projectQueues.queuesByProject, supportsProjectQueue]);
 
   // Sort projects: those needing attention first, then by recency
   const sortedProjects = useMemo(() => {
@@ -263,27 +273,29 @@ export function ProjectsPage() {
             <div className="add-project-error">{deleteError}</div>
           )}
 
-          <ProjectQueueSection
-            projects={projects}
-            items={projectQueues.items}
-            recoveredSessionQueues={projectQueues.recoveredSessionQueues}
-            loading={projectQueues.loading}
-            error={projectQueues.error}
-            mutatingItemId={projectQueues.mutatingItemId}
-            mutatingDispatchState={projectQueues.mutatingDispatchState}
-            mutatingPromoteItemId={projectQueues.mutatingPromoteItemId}
-            dispatchState={projectQueues.dispatchState}
-            projectStatusesByProject={projectQueues.projectStatusesByProject}
-            highlightedItemId={highlightedQueueItemId}
-            basePath={basePath}
-            onPauseDispatch={handlePauseProjectQueue}
-            onResumeDispatch={handleResumeProjectQueue}
-            onPromoteNow={handlePromoteProjectQueueItem}
-            onDeleteItem={handleDeleteQueueItem}
-            onRetryItem={handleRetryQueueItem}
-            onMoveItemToTop={handleMoveQueueItemToTop}
-            onUpdateItem={handleUpdateQueueItem}
-          />
+          {supportsProjectQueue && (
+            <ProjectQueueSection
+              projects={projects}
+              items={projectQueues.items}
+              recoveredSessionQueues={projectQueues.recoveredSessionQueues}
+              loading={projectQueues.loading}
+              error={projectQueues.error}
+              mutatingItemId={projectQueues.mutatingItemId}
+              mutatingDispatchState={projectQueues.mutatingDispatchState}
+              mutatingPromoteItemId={projectQueues.mutatingPromoteItemId}
+              dispatchState={projectQueues.dispatchState}
+              projectStatusesByProject={projectQueues.projectStatusesByProject}
+              highlightedItemId={highlightedQueueItemId}
+              basePath={basePath}
+              onPauseDispatch={handlePauseProjectQueue}
+              onResumeDispatch={handleResumeProjectQueue}
+              onPromoteNow={handlePromoteProjectQueueItem}
+              onDeleteItem={handleDeleteQueueItem}
+              onRetryItem={handleRetryQueueItem}
+              onMoveItemToTop={handleMoveQueueItemToTop}
+              onUpdateItem={handleUpdateQueueItem}
+            />
+          )}
 
           {isEmpty ? (
             <div className="inbox-empty">

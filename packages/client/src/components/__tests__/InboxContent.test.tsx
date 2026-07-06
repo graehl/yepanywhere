@@ -14,6 +14,7 @@ const {
   mockUseProjectQueuedSessionIds,
   projectQueueItems,
   queuedSessionIds,
+  versionState,
 } = vi.hoisted(() => ({
   draftSessionIds: new Set<string>(),
   queuedSessionIds: new Set<string>(),
@@ -21,6 +22,11 @@ const {
   mockRefresh: vi.fn(),
   mockUseProjectQueues: vi.fn(),
   mockUseProjectQueuedSessionIds: vi.fn(),
+  versionState: {
+    version: { capabilities: ["projectQueue"] as string[] } as {
+      capabilities?: string[];
+    },
+  },
   inboxState: {
     needsAttention: [] as Array<Record<string, unknown>>,
     active: [] as Array<Record<string, unknown>>,
@@ -81,6 +87,10 @@ vi.mock("../../hooks/useProjectQueues", () => ({
       moveItemToTop: vi.fn(),
     };
   },
+}));
+
+vi.mock("../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: versionState.version }),
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
@@ -208,6 +218,7 @@ describe("InboxContent", () => {
     inboxState.loading = false;
     inboxState.error = null;
     projectQueueItems.length = 0;
+    versionState.version = { capabilities: ["projectQueue"] };
     draftSessionIds.clear();
     queuedSessionIds.clear();
     mockRefresh.mockReset();
@@ -346,5 +357,25 @@ describe("InboxContent", () => {
     expect(link.getAttribute("href")).toBe(
       "/projects?queueItem=queue-new-session",
     );
+  });
+
+  it("hides project queue rows and decorations without the server capability", () => {
+    versionState.version = { capabilities: [] };
+    inboxState.needsAttention = [
+      makeInboxItem("queued-session", "project-1"),
+    ];
+    queuedSessionIds.add("queued-session");
+    projectQueueItems.push(
+      makeProjectQueueItem("queue-new-session", "project-1", "Build the docs"),
+    );
+
+    renderInbox(<InboxContent projects={[makeProject("project-1")]} />);
+
+    expect(mockUseProjectQueues).toHaveBeenCalledWith([]);
+    expect(mockUseProjectQueuedSessionIds).toHaveBeenCalledWith([]);
+    expect(
+      screen.getByTestId("session-queued-session").textContent,
+    ).not.toContain("Q");
+    expect(screen.queryByText("Build the docs")).toBe(null);
   });
 });

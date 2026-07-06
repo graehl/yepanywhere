@@ -15,9 +15,11 @@ import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
   useClientSummarySourceKey,
@@ -32,6 +34,9 @@ const LONG_PRESS_MS = 500;
 
 const STATUS_FILTER_VALUES = ["unread", "starred", "archived"] as const;
 type StatusFilter = (typeof STATUS_FILTER_VALUES)[number];
+
+const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
+const EMPTY_PROJECT_QUEUE_SESSION_IDS: ReadonlySet<string> = new Set();
 
 // Age filter options (days)
 type AgeFilter = "3" | "7" | "14" | "30";
@@ -127,6 +132,8 @@ export function GlobalSessionsPage() {
   const clientSummarySourceKey = useClientSummarySourceKey();
   const [searchParams, setSearchParams] = useSearchParams();
   const { settings: serverSettings } = useServerSettings();
+  const { version } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(version);
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
@@ -311,9 +318,19 @@ export function GlobalSessionsPage() {
   );
   // Keep the queue feed mounted for the visible result projects. Badge
   // rendering reads from the shared store selector below.
-  useProjectQueues(filteredProjectIds);
-  const projectQueuedSessionIds =
-    useProjectQueuedSessionIds(filteredProjectIds);
+  useProjectQueues(
+    supportsProjectQueue
+      ? filteredProjectIds
+      : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
+  );
+  const rawProjectQueuedSessionIds = useProjectQueuedSessionIds(
+    supportsProjectQueue
+      ? filteredProjectIds
+      : EMPTY_PROJECT_QUEUE_PROJECT_IDS,
+  );
+  const projectQueuedSessionIds = supportsProjectQueue
+    ? rawProjectQueuedSessionIds
+    : EMPTY_PROJECT_QUEUE_SESSION_IDS;
 
   // Build status filter options with global counts from server
   // When filtering by project, we don't have global stats, so omit counts

@@ -13,11 +13,17 @@ const {
   mockLoadMore,
   mockUseProjectQueues,
   sessionCollectionState,
+  versionState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockSetNewSessionPrefill: vi.fn(),
   mockLoadMore: vi.fn(),
   mockUseProjectQueues: vi.fn(),
+  versionState: {
+    version: { capabilities: ["projectQueue"] as string[] } as {
+      capabilities?: string[];
+    },
+  },
   sessionCollectionState: {
     records: [] as unknown[],
     queuedSessionIds: new Set<string>(),
@@ -92,7 +98,9 @@ vi.mock("../../components/SessionListItem", () => ({
   }) => (
     <div data-testid={`session-${sessionId}`}>
       {title}
-      {hasProjectQueue ? <span>Q</span> : null}
+      {hasProjectQueue ? (
+        <span data-testid={`project-queue-${sessionId}`}>Q</span>
+      ) : null}
     </div>
   ),
 }));
@@ -128,6 +136,10 @@ vi.mock("../../hooks/useProjectQueues", () => ({
       moveItemToTop: vi.fn(),
     };
   },
+}));
+
+vi.mock("../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: versionState.version }),
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
@@ -254,6 +266,7 @@ describe("GlobalSessionsPage", () => {
     globalSessionsState.error = null;
     globalSessionsState.hasMore = false;
     globalSessionsState.loadMore = mockLoadMore;
+    versionState.version = { capabilities: ["projectQueue"] };
     mockNavigate.mockReset();
     mockSetNewSessionPrefill.mockReset();
     mockLoadMore.mockReset();
@@ -349,11 +362,23 @@ describe("GlobalSessionsPage", () => {
     renderPage("/sessions");
 
     expect(mockUseProjectQueues).toHaveBeenCalledWith(["project-1"]);
-    expect(screen.getByTestId("session-queued-session").textContent).toContain(
-      "Q",
-    );
-    expect(
-      screen.getByTestId("session-plain-session").textContent,
-    ).not.toContain("Q");
+    expect(screen.getByTestId("project-queue-queued-session")).toBeDefined();
+    expect(screen.queryByTestId("project-queue-plain-session")).toBe(null);
+  });
+
+  it("hides project queue decorations without the server capability", () => {
+    versionState.version = { capabilities: [] };
+    sessionCollectionState.records = [
+      makeSessionRecord("queued-session", {
+        title: "Queued row",
+        fullTitle: "Queued row",
+      }),
+    ];
+    sessionCollectionState.queuedSessionIds = new Set(["queued-session"]);
+
+    renderPage("/sessions");
+
+    expect(mockUseProjectQueues).toHaveBeenCalledWith([]);
+    expect(screen.queryByTestId("project-queue-queued-session")).toBe(null);
   });
 });

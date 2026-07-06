@@ -188,7 +188,7 @@ and props stable.
 | 2.8 | Done 2026-07-06 | `MessageInput.tsx` textarea mechanics | Move undoable textarea edits, resize/collapsed cursor scrolling, slash suggestion matching, and speech target id helpers. | Browser undo/focus call sites stayed in `MessageInput.tsx`; focused helper/MessageInput tests and client E2E preserve behavior. |
 | 2.9 | Done 2026-07-06 | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Moved pure helpers only; i18n copy, workstream selector behavior, and staged upload/submission effects stayed in the form. Focused helper tests were added. |
 | 2.10a | Done 2026-07-06 | Git diff large-preview admission guard | Add the server/client guard prerequisite before moving `GitStatusPage.tsx` diff preview components. | Server now returns bounded `previewSkipped` metadata before syntax highlighting oversized git previews; client also refuses to inject oversized highlighted HTML from older servers. |
-| 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Guard prerequisite landed in 2.10a. Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; preserve skipped-preview behavior and do not reintroduce unbounded `diffHtml` rendering. |
+| 2.10 | Done 2026-07-06 | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Moved diff preview fetch/render, modal, skipped-preview state, and low-level diff renderers into `GitStatusDiffPreview.tsx`; page keeps selected-file/action/untracked-folder state and owns route-retention writes. |
 
 ## Phase 3: Existing Architecture-Aligned Migrations
 
@@ -262,6 +262,43 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.10 — GitStatusPage Diff Preview Module (Landed 2026-07-06, this commit)
+
+Moved:
+- `GitDiffPreview`, `GitDiffModal`, diff fetch/loading/error handling,
+  full-context and markdown-preview toggles, skipped-preview rendering,
+  highlighted diff injection, and plain diff-line fallback ->
+  `GitStatusDiffPreview.tsx`.
+
+Signature conversions:
+- `GitStatusPage.tsx` now passes selected `fileKey`, retained diff scroll/view
+  snapshots, and retention callbacks into the diff preview module instead of
+  giving the extracted components the full `SourceControlRouteState`.
+- The page still owns selected file state, git action state, untracked folder
+  expansion, and route-retention writes.
+
+Behavior changes:
+- None intended. The skipped-preview behavior from row 2.10a, full-context
+  loading, markdown preview toggle, split-pane scroll retention, and narrow
+  modal behavior were preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/pages/__tests__/GitStatusPage.test.tsx`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2/3: `pnpm test`; `pnpm lint`; `pnpm typecheck`;
+  `pnpm console:scan`; Android-excluded client E2E via
+  `pnpm --filter @yep-anywhere/client test:e2e --grep-invert "physical Android"`.
+- Residual chatter: full tests and client E2E still emit the baseline
+  server/client log chatter, Vite chunk/browser-compatibility warnings, and
+  Node `NO_COLOR`/`FORCE_COLOR` warnings tracked in the baseline notes.
+
+Follow-ups recorded:
+- `GitStatusPage.tsx` still owns git action state and untracked folder modal
+  state; further Source Control page cleanup should be proposed as a new row if
+  it still ranks above remaining Phase 2/4 items.
 
 ### Slice 2.10a — Git Diff Large-Preview Admission Guard (Landed 2026-07-06, this commit)
 

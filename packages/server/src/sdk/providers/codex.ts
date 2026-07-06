@@ -8,10 +8,7 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
-import {
-  HELPER_SIDE_MODEL_CHEAPEST,
-  type ModelInfo,
-} from "@yep-anywhere/shared";
+import type { ModelInfo } from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
@@ -95,6 +92,19 @@ import {
   isCodexLiveDeltaNotificationMethod,
   isCodexLiveDeltaSuppressionEnabled,
 } from "./codex-notification-guards.js";
+import {
+  captureCodexSummaryTextFromNotification,
+  captureCodexSummaryTextFromTurnItems,
+  cleanCodexRecapText,
+  cleanCodexSummaryText,
+  CODEX_RECAP_TIMEOUT_MS,
+  CODEX_SUMMARY_TIMEOUT_MS,
+  createCodexForkSummaryPrompt,
+  createCodexForkSummaryThreadResumeParams,
+  createCodexRecapPrompt,
+  joinCodexSummaryText,
+  resolveCodexRecapHelperModel,
+} from "./codex-summary-helpers.js";
 import { CODEX_BUILTIN_COMMANDS } from "./staticSlashCommands.js";
 import type {
   AgentProvider,
@@ -164,14 +174,6 @@ const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
-const CODEX_RECAP_TIMEOUT_MS = 20_000;
-const CODEX_SUMMARY_TIMEOUT_MS = 60_000;
-const CODEX_RECAP_MAX_TOTAL_CHARS = 6000;
-const CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES = [
-  "gpt-5.4-mini",
-  "gpt-5.1-codex-mini",
-  "gpt-5.3-codex-spark",
-] as const;
 const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
   "gpt-5.3-codex-spark",
 ] as const;
@@ -2149,8 +2151,10 @@ export class CodexProvider implements AgentProvider {
     recentAssistantText: string[],
     requestedModel?: string,
   ): Promise<string> {
-    const userPrompt = this.createRecapPrompt(recentAssistantText);
-    const model = await this.resolveRecapHelperModel(requestedModel);
+    const userPrompt = createCodexRecapPrompt(recentAssistantText);
+    const model = await resolveCodexRecapHelperModel(requestedModel, () =>
+      this.getAvailableModels(),
+    );
     const codexCommand = await this.resolveCodexCommand();
     const abortController = new AbortController();
     let timedOut = false;
@@ -2200,7 +2204,12 @@ export class CodexProvider implements AgentProvider {
       );
 
       const textByItemId = new Map<string, string>();
-      this.captureRecapTextFromTurnItems(turnResult.turn.items, textByItemId);
+      const normalizeThreadItem = this.normalizeThreadItem.bind(this);
+      captureCodexSummaryTextFromTurnItems(
+        turnResult.turn.items,
+        textByItemId,
+        normalizeThreadItem,
+      );
 
       if (turnResult.turn.status === "failed") {
         throw new Error(
@@ -2213,7 +2222,11 @@ export class CodexProvider implements AgentProvider {
         const notification = await appServer.nextNotification(
           abortController.signal,
         );
-        this.captureRecapTextFromNotification(notification, textByItemId);
+        captureCodexSummaryTextFromNotification(
+          notification,
+          textByItemId,
+          normalizeThreadItem,
+        );
 
         if (notification.method !== "turn/completed") {
           continue;
@@ -2230,10 +2243,7 @@ export class CodexProvider implements AgentProvider {
         throw new Error("Timed out generating Codex recap");
       }
 
-      const cleaned = [...textByItemId.values()]
-        .join("\n")
-        .replace(/\s*\(disable recaps in \/config\)\s*$/u, "")
-        .trim();
+      const cleaned = cleanCodexRecapText(joinCodexSummaryText(textByItemId));
       if (!cleaned) {
         throw new Error("Recap generation returned empty text");
       }
@@ -2250,52 +2260,10 @@ export class CodexProvider implements AgentProvider {
     }
   }
 
-  private createRecapPrompt(recentAssistantText: string[]): string {
-    const trimmed = recentAssistantText
-      .map((text) => text.trim())
-      .filter((text) => text.length > 0);
-    if (trimmed.length === 0) {
-      throw new Error("No recent assistant text to summarize");
-    }
-
-    let total = 0;
-    const tail: string[] = [];
-    for (let i = trimmed.length - 1; i >= 0; i--) {
-      const entry = trimmed[i] ?? "";
-      if (total + entry.length > CODEX_RECAP_MAX_TOTAL_CHARS) {
-        break;
-      }
-      tail.unshift(entry);
-      total += entry.length;
-    }
-    if (tail.length === 0) {
-      const last = trimmed[trimmed.length - 1] ?? "";
-      tail.push(last.slice(-CODEX_RECAP_MAX_TOTAL_CHARS));
-    }
-
-    const transcript = tail
-      .map((text, index) => `--- Assistant turn ${index + 1} ---\n${text}`)
-      .join("\n\n");
-    return [
-      "The user stepped away and is coming back. Recap in under 40 words,",
-      "1-2 plain sentences, no markdown. Lead with the overall thrust of what",
-      "the assistant did or is doing; mention any pending next action.",
-      "Do not greet, do not ask a question, do not add a sign-off.",
-      "",
-      "Recent assistant output:",
-      transcript,
-    ].join("\n");
-  }
-
   private async generateForkBackedSummary(
     request: Extract<SummaryGenerationRequest, { strategy: "fork" }>,
   ): Promise<SummaryGenerationResult> {
-    const userPrompt =
-      request.purpose === "session-retitle"
-        ? this.createSessionRetitlePrompt(request)
-        : request.purpose === "recap"
-          ? this.createForkedRecapPrompt()
-          : this.createForkAfterSummaryPrompt(request);
+    const userPrompt = createCodexForkSummaryPrompt(request);
     const codexCommand = await this.resolveCodexCommand();
     const appServer = new CodexAppServerClient(
       codexCommand,
@@ -2336,7 +2304,7 @@ export class CodexProvider implements AgentProvider {
 
       const threadResult = await appServer.request<ThreadResumeResponse>(
         "thread/resume",
-        this.createForkSummaryThreadResumeParams(
+        createCodexForkSummaryThreadResumeParams(
           request,
           experimentalApiEnabled,
         ),
@@ -2354,7 +2322,12 @@ export class CodexProvider implements AgentProvider {
       );
 
       const textByItemId = new Map<string, string>();
-      this.captureRecapTextFromTurnItems(turnResult.turn.items, textByItemId);
+      const normalizeThreadItem = this.normalizeThreadItem.bind(this);
+      captureCodexSummaryTextFromTurnItems(
+        turnResult.turn.items,
+        textByItemId,
+        normalizeThreadItem,
+      );
 
       if (turnResult.turn.status === "failed") {
         throw new Error(
@@ -2368,7 +2341,11 @@ export class CodexProvider implements AgentProvider {
         const notification = await appServer.nextNotification(
           abortController.signal,
         );
-        this.captureRecapTextFromNotification(notification, textByItemId);
+        captureCodexSummaryTextFromNotification(
+          notification,
+          textByItemId,
+          normalizeThreadItem,
+        );
 
         if (notification.method === "turn/completed") {
           const completed = asCodexTurnCompletedNotification(
@@ -2377,9 +2354,10 @@ export class CodexProvider implements AgentProvider {
           if (completed?.turn.id !== turnId) {
             continue;
           }
-          this.captureRecapTextFromTurnItems(
+          captureCodexSummaryTextFromTurnItems(
             completed.turn.items,
             textByItemId,
+            normalizeThreadItem,
           );
           if (completed.turn.status === "failed") {
             throw new Error(
@@ -2407,7 +2385,7 @@ export class CodexProvider implements AgentProvider {
         throw new Error("Timed out generating Codex summary");
       }
 
-      const cleaned = [...textByItemId.values()].join("\n").trim();
+      const cleaned = cleanCodexSummaryText(joinCodexSummaryText(textByItemId));
       if (!cleaned) {
         throw new Error("Summary generation returned empty text");
       }
@@ -2426,105 +2404,6 @@ export class CodexProvider implements AgentProvider {
       abortController.abort();
       await appServer.close();
     }
-  }
-
-  private createForkSummaryThreadResumeParams(
-    request: Extract<SummaryGenerationRequest, { strategy: "fork" }>,
-    experimentalApiEnabled = false,
-  ): CodexThreadResumeParamsForRequest {
-    const params: CodexThreadResumeParamsForRequest = {
-      threadId: request.generatorSessionId,
-      model: null,
-      cwd: request.cwd,
-      approvalPolicy: "untrusted",
-      sandbox: "read-only",
-      config: null,
-      developerInstructions:
-        request.purpose === "session-retitle"
-          ? "You are a title helper. Reply with the session title only, no preamble. Do not call tools."
-          : request.purpose === "recap"
-            ? "You are a recap helper. Reply with the recap text only, no preamble. Do not call tools."
-            : "You are a handoff summary helper. Reply with the summary text only, no preamble. Do not call tools.",
-    };
-    if (experimentalApiEnabled) {
-      params.excludeTurns = true;
-    }
-    return params;
-  }
-
-  private createForkAfterSummaryPrompt(
-    request: Extract<
-      SummaryGenerationRequest,
-      { purpose: "fork-after-summary" }
-    >,
-  ): string {
-    const instructions = request.instructions?.trim();
-    const boundaryContext = request.afterTurnContext?.trim();
-    return [
-      "The first non-empty line must be a concise title of at most 120 characters, with no trailing period.",
-      "Write it as: Title: <title>",
-      "Then leave one blank line before the handoff summary.",
-      "",
-      "Summarize the useful state after the retained fork boundary for a peer-agent handoff.",
-      `The target fork retains the conversation through completed-turn message id ${request.afterTurnMessageId}.`,
-      boundaryContext
-        ? `The retained boundary is the completed turn ending with this excerpt:\n${boundaryContext}`
-        : undefined,
-      "The target fork already includes the original request and the assistant/tool work through that selected completed turn.",
-      "Do not repeat setup, instruction loading, initial repository orientation, or investigation already present in that retained prefix.",
-      "Preserve decisions, constraints, current state, changed files, verification evidence, open risks, and the next useful action.",
-      "Do not continue the task. Write text that can be submitted as the next user turn in the target fork.",
-      instructions ? "" : undefined,
-      instructions ? "Additional user instructions:" : undefined,
-      instructions || undefined,
-    ]
-      .filter((part): part is string => part !== undefined)
-      .join("\n");
-  }
-
-  private createForkedRecapPrompt(): string {
-    return [
-      "The user stepped away and is coming back.",
-      "Recap the current session state in under 40 words, 1-2 plain sentences, no markdown.",
-      "Lead with what the assistant did or is doing; mention any pending next action.",
-      "Do not greet, do not ask a question, do not add a sign-off.",
-    ].join("\n");
-  }
-
-  private createSessionRetitlePrompt(
-    request: Extract<SummaryGenerationRequest, { purpose: "session-retitle" }>,
-  ): string {
-    const lengthTarget = request.lengthTarget ?? 80;
-    const currentTitle = request.currentTitle?.trim();
-    return [
-      "What is a good new title for this session?",
-      "",
-      `Target length: under ${lengthTarget} characters.`,
-      currentTitle ? `Current title: ${currentTitle}` : undefined,
-      "Prefer a concrete task/result phrase over a generic chat title.",
-      "Return only the title. Do not quote it. Do not add a trailing period.",
-    ]
-      .filter((part): part is string => part !== undefined)
-      .join("\n");
-  }
-
-  private async resolveRecapHelperModel(
-    requestedModel: string | undefined,
-  ): Promise<string | null> {
-    if (!requestedModel || requestedModel !== HELPER_SIDE_MODEL_CHEAPEST) {
-      return requestedModel ?? null;
-    }
-
-    const models = await this.getAvailableModels();
-    for (const preferred of CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES) {
-      if (models.some((model) => model.id === preferred)) {
-        return preferred;
-      }
-    }
-    return (
-      models.find((model) => model.id.toLowerCase().includes("mini"))?.id ??
-      null
-    );
   }
 
   private handleRecapServerRequest(
@@ -2567,75 +2446,6 @@ export class CodexProvider implements AgentProvider {
       default:
         return Promise.resolve({});
     }
-  }
-
-  private captureRecapTextFromTurnItems(
-    items: CodexThreadItem[],
-    textByItemId: Map<string, string>,
-  ): void {
-    for (const item of items) {
-      const normalized = this.normalizeThreadItem(item);
-      if (normalized?.type === "agent_message" && normalized.text.trim()) {
-        textByItemId.set(normalized.id, normalized.text);
-      }
-    }
-  }
-
-  private captureRecapTextFromNotification(
-    notification: JsonRpcNotification,
-    textByItemId: Map<string, string>,
-  ): void {
-    if (notification.method === "item/agentMessage/delta") {
-      const params = asCodexAgentMessageDeltaNotification(notification.params);
-      if (!params?.delta) return;
-      textByItemId.set(
-        params.itemId,
-        `${textByItemId.get(params.itemId) ?? ""}${params.delta}`,
-      );
-      return;
-    }
-
-    if (notification.method === "item/completed") {
-      const params = asCodexItemCompletedNotification(notification.params);
-      if (!params || textByItemId.has(params.item.id)) return;
-      const normalized = this.normalizeThreadItem(params.item);
-      if (normalized?.type === "agent_message" && normalized.text.trim()) {
-        textByItemId.set(normalized.id, normalized.text);
-      }
-      return;
-    }
-
-    if (notification.method !== "rawResponseItem/completed") {
-      return;
-    }
-    const params = asCodexRawResponseItemCompletedNotification(
-      notification.params,
-    );
-    const text = this.extractRawResponseMessageText(params?.item);
-    if (params && text) {
-      textByItemId.set(`raw-${params.turnId}-${textByItemId.size}`, text);
-    }
-  }
-
-  private extractRawResponseMessageText(item: unknown): string | null {
-    if (!item || typeof item !== "object") return null;
-    const record = item as Record<string, unknown>;
-    if (record.type !== "message" || record.role !== "assistant") {
-      return null;
-    }
-    if (!Array.isArray(record.content)) {
-      return null;
-    }
-    const parts = record.content
-      .map((contentItem) => {
-        if (!contentItem || typeof contentItem !== "object") return "";
-        const contentRecord = contentItem as Record<string, unknown>;
-        return contentRecord.type === "output_text"
-          ? (this.getOptionalString(contentRecord.text) ?? "")
-          : "";
-      })
-      .filter((text) => text.length > 0);
-    return parts.length > 0 ? parts.join("\n") : null;
   }
 
   private createSessionConfigAckMessage(

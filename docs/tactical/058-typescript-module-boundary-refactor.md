@@ -213,7 +213,7 @@ extracting pure protocol/model/normalization modules with strong fixtures.
 | 4.2 | Done 2026-07-06 | Codex model catalog helpers | Move fallback model data, semver parsing, model sorting, and model metadata normalization. | App-server process/query/cache ownership stayed in `codex.ts`; focused catalog tests pin fallback selection and normalized ordering. |
 | 4.3 | Done 2026-07-06 | Codex notification guards | Move `as*Notification` guards and raw notification classifiers into a protocol module. | Guard-only extraction; approval request param guards stay in `codex.ts`. Focused guard tests and existing Codex provider fixtures preserve stream/persisted conversion behavior. |
 | 4.4 | Not started | Codex live event conversion | Move live turn state, streaming message construction, and item-to-SDK conversion. | Higher risk; preserve live-delta suppression and replay behavior. Tier 3. |
-| 4.5 | Not started | Codex recap/summary helpers | Move recap prompts, fork-backed summary, retitle prompt, and summary capture helpers. | Preserve helper model resolution and provider-visible prompt behavior. |
+| 4.5 | Done 2026-07-06 | Codex recap/summary helpers | Move recap prompts, fork-backed summary prompt/params, retitle prompt, helper model selection, text cleanup, and summary capture helpers. | App-server orchestration and non-turn request decline behavior stayed in `codex.ts`; focused helper/provider/render-parity tests preserve provider-visible prompts and summary output behavior. |
 | 4.6 | Not started | Claude/OpenCode provider helper splits | Apply the proven Codex split pattern only where clear seams exist. | Avoid abstracting providers together unless duplication becomes real and tested. |
 
 ## Phase 5: Load-Bearing Supervisor And Process Files
@@ -261,6 +261,41 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 4.5 — Codex Recap/Summary Helpers (Landed 2026-07-06, this commit)
+
+Moved:
+- Side-session recap prompt construction, fork recap/retitle/handoff prompt
+  construction, fork helper resume params, recap helper-model selection, summary
+  text cleanup/joining, raw response text extraction, and summary text capture
+  from turn items/notifications -> `codex-summary-helpers.ts`.
+
+Signature conversions:
+- `captureRecapTextFromTurnItems(...)` and
+  `captureRecapTextFromNotification(...)` became
+  `captureCodexSummaryTextFromTurnItems(...)` and
+  `captureCodexSummaryTextFromNotification(...)`. They now receive the
+  provider's existing `normalizeThreadItem` function as an explicit dependency.
+
+Behavior changes:
+- None intended. `codex.ts` still owns app-server lifecycle, timeout/abort
+  flow, helper thread/fork execution, and non-turn server request decline
+  behavior.
+- Provider-visible prompt strings, developer instructions, timeout values,
+  helper model preference order, and empty-summary errors are preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `pnpm --filter @yep-anywhere/server test --
+  test/sdk/providers/codex-summary-helpers.test.ts
+  test/sdk/providers/codex.test.ts test/render-parity.test.ts`;
+  file-scoped `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Chatter: the root `pnpm test` run still emits existing unrelated suite
+  stdout/stderr and the existing Codex reader slow-scan warning from default
+  app-test access to `~/.codex/sessions`. The focused Codex
+  summary/provider/render-parity runs for this slice were warning-free.
 
 ### Slice 4.3 — Codex Notification Guards (Landed 2026-07-06, this commit)
 

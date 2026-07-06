@@ -432,3 +432,45 @@ describe("api browser profiles facade", () => {
     ]);
   });
 });
+
+describe("api server metadata facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves metadata endpoint paths and methods", async () => {
+    await api.getVersion();
+    await api.getVersion({ fresh: true });
+    await api.getServerInfo();
+    await api.getEnvSettings();
+    await api.restartServer();
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/version", method: "GET", body: undefined },
+      { url: "/api/version?fresh=1", method: "GET", body: undefined },
+      { url: "/api/server-info", method: "GET", body: undefined },
+      { url: "/api/env-settings", method: "GET", body: undefined },
+      {
+        url: "/api/server/restart",
+        method: "POST",
+        body: undefined,
+      },
+    ]);
+  });
+});

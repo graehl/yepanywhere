@@ -35,6 +35,8 @@
 - Codex API provider as a future API-key-backed backend
 - Pixel-scale icon aesthetics
 - UI testing and screenshot regression checks
+- Mobile transcript horizontal overflow (outer session scrollbar above
+  composer when wide Grep/tool content leaks past local scrollers)
 - Provider/model compact glyph vocabulary (top-right status)
 - Claude API failures and auto-retry (transient 5xx/overload evidence)
 - Media rendering and routing (image/video/file surfaces, the relay fetch rule, serving doors)

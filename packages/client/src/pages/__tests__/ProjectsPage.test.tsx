@@ -29,7 +29,9 @@ const state = vi.hoisted(() => ({
   >(),
   version: { capabilities: ["projectQueue"] as string[] } as {
     capabilities?: string[];
+    remoteCompatibilityLevel?: number;
   },
+  isRemoteClient: false,
   mockUseProjectQueues: vi.fn(),
 }));
 
@@ -83,6 +85,10 @@ vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({ version: state.version }),
 }));
 
+vi.mock("../../lib/connection", () => ({
+  isRemoteClient: () => state.isRemoteClient,
+}));
+
 vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => "",
 }));
@@ -124,6 +130,7 @@ describe("ProjectsPage", () => {
     state.dispatchState = { status: "running" };
     state.inboxCountsByProject = new Map();
     state.version = { capabilities: ["projectQueue"] };
+    state.isRemoteClient = false;
     state.mockUseProjectQueues.mockReset();
   });
 
@@ -164,6 +171,29 @@ describe("ProjectsPage", () => {
 
   it("hides project queue UI without the server capability", () => {
     state.version = { capabilities: [] };
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(state.mockUseProjectQueues).toHaveBeenCalledWith([]);
+    expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(
+      null,
+    );
+    expect(screen.queryByText("Queued project work")).toBe(null);
+    expect(screen.queryByTitle("Project Queue items: 1")).toBe(null);
+  });
+
+  it("hides project queue UI for hosted remote servers below the compatible level", () => {
+    state.isRemoteClient = true;
+    state.version = {
+      capabilities: ["projectQueue"],
+      remoteCompatibilityLevel: 0,
+    };
 
     render(
       <I18nProvider>

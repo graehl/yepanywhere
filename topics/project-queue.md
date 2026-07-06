@@ -116,6 +116,10 @@ the user opts into showing the Project Queue button.
 Project Queue UI must also be capability-gated on `/api/version` advertising
 `projectQueue`. Treat missing capabilities as unsupported so newer remote
 clients do not show Project Queue entry points against older servers.
+Hosted remote clients must additionally require the current remote
+compatibility generation, because early Project Queue-capable source checkouts
+predate the compatibility marker and can expose partial Project Queue behavior
+to newer hosted clients.
 
 When the button is visible by user preference, the UI should still suppress it
 when Project Queue adds no useful semantics:

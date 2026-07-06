@@ -1,7 +1,15 @@
+import { isRemoteClient } from "./connection";
+
 export const PROJECT_QUEUE_CAPABILITY = "projectQueue";
+export const PROJECT_QUEUE_REMOTE_COMPATIBILITY_LEVEL = 10;
 
 export interface ProjectQueueCapabilitySource {
   capabilities?: readonly string[];
+  remoteCompatibilityLevel?: number;
+}
+
+export interface ProjectQueueSupportOptions {
+  hostedRemote?: boolean;
 }
 
 export interface ProjectQueueAffordanceState {
@@ -16,8 +24,19 @@ export interface ProjectQueueAffordanceState {
 
 export function serverSupportsProjectQueue(
   version: ProjectQueueCapabilitySource | null | undefined,
+  options: ProjectQueueSupportOptions = {},
 ): boolean {
-  return version?.capabilities?.includes(PROJECT_QUEUE_CAPABILITY) ?? false;
+  if (!version?.capabilities?.includes(PROJECT_QUEUE_CAPABILITY)) {
+    return false;
+  }
+
+  const hostedRemote = options.hostedRemote ?? isRemoteClient();
+  if (!hostedRemote) return true;
+
+  return (
+    (version.remoteCompatibilityLevel ?? 0) >=
+    PROJECT_QUEUE_REMOTE_COMPATIBILITY_LEVEL
+  );
 }
 
 export function shouldShowProjectQueueAffordance({

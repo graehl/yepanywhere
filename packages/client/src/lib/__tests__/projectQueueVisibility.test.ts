@@ -15,6 +15,33 @@ describe("serverSupportsProjectQueue", () => {
       }),
     ).toBe(true);
   });
+
+  it("requires current hosted remote compatibility for hosted clients", () => {
+    expect(
+      serverSupportsProjectQueue(
+        { capabilities: [PROJECT_QUEUE_CAPABILITY] },
+        { hostedRemote: true },
+      ),
+    ).toBe(false);
+    expect(
+      serverSupportsProjectQueue(
+        {
+          capabilities: [PROJECT_QUEUE_CAPABILITY],
+          remoteCompatibilityLevel: 0,
+        },
+        { hostedRemote: true },
+      ),
+    ).toBe(false);
+    expect(
+      serverSupportsProjectQueue(
+        {
+          capabilities: [PROJECT_QUEUE_CAPABILITY],
+          remoteCompatibilityLevel: 10,
+        },
+        { hostedRemote: true },
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("shouldShowProjectQueueAffordance", () => {

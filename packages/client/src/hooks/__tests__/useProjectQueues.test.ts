@@ -41,7 +41,10 @@ const apiMock = vi.hoisted(() => ({
   promoteProjectQueueNow: vi.fn(),
 }));
 const versionMock = vi.hoisted(() => ({
-  version: { capabilities: ["projectQueue"] as string[] },
+  version: { capabilities: ["projectQueue"] as string[] } as {
+    capabilities?: string[];
+    remoteCompatibilityLevel?: number;
+  },
 }));
 const connectionMock = vi.hoisted(() => ({
   isRemoteClient: vi.fn(() => false),
@@ -159,6 +162,22 @@ afterEach(() => {
 describe("useProjectQueues", () => {
   it("stays idle without the project queue server capability", async () => {
     versionMock.version = { capabilities: [] };
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(apiMock.getProjectQueue).not.toHaveBeenCalled();
+    expect(apiMock.getProjectQueueItems).not.toHaveBeenCalled();
+    expect(result.current.items).toEqual([]);
+  });
+
+  it("stays idle for hosted remote servers below the compatible level", async () => {
+    connectionMock.isRemoteClient.mockReturnValue(true);
+    versionMock.version = {
+      capabilities: ["projectQueue"],
+      remoteCompatibilityLevel: 0,
+    };
 
     const { result } = renderHook(() => useProjectQueues(["project-1"]));
 

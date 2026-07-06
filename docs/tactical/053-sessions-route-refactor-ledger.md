@@ -198,17 +198,13 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts
 
 ### SRR-004: Extract Launch Option Normalization
 
-Status: proposed.
+Status: done.
 
-Destination: same file unless the extracted piece is pure request-boundary
-parsing, in which case `session-request-helpers.ts` may be appropriate. A
-larger cohesive builder would deserve a domain-named
-`session-launch-options.ts`; do not grow `session-request-helpers.ts` into a
-general launch/process helper bucket.
+Destination: new file
+`packages/server/src/routes/session-thinking-options.ts`.
 
-Estimated line delta: about `-30` to `-60` lines for a narrow first slice,
-depending on which axis is extracted. A broad all-in-one launch builder is not
-recommended as the first pass.
+Line delta: about `-20` net lines from `sessions.ts`, with a 23-line helper
+module added.
 
 Problem:
 
@@ -224,6 +220,16 @@ Likely change:
 - avoid one large "launch options builder" until the smaller helpers prove
   useful.
 
+Implemented:
+
+- moved the repeated `body.thinking`/`body.showThinking` conversion into
+  `buildThinkingOptions(...)`;
+- replaced the identical conversion in project start/create, detached
+  start/create, resume, reactivate, restart, and message queue paths;
+- left model/default fallback, service tier, provider, executor, recap, and
+  prompt-suggestion inheritance in the route handlers because those paths have
+  different fallback rules.
+
 Value:
 
 - meaningful size reduction;
@@ -234,13 +240,21 @@ Risk:
 - medium. These paths have subtle differences, especially metadata fallback and
   resume inheritance.
 
-Suggested verification:
+Verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
-node scripts/biome.cjs lint packages/server/src/routes/sessions.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-thinking-options.ts
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
 ```
+
+Focused route tests passed with the preexisting sessions-metadata WARN/INFO
+log chatter for negative-path Claude resume/compact cases. Root tests passed
+with the baseline suite chatter recorded in doc 058.
 
 ### SRR-005: Move Recovered Queue Helpers
 

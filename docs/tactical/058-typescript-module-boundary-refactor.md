@@ -251,6 +251,37 @@ Follow-ups recorded:
 
 ## Landing Notes
 
+### SRR-004 — Session Thinking Options (Landed 2026-07-06, this commit)
+
+Moved:
+- repeated launch/resume/restart/message `body.thinking` conversion ->
+  `session-thinking-options.ts` as `buildThinkingOptions`.
+
+Signature conversions:
+- The new helper accepts a narrow body shape with `thinking` and
+  `showThinking`, then delegates to shared `thinkingOptionToConfig`.
+
+Behavior changes:
+- None. Model/default, service-tier, provider, executor, recap, and
+  prompt-suggestion fallback rules stayed in `sessions.ts`.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`;
+  `pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts`;
+  `node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-thinking-options.ts`;
+  `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Residual risk: the focused route test run still emits the preexisting
+  sessions-metadata WARN/INFO log chatter for negative-path Claude
+  resume/compact cases, and root `pnpm test` still emits the baseline suite
+  chatter recorded above.
+
+Follow-ups recorded:
+- Phase 1.3 still owns route extraction for start/create/resume/reactivate
+  paths; remaining model/default normalization can be revisited there if it
+  stays move-only.
+
 ### Slice 1.1 — Sessions Route Helper Boundaries (Landed 2026-07-06, this commit)
 
 Moved:

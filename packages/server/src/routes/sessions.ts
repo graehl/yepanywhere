@@ -23,7 +23,6 @@ import {
   isUrlProjectId,
   isWorkstreamId,
   mainWorkstreamId,
-  thinkingOptionToConfig,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import { randomUUID } from "node:crypto";
@@ -129,6 +128,7 @@ import {
   recoveredPatientUserMessage,
   sessionQueueSummaries,
 } from "./session-queue-summaries.js";
+import { buildThinkingOptions } from "./session-thinking-options.js";
 import type { EventBus } from "../watcher/index.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
@@ -2945,10 +2945,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       metadata: buildUserMessageMetadata(body, serverTimestamp, "direct"),
     };
 
-    // Convert thinking option to SDK config
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
 
     // Convert model option (undefined or "default" means use CLI default)
     const model =
@@ -3063,10 +3060,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: workstreamTarget.error }, workstreamTarget.status);
     }
 
-    // Convert thinking option to SDK config
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
 
     // Convert model option (undefined or "default" means use CLI default)
     const model =
@@ -3166,9 +3160,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       metadata: buildUserMessageMetadata(body, serverTimestamp, "direct"),
     };
 
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
     const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
@@ -3246,9 +3238,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const projectPath = await ensureDetachedProjectPath(executor);
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
     const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
@@ -3351,10 +3341,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       metadata: buildUserMessageMetadata(body, serverTimestamp, "direct"),
     };
 
-    // Convert thinking option to SDK config
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
 
     // Convert model option (undefined or "default" means use CLI default). When
     // the client sends no model (e.g. resume after a server restart), recover the
@@ -3664,9 +3651,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           ? body.model
           : metadata?.requestedModel;
       const model = rawModel && rawModel !== "default" ? rawModel : undefined;
-      const { thinking, effort } = body.thinking
-        ? thinkingOptionToConfig(body.thinking, body.showThinking)
-        : { thinking: undefined, effort: undefined };
+      const { thinking, effort } = buildThinkingOptions(body);
 
       let process: Process;
       try {
@@ -3884,9 +3869,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const originalMetadata =
       deps.sessionMetadataService?.getMetadata(sessionId);
 
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
     const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
@@ -5066,10 +5049,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       });
     }
 
-    // Convert thinking option to SDK config
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
+    const { thinking, effort } = buildThinkingOptions(body);
 
     const metadataProvider = deps.sessionMetadataService?.getProvider(
       sessionId,

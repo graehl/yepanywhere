@@ -7,15 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-06
+
 ### Added
-- File access controls (Settings → Local Access) to scope which local folders
+- Project Queue: durable, server-owned project queues for follow-up work that
+  should wait until every session in a project is idle. The release includes
+  Projects-page management, edit/cancel/retry/move-to-top actions, recovered
+  queue visibility, sidebar and inbox badges, optional composer and new-session
+  entry points, and Project Queue delivery settings.
+- Source Control actions for manual remote checks, safe fast-forward pulls,
+  branch pushes/publishing, diverged-branch guidance, recent commits, and a
+  wide-screen split diff preview.
+- Durable and configurable session recaps, generated session titles,
+  fork-after-summary flows, and session hover cards with recent agent context.
+- Speech input additions for dedicated relay streaming, browser microphone
+  selection, direct xAI batch/streaming STT, local Whisper/Parakeet/NeMo
+  backends, warm-mic handoff, Smart Turn controls, and inline cancellable
+  transcription chips.
+- OpenCode 1.17.9 support for direct database transcript reads, resumable
+  `ses_*` sessions, durable thinking/tool rendering, image input, permission
+  prompts, graceful interrupts, and reasoning-effort model variants.
+- Codex `spawn_agent` subagent rendering, native compaction controls, stopped
+  session slash commands, Windows Desktop CLI detection, and richer Codex
+  summary/index handling.
+- Pi provider live RPC subprocess support and canonical tool rendering.
+- Environment settings for startup variables and active listen-address display.
+- File access controls (Settings → File access) to scope which local folders
   the HTTP file viewer may read: project folders, uploads, temp, home, and a
   custom list. The same allow-set is now enforced by both the media routes and
   the project-files route. `ALLOWED_FILE_PATHS` (alias for `ALLOWED_IMAGE_PATHS`)
   pins it from the environment.
+- Approval audit log settings and audit log rotation.
+- Inactivity push notifications for sessions and project queues that need
+  attention.
 
 ### Changed
-- Upgrade claude-agent-sdk to 0.3.199.
+- Upgrade claude-agent-sdk to 0.3.199 and refresh Claude Code compatibility
+  through 2.1.199.
+- Refresh Codex CLI/app-server compatibility through 0.142.4 and report
+  `yep-anywhere` as the Codex originator.
+- Canonicalize startup environment variables to `YEP_*` names with legacy
+  migration for existing settings.
+- Move session collection/detail state, inbox/sidebar/project feeds, and remote
+  activity streams onto retained/source-runtime-backed stores for faster
+  restores and fewer redundant requests.
+- Isolate summary parsing in worker threads, stream Claude/Codex summaries, and
+  reduce Codex scanner/index memory churn.
+- Compress API and public-share API responses with gzip/deflate.
+- Capability-gate Project Queue, enhanced Source Control, and hosted remote
+  compatibility surfaces so newer hosted clients degrade cleanly against older
+  servers.
+- Refine toolbar visibility/priority controls, Message Delivery settings,
+  immediate settings undo, transcript selection controls, and mobile/narrow
+  layouts.
 - **Breaking (secure-by-default):** the project-files HTTP route no longer serves
   arbitrary absolute/`~` paths. Relative in-project paths are unchanged, but
   absolute paths outside projects/uploads/temp are denied until the folder is
@@ -23,6 +67,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder" to restore reading under your home directory.
 - Windows default temp allow-list now resolves through `os.tmpdir()`
   (`%LOCALAPPDATA%\Temp`) instead of a hardcoded `C:\tmp`.
+
+### Fixed
+- Preserve and recover session delivery queues across safe restart, server
+  restart, and browser reconnect; avoid bursting queued messages into one
+  joined turn; include late-delivered Claude queue entries during incremental
+  fetch.
+- Stabilize secure reconnect/auth recovery, relay login state, hosted remote
+  update notices, reload banner dismissal/restart actions, and safe-reload
+  confirmations.
+- Fix Codex durable/stream identity alignment, transcript-cache duplicates,
+  zstd rollout handling, Windows read normalization, Bash exit-code replay, and
+  targeted session-index invalidation.
+- Improve Windows project/path identity, URL-style Windows file paths, file
+  access bridge tests, and portable server tests.
+- Stabilize session scroll restoration, cached return-to-session behavior,
+  transcript selection, toolbar overflow, rendered markdown DOM identity, and
+  long-session restore/loading progress.
+- Fix file viewer/share warnings, image preview behavior, public share status
+  retention, uploaded filename normalization, source-control project context,
+  and no-output tool rows.
+- Close parser workers on server reload and harden disk-full stream handling.
+
+### Security
+- File viewer and project-file reads are now scoped by the user-controlled
+  allow-list described above.
+- Add approval audit log configuration and rotation.
+- Serialize secure reconnect recovery to avoid overlapping recovery attempts.
+- Keep STT-specific xAI credentials scoped to speech and scrub general
+  `XAI_API_KEY` from child agent environments unless explicitly opted in for
+  Grok Build.
 
 ## [0.5.2] - 2026-06-05
 

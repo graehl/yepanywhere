@@ -3,15 +3,15 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
 ---
 
 <ArticleLayout
-  title="What Shipped This Spring: Codex Grew Up, and a Lot More"
-  description="A recap of everything added to Yep Anywhere since March — first-class Codex support, switch any session to any model, public session sharing, server-routed voice input, six-language localization, session search, a secure-by-default file viewer, and an upcoming desktop app."
-  date="June 27, 2026"
-  publishedTime="2026-06-27"
+  title="What Shipped This Spring and Early Summer: Codex Grew Up, Project Queue Landed, and More"
+  description="A recap of everything added to Yep Anywhere since March — first-class Codex support, Project Queue, switch any session to any model, public session sharing, server-routed voice input, safer source control, six-language localization, session search, and a secure-by-default file viewer."
+  date="July 6, 2026"
+  publishedTime="2026-07-06"
   ogImage="/screenshots/session-view.png"
 >
-  <p><a href="https://yepanywhere.com">Yep Anywhere</a> lets you supervise AI coding agents from your phone. The last update here was the <a href="/remote-device-control">remote device control</a> launch in early March. Since then we've shipped dozens of releases without stopping to write about any of them. This is the catch-up post.</p>
+  <p><a href="https://yepanywhere.com">Yep Anywhere</a> lets you supervise AI coding agents from your phone. The last update here was the <a href="/remote-device-control">remote device control</a> launch in early March. Since then we've shipped dozens of releases without stopping to write about any of them. This is the spring and early-summer catch-up post.</p>
 
-  <p>The "we" is new, too: Yep Anywhere now has a second core contributor, <a href="https://github.com/graehl">Jonathan Graehl</a>. The extra pair of hands is a big part of why the spring moved this fast.</p>
+  <p>The "we" is new, too: Yep Anywhere now has a second core contributor, <a href="https://github.com/graehl">Jonathan Graehl</a>. The extra pair of hands is a big part of why the spring and early summer moved this fast.</p>
 
   <h2>Codex grew up</h2>
 
@@ -24,7 +24,7 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
     <li><strong>The small stuff.</strong> Collapsed Bash rows, local image previews, and rate-limit exhaustion surfaced as real errors instead of silent stalls.</li>
   </ul>
 
-  <p>We track the Codex CLI closely &mdash; protocol compatibility has moved forward through its 0.135 releases, including newer rollout formats. If you live in Codex, it should now feel like Yep Anywhere was built for it.</p>
+  <p>We track the Codex CLI closely &mdash; protocol compatibility has moved forward through 0.142.4, including newer rollout formats. If you live in Codex, it should now feel like Yep Anywhere was built for it.</p>
 
   <h2>Switch any session to any model</h2>
 
@@ -41,7 +41,7 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
   <ul>
     <li><strong>Browser-native</strong> &mdash; zero setup, works everywhere.</li>
     <li><strong>Deepgram</strong> and <strong>xAI (Grok)</strong> &mdash; bring your own key for faster, more accurate transcription.</li>
-    <li><strong>Local Whisper</strong> &mdash; fully on-device, nothing leaves your machine.</li>
+    <li><strong>Local Whisper, Parakeet, and NeMo</strong> &mdash; fully on-device, nothing leaves your machine.</li>
   </ul>
 
   <p>The speech options moved into the microphone menu so switching backends is one tap, and provider keys are scoped to transcription so they don't leak into your agents' environments or get billed against the wrong thing.</p>
@@ -62,31 +62,50 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
     <li><strong>Explicit thinking controls</strong> &mdash; off / auto / on, plus per-provider effort, so you decide how hard the model works.</li>
   </ul>
 
+  <h2>Queue work at the project level</h2>
+
+  <p>Session queueing is useful when you know what the current agent should do after its turn ends. Project Queue handles the bigger case: "start this follow-up only after the whole project is quiet."</p>
+
+  <p>Queue a message or a new session for a project, refresh the browser, close your phone, even restart the server &mdash; the queue is server-owned and durable. The Projects page shows the backlog, lets you edit, cancel, retry, or move an item to the top, and shows what is blocking dispatch. The session view and sidebar also surface targeted Project Queue items so queued work is not hidden.</p>
+
+  <p>It's deliberately conservative. The composer affordance is hidden by default, queued text is delivered verbatim, and Project Queue promotes one item per project-idle boundary instead of dumping a full backlog into an agent at once. New hosted clients also gate the UI on server compatibility so older servers don't expose controls they can't honor.</p>
+
   <h2>Read any file &mdash; and choose which ones</h2>
 
   <p>There's a shared file viewer now: click a file path anywhere &mdash; in a session, a public share, or a remote link &mdash; and get a syntax-highlighted view, including specific line ranges and Markdown media.</p>
 
-  <p>Opening files remotely is exactly the kind of capability that needs a leash, so it ships locked down. <strong>Settings &rarr; Local Access</strong> lets you scope which folders the file viewer may read &mdash; project folders, uploads, temp, your home directory, or a custom allow-list. By default, the file route refuses to serve arbitrary absolute paths until you explicitly grant the folder. Secure by default, opened up only where you decide.</p>
+  <p>Opening files remotely is exactly the kind of capability that needs a leash, so it ships locked down. <strong>Settings &rarr; File access</strong> lets you scope which folders the file viewer may read &mdash; project folders, uploads, temp, your home directory, or a custom allow-list. By default, the file route refuses to serve arbitrary absolute paths until you explicitly grant the folder. Secure by default, opened up only where you decide.</p>
+
+  <h2>Safer source control from the phone</h2>
+
+  <p>The Source Control page is still intentionally narrow &mdash; not a full Git client &mdash; but it now covers the operations that matter when an agent has done useful work and you're away from the desktop.</p>
+
+  <ul>
+    <li><strong>Check remote</strong> fetches remote-tracking state only when you ask.</li>
+    <li><strong>Pull</strong> attempts a safe fast-forward update and stops with clear guidance when the branch has diverged or local changes would be overwritten.</li>
+    <li><strong>Push</strong> publishes completed work, including simple branch publishing to <code>origin</code>.</li>
+    <li><strong>Better review</strong> shows recent commits and a split diff preview on wide screens, while keeping the modal flow on phones.</li>
+  </ul>
 
   <h2>More models, more providers</h2>
 
-  <p>Beyond Claude Code and Codex, this spring added:</p>
+  <p>Beyond Claude Code and Codex, the release window added:</p>
 
   <ul>
     <li><strong>Grok Build</strong> via ACP, with prompt suggestions and effort controls.</li>
     <li><strong>Ollama</strong> for fully local models, with a customizable system prompt.</li>
-    <li><strong>OpenCode</strong> session recovery from CLI exports, plus vLLM response rendering.</li>
+    <li><strong>OpenCode</strong> direct session reading, resumable <code>ses_*</code> URLs, permission prompts, thinking/tool rendering, image input, graceful interrupts, and vLLM response rendering.</li>
   </ul>
 
-  <p>And the Claude side stayed current &mdash; newer Claude Agent SDK releases brought support for the latest Claude models as they shipped.</p>
+  <p>And the Claude side stayed current &mdash; the app now targets Claude Agent SDK 0.3.199 and tracks the current Claude Code runtime assumptions.</p>
 
   <h2>Windows keeps getting better</h2>
 
-  <p>Windows has come a long way this spring. We fixed drive-letter and backslash path handling, spawn failures, Codex session discovery, temp-directory resolution, and a string of mixed-slash deduplication bugs. If you tried Yep Anywhere on Windows months ago and bounced off, it's worth another look.</p>
+  <p>Windows has come a long way since March. We fixed drive-letter and backslash path handling, spawn failures, Codex session discovery, temp-directory resolution, and a string of mixed-slash deduplication bugs. If you tried Yep Anywhere on Windows months ago and bounced off, it's worth another look.</p>
 
   <h2>Quieter, safer, faster</h2>
 
-  <p>A lot of the spring went into work you won't see directly:</p>
+  <p>A lot of the release window went into work you won't see directly:</p>
 
   <ul>
     <li><strong>Security hardening</strong> &mdash; XSS-hardened markdown rendering, path containment across file/upload/share routes, a relay origin allowlist, approval audit logging, unsafe-Unicode visibility in approval prompts, and stronger SRP resume verification (with a compatibility grace window so older clients aren't cut off abruptly).</li>
@@ -100,7 +119,7 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
 
   <h2>Get the update</h2>
 
-  <p>Everything above (except the desktop app) is live today. If you're on the npm install:</p>
+  <p>Everything above (except the desktop app) is in Yep Anywhere 0.6.0. If you're on the npm install:</p>
 
   <pre><code>npm update -g yepanywhere</code></pre>
 

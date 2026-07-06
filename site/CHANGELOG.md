@@ -6,11 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.7.0] - 2026-07-06
+
 ### Added
-- "What Shipped This Spring" recap post (`/spring-2026`) covering first-class
-  Codex support, public session sharing, server-routed voice input, six-language
-  localization, session search, and the secure-by-default file viewer, with a
-  linked entry at the top of the News page.
+- "What Shipped This Spring and Early Summer" recap post (`/spring-2026`)
+  covering first-class Codex support, Project Queue, public session sharing,
+  server-routed voice input, source-control actions, six-language localization,
+  session search, and the secure-by-default file viewer, with a linked entry at
+  the top of the News page and homepage announcement banner.
+- Hosted remote Project Queue UI for compatible servers, including Projects-page
+  management, inline target-session queue rows, sidebar and inbox badges,
+  recovered queue visibility, force-start/pause controls, move-to-top, and a
+  hidden-by-default composer affordance.
+- Hosted remote Source Control actions for manual remote checks, safe
+  fast-forward pulls, branch push/publish, diverged-branch guidance, recent
+  commits, and wide-screen split diff preview.
+- Hosted remote session orientation improvements, including durable recaps,
+  generated titles, fork-after-summary flows, session hover cards, retained
+  routes, and faster cached session restores.
+
+### Changed
+- Gate Project Queue, enhanced Source Control, and hosted remote compatibility
+  surfaces on server capabilities so newer hosted clients degrade cleanly
+  against older servers.
+- Refresh hosted remote client compatibility for the npm `0.6.0` server, Codex
+  CLI/app-server compatibility through 0.142.4, and Claude Agent SDK 0.3.199.
+- Move session feeds, activity streams, summary state, and session detail
+  restore paths toward retained/source-runtime-backed data so the hosted remote
+  client does less redundant fetching.
+- Improve toolbar visibility/priority settings, reload banners, transcript
+  selection, file/image previews, mobile settings layout, and session list
+  orientation.
+
+### Fixed
+- Stabilize secure reconnect/auth recovery, relay login state, hosted update
+  notices, safe restart/reload flows, and Project Queue recovery after restart.
+- Improve Codex summary parsing, session index invalidation, subagent rendering,
+  Windows path handling, Bash replay details, and stale queue/session display.
+- Harden file viewer and public-share warnings, uploaded filename handling,
+  disk-full stream behavior, and parser-worker cleanup on server reload.
 
 ## [site-v1.6.4] - 2026-06-07
 

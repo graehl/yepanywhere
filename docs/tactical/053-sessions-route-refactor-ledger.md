@@ -145,7 +145,7 @@ Risk:
 - low, but every changed call site should be checked so the same `project`,
   `projectId`, `sessionId`, and preferred provider are still passed.
 
-Suggested verification:
+Verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
@@ -258,13 +258,13 @@ with the baseline suite chatter recorded in doc 058.
 
 ### SRR-005: Move Recovered Queue Helpers
 
-Status: proposed.
+Status: done.
 
 Destination: new file
 `packages/server/src/routes/session-recovered-queue.ts`.
 
-Estimated line delta: about `-180` to `-230` lines from `sessions.ts`, with a
-similar-size helper module added.
+Line delta: about `-180` net lines from `sessions.ts`, with a 228-line helper
+module added.
 
 Problem:
 
@@ -278,6 +278,19 @@ Likely change:
 - move recovered-queue helper functions into a nearby module;
 - keep the Hono route handlers in `sessions.ts`;
 - pass explicit dependencies instead of importing global services.
+
+Implemented:
+
+- moved `ensureProcessForRecoveredItem`, `resumeRecoveredGroup`,
+  `reportableProcessState`, and `resolveRecoveredGroupForDelivery` into
+  `session-recovered-queue.ts`;
+- passed explicit `RecoveredQueueDeps` for supervisor lookup/reactivation,
+  metadata lookup, durable queue persistence, global instructions, and launch
+  metadata persistence;
+- kept recovered-queue HTTP handlers, response shapes, route paths, and
+  `waitForPatientQueuePersistenceIdle()` waits in `sessions.ts`;
+- left read-side recovered queue shaping in `session-queue-summaries.ts`
+  rather than merging queue modules into a generic bucket.
 
 Value:
 
@@ -295,7 +308,16 @@ Suggested verification:
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
 node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-recovered-queue.ts
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:e2e:sdk
 ```
+
+`topics/architecture-mandates.md` was read before implementation. Focused
+route tests passed with the preexisting sessions-metadata WARN/INFO log
+chatter for negative-path Claude resume/compact cases.
 
 ### SRR-006: Move Claude Resume API-Error Guard
 

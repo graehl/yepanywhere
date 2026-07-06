@@ -179,7 +179,7 @@ and props stable.
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
 | 2.1 | Done 2026-07-06 | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent domain-named modules. | Move-only. Added focused helper tests; client console budget unchanged. Tier 2 because this is a client-visible page surface. |
-| 2.2 | Not started | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Read `topics/provider-agnostic-btw-asides.md`; preserve composer routing and default provider-like behavior. Tier 3 with client E2E. |
+| 2.2 | Done 2026-07-06 | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Moved `/btw` provider support, prompt/transcript parsing, poll/hydrate/run/stop state, split-pane routing, and shortcut handling into `useBtwAsides.ts`; page keeps generic composer transfer, custom command dispatch, and JSX wiring. |
 | 2.3 | Done 2026-07-06 | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserved object URL cleanup and staged attachment batch invariants. Added focused helper tests; client console budget unchanged. Tier 3 substitute with focused client E2E. |
 | 2.4 | Done 2026-07-06 | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | Moved DOM-local selection/quote behavior into `useMessageListSelectionQuote.tsx`; `MessageList.tsx` still owns transcript rendering, scroll/follow state, search, and row actions. Tier 3 substitute with focused client E2E. |
 | 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
@@ -262,6 +262,48 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.2 — SessionPage /btw Aside Orchestration (Landed 2026-07-06, this commit)
+
+Moved:
+- `/btw` provider support, prompt builders, side-request extraction, live text
+  preview formatting, transcript-turn derivation, aside polling/hydration,
+  fork/resume launch, stop/done state, split-pane collapse/focus state, and
+  Ctrl+B routing -> `useBtwAsides.ts`.
+
+Signature conversions:
+- `SessionPage.tsx` now passes project/session ids, source API, effective
+  provider/model/session metadata, permission mode, parent link, toast, and
+  parent-navigation callback into the hook instead of letting the moved code
+  close over the page.
+- The page still owns the generic custom command dispatcher, Mother composer
+  transfer/draft attachment behavior, sticky card JSX, and MessageList /
+  MessageInput prop wiring.
+
+Behavior changes:
+- None intended. `/btw` provider gating, unsupported-provider rejection,
+  focused-aside composer routing, split-pane focus/collapse behavior, `/done`
+  close-only handling, polling cadence, and parent-link hydration were
+  preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/hooks/__tests__/useBtwAsides.test.ts
+  src/components/__tests__/BtwAsidePane.test.tsx
+  src/lib/__tests__/btwAsideRouting.test.ts`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2/3: `pnpm test`; `pnpm lint`; `pnpm typecheck`;
+  `pnpm console:scan`; Android-excluded client E2E via
+  `pnpm --filter @yep-anywhere/client test:e2e --grep-invert "physical Android"`.
+- Residual chatter: full tests and client E2E still emit the baseline
+  server/client log chatter, Vite chunk/browser-compatibility warnings, and
+  Node `NO_COLOR`/`FORCE_COLOR` warnings tracked in the baseline notes.
+
+Follow-ups recorded:
+- Sticky `/btw` footer-card JSX still lives in `SessionPage.tsx`; moving it to
+  a component should be a separate move-only slice if it still ranks above the
+  remaining Phase 2/3/4 work.
 
 ### Slice 2.10 — GitStatusPage Diff Preview Module (Landed 2026-07-06, this commit)
 

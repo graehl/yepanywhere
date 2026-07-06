@@ -240,6 +240,12 @@ interface RecoveredSessionQueueGroup {
   items: ProjectQueueRecoveredSessionQueueSummary[];
 }
 
+interface ProjectQueueDisplayGroup {
+  projectId: string;
+  projectName: string;
+  items: ProjectQueueItemSummary[];
+}
+
 function groupRecoveredSessionQueues(
   items: readonly ProjectQueueRecoveredSessionQueueSummary[],
 ): RecoveredSessionQueueGroup[] {
@@ -284,6 +290,40 @@ function groupRecoveredSessionQueues(
     });
 }
 
+function compareDisplayNames(left: string, right: string): number {
+  return left.localeCompare(right, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function groupProjectQueueItems(
+  items: readonly ProjectQueueItemSummary[],
+  projectById: Map<string, Project>,
+  t: Translate,
+): ProjectQueueDisplayGroup[] {
+  const groups = new Map<string, ProjectQueueDisplayGroup>();
+  for (const item of items) {
+    const existing = groups.get(item.projectId);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    groups.set(item.projectId, {
+      projectId: item.projectId,
+      projectName:
+        projectById.get(item.projectId)?.name ??
+        t("projectQueueUnknownProject"),
+      items: [item],
+    });
+  }
+
+  return [...groups.values()].sort((left, right) => {
+    const name = compareDisplayNames(left.projectName, right.projectName);
+    return name !== 0 ? name : left.projectId.localeCompare(right.projectId);
+  });
+}
+
 function isFirstMovableProjectQueueItem(
   item: ProjectQueueItemSummary,
   items: readonly ProjectQueueItemSummary[],
@@ -323,6 +363,7 @@ export function ProjectQueueSection({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const highlightedItemRef = useRef<HTMLLIElement | null>(null);
   const projectById = new Map(projects.map((project) => [project.id, project]));
+  const itemGroups = groupProjectQueueItems(items, projectById, t);
   const recoveredGroups = groupRecoveredSessionQueues(recoveredSessionQueues);
   const recoveredCount = recoveredSessionQueues.length;
   const hasProjectQueueItems = items.length > 0;
@@ -463,201 +504,217 @@ export function ProjectQueueSection({
       )}
 
       {hasProjectQueueItems && (
-        <ul className="project-queue-list">
-          {items.map((item) => {
-            const project = projectById.get(item.projectId);
-            const isMutating = mutatingItemId === item.id;
-            const isPromoting = mutatingPromoteItemId === item.id;
-            const isDispatching = item.status === "dispatching";
-            const isEditing = editingItemId === item.id;
-            const isHighlighted = highlightedItemId === item.id;
-            const canEdit =
-              item.status === "queued" || item.status === "failed";
-            const projectStatus = projectStatusesByProject[item.projectId];
-            const readiness = readinessLabel(projectStatus, nowMs, t);
-            const blockerSummary = projectStatus
-              ? summarizeBlockers(projectStatus.blockers, t)
-              : "";
-            const forceStart =
-              item.status === "queued" && projectStatus?.state === "blocked";
-            const canPromote =
-              item.status === "queued" &&
-              projectStatus?.state !== "paused" &&
-              projectStatus?.state !== "dispatching";
-            const canMoveToTop =
-              canEdit && !isFirstMovableProjectQueueItem(item, items);
-            const canSaveEdit =
-              !isMutating &&
-              (editText.trim().length > 0 ||
-                (item.message.attachments?.length ?? 0) > 0);
-            const handleEditSubmit = async (
-              event: FormEvent<HTMLFormElement>,
-            ) => {
-              event.preventDefault();
-              if (!canSaveEdit) return;
-              await onUpdateItem(item.projectId, item.id, {
-                ...item.message,
-                text: editText,
-              });
-              setEditingItemId(null);
-              setEditText("");
-            };
-            return (
-              <li
-                key={item.id}
-                ref={isHighlighted ? highlightedItemRef : undefined}
-                className={`project-queue-item project-queue-item--${item.status}${
-                  isHighlighted ? " project-queue-item--highlighted" : ""
-                }`}
-                data-project-queue-item-id={item.id}
-              >
-                <div className="project-queue-item__main">
-                  <div className="project-queue-item__meta">
-                    <span className="project-queue-item__project">
-                      {project?.name ?? t("projectQueueUnknownProject")}
-                    </span>
-                    <span className="project-queue-item__target">
-                      {item.target.type === "existing-session" ? (
-                        <Link
-                          to={`${basePath}/projects/${item.projectId}/sessions/${item.target.sessionId}`}
-                        >
-                          {targetLabel(item, t)}
-                        </Link>
-                      ) : (
-                        targetLabel(item, t)
-                      )}
-                    </span>
-                    <span className="project-queue-item__age">
-                      {formatRelativeTime(item.createdAt, t)}
-                    </span>
-                  </div>
-                  {isEditing ? (
-                    <form
-                      className="project-queue-item__edit"
-                      onSubmit={handleEditSubmit}
+        <ul className="project-queue-groups">
+          {itemGroups.map((group) => (
+            <li className="project-queue-group" key={group.projectId}>
+              <h3 className="project-queue-group__title">
+                {group.projectName}
+              </h3>
+              <ul className="project-queue-list">
+                {group.items.map((item) => {
+                  const isMutating = mutatingItemId === item.id;
+                  const isPromoting = mutatingPromoteItemId === item.id;
+                  const isDispatching = item.status === "dispatching";
+                  const isEditing = editingItemId === item.id;
+                  const isHighlighted = highlightedItemId === item.id;
+                  const canEdit =
+                    item.status === "queued" || item.status === "failed";
+                  const projectStatus =
+                    projectStatusesByProject[item.projectId];
+                  const readiness = readinessLabel(projectStatus, nowMs, t);
+                  const blockerSummary = projectStatus
+                    ? summarizeBlockers(projectStatus.blockers, t)
+                    : "";
+                  const forceStart =
+                    item.status === "queued" &&
+                    projectStatus?.state === "blocked";
+                  const canPromote =
+                    item.status === "queued" &&
+                    projectStatus?.state !== "paused" &&
+                    projectStatus?.state !== "dispatching";
+                  const canMoveToTop =
+                    canEdit && !isFirstMovableProjectQueueItem(item, items);
+                  const canSaveEdit =
+                    !isMutating &&
+                    (editText.trim().length > 0 ||
+                      (item.message.attachments?.length ?? 0) > 0);
+                  const handleEditSubmit = async (
+                    event: FormEvent<HTMLFormElement>,
+                  ) => {
+                    event.preventDefault();
+                    if (!canSaveEdit) return;
+                    await onUpdateItem(item.projectId, item.id, {
+                      ...item.message,
+                      text: editText,
+                    });
+                    setEditingItemId(null);
+                    setEditText("");
+                  };
+                  return (
+                    <li
+                      key={item.id}
+                      ref={isHighlighted ? highlightedItemRef : undefined}
+                      className={`project-queue-item project-queue-item--${item.status}${
+                        isHighlighted ? " project-queue-item--highlighted" : ""
+                      }`}
+                      data-project-queue-item-id={item.id}
                     >
-                      <textarea
-                        value={editText}
-                        onChange={(event) => setEditText(event.target.value)}
-                        aria-label={t("projectQueueEditMessageLabel")}
-                        disabled={isMutating}
-                        rows={3}
-                      />
-                      <div className="project-queue-item__edit-actions">
-                        <button
-                          type="submit"
-                          disabled={!canSaveEdit}
-                          className="project-queue-item__save"
-                        >
-                          {t("projectQueueSave")}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isMutating}
-                          onClick={() => {
-                            setEditingItemId(null);
-                            setEditText("");
-                          }}
-                        >
-                          {t("projectQueueDiscard")}
-                        </button>
+                      <div className="project-queue-item__main">
+                        <div className="project-queue-item__meta">
+                          <span className="project-queue-item__target">
+                            {item.target.type === "existing-session" ? (
+                              <Link
+                                to={`${basePath}/projects/${item.projectId}/sessions/${item.target.sessionId}`}
+                              >
+                                {targetLabel(item, t)}
+                              </Link>
+                            ) : (
+                              targetLabel(item, t)
+                            )}
+                          </span>
+                          <span className="project-queue-item__age">
+                            {formatRelativeTime(item.createdAt, t)}
+                          </span>
+                        </div>
+                        {isEditing ? (
+                          <form
+                            className="project-queue-item__edit"
+                            onSubmit={handleEditSubmit}
+                          >
+                            <textarea
+                              value={editText}
+                              onChange={(event) =>
+                                setEditText(event.target.value)
+                              }
+                              aria-label={t("projectQueueEditMessageLabel")}
+                              disabled={isMutating}
+                              rows={3}
+                            />
+                            <div className="project-queue-item__edit-actions">
+                              <button
+                                type="submit"
+                                disabled={!canSaveEdit}
+                                className="project-queue-item__save"
+                              >
+                                {t("projectQueueSave")}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isMutating}
+                                onClick={() => {
+                                  setEditingItemId(null);
+                                  setEditText("");
+                                }}
+                              >
+                                {t("projectQueueDiscard")}
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="project-queue-item__preview">
+                            {item.messagePreview ||
+                              t("projectQueueAttachmentOnly")}
+                          </div>
+                        )}
+                        {item.lastError && (
+                          <div className="project-queue-item__error">
+                            {item.lastError}
+                          </div>
+                        )}
+                        {readiness && (
+                          <div className="project-queue-item__readiness">
+                            {readiness}
+                          </div>
+                        )}
                       </div>
-                    </form>
-                  ) : (
-                    <div className="project-queue-item__preview">
-                      {item.messagePreview || t("projectQueueAttachmentOnly")}
-                    </div>
-                  )}
-                  {item.lastError && (
-                    <div className="project-queue-item__error">
-                      {item.lastError}
-                    </div>
-                  )}
-                  {readiness && (
-                    <div className="project-queue-item__readiness">
-                      {readiness}
-                    </div>
-                  )}
-                </div>
 
-                <div className="project-queue-item__side">
-                  <span
-                    className={`project-queue-item__status project-queue-item__status--${item.status}`}
-                  >
-                    {statusLabel(item.status, t)}
-                  </span>
-                  <div className="project-queue-item__actions">
-                    {canPromote && !isEditing && (
-                      <button
-                        type="button"
-                        className={
-                          forceStart
-                            ? "project-queue-item__force-start"
-                            : undefined
-                        }
-                        onClick={() =>
-                          onPromoteNow(item.projectId, item.id, {
-                            force: forceStart,
-                          })
-                        }
-                        disabled={isMutating || isPromoting}
-                        title={
-                          forceStart
-                            ? t("projectQueueForceStartTitle", {
-                                blockers: blockerSummary,
-                              })
-                            : t("projectQueueStartNowTitle")
-                        }
-                      >
-                        {isPromoting
-                          ? t("projectQueuePromoting")
-                          : forceStart
-                            ? t("projectQueueForceStart")
-                            : t("projectQueueStartNow")}
-                      </button>
-                    )}
-                    {item.status === "failed" && !isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => onRetryItem(item.projectId, item.id)}
-                        disabled={isMutating}
-                      >
-                        {t("projectQueueRetry")}
-                      </button>
-                    )}
-                    {canEdit && !isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingItemId(item.id);
-                          setEditText(item.message.text);
-                        }}
-                        disabled={isMutating}
-                      >
-                        {t("projectQueueEdit")}
-                      </button>
-                    )}
-                    {canMoveToTop && !isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => onMoveItemToTop(item.projectId, item.id)}
-                        disabled={isMutating}
-                      >
-                        {t("projectQueueMoveToTop")}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onDeleteItem(item.projectId, item.id)}
-                      disabled={isMutating || isDispatching}
-                    >
-                      {t("projectQueueDelete")}
-                    </button>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
+                      <div className="project-queue-item__side">
+                        <span
+                          className={`project-queue-item__status project-queue-item__status--${item.status}`}
+                        >
+                          {statusLabel(item.status, t)}
+                        </span>
+                        <div className="project-queue-item__actions">
+                          {canPromote && !isEditing && (
+                            <button
+                              type="button"
+                              className={
+                                forceStart
+                                  ? "project-queue-item__force-start"
+                                  : undefined
+                              }
+                              onClick={() =>
+                                onPromoteNow(item.projectId, item.id, {
+                                  force: forceStart,
+                                })
+                              }
+                              disabled={isMutating || isPromoting}
+                              title={
+                                forceStart
+                                  ? t("projectQueueForceStartTitle", {
+                                      blockers: blockerSummary,
+                                    })
+                                  : t("projectQueueStartNowTitle")
+                              }
+                            >
+                              {isPromoting
+                                ? t("projectQueuePromoting")
+                                : forceStart
+                                  ? t("projectQueueForceStart")
+                                  : t("projectQueueStartNow")}
+                            </button>
+                          )}
+                          {item.status === "failed" && !isEditing && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onRetryItem(item.projectId, item.id)
+                              }
+                              disabled={isMutating}
+                            >
+                              {t("projectQueueRetry")}
+                            </button>
+                          )}
+                          {canEdit && !isEditing && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingItemId(item.id);
+                                setEditText(item.message.text);
+                              }}
+                              disabled={isMutating}
+                            >
+                              {t("projectQueueEdit")}
+                            </button>
+                          )}
+                          {canMoveToTop && !isEditing && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onMoveItemToTop(item.projectId, item.id)
+                              }
+                              disabled={isMutating}
+                            >
+                              {t("projectQueueMoveToTop")}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onDeleteItem(item.projectId, item.id)
+                            }
+                            disabled={isMutating || isDispatching}
+                          >
+                            {t("projectQueueDelete")}
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
         </ul>
       )}
     </section>

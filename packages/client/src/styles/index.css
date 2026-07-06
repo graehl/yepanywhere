@@ -1300,13 +1300,41 @@ textarea {
   white-space: nowrap;
 }
 
+.project-queue-groups,
 .project-queue-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   padding: 0;
   margin: 0;
   list-style: none;
+}
+
+.project-queue-groups {
+  gap: var(--space-3);
+}
+
+.project-queue-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.project-queue-group + .project-queue-group {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.project-queue-group__title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.project-queue-list {
+  gap: var(--space-2);
 }
 
 .project-queue-item {

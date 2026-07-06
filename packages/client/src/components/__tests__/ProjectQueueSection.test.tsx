@@ -32,6 +32,16 @@ const project: Project = {
   lastActivity: null,
 };
 
+const otherProject: Project = {
+  id: OTHER_PROJECT_ID,
+  name: "Beta",
+  path: "/tmp/beta",
+  sessionCount: 1,
+  activeOwnedCount: 0,
+  activeExternalCount: 0,
+  lastActivity: null,
+};
+
 function makeItem(
   id: string,
   status: ProjectQueueItemSummary["status"] = "queued",
@@ -86,12 +96,13 @@ function renderSection(
   dispatchState: ProjectQueueDispatchState = { status: "running" },
   recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[] = [],
   projectStatusesByProject: Record<string, ProjectQueueProjectStatus> = {},
+  projects: Project[] = [project, otherProject],
 ) {
   render(
     <I18nProvider>
       <MemoryRouter>
         <ProjectQueueSection
-          projects={[project]}
+          projects={projects}
           items={items}
           recoveredSessionQueues={recoveredSessionQueues}
           loading={false}
@@ -169,6 +180,34 @@ describe("ProjectQueueSection", () => {
       screen.getByRole("link", { name: "Investigate failing build" }),
     ).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Session session-" })).toBeNull();
+  });
+
+  it("groups queued items by project name while preserving project order", () => {
+    renderSection([
+      makeItem("beta-1", "queued", {
+        projectId: OTHER_PROJECT_ID,
+        messagePreview: "Beta first queued item",
+        message: { text: "Beta first queued item" },
+      }),
+      makeItem("alpha-1", "queued", {
+        messagePreview: "Alpha queued item",
+        message: { text: "Alpha queued item" },
+      }),
+      makeItem("beta-2", "queued", {
+        projectId: OTHER_PROJECT_ID,
+        messagePreview: "Beta second queued item",
+        message: { text: "Beta second queued item" },
+      }),
+    ]);
+
+    expect(screen.getByRole("heading", { name: "Alpha" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Beta" })).toBeTruthy();
+
+    const text = document.body.textContent ?? "";
+    expect(text.indexOf("Alpha")).toBeLessThan(text.indexOf("Beta"));
+    expect(text.indexOf("Beta first queued item")).toBeLessThan(
+      text.indexOf("Beta second queued item"),
+    );
   });
 
   it("renders recovered session queues above project queue items", () => {

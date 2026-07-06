@@ -102,7 +102,7 @@ behavior these documents protect.
 | Touched area | Read first | Extra verification |
 |---|---|---|
 | Queues, timers, liveness, reconnect, catch-up, heartbeat, replay, fan-out | `topics/architecture-mandates.md` and its linked docs | `pnpm test:e2e:sdk` |
-| Client transcript/rendering, scroll, row identity | `packages/client/RENDERING_PERFORMANCE.md`, `topics/scrollback-view-stability.md` | `pnpm --filter client test:e2e -- --grep-invert "physical Android"`; manual browser pass for scroll slices |
+| Client transcript/rendering, scroll, row identity | `packages/client/RENDERING_PERFORMANCE.md`, `topics/scrollback-view-stability.md` | `pnpm --filter client test:e2e --grep-invert "physical Android"`; manual browser pass for scroll slices |
 | Transport, relay, SRP, NaCl, readiness | `topics/source-transport.md` | full transport test files |
 | Codex provider source/protocol | Codex version bump audit rules in `AGENTS.md` | Codex provider tests; stream/persisted render parity where relevant |
 | `app.ts` mounting, middleware, auth | `topics/hard-development-rules.md` | route tests asserting preserved public paths |
@@ -125,7 +125,7 @@ Every slice records which tier ran and why it suffices.
 - **Tier 3 — route registration moves, client-visible surface moves, and
   phase completion.** Run the relevant full E2E suite plus the
   tripwire-matrix extras. For client/browser coverage, the default gate is
-  `pnpm --filter client test:e2e -- --grep-invert "physical Android"`: this is
+  `pnpm --filter client test:e2e --grep-invert "physical Android"`: this is
   the full client Playwright suite except the environment-gated physical
   Android device smoke. Run `pnpm test:e2e:android` only for slices that touch
   physical-device streaming, device bridge behavior, or Android-specific

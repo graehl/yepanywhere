@@ -35,7 +35,7 @@ to a slice instead of preexisting repo state.
 | Lint | `pnpm lint` | Passed 2026-07-06 | 1s. Checked 1326 files, no fixes and no warnings. |
 | Typecheck | `pnpm typecheck` | Passed 2026-07-06 | 8s. Includes `@yep-anywhere/shared` build. |
 | Unit tests | `pnpm test` | Passed with baseline chatter 2026-07-06 | 44s. Existing stderr/WARN chatter observed; do not use this run as warning-free proof until the noted chatter is fixed or explicitly accepted per slice. |
-| Client E2E | `pnpm --filter client test:e2e -- --grep-invert "physical Android"` | Gate clarified 2026-07-06 | Use this as the full client/browser E2E gate for refactor slices. It excludes only the environment-gated physical Android device smoke; run `pnpm test:e2e:android` separately for Android/device-bridge slices. The initial baseline was recorded with raw `pnpm test:e2e`: 41s, 55 passed, 6 skipped, with existing Vite chunk-size/browser-compatibility warnings and Node `NO_COLOR`/`FORCE_COLOR` warnings. |
+| Client E2E | `pnpm --filter client test:e2e --grep-invert "physical Android"` | Gate clarified 2026-07-06 | Use this as the full client/browser E2E gate for refactor slices. It excludes only the environment-gated physical Android device smoke; run `pnpm test:e2e:android` separately for Android/device-bridge slices. The initial baseline was recorded with raw `pnpm test:e2e`: 41s, 55 passed, 6 skipped, with existing Vite chunk-size/browser-compatibility warnings and Node `NO_COLOR`/`FORCE_COLOR` warnings. |
 | Server E2E | `pnpm test:e2e:sdk` | Passed with baseline chatter 2026-07-06 | 18s. 73 passed, 1 skipped. Existing negative-path WebSocket stderr observed. |
 | Client console budget | `pnpm console:scan` | Passed at budget 2026-07-06 | 0s. 110/110 warning budget, +0 warnings; 158 info sites hidden by default. |
 | Request census | `pnpm --filter client request:census -- --url <session-url>` | Skipped 2026-07-06 | No real session URL was supplied; run before session page/API refactors when available. |
@@ -53,9 +53,9 @@ Baseline notes:
   WebSocket/auth stderr, Vite build warnings, and Node `NO_COLOR`/`FORCE_COLOR`
   warnings.
 - Client Tier 3 means the full browser/client Playwright suite excluding the
-  physical Android device smoke: `pnpm --filter client test:e2e --
-  --grep-invert "physical Android"`. The Android smoke remains mandatory only
-  for slices that touch physical-device streaming, device bridge behavior, or
+  physical Android device smoke: `pnpm --filter client test:e2e --grep-invert
+  "physical Android"`. The Android smoke remains mandatory only for slices
+  that touch physical-device streaming, device bridge behavior, or
   Android-specific transport assumptions.
 - The console chatter scan is at its current budget, not clean: 110 warning
   call sites, 0 over budget. Client slices must not increase that budget.
@@ -184,7 +184,7 @@ and props stable.
 | 2.4 | Done 2026-07-06 | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | Moved DOM-local selection/quote behavior into `useMessageListSelectionQuote.tsx`; `MessageList.tsx` still owns transcript rendering, scroll/follow state, search, and row actions. Tier 3 substitute with focused client E2E. |
 | 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
 | 2.6 | Done 2026-07-06 | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Moved React state, match projections, visible-group filtering, panel rendering, guide dispatch, and repeat timers into `useMessageListIsearch.tsx`; pure search selectors stay in `lib/sessionDetail/search.ts`. Tier 3 substitute with focused client E2E. |
-| 2.7 | Not started | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Preserve compact mobile overflow and liveness display. |
+| 2.7 | Done 2026-07-06 | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Moved bottom-row overflow measurement helpers, layout signature, measured tier hook, and layout refs into `useMessageInputToolbarLayout.ts`; compact status/liveness display behavior remains in the toolbar. Tier 3 with client E2E. |
 | 2.8 | Not started | `MessageInput.tsx` textarea mechanics | Extract undoable text edits, resize, slash matching, and speech target helpers. | Preserve browser undo stack and focus behavior. |
 | 2.9 | Not started | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Preserve i18n and staged attachment behavior; run `pnpm i18n:scan` if copy moves. Coordinate with doc 054: WS-006 added a workstream selector to this form. |
 | 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; do not refactor around an unbounded preview path. |
@@ -261,6 +261,48 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.7 — MessageInputToolbar Layout Measurement (Landed 2026-07-06, this commit)
+
+Moved:
+- Bottom-row overflow tier state, width/gap measurement helpers, toolbar layout
+  refs type, and the pure overflow layout signature ->
+  `useMessageInputToolbarLayout.ts`.
+- `MessageInputToolbarView` now imports the measured overflow tier hook and
+  signature builder instead of owning the DOM measurement loop directly.
+
+Signature conversions:
+- `MessageInputToolbarViewProps.refs` now uses the exported
+  `MessageInputToolbarLayoutRefs` type. The hook still takes explicit
+  `layoutKey`, `hasControls`, and optional refs.
+- Existing focused tests now import
+  `getComposerToolbarOverflowLayoutSignature` and its input type from the
+  layout hook module.
+
+Behavior changes:
+- None intended. The CSS class names, overflow tier progression, resize
+  observer scheduling, pinned-control handling, compact status float logic, and
+  liveness display projection are unchanged. Compact status measurement remains
+  in `MessageInputToolbar.tsx` because it is coupled to liveness/status
+  projections rather than the bottom-row overflow menu.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `MessageInput`, `SessionToolbarPreview`, and
+  `useSessionToolbarPresence` tests; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`; staged diff reviewed
+  with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Client tripwire: `topics/console-chatter.md` was read before editing and
+  `pnpm console:scan` stayed within the committed budget.
+- Client E2E: `pnpm --filter client test:e2e --grep-invert
+  "physical Android"`.
+
+Follow-ups recorded:
+- `MessageInputToolbar.tsx` still owns compact status/liveness projections and
+  shortcut popover interactions. Those are separable future slices, but this
+  slice kept the high-risk liveness display behavior local.
 
 ### Slice 2.6 — MessageList Isearch UI State (Landed 2026-07-06, this commit)
 

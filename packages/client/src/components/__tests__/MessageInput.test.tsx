@@ -22,6 +22,10 @@ import {
 } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SESSION_TOOLBAR_PRIORITY } from "../../hooks/useSessionToolbarPresence";
+import {
+  getComposerToolbarOverflowLayoutSignature,
+  type ComposerToolbarOverflowLayoutSignatureInput,
+} from "../../hooks/useMessageInputToolbarLayout";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
 import {
   YA_GROK_BATCH_SPEECH_METHOD,
@@ -30,9 +34,7 @@ import {
 import { setBrowserXaiSttApiKey } from "../../lib/speechProviders/xaiCredentials";
 import { MessageInput } from "../MessageInput";
 import {
-  getComposerToolbarOverflowLayoutSignature,
   MessageInputToolbarView,
-  type ComposerToolbarOverflowLayoutSignatureInput,
   type MessageInputToolbarViewProps,
 } from "../MessageInputToolbar";
 

@@ -34,7 +34,7 @@ import type {
   ProjectQueueGlobalCollectionSnapshot,
   ProjectsCollectionSnapshot,
   ProviderRuntimeStatusSnapshot,
-} from "./clientSummaryState";
+} from "./clientSummaryCollections";
 import {
   defaultSessionDetailMemoryCache,
   type SessionDetailMemoryCache,

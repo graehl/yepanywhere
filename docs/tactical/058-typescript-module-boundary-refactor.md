@@ -200,7 +200,7 @@ of their planned slices.
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
 | 3.1 | Done 2026-07-06 | `useSessionMessages.ts` adapter cutdown | Continue the existing session-detail data-layer migration by shaving reveal/progress/pagination bookkeeping into tested helpers. | Moved returned-detail reveal gating, store-backed return selection, empty transcript fallbacks, returned tool-use map construction, and exported agent-content types into `sessionDetail/returnedDetail.ts` / `sessionDetail/types.ts`; hook still owns async load/reveal timing and stream/scroll side effects. |
-| 3.2 | Not started | `clientSummaryState.ts` source-store helpers | Split pure collection/reducer/query helpers only when touching summary-state behavior. | Follow source-runtime topology docs. |
+| 3.2 | Done 2026-07-06 | `clientSummaryState.ts` source-store helpers | Split pure collection/reducer/query helpers only when touching summary-state behavior. | Moved shared summary collection model/defaults into `clientSummaryCollections.ts` and read-only query/selector helpers into `clientSummaryQueries.ts`; reducer/update paths stay in `clientSummaryState.ts`. |
 | 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Owned by `topics/source-transport.md` / doc 057; preserve parity rows and full transport tests. |
 | 3.4 | Not started | `api/client.ts` domain clients | Consider domain-specific API modules once source transport shims are stable. | Keep the exported `api` facade stable until callers migrate deliberately (the contract's one re-export exception). |
 
@@ -273,6 +273,47 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 3.2 — clientSummaryState Source-Store Queries (Landed 2026-07-06, this commit)
+
+Moved:
+- Shared summary collection state, record, snapshot, query descriptor, provider
+  runtime snapshot types, and immutable collection defaults ->
+  `clientSummaryCollections.ts`.
+- Global-session query descriptor/key helpers, provider/project/inbox/project
+  queue/session selectors, active-activity classification, record-group
+  ordering selectors, and `toProjectId` -> `clientSummaryQueries.ts`.
+
+Signature conversions:
+- None. Moved functions already accepted state or records explicitly.
+
+Behavior changes:
+- None intended. `clientSummaryState.ts` still owns every `apply*` reducer
+  entry point, observation freshness rule, summary merge rule, and source-store
+  mutation path; callers now import selectors and shared collection types from
+  their owning modules directly.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/lib/__tests__/clientSummaryState.test.ts
+  src/lib/__tests__/sourceRuntime.test.ts
+  src/lib/__tests__/clientSummaryStore.test.tsx`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`;
+  `pnpm console:scan`.
+- Tier 3 was not required: this moved pure summary model/query code and import
+  paths only, with no route registration, client-visible surface, transport,
+  or rendering behavior change.
+- Residual chatter: full tests still emit the baseline broad-suite server/client
+  logs, SecureConnection negative-path stderr, and server process termination
+  warning/error logs already documented for this refactor series. Console scan
+  stayed at warnings `110/110`, method.warn `61/61`, and method.error `95/95`,
+  all `+0`.
+
+Follow-ups recorded:
+- None.
 
 ### Slice 2.11 — SessionPage /btw Sticky Cards (Landed 2026-07-06, this commit)
 

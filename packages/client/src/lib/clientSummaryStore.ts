@@ -35,6 +35,8 @@ import {
   applySessionCollectionStatusChanged,
   applySessionCollectionUpdated,
   createEmptyClientSummaryState,
+} from "./clientSummaryState";
+import {
   createGlobalSessionsQueryKey,
   selectActiveAgentCount,
   selectActiveProjectSessionIds,
@@ -59,21 +61,23 @@ import {
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
-  type GlobalSessionsCollectionSnapshot,
-  type InboxCounts,
-  type InboxCollectionSnapshot,
-  type ProjectCollectionRecord,
-  type ProjectCollectionSnapshot,
-  type ProjectQueueCountSource,
-  type ProjectQueueCollectionSnapshot,
-  type ProjectQueueGlobalCollectionSnapshot,
-  type ProjectsCollectionSnapshot,
-  type ProviderRuntimeStatusSnapshot,
-  type SessionCollectionQueryDescriptor,
-  type SessionCollectionRecord,
-  type SessionCollectionQueryState,
-  type ClientSummaryState,
-} from "./clientSummaryState";
+} from "./clientSummaryQueries";
+import type {
+  ClientSummaryState,
+  GlobalSessionsCollectionSnapshot,
+  InboxCollectionSnapshot,
+  InboxCounts,
+  ProjectCollectionRecord,
+  ProjectCollectionSnapshot,
+  ProjectQueueCollectionSnapshot,
+  ProjectQueueCountSource,
+  ProjectQueueGlobalCollectionSnapshot,
+  ProjectsCollectionSnapshot,
+  ProviderRuntimeStatusSnapshot,
+  SessionCollectionQueryDescriptor,
+  SessionCollectionQueryState,
+  SessionCollectionRecord,
+} from "./clientSummaryCollections";
 import {
   isSessionDraftStorageKey,
   scanSessionDraftIds,

@@ -1,5 +1,5 @@
 import type { GlobalSessionItem } from "../api/client";
-import type { SessionCollectionRecord } from "./clientSummaryState";
+import type { SessionCollectionRecord } from "./clientSummaryCollections";
 
 export function sessionCollectionRecordToGlobalSessionItem(
   record: SessionCollectionRecord,

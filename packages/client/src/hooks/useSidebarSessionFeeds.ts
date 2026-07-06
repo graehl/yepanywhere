@@ -1,5 +1,5 @@
 import { useGlobalSessionsFeed } from "./useGlobalSessionsFeed";
-import type { SessionCollectionQueryDescriptor } from "../lib/clientSummaryState";
+import type { SessionCollectionQueryDescriptor } from "../lib/clientSummaryCollections";
 
 export const SIDEBAR_SESSION_FEED_LIMIT = 50;
 

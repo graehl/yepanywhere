@@ -25,6 +25,8 @@ import {
   applySessionCollectionProcessStateChanged,
   applySessionCollectionUpdated,
   createEmptyClientSummaryState,
+} from "../clientSummaryState";
+import {
   createGlobalSessionsQueryKey,
   selectActiveAgentCount,
   selectActiveProjectSessionIds,
@@ -49,7 +51,7 @@ import {
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
   selectStarredSessionRecordsFromRecords,
-} from "../clientSummaryState";
+} from "../clientSummaryQueries";
 import { sessionCollectionRecordToGlobalSessionItem } from "../sessionCollectionRecords";
 
 const PROJECT_ID = "project-1" as UrlProjectId;

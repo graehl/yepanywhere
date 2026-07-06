@@ -27,10 +27,8 @@ import {
   useSessionCollectionQueryRecords,
   useSessionCollectionQueryState,
 } from "../lib/clientSummaryStore";
-import {
-  createGlobalSessionsCollectionQueryDescriptor,
-  type SessionCollectionQueryDescriptor,
-} from "../lib/clientSummaryState";
+import type { SessionCollectionQueryDescriptor } from "../lib/clientSummaryCollections";
+import { createGlobalSessionsCollectionQueryDescriptor } from "../lib/clientSummaryQueries";
 import {
   type ProcessStateEvent,
   type SessionCreatedEvent,

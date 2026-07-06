@@ -37,11 +37,11 @@ import { toBrowserAppHref } from "../lib/appHref";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordToGlobalSessionItem } from "../lib/sessionCollectionRecords";
+import type { SessionCollectionRecord } from "../lib/clientSummaryCollections";
 import {
   selectOlderSessionRecordsFromRecords,
   selectRecentSessionRecordsFromRecords,
-  type SessionCollectionRecord,
-} from "../lib/clientSummaryState";
+} from "../lib/clientSummaryQueries";
 import {
   useDraftSessionIds,
   useInboxCounts,

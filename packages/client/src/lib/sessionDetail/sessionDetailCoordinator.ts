@@ -9,7 +9,7 @@ import type {
   GetSessionResult,
   YaSourceRuntime,
 } from "../sourceRuntime";
-import type { ProviderRuntimeStatusSnapshot } from "../clientSummaryState";
+import type { ProviderRuntimeStatusSnapshot } from "../clientSummaryCollections";
 import {
   createSessionLoadProgress,
   createSessionLoadProgressForWindow,

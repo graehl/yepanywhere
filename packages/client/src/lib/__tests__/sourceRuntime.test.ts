@@ -18,7 +18,7 @@ import {
   selectProjectQueueItemsByProject,
   selectProviderRuntimeStatusForSession,
   selectSessionCollectionQueryRecords,
-} from "../clientSummaryState";
+} from "../clientSummaryQueries";
 import { createSessionDetailMemoryCache } from "../sessionDetail/sessionDetailStore";
 import type { SessionRouteSnapshot } from "../sessionRouteSnapshots";
 import {

@@ -1,14 +1,16 @@
 # Summary Parser Worker Isolation
 
-Status: implementation chunk 4 completed locally. Claude and Codex summary
-parsing can route through the child-process worker behind separate default-off
-gates, and the parent now recycles parser children after clearly
-heap-contaminating parses or timeout/crash paths. Startup now logs the
-evaluated summary parser worker modes so rollout evidence includes the actual
-active config, not only an operator's intended environment.
+Status: Codex rollout resumed. Claude and Codex summary parsing can route
+through the child-process worker; Claude remains default-off, while Codex now
+uses the worker by default when `CODEX_SUMMARY_PARSER_WORKER` is unset. The
+parent recycles parser children after clearly heap-contaminating parses or
+timeout/crash paths. Startup logs the evaluated summary parser worker modes so
+rollout evidence includes the actual active config, not only an operator's
+intended environment.
 
 - `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required` (default `off`)
-- `CODEX_SUMMARY_PARSER_WORKER=off|on|required` (default `off`)
+- `CODEX_SUMMARY_PARSER_WORKER=off|on|required` (default `on` when unset;
+  explicit blank/invalid values are `off`)
 
 Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
 especially "Chunk 5: Summary Parser Worker Isolation".
@@ -590,19 +592,29 @@ Not implemented in this chunk:
 ## Promotion Attempt
 
 On 2026-07-03, `CODEX_SUMMARY_PARSER_WORKER` was promoted to default `on`.
-The product decision is scoped to Codex summary-index parsing: explicit
-operator configuration still wins, `required` remains available to prove worker
-coverage, and `on` keeps the observed in-process fallback for setup/import/IPC
-failures. A local `server.log` scan over the available log file found no
-`summary_parser_worker` fallback, crash, timeout, or recycle events; however,
-the live dev server environment at inspection time did not include
-`CODEX_SUMMARY_PARSER_WORKER`, so those logs do not prove the worker path was
-currently exercised.
+That promotion was reverted before further rollout because the available log
+evidence did not prove the evaluated config or the worker path both ran.
 
-That promotion was reverted before further rollout. The next promotion attempt
-should first capture `summary_parser_worker_config` at startup and
-`summary_parser_worker_result` events during a deliberate required-mode run, so
-the evidence proves the evaluated config and the worker path both ran.
+On 2026-07-06, the Codex promotion was re-applied more narrowly after a
+required-mode health check and the session-reader churn reduction. The current
+rollout contract is:
+
+- Unset `CODEX_SUMMARY_PARSER_WORKER` defaults to `on`.
+- Explicit `off`, `on`, and `required` continue to win.
+- Explicit blank or invalid values remain conservative and evaluate to `off`.
+- `on` may fall back in-process only before useful worker execution starts:
+  unsupported source-worker Node versions, entrypoint/import problems, launch
+  failure, or IPC failure before the request is accepted.
+- Worker parse errors, crashes/disconnects after accepting a request, and
+  timeouts remain visible worker failures rather than hidden in-process
+  retries. That keeps rollout signal sharp enough to fix real worker bugs.
+
+Observed restart evidence before this promotion: Codex required-mode worker
+parses completed successfully with no crash, fallback, duplicate same-version
+parse, or scanner failure events. The worker still uses structured
+`summary_parser_worker_config`, `summary_parser_worker_result`, and fallback
+events as the rollout telemetry; `/api/session-index/status` worker counters
+remain a possible follow-up.
 
 ## Open Design Questions
 
@@ -613,5 +625,5 @@ the evidence proves the evaluated config and the worker path both ran.
   should `/api/session-index/status` include current worker
   pid/generation/recycle counters before the cold-history harness?
 - Should active-parse crash/timeout/OOM ever retry in-process behind an explicit
-  debug override, or should the production adapter always skip/empty-cache that
-  one summary?
+  debug override? The production adapter currently keeps those as visible
+  worker failures.

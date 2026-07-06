@@ -72,7 +72,7 @@ export interface Config {
   sessionIndexSummaryParseConcurrency: number;
   /** Claude summary parser worker mode. Default off. */
   claudeSummaryParserWorkerMode: SummaryParserWorkerMode;
-  /** Codex summary parser worker mode. Default off. */
+  /** Codex summary parser worker mode. Default on when unset. */
   codexSummaryParserWorkerMode: SummaryParserWorkerMode;
   /** Default active session window in days. 0 disables auto-archiving. */
   sessionAutoArchiveDays: number;
@@ -267,9 +267,10 @@ export function loadConfig(): Config {
   const claudeSummaryParserWorkerMode = parseSummaryParserWorkerMode(
     process.env.CLAUDE_SUMMARY_PARSER_WORKER,
   );
-  const codexSummaryParserWorkerMode = parseSummaryParserWorkerMode(
-    process.env.CODEX_SUMMARY_PARSER_WORKER,
-  );
+  const codexSummaryParserWorkerMode =
+    process.env.CODEX_SUMMARY_PARSER_WORKER === undefined
+      ? "on"
+      : parseSummaryParserWorkerMode(process.env.CODEX_SUMMARY_PARSER_WORKER);
   const projectScanCacheTtlMs = Math.max(
     0,
     parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),

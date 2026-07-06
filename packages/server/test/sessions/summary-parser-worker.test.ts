@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SummaryParserClient,
   resolveSummaryParserWorkerEntrypoint,
@@ -19,6 +19,7 @@ import type {
 } from "../../src/sessions/summary-parser-worker-protocol.js";
 import { runSummaryParserWorkerRequest } from "../../src/sessions/summary-parser-worker-runner.js";
 import type { SessionSummary } from "../../src/supervisor/types.js";
+import { getLogger } from "../../src/logging/logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(__dirname, "..", "..");
@@ -143,12 +144,16 @@ describe("summary parser worker harness", () => {
     dataDir = join(testDir, "ya-data");
     await mkdir(testDir, { recursive: true });
     await mkdir(dataDir, { recursive: true });
+    vi.spyOn(getLogger(), "debug").mockImplementation(() => undefined);
+    vi.spyOn(getLogger(), "info").mockImplementation(() => undefined);
+    vi.spyOn(getLogger(), "warn").mockImplementation(() => undefined);
     client = null;
   });
 
   afterEach(async () => {
     await client?.close();
     await rm(testDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
   });
 
   it("guards source tsx workers to Node 20.6 and later", () => {
@@ -448,6 +453,127 @@ describe("summary parser worker harness", () => {
     expect(result.response?.metrics.recycleRecommended).toBe(true);
     expect(result.response?.metrics.recycleReason).toBe("timeout");
     expect(result.error?.name).toBe("TimeoutError");
+  });
+
+  it("does not fall back in on mode when the worker returns a parse error", async () => {
+    const workerPath = join(testDir, "error-worker.js");
+    await writeFile(
+      workerPath,
+      [
+        'process.send?.({ type: "ready", pid: process.pid, nodeVersion: process.version });',
+        'process.on("message", (request) => {',
+        "  process.send?.({",
+        '    type: "result",',
+        "    requestId: request.requestId,",
+        '    status: "error",',
+        "    summary: null,",
+        "    metrics: {",
+        "      provider: request.provider,",
+        "      sessionId: request.sessionId,",
+        "      filePath: request.filePath,",
+        "      fileSize: request.stats.size,",
+        "      fileMtimeMs: request.stats.mtimeMs,",
+        "      workerPid: process.pid,",
+        "      nodeVersion: process.version,",
+        "      durationMs: 0,",
+        "      heapUsedBefore: 0,",
+        "      heapUsedAfter: 0,",
+        "      rssBefore: 0,",
+        "      rssAfter: 0,",
+        "    },",
+        '    error: { name: "Error", message: "worker parse exploded" },',
+        "  });",
+        "});",
+      ].join("\n"),
+    );
+    const filePath = join(testDir, "worker-error-session.jsonl");
+    await writeClaudeSummaryFixture({
+      filePath,
+      message: "Worker error should not fallback",
+    });
+    client = new SummaryParserClient({
+      mode: "on",
+      entrypoint: {
+        supported: true,
+        runtime: "built",
+        modulePath: workerPath,
+        execArgv: [],
+      },
+      launchTimeoutMs: 1_000,
+    });
+    let fallbackCalled = false;
+
+    const result = await client.parse(
+      {
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "claude",
+        filePath,
+        sessionId: "worker-error-session",
+        projectId: "worker-project" as UrlProjectId,
+        stats: await fileStats(filePath),
+      },
+      async (request) => {
+        fallbackCalled = true;
+        return fakeSummary(request);
+      },
+    );
+
+    expect(result.source).toBe("worker");
+    expect(result.status).toBe("error");
+    expect(result.summary).toBeNull();
+    expect(result.error?.message).toBe("worker parse exploded");
+    expect(fallbackCalled).toBe(false);
+  });
+
+  it("does not fall back in on mode when an active worker times out", async () => {
+    const workerPath = join(testDir, "hanging-on-worker.js");
+    await writeFile(
+      workerPath,
+      [
+        'process.send?.({ type: "ready", pid: process.pid, nodeVersion: process.version });',
+        'process.on("message", () => {});',
+      ].join("\n"),
+    );
+    const filePath = join(testDir, "timeout-on-session.jsonl");
+    await writeClaudeSummaryFixture({
+      filePath,
+      message: "Timeout on mode should not fallback",
+    });
+    client = new SummaryParserClient({
+      mode: "on",
+      entrypoint: {
+        supported: true,
+        runtime: "built",
+        modulePath: workerPath,
+        execArgv: [],
+      },
+      timeoutMs: 50,
+      launchTimeoutMs: 1_000,
+    });
+    let fallbackCalled = false;
+
+    const result = await client.parse(
+      {
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "claude",
+        filePath,
+        sessionId: "timeout-on-session",
+        projectId: "worker-project" as UrlProjectId,
+        stats: await fileStats(filePath),
+      },
+      async (request) => {
+        fallbackCalled = true;
+        return fakeSummary(request);
+      },
+    );
+
+    expect(result.source).toBe("worker");
+    expect(result.status).toBe("timeout");
+    expect(result.response?.metrics.recycleRecommended).toBe(true);
+    expect(result.response?.metrics.recycleReason).toBe("timeout");
+    expect(fallbackCalled).toBe(false);
   });
 
   itIfSourceWorker("parses a Claude fixture through a source worker", async () => {

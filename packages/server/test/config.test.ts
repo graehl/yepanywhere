@@ -141,23 +141,49 @@ describe("loadConfig codex paths", () => {
     expect(config.codexCliPath).toBeUndefined();
   });
 
-  it("keeps summary parser workers disabled by default", async () => {
+  it("defaults Codex summary parser worker on when unset", async () => {
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
     expect(config.claudeSummaryParserWorkerMode).toBe("off");
+    expect(config.codexSummaryParserWorkerMode).toBe("on");
+  });
+
+  it("preserves an explicit Codex summary parser worker off override", async () => {
+    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "off");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
     expect(config.codexSummaryParserWorkerMode).toBe("off");
+  });
+
+  it("treats blank or invalid Codex summary parser worker overrides as off", async () => {
+    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "");
+
+    const { loadConfig } = await import("../src/config.js");
+    const blankConfig = loadConfig();
+
+    expect(blankConfig.codexSummaryParserWorkerMode).toBe("off");
+
+    vi.resetModules();
+    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "invalid");
+
+    const { loadConfig: loadConfigAgain } = await import("../src/config.js");
+    const invalidConfig = loadConfigAgain();
+
+    expect(invalidConfig.codexSummaryParserWorkerMode).toBe("off");
   });
 
   it("parses summary parser worker overrides", async () => {
     vi.stubEnv("CLAUDE_SUMMARY_PARSER_WORKER", "required");
-    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "on");
+    vi.stubEnv("CODEX_SUMMARY_PARSER_WORKER", "required");
 
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
     expect(config.claudeSummaryParserWorkerMode).toBe("required");
-    expect(config.codexSummaryParserWorkerMode).toBe("on");
+    expect(config.codexSummaryParserWorkerMode).toBe("required");
   });
 
   it("uses the real Windows temp directory for default local-image paths", async () => {

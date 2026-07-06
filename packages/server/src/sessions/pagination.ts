@@ -280,8 +280,10 @@ export function sliceAtCompactBoundaries(
 
   const totalCompactions = compactIndices.length;
 
-  // If fewer or equal compactions than requested, return everything
-  if (compactIndices.length <= tailCompactions) {
+  // If fewer compactions exist than requested, return everything. Once the
+  // requested number of boundaries exists, the oldest pre-boundary window is
+  // outside the requested compact tail.
+  if (compactIndices.length < tailCompactions) {
     return {
       messages: workingMessages,
       pagination: {

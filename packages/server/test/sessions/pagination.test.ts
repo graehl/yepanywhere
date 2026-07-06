@@ -97,8 +97,9 @@ describe("sliceAtCompactBoundaries", () => {
     expect(result.pagination.returnedMessageCount).toBe(3);
   });
 
-  it("returns all messages when compactions equal requested count", () => {
+  it("starts at first boundary when compactions equal requested count", () => {
     const messages = [
+      msg("user", "u0"),
       compactBoundary("cb1"),
       msg("user", "u1"),
       compactBoundary("cb2"),
@@ -107,9 +108,34 @@ describe("sliceAtCompactBoundaries", () => {
 
     const result = sliceAtCompactBoundaries(messages, 2);
 
+    expect(result.messages).toEqual([
+      compactBoundary("cb1"),
+      msg("user", "u1"),
+      compactBoundary("cb2"),
+      msg("assistant", "a1"),
+    ]);
+    expect(result.pagination).toEqual({
+      hasOlderMessages: true,
+      totalMessageCount: 5,
+      returnedMessageCount: 4,
+      truncatedBeforeMessageId: "cb1",
+      totalCompactions: 2,
+    } satisfies PaginationInfo);
+  });
+
+  it("returns all messages when exactly one compaction exists for tail two", () => {
+    const messages = [
+      msg("user", "u0"),
+      compactBoundary("cb1"),
+      msg("assistant", "a1"),
+    ];
+
+    const result = sliceAtCompactBoundaries(messages, 2);
+
     expect(result.messages).toEqual(messages);
     expect(result.pagination.hasOlderMessages).toBe(false);
-    expect(result.pagination.totalCompactions).toBe(2);
+    expect(result.pagination.returnedMessageCount).toBe(3);
+    expect(result.pagination.totalCompactions).toBe(1);
   });
 
   it("truncates to last N compactions", () => {
@@ -292,19 +318,31 @@ describe("sliceAtCompactBoundaries", () => {
     expect(first.messages[0]?.uuid).toBe("cb3");
     expect(first.messages.length).toBe(5);
 
-    // Second load: 2 compactions before cb3
-    // Working set: u0, cb1, a1, cb2, u2 (5 messages, 2 compactions = all returned)
+    // Second load: 2 compactions before cb3. Working set is
+    // u0, cb1, a1, cb2, u2, so the page starts at cb1 and leaves u0 for a
+    // final older-page request.
     const second = sliceAtCompactBoundaries(
       messages,
       2,
       first.pagination.truncatedBeforeMessageId,
     );
-    expect(second.pagination.hasOlderMessages).toBe(false);
-    expect(second.messages[0]?.uuid).toBe("u0");
-    expect(second.messages.length).toBe(5);
+    expect(second.pagination.hasOlderMessages).toBe(true);
+    expect(second.messages[0]?.uuid).toBe("cb1");
+    expect(second.messages.length).toBe(4);
+
+    // Third load: prefix before cb1 has no compactions, so it returns the
+    // opening pre-compaction content.
+    const third = sliceAtCompactBoundaries(
+      messages,
+      2,
+      second.pagination.truncatedBeforeMessageId,
+    );
+    expect(third.pagination.hasOlderMessages).toBe(false);
+    expect(third.messages[0]?.uuid).toBe("u0");
+    expect(third.messages.length).toBe(1);
 
     // Together they cover all messages
-    const allLoaded = [...second.messages, ...first.messages];
+    const allLoaded = [...third.messages, ...second.messages, ...first.messages];
     expect(allLoaded.length).toBe(messages.length);
   });
 

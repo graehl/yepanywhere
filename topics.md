@@ -130,3 +130,7 @@
   capability strings and transitional compatibility gates.
 - session-id-remap - Public remap event and client summary-store merge for
   startup-time temporary session IDs that later canonicalize.
+- session-compact-tail-pagination - Session-detail `tailCompactions`
+  semantics: include exactly the requested number of compact boundary markers
+  once they exist, avoiding the exactly-two-boundary full-history
+  discontinuity for the default compact tail.

@@ -9,6 +9,8 @@ Progress:
 - [x] Confirmed the server response is not the dominant local bottleneck.
 - [x] Confirmed `tailCompactions: 2` does not bound sessions with exactly two
   compaction boundaries.
+- [x] 2026-07-06: Fixed the exactly-two-boundary discontinuity; once two
+  compact boundaries exist, `tailCompactions: 2` starts at the first boundary.
 - [x] Compared the existing `tailTurns` escape hatch as a proxy for chunked
   initial rendering.
 - [x] Add a default-off Appearance setting for session loading progress.
@@ -47,18 +49,18 @@ by user-turn count, but it expands into a large render tree:
 - Tool rows: 609
 - DOM nodes after load: roughly 26k-27k in the measured Chromium runs
 
-## Why Compact-Tail Loading Did Not Help
+## Historical Compact-Tail Edge Case
 
 The client requests `tailCompactions: 2` on initial session detail loads. For
-this session, the server returns the full transcript because the session has
-exactly two compact boundaries:
+this session, the server returned the full transcript because the session had
+exactly two compact boundaries and the old pagination condition treated that
+as an untruncated window:
 
 - `pagination.totalCompactions`: 2
 - `pagination.hasOlderMessages`: false
 - `pagination.returnedMessageCount`: 1,815
 
-Current server behavior in
-`packages/server/src/sessions/pagination.ts` is:
+The old server behavior in `packages/server/src/sessions/pagination.ts` was:
 
 ```ts
 if (compactIndices.length <= tailCompactions) {
@@ -66,9 +68,14 @@ if (compactIndices.length <= tailCompactions) {
 }
 ```
 
-So `tailCompactions=2` means "return the last two compaction windows," not
-"return content after the last two compactions only when there are two." A
-session with zero, one, or two compact boundaries returns in full.
+That meant `tailCompactions=2` did not start at the first compact boundary
+until a third boundary existed. A session with exactly two boundaries could be
+larger than the same session immediately after its third compaction.
+
+This has since been corrected: only sessions with fewer than the requested
+number of compact boundaries return the full transcript. With
+`tailCompactions=2`, a one-compaction session still returns the beginning,
+`C1`, and the tail; an exactly-two-compaction session starts at `C1`.
 
 Even if the implementation sliced from the first boundary when there are
 exactly two boundaries, this session would still return about 1,428 messages.

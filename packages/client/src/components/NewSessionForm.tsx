@@ -3,15 +3,12 @@ import {
   DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
-  PROMPT_SUGGESTION_MODES,
   type EffortLevel,
   type ModelInfo,
   type PromptSuggestionMode,
   type ProviderName,
   type RecapMode,
-  type StagedAttachmentRef,
   type ThinkingMode,
-  type ThinkingOption,
   type Workstream,
   type WorkstreamId,
   normalizeRecapAfterSeconds,
@@ -69,6 +66,35 @@ import {
   getProviderSessionDefaults,
   withProviderSessionDefaults,
 } from "../lib/newSessionDefaults";
+import {
+  type PendingFile,
+  type PendingLocalFile,
+  type PendingStagedFile,
+  type PendingUploadingFile,
+  getPendingFileName,
+  getPendingFileSize,
+  isPendingLocalFile,
+  isPendingStagedFile,
+  revokePendingFilePreviewUrls,
+  toPersistedStagedAttachmentRef,
+} from "../lib/newSessionAttachments";
+import {
+  PROMPT_SUGGESTION_MODE_ORDER,
+  RECAP_MODE_ORDER,
+  getDefaultHelperSideModel,
+  getPreferredPromptSuggestionMode,
+  getPreferredRecapMode,
+  resolvePromptSuggestionMode,
+  resolveRecapMode,
+  toThinkingOption,
+} from "../lib/newSessionOptions";
+import {
+  PROJECT_SUGGESTION_COUNT,
+  QUICK_PROJECT_COUNT,
+  findProjectByInput,
+  normalizeProjectInput,
+  sortProjectsForChooser,
+} from "../lib/newSessionProjects";
 import { getRecapModeDescription } from "../lib/recapModes";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import type { DraftAttachmentState } from "../lib/draftEnvelope";
@@ -152,29 +178,6 @@ import {
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
 
-interface PendingLocalFile {
-  kind: "local";
-  id: string;
-  file: File;
-  previewUrl?: string;
-}
-
-interface PendingUploadingFile {
-  kind: "uploading";
-  id: string;
-  originalName: string;
-  size: number;
-  mimeType: string;
-  previewUrl?: string;
-}
-
-type PendingStagedFile = StagedAttachmentRef & {
-  kind: "staged";
-  previewUrl?: string;
-};
-
-type PendingFile = PendingLocalFile | PendingUploadingFile | PendingStagedFile;
-
 interface WorkstreamsLoadState {
   status: "idle" | "loading" | "ready" | "error";
   projectId: string | null;
@@ -186,13 +189,6 @@ interface PendingSpeechFinal {
   transcript: string;
   metadata?: SpeechTranscriptionResultMetadata;
 }
-
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
-const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
-  ...PROMPT_SUGGESTION_MODES,
-];
-const QUICK_PROJECT_COUNT = 10;
-const PROJECT_SUGGESTION_COUNT = 10;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}\u202fb`;
@@ -208,201 +204,6 @@ function createClientSpeechTurnId(): string {
 
 function createSpeechTargetId(): string {
   return `speech-target-${generateUUID()}`;
-}
-
-function toThinkingOption(
-  mode: ThinkingMode,
-  effort: EffortLevel,
-): ThinkingOption {
-  if (mode === "off") return "off";
-  if (mode === "auto") return "auto";
-  return `on:${effort}`;
-}
-
-function isPendingLocalFile(file: PendingFile): file is PendingLocalFile {
-  return file.kind === "local";
-}
-
-function isPendingStagedFile(file: PendingFile): file is PendingStagedFile {
-  return file.kind === "staged";
-}
-
-function getPendingFileName(file: PendingFile): string {
-  return isPendingLocalFile(file) ? file.file.name : file.originalName;
-}
-
-function getPendingFileSize(file: PendingFile): number {
-  return isPendingLocalFile(file) ? file.file.size : file.size;
-}
-
-function toPersistedStagedAttachmentRef(
-  attachment: PendingStagedFile,
-): StagedAttachmentRef {
-  return {
-    id: attachment.id,
-    batchId: attachment.batchId,
-    originalName: attachment.originalName,
-    name: attachment.name,
-    size: attachment.size,
-    mimeType: attachment.mimeType,
-    ...(attachment.width !== undefined ? { width: attachment.width } : {}),
-    ...(attachment.height !== undefined ? { height: attachment.height } : {}),
-    createdAt: attachment.createdAt,
-    updatedAt: attachment.updatedAt,
-  };
-}
-
-function revokePendingFilePreviewUrls(files: readonly PendingFile[]): void {
-  for (const file of files) {
-    if (file.previewUrl) {
-      URL.revokeObjectURL(file.previewUrl);
-    }
-  }
-}
-
-function providerSupportsRecapMode(
-  provider:
-    | {
-        supportsRecaps?: boolean;
-        supportsNativeRecaps?: boolean;
-      }
-    | null
-    | undefined,
-  mode: RecapMode,
-): boolean {
-  if (mode === "off") return true;
-  if (mode === "native") return false;
-  return provider?.supportsRecaps === true;
-}
-
-function getPreferredRecapMode(
-  _provider:
-    | {
-        supportsRecaps?: boolean;
-        supportsNativeRecaps?: boolean;
-      }
-    | null
-    | undefined,
-  defaults?: { recapMode?: RecapMode } | null,
-): RecapMode {
-  if (defaults?.recapMode && RECAP_MODE_ORDER.includes(defaults.recapMode)) {
-    return defaults.recapMode;
-  }
-  return "off";
-}
-
-function resolveRecapMode(
-  provider:
-    | {
-        supportsRecaps?: boolean;
-        supportsNativeRecaps?: boolean;
-      }
-    | null
-    | undefined,
-  preferredMode: RecapMode,
-): RecapMode {
-  return providerSupportsRecapMode(provider, preferredMode)
-    ? preferredMode
-    : "off";
-}
-
-function providerSupportsPromptSuggestionMode(
-  provider: { supportsNativePromptSuggestions?: boolean } | null | undefined,
-  mode: PromptSuggestionMode,
-): boolean {
-  if (mode === "off") return true;
-  return provider?.supportsNativePromptSuggestions === true;
-}
-
-function getPreferredPromptSuggestionMode(
-  defaults?: { promptSuggestionMode?: PromptSuggestionMode } | null,
-): PromptSuggestionMode {
-  return defaults?.promptSuggestionMode &&
-    PROMPT_SUGGESTION_MODE_ORDER.includes(defaults.promptSuggestionMode)
-    ? defaults.promptSuggestionMode
-    : "off";
-}
-
-function resolvePromptSuggestionMode(
-  provider: { supportsNativePromptSuggestions?: boolean } | null | undefined,
-  preferredMode: PromptSuggestionMode,
-): PromptSuggestionMode {
-  return providerSupportsPromptSuggestionMode(provider, preferredMode)
-    ? preferredMode
-    : "off";
-}
-
-function getDefaultHelperSideModel(
-  models: ModelInfo[],
-  defaults?: { helperSideModel?: string } | null,
-): string {
-  const defaultModel = defaults?.helperSideModel;
-  if (
-    defaultModel &&
-    (defaultModel === HELPER_SIDE_MODEL_CHEAPEST ||
-      defaultModel === HELPER_SIDE_MODEL_SAME_AS_MAIN ||
-      models.some((model) => model.id === defaultModel))
-  ) {
-    return defaultModel;
-  }
-  return HELPER_SIDE_MODEL_CHEAPEST;
-}
-
-function getProjectSortValue(project: Project): number {
-  return project.lastActivity ? new Date(project.lastActivity).getTime() : 0;
-}
-
-function sortProjectsForChooser(
-  projects: readonly Project[],
-  recentProjectIds: readonly string[] = [],
-): Project[] {
-  const recentRanks = new Map(
-    recentProjectIds.map((projectId, index) => [projectId, index]),
-  );
-
-  return [...projects].sort((a, b) => {
-    const recentRankA = recentRanks.get(a.id) ?? Number.POSITIVE_INFINITY;
-    const recentRankB = recentRanks.get(b.id) ?? Number.POSITIVE_INFINITY;
-    if (recentRankA !== recentRankB) return recentRankA - recentRankB;
-
-    const activityDiff = getProjectSortValue(b) - getProjectSortValue(a);
-    if (activityDiff !== 0) return activityDiff;
-    const nameDiff = a.name.localeCompare(b.name);
-    if (nameDiff !== 0) return nameDiff;
-    return a.path.localeCompare(b.path);
-  });
-}
-
-function normalizeProjectInput(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  if (trimmed.length > 1 && /[/\\]$/.test(trimmed)) {
-    return trimmed.slice(0, -1);
-  }
-  return trimmed;
-}
-
-function findProjectByInput(
-  projects: readonly Project[],
-  candidate: string,
-): Project | null {
-  const normalizedCandidate = normalizeProjectInput(candidate);
-  if (!normalizedCandidate) return null;
-
-  const exactPathMatch = projects.find(
-    (project) => project.path === normalizedCandidate,
-  );
-  if (exactPathMatch) return exactPathMatch;
-
-  const exactNameMatches = projects.filter(
-    (project) =>
-      project.name.toLowerCase() === normalizedCandidate.toLowerCase(),
-  );
-  if (exactNameMatches.length === 1) {
-    return exactNameMatches[0] ?? null;
-  }
-
-  return null;
 }
 
 export interface NewSessionFormProps {

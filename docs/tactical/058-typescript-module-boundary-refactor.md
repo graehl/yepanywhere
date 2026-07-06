@@ -186,7 +186,7 @@ and props stable.
 | 2.6 | Done 2026-07-06 | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Moved React state, match projections, visible-group filtering, panel rendering, guide dispatch, and repeat timers into `useMessageListIsearch.tsx`; pure search selectors stay in `lib/sessionDetail/search.ts`. Tier 3 substitute with focused client E2E. |
 | 2.7 | Done 2026-07-06 | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Moved bottom-row overflow measurement helpers, layout signature, measured tier hook, and layout refs into `useMessageInputToolbarLayout.ts`; compact status/liveness display behavior remains in the toolbar. Tier 3 with client E2E. |
 | 2.8 | Not started | `MessageInput.tsx` textarea mechanics | Extract undoable text edits, resize, slash matching, and speech target helpers. | Preserve browser undo stack and focus behavior. |
-| 2.9 | Not started | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Preserve i18n and staged attachment behavior; run `pnpm i18n:scan` if copy moves. Coordinate with doc 054: WS-006 added a workstream selector to this form. |
+| 2.9 | Done 2026-07-06 | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Moved pure helpers only; i18n copy, workstream selector behavior, and staged upload/submission effects stayed in the form. Focused helper tests were added. |
 | 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; do not refactor around an unbounded preview path. |
 
 ## Phase 3: Existing Architecture-Aligned Migrations
@@ -261,6 +261,47 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.9 — NewSessionForm Helper Modules (Landed 2026-07-06, this commit)
+
+Moved:
+- Pending new-session attachment union types, display metadata helpers, staged
+  ref persistence, and object URL cleanup -> `newSessionAttachments.ts`.
+- Recap/prompt-suggestion option ordering, default resolution, helper-side
+  model default validation, and thinking launch option shaping ->
+  `newSessionOptions.ts`.
+- Project chooser sorting, typed-path normalization, typed-project lookup, and
+  chooser/suggestion counts -> `newSessionProjects.ts`.
+
+Signature conversions:
+- The new helper modules take explicit project lists, provider capability
+  objects, model lists, defaults, and pending-file values instead of closing
+  over `NewSessionForm.tsx` locals.
+- New-session staged attachment persistence reuses the existing session
+  composer persistence helper for the shared `StagedAttachmentRef` shape.
+
+Behavior changes:
+- None intended. The New Session form still owns i18n copy, provider/default
+  state transitions, WS-006 workstream selection, draft hydration, staged upload
+  effects, and submission/project-queue orchestration.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`; focused
+  `NewSessionForm` and new helper tests; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`; staged diff reviewed
+  with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Client tripwire: `topics/console-chatter.md` was read before editing and
+  `pnpm console:scan` stayed within the committed budget.
+- Client E2E: `pnpm --filter client test:e2e --grep-invert
+  "physical Android"`.
+- Skipped: `pnpm i18n:scan`, because no user-visible copy moved or changed.
+
+Follow-ups recorded:
+- Stateful draft hydration, staged upload promises, local-file materialization,
+  speech target helpers, and submission/project-queue orchestration remain in
+  `NewSessionForm.tsx`; those need separate slices if they are moved.
 
 ### Slice 2.7 — MessageInputToolbar Layout Measurement (Landed 2026-07-06, this commit)
 

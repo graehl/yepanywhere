@@ -35,7 +35,7 @@ to a slice instead of preexisting repo state.
 | Lint | `pnpm lint` | Passed 2026-07-06 | 1s. Checked 1326 files, no fixes and no warnings. |
 | Typecheck | `pnpm typecheck` | Passed 2026-07-06 | 8s. Includes `@yep-anywhere/shared` build. |
 | Unit tests | `pnpm test` | Passed with baseline chatter 2026-07-06 | 44s. Existing stderr/WARN chatter observed; do not use this run as warning-free proof until the noted chatter is fixed or explicitly accepted per slice. |
-| Client E2E | `pnpm test:e2e` | Passed with baseline warnings 2026-07-06 | 41s. 55 passed, 6 skipped. Existing Vite chunk-size/browser-compatibility warnings and Node `NO_COLOR`/`FORCE_COLOR` warnings observed. |
+| Client E2E | `pnpm --filter client test:e2e -- --grep-invert "physical Android"` | Gate clarified 2026-07-06 | Use this as the full client/browser E2E gate for refactor slices. It excludes only the environment-gated physical Android device smoke; run `pnpm test:e2e:android` separately for Android/device-bridge slices. The initial baseline was recorded with raw `pnpm test:e2e`: 41s, 55 passed, 6 skipped, with existing Vite chunk-size/browser-compatibility warnings and Node `NO_COLOR`/`FORCE_COLOR` warnings. |
 | Server E2E | `pnpm test:e2e:sdk` | Passed with baseline chatter 2026-07-06 | 18s. 73 passed, 1 skipped. Existing negative-path WebSocket stderr observed. |
 | Client console budget | `pnpm console:scan` | Passed at budget 2026-07-06 | 0s. 110/110 warning budget, +0 warnings; 158 info sites hidden by default. |
 | Request census | `pnpm --filter client request:census -- --url <session-url>` | Skipped 2026-07-06 | No real session URL was supplied; run before session page/API refactors when available. |
@@ -52,6 +52,11 @@ Baseline notes:
   against the local Codex session directory, expected negative-path
   WebSocket/auth stderr, Vite build warnings, and Node `NO_COLOR`/`FORCE_COLOR`
   warnings.
+- Client Tier 3 means the full browser/client Playwright suite excluding the
+  physical Android device smoke: `pnpm --filter client test:e2e --
+  --grep-invert "physical Android"`. The Android smoke remains mandatory only
+  for slices that touch physical-device streaming, device bridge behavior, or
+  Android-specific transport assumptions.
 - The console chatter scan is at its current budget, not clean: 110 warning
   call sites, 0 over budget. Client slices must not increase that budget.
 - Chatter fixes are their own slices (see the contract); do not bundle them
@@ -293,12 +298,12 @@ Verification:
   outside this slice.
 - Client E2E substitute: focused `pnpm --filter client test:e2e --
   e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
-  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
-  `pnpm test:e2e` was not rerun for this docs/code slice because the previous
-  run in this environment failed only in the environment-gated physical
-  Android stream smoke (`2G0YC1ZF93041Z` reported `failed` instead of
-  `connected`); the focused transcript/session specs are the relevant
-  substitute.
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. The raw
+  Android-including `pnpm test:e2e` command was not rerun for this docs/code
+  slice because the previous run in this environment failed only in the
+  environment-gated physical Android stream smoke (`2G0YC1ZF93041Z` reported
+  `failed` instead of `connected`); the focused transcript/session specs are
+  the relevant substitute under the pre-clarification gate wording.
 
 Follow-ups recorded:
 - `MessageList.tsx` still owns scroll/follow snapshots; row 2.5 remains the
@@ -339,12 +344,12 @@ Verification:
   read before editing; `pnpm console:scan` stayed within the committed budget.
 - Client E2E substitute: focused `pnpm --filter client test:e2e --
   e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
-  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
-  `pnpm test:e2e` was not rerun for this docs/code slice because the previous
-  run in this environment failed only in the environment-gated physical
-  Android stream smoke (`2G0YC1ZF93041Z` reported `failed` instead of
-  `connected`); the focused transcript/session specs are the relevant
-  substitute.
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. The raw
+  Android-including `pnpm test:e2e` command was not rerun for this docs/code
+  slice because the previous run in this environment failed only in the
+  environment-gated physical Android stream smoke (`2G0YC1ZF93041Z` reported
+  `failed` instead of `connected`); the focused transcript/session specs are
+  the relevant substitute under the pre-clarification gate wording.
 
 Follow-ups recorded:
 - `MessageList.tsx` still owns scroll/follow snapshots and isearch UI state;
@@ -388,11 +393,12 @@ Verification:
   `pnpm console:scan` stayed within the committed budget.
 - Client E2E substitute: focused `pnpm --filter client test:e2e --
   e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
-  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
-  `pnpm test:e2e` was not rerun for this docs/code slice because the previous
-  run in this environment failed only in the environment-gated physical
-  Android stream smoke (`2G0YC1ZF93041Z` reported `failed` instead of
-  `connected`); the focused session/page specs are the relevant substitute.
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. The raw
+  Android-including `pnpm test:e2e` command was not rerun for this docs/code
+  slice because the previous run in this environment failed only in the
+  environment-gated physical Android stream smoke (`2G0YC1ZF93041Z` reported
+  `failed` instead of `connected`); the focused session/page specs are the
+  relevant substitute under the pre-clarification gate wording.
 
 Follow-ups recorded:
 - `SessionPage.tsx` still owns `/btw` orchestration and title-edit UI state;
@@ -431,10 +437,11 @@ Verification:
   `pnpm console:scan` stayed within the committed budget.
 - Client E2E: focused `pnpm --filter client test:e2e --
   e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
-  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
-  `pnpm test:e2e` was attempted; the session/page specs passed, but the run
-  failed in the environment-gated physical Android stream smoke because the
-  attached device `2G0YC1ZF93041Z` reported `failed` instead of `connected`.
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. The raw
+  Android-including `pnpm test:e2e` command was attempted; the session/page
+  specs passed, but the run failed in the environment-gated physical Android
+  stream smoke because the attached device `2G0YC1ZF93041Z` reported `failed`
+  instead of `connected`.
 
 Follow-ups recorded:
 - `SessionPage.tsx` still owns `/btw` orchestration, composer submission, and

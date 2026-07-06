@@ -55,3 +55,6 @@
   paint of Settings/other lightweight routes)
 - Workstreams (lane-aware Project Queue; each lane is a real checkout of the
   repository syncing through the shared upstream)
+- Module boundary refactor discipline (move-only slices, naming and
+  coordination rules, tripwire matrix, and verification tiers for the
+  large-file extraction campaign)

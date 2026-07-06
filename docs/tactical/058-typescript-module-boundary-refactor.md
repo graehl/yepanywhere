@@ -2,7 +2,15 @@
 
 Topic: typescript-module-boundary-refactor
 
-Status: Draft tracking document. No refactor slices have started.
+Status: Baseline recorded; no refactor slices have started.
+
+## Contract
+
+The binding rules for this campaign — slice discipline, naming, coordination,
+tripwire matrix, verification tiers, stop conditions, and non-goals — live in
+[`topics/typescript-module-boundary-refactor.md`](../../topics/typescript-module-boundary-refactor.md).
+Read it before implementing any slice. This document is the worklog: baseline,
+inventory, slice ledger, and landing notes.
 
 ## Goal
 
@@ -18,9 +26,8 @@ selectors.
 
 ## Baseline Gate
 
-Before the first nontrivial refactor slice starts, record a clean baseline.
-This makes later regressions attributable to the slice instead of to preexisting
-repo state.
+Recorded before the first refactor slice so later regressions are attributable
+to a slice instead of preexisting repo state.
 
 | Check | Command | Status | Notes |
 |---|---|---|---|
@@ -34,9 +41,10 @@ repo state.
 
 Baseline notes:
 
-- Recorded 2026-07-06 12:08 CEST at `3dd6f88b6d7eaff3b42153242b4f7891ef7c557b`.
-  The worktree was dirty before the baseline run with unrelated project-queue
-  changes; no source movement had started for this refactor.
+- Recorded 2026-07-06 12:08 CEST at `3dd6f88b6d7eaff3b42153242b4f7891ef7c557b`
+  and committed as `27dc30af`. The worktree was dirty at record time with
+  unrelated project-queue changes (since landed as `eebd23f1`); no source
+  movement had started for this refactor.
 - Passing checks are attributable as pass/fail gates. The unit/E2E runs are not
   warning-free gates because they emitted existing test/logging chatter:
   settings-fetch stderr in client tests, server `CODEX_* slow scan` WARN logs
@@ -44,15 +52,17 @@ Baseline notes:
   WebSocket/auth stderr, Vite build warnings, and Node `NO_COLOR`/`FORCE_COLOR`
   warnings.
 - The console chatter scan is at its current budget, not clean: 110 warning
-  call sites, 0 over budget. Client slices must avoid increasing that budget.
-- Use the same command set again after every nontrivial slice unless the slice
-  table explicitly lists a narrower tripwire and explains why it is sufficient.
+  call sites, 0 over budget. Client slices must not increase that budget.
+- Chatter fixes are their own slices (see the contract); do not bundle them
+  into move slices.
 
 ## Large-File Inventory: 2026-07-06
 
-Generated/build/reference trees were excluded with `rg --files`; specifically
-`node_modules`, `dist`, nested `dist`, `references`, coverage and Playwright
-reports, and generated Codex protocol/schema directories.
+Refresh cadence: at each phase completion, or when choosing the next phase's
+slices — not after every slice. Generated/build/reference trees were excluded
+with `rg --files`; specifically `node_modules`, `dist`, nested `dist`,
+`references`, coverage and Playwright reports, and generated Codex
+protocol/schema directories.
 
 Production TS/TSX top offenders:
 
@@ -114,87 +124,72 @@ Test TS/TSX top offenders:
 | 1135 | `packages/server/test/routes/settings.test.ts` |
 | 1130 | `packages/server/test/sessions/codex-reader-oss.test.ts` |
 
-## Global Guardrails
-
-- Prefer move-only or extraction-only commits. A behavior change discovered
-  during movement becomes a separate slice.
-- Keep public facades stable: route factory names, exported component props,
-  provider interfaces, API client names, and test helper entry points should not
-  churn merely to split files.
-- Do not apply Biome organize-imports as cleanup. Import edits should be scoped
-  to moved symbols.
-- Do not add runtime dependencies for one-file helpers.
-- Do not change timers, watchers, polling, retry behavior, heartbeat cadence,
-  session liveness, stream/reconnect behavior, fan-out, replay buffering, or
-  catch-up semantics as part of this refactor. If a slice touches those areas,
-  read `topics/architecture-mandates.md` and the linked architecture document
-  first, then add slice-specific tripwires before editing.
-- For client transcript/rendering slices, follow
-  `packages/client/RENDERING_PERFORMANCE.md`: no token-sized React state, no
-  broad formatter inputs, stable row identity, and no automatic historical row
-  height changes.
-- For source/transport slices, follow `topics/source-transport.md`; relocation
-  is not permission to redesign reconnect, readiness, relay, SRP, or NaCl
-  behavior.
-- For Codex provider slices, follow the Codex version bump audit rules in
-  `AGENTS.md` when source/protocol changes imply drift against the declared
-  Codex CLI target.
-
 ## Phase 0: Preparation And Tracking
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
 | 0.1 | Recorded 2026-07-06 | Baseline gate | Run and record the baseline command set above. | Pass/fail baseline recorded; warning-free status is not clean because existing test/E2E chatter was observed. |
-| 0.2 | Recorded 2026-07-06 | Large-file inventory | Refresh the production/test LoC inventory and paste the top offenders here or in a dated note. | Inventory recorded above using `rg --files` plus `wc -l`, excluding `node_modules`, `dist`, generated protocol files, and `references`. |
-| 0.3 | In progress | Slice ledger upkeep | After each slice, update this document with status, commands, notable risk, and follow-up candidates. | The doc is the handoff surface for future sessions. |
+| 0.2 | Recorded 2026-07-06 | Large-file inventory | Refresh the production/test LoC inventory. | Recorded above; refresh at phase boundaries. |
+| 0.3 | Done 2026-07-06 | Contract/worklog split | Extract the binding rules into `topics/typescript-module-boundary-refactor.md` and reconcile this plan with the active doc 053 ledger. | This doc is the handoff surface for future sessions. |
+| 0.4 | In progress | Slice ledger upkeep | After each slice, update the slice row and append a landing note. | Ledger update lands in the same commit as the slice. |
 
 ## Phase 1: Server Route Mechanical Splits
 
 High value and comparatively low risk: route files have obvious endpoint
 groups, and `create*Routes()` aggregators can remain stable.
 
+**Ownership:** all `sessions.ts` extraction runs through the active ledger in
+[`053-sessions-route-refactor-ledger.md`](053-sessions-route-refactor-ledger.md)
+as SRR items, following its proposed/accepted/done process. That ledger has
+already landed SRR-001 (request parsing helpers), SRR-002
+(`providerResolutionDeps` dedup), SRR-006 (Claude resume guard), SRR-007
+(worker queue routes), and SRR-008 (compact thresholds) — the flat
+domain-named `routes/session-*.ts` pattern those items established is the
+pattern here. Do not create a `routes/sessions/` directory or a shared
+helpers bucket.
+
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 1.1 | Not started | `packages/server/src/routes/sessions.ts` shared helpers | Move pure request/body parsing, provider checks, queue summary helpers, and restart/fork helper functions into a `routes/sessions/` helper module without changing route registration. | Move-only. Run route/session tests plus root checks. |
-| 1.2 | Not started | Session detail routes | Extract metadata, agent content, and `GET /projects/:projectId/sessions/:sessionId` handlers behind a `createSessionDetailRoutes` or equivalent local registrar. | Preserve pagination, compact-tail, augment, and unread semantics. Run session-detail client/server tests and server E2E. |
-| 1.3 | Not started | Start/create/resume/reactivate routes | Extract new-session, two-phase create, resume, and reactivation handlers. | Preserve provider selection, YA-visible session ids, executor persistence, queue-full behavior, and remote sync behavior. |
-| 1.4 | Not started | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows. | Higher risk than 1.2/1.3; preserve handoff/fork semantics and recap background behavior. |
-| 1.5 | Not started | Queue/deferred routes | Extract message queue, deferred patient queue, steer/cancel, pending input, and mode routes. | Read `topics/architecture-mandates.md`; queue timers and idle ownership are load-bearing. |
-| 1.6 | Not started | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. | Lower risk; preserve event-bus update emissions. |
-| 1.7 | Not started | `routes/settings.ts` parser split | Move settings parsers/discovery helpers out of the route factory. | Good follow-up once `sessions.ts` pattern is proven. |
-| 1.8 | Not started | `app.ts` route composition cleanup | Extract app dependency construction or route mounting groups only after route modules are stable. | Do not alter middleware order, auth policy, or hosted-client endpoint selection. |
+| 1.1 | Proposed as SRR-010/SRR-011 | `sessions.ts` queue summary shaping + provider guards | Land SRR-010 (patient/deferred queue summary shaping into `session-queue-summaries.ts`) and SRR-011 (provider name guards and resolution deps into `session-provider-resolution.ts`). | Move-only; shaping and guards, not queue behavior. Restart/fork helpers are excluded — they are larger and behavior-heavy. Tier 1. |
+| 1.2 | Not started | Session detail routes | Extract metadata, agent content, and `GET /projects/:projectId/sessions/:sessionId` handlers behind a local registrar; propose as an SRR item first. | Preserve pagination, compact-tail, augment, and unread semantics. Tier 3: session-detail tests plus server E2E. |
+| 1.3 | Not started | Start/create/resume/reactivate routes | Extract new-session, two-phase create, resume, and reactivation handlers; propose as an SRR item first. | Preserve provider selection, YA-visible session ids, executor persistence, queue-full behavior, and remote sync behavior. Overlaps SRR-004 (launch option normalization) — sequence with it. |
+| 1.4 | Not started | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows; propose as an SRR item first. | Higher risk than 1.2/1.3; preserve handoff/fork semantics and recap background behavior. Tier 3. |
+| 1.5 | Not started | Queue/deferred routes | Extract message queue, deferred patient queue, steer/cancel, pending input, and mode routes. Builds on SRR-005 (recovered queue helpers, proposed in doc 053). | Tripwire matrix: architecture-mandates row. Queue timers and idle ownership are load-bearing. Tier 3 with `test:e2e:sdk`. |
+| 1.6 | Not started | Metadata/notifications routes | Extract metadata updates, mark-seen, last-seen, archive/star, and debug metadata routes. Builds on SRR-009 (metadata patch parsing, proposed in doc 053). | Lower risk; preserve event-bus update emissions. |
+| 1.7 | Not started | `routes/settings.ts` parser split | Move settings parsers/discovery helpers out of the route factory. | Good follow-up once the `sessions.ts` pattern is proven. |
+| 1.8 | Not started | `app.ts` route composition cleanup | Extract app dependency construction or route mounting groups only after route modules are stable. | Do not alter middleware order, auth policy, or hosted-client endpoint selection. Coordinate with doc 054: workstreams slices (WS-004, WS-008, and later) actively mount routes in `app.ts`. |
 
 ## Phase 2: Client Page And Component Boundaries
 
 Prioritize React files where one component function owns many unrelated hooks
-and effects. Extract feature hooks/components while keeping visible behavior and
-props stable.
+and effects. Extract feature hooks/components while keeping visible behavior
+and props stable.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 2.1 | Not started | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent modules. | Move-only. Add or keep focused helper tests where extraction exposes pure behavior. |
-| 2.2 | Not started | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Read `topics/provider-agnostic-btw-asides.md`; preserve composer routing and default provider-like behavior. Run client E2E. |
-| 2.3 | Not started | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserve object URL cleanup and staged attachment batch invariants. Run attachment/upload tests and client E2E. |
-| 2.4 | Not started | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | DOM-local behavior; run `MessageList` tests and client E2E. |
-| 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Follow `RENDERING_PERFORMANCE.md` and scrollback stability docs; run full client E2E and inspect browser behavior. |
+| 2.1 | Not started | `SessionPage.tsx` pure helpers | Move attachment conversion, text extraction, public-share prompt parsing, Codex config ack parsing, and title helpers into adjacent domain-named modules. | Move-only. Add or keep focused helper tests where extraction exposes pure behavior. Tier 1. |
+| 2.2 | Not started | `SessionPage.tsx` `/btw` aside orchestration | Extract aside prompt parsing, polling, split-pane focus state, and minimal aside composer helpers into a feature module/hook. | Read `topics/provider-agnostic-btw-asides.md`; preserve composer routing and default provider-like behavior. Tier 3 with client E2E. |
+| 2.3 | Not started | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserve object URL cleanup and staged attachment batch invariants. Run attachment/upload tests; Tier 3 with client E2E. |
+| 2.4 | Not started | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | DOM-local behavior; run `MessageList` tests; Tier 3 with client E2E. |
+| 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
 | 2.6 | Not started | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Keep pure selector work in `lib/sessionDetail/`; avoid duplicating selector ownership. |
 | 2.7 | Not started | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Preserve compact mobile overflow and liveness display. |
 | 2.8 | Not started | `MessageInput.tsx` textarea mechanics | Extract undoable text edits, resize, slash matching, and speech target helpers. | Preserve browser undo stack and focus behavior. |
-| 2.9 | Not started | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Preserve i18n and staged attachment behavior. |
+| 2.9 | Not started | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Preserve i18n and staged attachment behavior; run `pnpm i18n:scan` if copy moves. Coordinate with doc 054: WS-006 added a workstream selector to this form. |
 | 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; do not refactor around an unbounded preview path. |
 
 ## Phase 3: Existing Architecture-Aligned Migrations
 
-These areas already have accepted topic/tactical documents. This tracking doc
-should not fork their plans; it only records where LOC reduction can happen as
-part of their planned slices.
+These areas already have accepted topic/tactical documents. This worklog does
+not fork their plans; it only records where LOC reduction can happen as part
+of their planned slices.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 3.1 | Not started | `useSessionMessages.ts` adapter cutdown | Continue the existing session-detail data-layer migration by shaving reveal/progress/pagination bookkeeping into tested helpers. | Follow `docs/tactical/043-session-detail-data-layer-plan.md`; do not start a parallel transcript rewrite. |
+| 3.1 | Not started | `useSessionMessages.ts` adapter cutdown | Continue the existing session-detail data-layer migration by shaving reveal/progress/pagination bookkeeping into tested helpers. | Owned by `docs/tactical/043-session-detail-data-layer-plan.md`; do not start a parallel transcript rewrite. |
 | 3.2 | Not started | `clientSummaryState.ts` source-store helpers | Split pure collection/reducer/query helpers only when touching summary-state behavior. | Follow source-runtime topology docs. |
-| 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Follow `topics/source-transport.md`; preserve parity rows and full transport tests. |
-| 3.4 | Not started | `api/client.ts` domain clients | Consider domain-specific API modules once source transport shims are stable. | Keep the exported `api` facade stable until callers migrate deliberately. |
+| 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Owned by `topics/source-transport.md` / doc 057; preserve parity rows and full transport tests. |
+| 3.4 | Not started | `api/client.ts` domain clients | Consider domain-specific API modules once source transport shims are stable. | Keep the exported `api` facade stable until callers migrate deliberately (the contract's one re-export exception). |
 
 ## Phase 4: Provider Adapter Splits
 
@@ -203,26 +198,25 @@ extracting pure protocol/model/normalization modules with strong fixtures.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 4.1 | Not started | `sdk/providers/codex.ts` app-server client | Move `CodexAppServerClient`, JSON-RPC queueing, process termination, and raw request helpers into focused modules. | Run Codex provider tests and server E2E. |
-| 4.2 | Not started | Codex model catalog helpers | Move fallback model data, semver parsing, model sorting, and model metadata normalization. | Low risk if tests pin catalog output. |
+| 4.1 | Not started | `sdk/providers/codex.ts` app-server client | Move `CodexAppServerClient`, JSON-RPC queueing, process termination, and raw request helpers into focused modules. | Tripwire matrix: Codex row. Run Codex provider tests and server E2E. |
+| 4.2 | Not started | Codex model catalog helpers | Move fallback model data, semver parsing, model sorting, and model metadata normalization. | Low risk if tests pin catalog output. Tier 1. |
 | 4.3 | Not started | Codex notification guards | Move `as*Notification` guards and raw notification classifiers into a protocol module. | Fixture-heavy; compare stream and persisted render parity where relevant. |
-| 4.4 | Not started | Codex live event conversion | Move live turn state, streaming message construction, and item-to-SDK conversion. | Higher risk; preserve live-delta suppression and replay behavior. |
+| 4.4 | Not started | Codex live event conversion | Move live turn state, streaming message construction, and item-to-SDK conversion. | Higher risk; preserve live-delta suppression and replay behavior. Tier 3. |
 | 4.5 | Not started | Codex recap/summary helpers | Move recap prompts, fork-backed summary, retitle prompt, and summary capture helpers. | Preserve helper model resolution and provider-visible prompt behavior. |
 | 4.6 | Not started | Claude/OpenCode provider helper splits | Apply the proven Codex split pattern only where clear seams exist. | Avoid abstracting providers together unless duplication becomes real and tested. |
 
 ## Phase 5: Load-Bearing Supervisor And Process Files
 
-These are intentionally late. Size alone is not enough reason to split them
+Intentionally late. Size alone is not enough reason to split these files
 because they own process lifecycle, replay, fan-out, idle cleanup, queues, and
 heartbeat behavior.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 5.1 | Deferred | `Process.ts` pure helper extraction | Move static/pure helpers for message text, API retry status, permission pattern matching, and formatting when touched. | Move-only; no stream/replay/timer changes. |
+| 5.1 | Deferred | `Process.ts` pure helper extraction | Move static/pure helpers for message text, API retry status, permission pattern matching, and formatting when touched. | Move-only; no stream/replay/timer changes. Tripwire matrix: architecture-mandates row. |
 | 5.2 | Deferred | `Process.ts` recap helper boundary | Consider extracting recap generation helpers if recap work resumes. | Preserve native recap waiters and pending recap flow. |
-| 5.3 | Deferred | `Process.ts` queue persistence helpers | Consider extracting patient/deferred queue persistence helpers only with queue-specific tests. | Read architecture mandates; idle sessions must not retain repeating work. |
+| 5.3 | Deferred | `Process.ts` queue persistence helpers | Consider extracting patient/deferred queue persistence helpers only with queue-specific tests. | Idle sessions must not retain repeating work. |
 | 5.4 | Deferred | `Supervisor.ts` recap/compaction helpers | Extract pure compaction threshold, heartbeat candidate, and recap helper functions opportunistically. | Do not alter worker pool, preemption, liveness, or heartbeat scheduling. |
-| 5.5 | Deferred | Shared pub/sub abstraction | Do not do this as part of LOC cleanup. | `ARCHITECTURE.md` says wait for a third pub/sub. |
 
 ## Phase 6: Tests And Fixtures Organization
 
@@ -236,34 +230,25 @@ can improve review when scenarios are independent.
 | 6.3 | Not started | `codex.test.ts` fixtures | Move repeated raw notification fixtures and expected SDK outputs into fixture modules. | Avoid hiding expected behavior behind opaque helpers. |
 | 6.4 | Not started | Route metadata tests | Split route metadata tests once route modules split. | Keep request/response assertions explicit. |
 
-## Suggested Landing Template
+## Landing Template
 
-Each slice should update its row with a short landing note:
+Each landed slice updates its row and appends a note here (newest first):
 
 ```text
-Status: Landed YYYY-MM-DD, <commit or branch if known>.
+### Slice N.M — <short title> (Landed YYYY-MM-DD, <commit>)
 Moved:
+- <symbol> -> <new module>
+Signature conversions (closure -> parameter), if any:
 - ...
 Behavior changes:
-- None. / Listed separately in follow-up slice.
+- None. (Anything else means the slice was mis-cut; see stop conditions.)
 Verification:
-- pnpm lint
-- pnpm typecheck
-- pnpm test
-- pnpm test:e2e
-- pnpm test:e2e:sdk
-Notes:
+- Tier <1|2|3>: <commands run>
+- Skipped: <required check, reason, substitute> (omit if none)
+Follow-ups recorded:
 - ...
 ```
 
-If a full E2E command is skipped, record why and list the focused E2E or manual
-browser check that covers the touched behavior.
+## Landing Notes
 
-## Deferred Non-Goals
-
-- Enforcing a hard repository-wide LOC limit.
-- Introducing a new folder taxonomy across the whole repo.
-- Converting all large components to compound component patterns.
-- Replacing existing store/transport/session-detail plans.
-- Adding virtualization, new queues, new transport buffering, or new provider
-  abstractions as part of file-size cleanup.
+None yet.

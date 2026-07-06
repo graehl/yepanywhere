@@ -8,6 +8,22 @@ ledger refactors is the surface that topic proposes exposing as an
 embeddable core API, so ownership-boundary moves here shape that
 extraction.
 
+See also: `topics/typescript-module-boundary-refactor.md` and
+`docs/tactical/058-typescript-module-boundary-refactor.md` — the repo-wide
+module-boundary campaign. This ledger remains the owning process for
+`sessions.ts`: campaign slices touching this file are proposed and tracked
+here as SRR items, and their commits carry both topic trailers.
+
+Sequencing: this ledger is the campaign's starting point and stays active
+only for the campaign's Phase 1 (the `sessions.ts` splits). Work the open SRR
+items here first, then the remaining Phase 1 slices from doc 058, specifying
+each as an SRR item here before implementation.
+
+Closing criterion: when every SRR item is done, deferred, or dropped and no
+058 Phase 1 slice touching `sessions.ts` remains, mark this ledger
+`Closed (historical)`. From then on doc 058 is the campaign's only worklog;
+Phases 2-6 never involve this document.
+
 ## Purpose
 
 `sessions.ts` is one of the largest maintained source files in the repo. It is
@@ -455,4 +471,91 @@ Suggested verification:
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
 node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-metadata-patch.ts
+```
+
+### SRR-010: Move Patient Queue Summary Shaping
+
+Status: proposed. First code slice of the module-boundary campaign
+(`docs/tactical/058-typescript-module-boundary-refactor.md`, slice 1.1).
+
+Destination: new file
+`packages/server/src/routes/session-queue-summaries.ts`.
+
+Estimated line delta: about `-130` to `-170` lines from `sessions.ts`, with a
+similar-size module added.
+
+Problem:
+
+Read-side patient/deferred queue summary shaping sits near the top of the
+route file: `persistedPatientQueueSummary`, `recoveredPatientQueueSummaries`,
+`recoveredPatientQueueItems`, `sessionQueueSummaries`,
+`recoveredPatientUserMessage`, and `livePatientEntriesNewerThan`. These shape
+summaries from persisted queue items and live process state; they do not
+mutate queues, timers, or process lifecycle.
+
+Likely change:
+
+- move the six shaping helpers into the new module, taking `SessionsDeps` (or
+  narrower explicit dependencies) as parameters;
+- keep route handlers, queue mutation calls, and event emission in
+  `sessions.ts`;
+- leave `isApprovalAuditLogEnabled` behind — it is interleaved in the same
+  region but belongs to a different domain.
+
+Relationship to SRR-005: SRR-005 owns the recovered-queue *resume/steer*
+machinery. This item is read-side shaping only. If both land they stay
+separate modules; do not grow either into a general queue bucket.
+
+Risk:
+
+- low. Shaping is pure given its inputs, but the summary field spreads
+  (`tempId`, attachments, metadata, status mapping) must stay byte-identical.
+
+Suggested verification:
+
+```bash
+pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
+pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-queue-summaries.ts
+```
+
+### SRR-011: Move Provider Name Guards And Resolution Deps
+
+Status: proposed. Pairs with SRR-010 as campaign slice 1.1; may land as a
+separate commit.
+
+Destination: new file
+`packages/server/src/routes/session-provider-resolution.ts`.
+
+Estimated line delta: about `-60` to `-90` lines from `sessions.ts`.
+
+Problem:
+
+Provider-name guards (`isClaudeSdkProviderName`, `isCodexProviderName`) and
+`providerResolutionDeps(deps)` (already deduplicated by SRR-002) are
+provider-resolution plumbing living in the generic route file.
+
+Likely change:
+
+- move the two provider-name guards and `providerResolutionDeps` into the new
+  module;
+- decide placement of the supervisor enqueue-response guards
+  (`isQueuedResponse`, `isQueueFullResponse`) explicitly: they are start-path
+  response guards, not provider resolution, so they stay in `sessions.ts`
+  unless the start/create extraction (item corresponding to campaign slice
+  1.3 / SRR-004 territory) gives them a domain home;
+- leave `getSessionSlashCommands` in place unless its import graph stays
+  clean after the move; do not force it into this module.
+
+Risk:
+
+- low. Guards are pure; the deps builder is a field-mapping function. Every
+  call site must pass identical arguments after the move.
+
+Suggested verification:
+
+```bash
+pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
+pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts test/routes/sessions-clone-codex.test.ts test/routes/recents.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-provider-resolution.ts
 ```

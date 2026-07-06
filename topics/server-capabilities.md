@@ -19,6 +19,11 @@ The registry metadata is compile-time/shared-code metadata. Do not require
 older servers to return registry metadata at runtime. The wire contract remains
 the existing `capabilities: string[]` field.
 
+Every capability string advertised from `/api/version` should have a registry
+entry, including permanent static features and dynamic environment/state
+capabilities. Keeping the complete set in shared code lets client and server
+call sites import constants instead of repeating wire strings.
+
 ## Capability Classes
 
 Use `kind: "permanent"` for capabilities that may vary indefinitely across

@@ -515,6 +515,22 @@ describe("Sidebar collapsed toggle", () => {
     );
   });
 
+  it("hides stale queue-inferred thinking after the queue clears", () => {
+    globalSessionsState.sessions = [
+      makeSession("queued-session", new Date().toISOString(), {
+        activity: "in-turn",
+        activityInferredFromInboxTier: true,
+      }),
+    ];
+
+    renderSidebar();
+
+    expect(screen.queryByTestId("thinking-queued-session")).toBeNull();
+    expect(screen.getByTestId("session-queued-session").dataset.activity).toBe(
+      "",
+    );
+  });
+
   it("keeps the sidebar thinking dot for real in-turn queued rows", () => {
     versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
     globalSessionsState.sessions = [
@@ -1101,9 +1117,10 @@ describe("Sidebar collapsed toggle", () => {
     });
   });
 
-  // Active sessions (activity = in-turn / waiting-input) are pinned above idle
-  // rows in a stable order, and never run through the recency sort or the
-  // duplicate-title grouping. See topics/sidebar-session-ordering.md.
+  // Active sessions (activity = in-turn / waiting-input) and sessions targeted
+  // by Project Queue are pinned above idle rows in a stable order, and never run
+  // through the recency sort or the duplicate-title grouping.
+  // See topics/sidebar-session-ordering.md.
   describe("active session ordering", () => {
     const now = Date.now();
     const ago = (ms: number) => new Date(now - ms).toISOString();
@@ -1163,6 +1180,35 @@ describe("Sidebar collapsed toggle", () => {
 
       // 'waiting' has an older updatedAt but is active, so it sits on top.
       expect(last24HourIds(container)).toEqual(["waiting", "idle-new"]);
+    });
+
+    it("pins queued target sessions above newer idle rows without thinking", () => {
+      versionState.capabilities = [PROJECT_QUEUE_CAPABILITY];
+      globalSessionsState.sessions = [
+        makeSession("idle-new", ago(10_000)),
+        makeSession("queued-old", ago(5 * 60_000)),
+      ];
+      projectQueuesState.queuesByProject = {
+        "project-1": [
+          makeProjectQueueItem("queue-session", {
+            target: {
+              type: "existing-session",
+              sessionId: "queued-old",
+            },
+          }),
+        ],
+      };
+
+      const { container } = renderExpanded();
+
+      expect(last24HourIds(container)).toEqual(["queued-old", "idle-new"]);
+      expect(screen.getByTestId("session-queued-old").textContent).toContain(
+        "Q",
+      );
+      expect(screen.queryByTestId("thinking-queued-old")).toBeNull();
+      expect(screen.getByTestId("session-queued-old").dataset.activity).toBe(
+        "",
+      );
     });
 
     it("never hides active sessions that share a duplicate title", () => {

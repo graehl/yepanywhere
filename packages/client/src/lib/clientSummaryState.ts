@@ -1013,7 +1013,6 @@ function putProjectQueueGlobalSnapshot(
 function upsertInboxItemRecord(
   state: ClientSummaryState,
   item: InboxItem,
-  tier: InboxTier,
   observation: SessionCollectionObservation,
 ): ClientSummaryState {
   let record = getRecord(state, item.sessionId);
@@ -1047,18 +1046,12 @@ function upsertInboxItemRecord(
 
   const inferredActivity =
     item.activity ??
-    (item.pendingInputType
-      ? "waiting-input"
-      : tier === "active"
-        ? "in-turn"
-        : null);
-  const activityInferredFromInboxTier =
-    item.activity === undefined && !item.pendingInputType && tier === "active";
+    (item.pendingInputType ? "waiting-input" : null);
   record = withLifecycleFields(
     record,
     {
       activity: inferredActivity,
-      activityInferredFromInboxTier,
+      activityInferredFromInboxTier: false,
       pendingInputType: item.pendingInputType,
     },
     observation,
@@ -1091,7 +1084,7 @@ function putInboxSnapshot(
   for (const tier of INBOX_TIERS) {
     for (const item of snapshot[tier]) {
       tiers[tier].push(item.sessionId);
-      next = upsertInboxItemRecord(next, item, tier, observation);
+      next = upsertInboxItemRecord(next, item, observation);
     }
   }
 

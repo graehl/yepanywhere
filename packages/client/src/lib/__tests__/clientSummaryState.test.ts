@@ -1053,7 +1053,7 @@ describe("clientSummaryState", () => {
     });
   });
 
-  it("tracks activity inferred only from active inbox tier placement", () => {
+  it("does not synthesize activity from active inbox tier placement", () => {
     let state = applyInboxCollectionSnapshot(
       createEmptyClientSummaryState(),
       {
@@ -1066,14 +1066,16 @@ describe("clientSummaryState", () => {
       100,
     );
 
-    expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject({
-      activity: "in-turn",
-      activityInferredFromInboxTier: true,
-    });
-    expect(selectInboxResponse(state).active[0]).toMatchObject({
-      activity: "in-turn",
-      activityInferredFromInboxTier: true,
-    });
+    const queueOnlyRecord = selectSessionCollectionRecord(
+      state,
+      "queued-active",
+    );
+    expect(queueOnlyRecord?.activity).toBeUndefined();
+    expect(queueOnlyRecord?.activityInferredFromInboxTier).toBeUndefined();
+    expect(selectInboxResponse(state).active[0]?.activity).toBeUndefined();
+    expect(
+      selectInboxResponse(state).active[0]?.activityInferredFromInboxTier,
+    ).toBeUndefined();
 
     state = applyGlobalSessionsCollectionSnapshot(
       state,

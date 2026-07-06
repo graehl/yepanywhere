@@ -116,9 +116,8 @@ function sessionCollectionRecordsToSidebarSessionItems(
 
 function getSidebarRowActivity(
   session: SidebarSessionItem,
-  hasProjectQueue: boolean,
 ): GlobalSessionItem["activity"] {
-  if (hasProjectQueue && session.activityInferredFromInboxTier) {
+  if (session.activityInferredFromInboxTier) {
     return undefined;
   }
   return session.activity;
@@ -762,17 +761,23 @@ export function Sidebar({
     [currentSessionId],
   );
 
-  // Active sessions are pinned above idle rows and never deduped or sorted —
-  // see isActiveSession. filter() preserves the hook's stable order, so a
-  // session that is already active stays put; only a brand-new session (which
-  // the hook prepends) can appear at the top.
-  const recentActive = useMemo(
-    () => recentDaySessions.filter(isActiveSession),
-    [recentDaySessions],
+  // Active and queued-target sessions are pinned above idle rows and never
+  // deduped or sorted. Queue membership is a sidebar ordering signal only; it
+  // does not make the row look like a live in-turn agent.
+  const recentPinned = useMemo(
+    () =>
+      recentDaySessions.filter(
+        (session) =>
+          isActiveSession(session) || projectQueuedSessionIds.has(session.id),
+      ),
+    [projectQueuedSessionIds, recentDaySessions],
   );
 
   const { visibleRecent, hiddenRecent } = useMemo(() => {
-    const idle = recentDaySessions.filter((s) => !isActiveSession(s));
+    const idle = recentDaySessions.filter(
+      (session) =>
+        !isActiveSession(session) && !projectQueuedSessionIds.has(session.id),
+    );
     if (!sidebarDuplicateHidingEnabled) {
       return { visibleRecent: idle, hiddenRecent: [] };
     }
@@ -780,6 +785,7 @@ export function Sidebar({
     return { visibleRecent: visible, hiddenRecent: hidden };
   }, [
     groupDuplicateSessions,
+    projectQueuedSessionIds,
     recentDaySessions,
     sidebarDuplicateHidingEnabled,
   ]);
@@ -822,7 +828,7 @@ export function Sidebar({
         isArchived={session.isArchived}
         mode="compact"
         isCurrent={session.id === currentSessionId}
-        activity={getSidebarRowActivity(session, hasProjectQueue)}
+        activity={getSidebarRowActivity(session)}
         onNavigate={onNavigate}
         showProjectName
         projectName={session.projectName}
@@ -1118,7 +1124,7 @@ export function Sidebar({
             </div>
           )}
 
-          {(recentActive.length > 0 || visibleRecent.length > 0) && (
+          {(recentPinned.length > 0 || visibleRecent.length > 0) && (
             <div className="sidebar-section">
               <SidebarSectionHeader
                 title={t("sidebarSectionLast24Hours")}
@@ -1135,7 +1141,7 @@ export function Sidebar({
                   id="sidebar-last-24-hours-list"
                   className="sidebar-session-list"
                 >
-                  {recentActive.map(renderCompactSession)}
+                  {recentPinned.map(renderCompactSession)}
                   {visibleRecent.map(renderCompactSession)}
                   {hiddenRecent.length > 0 && (
                     <li className="sidebar-hidden-dups">
@@ -1204,7 +1210,7 @@ export function Sidebar({
 
           {filteredStarredSessions.length === 0 &&
             pendingProjectQueueItems.length === 0 &&
-            recentActive.length === 0 &&
+            recentPinned.length === 0 &&
             visibleRecent.length === 0 &&
             visibleOlder.length === 0 && (
               <p className="sidebar-empty">

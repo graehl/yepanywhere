@@ -2,7 +2,8 @@
 
 Topic: source-transport
 
-Status: Active plan, T10 landed 2026-07-05. This is the implementation runbook for the
+Status: Completed; T1-T10 landed 2026-07-05, with reconnect-overlap
+hardening landed 2026-07-06. This is the implementation runbook for the
 contract in [`topics/source-transport.md`](../../topics/source-transport.md).
 It continues Phase 6 of
 [`051-client-source-runtime-topology.md`](051-client-source-runtime-topology.md)
@@ -418,6 +419,15 @@ Add: the Behavior Parity Contract suite (topic doc table, one test per row),
 managed-stream unit tests, slot-replacement tests, two-runtime isolation at
 hook level, the 050 convergence regression, and the T10 smoke.
 
+## Completed Hardening Follow-Ups
+
+- 2026-07-06: Eliminated the `forceReconnect()`/`ensureConnected()` overlap
+  race from 050 aggravation 2 for the secure connection path.
+  `SecureConnection.forceReconnect()` now joins an in-flight lazy recovery
+  before deciding whether teardown is still needed; if the in-flight recovery
+  succeeds, forced teardown is skipped, and if it fails the forced reconnect
+  continues with a fresh attempt.
+
 ## Deferred Follow-Ups
 
 Explicitly out of scope; each is a deliberate future slice:
@@ -427,9 +437,13 @@ Explicitly out of scope; each is a deliberate future slice:
 - Per-source auth-required signaling (today 401s broadcast through the global
   `authEvents`).
 - Transport-owned `lastEventId` tracking (managed stream owns it for now).
-- Eliminating the `forceReconnect()`/`ensureConnected()` overlap race (050
-  aggravation 2) — preserved, not widened, by this work.
 - Suspension policy for non-current runtimes (skip wake pings, downgrade
   activity) per the topology topic's resource-cost section.
 - Server-instance identity populating `SavedHost.serverInstanceId` so one
   logical server reached via direct and relay is one source.
+- Full secure/relay multi-source coexistence proof is intentionally deferred
+  until product work wants a UI with two live clients/sources mounted at once.
+  Known caveats remain: two concurrent relay-backed `SecureConnection`
+  instances, relay reconnect/re-pair isolation, auth-required isolation, and
+  provider-backed live session streams across two real servers. T10 proves the
+  current minimal localhost plus plain-WebSocket path only.

@@ -1,13 +1,16 @@
 # Remote Activity Bus and Secure Lifecycle
 
-Status: Core lifecycle fix implemented. `ConnectionManager.markConnected()`
-ignores pre-start calls; `SecureConnection.onAuthenticated` now fires on full
-SRP auth and session-resume success; `RemoteConnectionContext` wires that
-callback to `connectionManager.markConnected()` for the app connection. Tests
-cover pre-start marks, out-of-band recovery canceling pending reconnect backoff,
-full SRP callback behavior, resume callback behavior, and resume-invalid
-fallback notification timing. The "Explicitly Deferred" follow-ups remain out of
-scope.
+Status: Core lifecycle fix and reconnect-overlap hardening implemented.
+`ConnectionManager.markConnected()` ignores pre-start calls;
+`SecureConnection.onAuthenticated` now fires on full SRP auth and
+session-resume success; `SecureConnection` marks its attached
+`ConnectionManager` connected on authenticated recovery.
+`SecureConnection.forceReconnect()` now joins an in-flight
+`ensureConnected()` recovery before deciding whether teardown is still needed.
+Tests cover pre-start marks, out-of-band recovery canceling pending reconnect
+backoff, full SRP callback behavior, resume callback behavior,
+resume-invalid fallback notification timing, and forced reconnect arriving
+during lazy recovery.
 
 ## Why This Exists
 
@@ -200,6 +203,12 @@ Route both recovery entry points through the same state machine by giving
    constructs the app's `SecureConnection` (`connect`, `resumeSession`,
    `connectViaRelay`, and both auto-resume branches).
 
+   Implementation note after the source-transport boundary: the app connection
+   manager is now attached by `SecureSourceTransport`, and `SecureConnection`
+   marks that attached manager directly on authenticated recovery. The optional
+   `onAuthenticated` callback remains for callers and tests, but app lifecycle
+   convergence no longer depends on `RemoteConnectionContext` passing it.
+
 3. **Guard `markConnected()` when the manager is not started.** During initial
    page-load auth, `onAuthenticated` fires before `ActivityBus.connect()` has
    called `connectionManager.start()`. Make `markConnected()` a no-op when not
@@ -241,7 +250,6 @@ the same idea.
   does not require it and does not foreclose it.
 - Making the top bar reflect strict live-update health rather than transport
   health (product decision; see resolved questions).
-- The `forceReconnect()`/`ensureConnected()` overlap race (aggravation 2).
 
 ## Test Plan
 
@@ -257,7 +265,7 @@ network):
 2. `handleError(...)` with a retryable error → assert state is
    `reconnecting` with a backoff timer pending.
 3. Simulate the out-of-band fetch recovery: call `markConnected()` (this is
-   exactly what the `onAuthenticated` wiring does) WITHOUT advancing timers.
+   exactly what authenticated secure recovery does) WITHOUT advancing timers.
 4. Assert state is `connected`, and that advancing timers past the backoff
    delay does NOT invoke the reconnectFn (stale timer canceled — no
    destructive `forceReconnect`).
@@ -318,9 +326,16 @@ recovery entry points that do not share a state machine:
   succeed before the manager's scheduled attempt, and is invisible to the
   manager — whose stale attempt later tears the recovered socket down.
 
-The fix: make every transport authentication success visible to the manager
-via `SecureConnection.onAuthenticated` → `connectionManager.markConnected()`
-(guarded on a started manager). Backoff cancellation and activity
-resubscription then fall out of existing machinery, and the activity
-subscription's own `connected` event remains the proof that live updates are
-fully healthy.
+The fix: make every transport authentication success visible to the attached
+manager via `connectionManager.markConnected()` (guarded on a started
+manager), while still firing `SecureConnection.onAuthenticated` for callers
+and tests. Backoff cancellation and activity resubscription then fall out of
+existing machinery, and the activity subscription's own `connected` event
+remains the proof that live updates are fully healthy.
+
+Follow-up hardening now also serializes forced reconnect with lazy recovery:
+when `forceReconnect()` arrives while `ensureConnected()` is already
+authenticating/resuming, it waits for the active attempt. If that attempt
+succeeds, no socket teardown is needed; if it fails, the forced reconnect
+continues with a fresh attempt. This keeps health-check or manual reconnect
+requests from orphaning an in-flight fetch-driven handshake.

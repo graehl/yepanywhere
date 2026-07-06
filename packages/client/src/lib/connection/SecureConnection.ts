@@ -155,6 +155,7 @@ export class SecureConnection implements Connection {
   private sessionId: string | null = null;
   private connectionState: ConnectionState = "disconnected";
   private connectionPromise: Promise<void> | null = null;
+  private forceReconnectPromise: Promise<void> | null = null;
   private protocol: RelayProtocol;
   private nextOutboundSeq = 0;
   private lastInboundSeq: number | null = null;
@@ -1656,9 +1657,37 @@ export class SecureConnection implements Connection {
    * ConnectionManager handles re-subscription; this just tears down and rebuilds the transport.
    */
   async forceReconnect(): Promise<void> {
+    if (this.forceReconnectPromise) {
+      return this.forceReconnectPromise;
+    }
+
+    const promise = this.performForceReconnect();
+    this.forceReconnectPromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.forceReconnectPromise === promise) {
+        this.forceReconnectPromise = null;
+      }
+    }
+  }
+
+  private async performForceReconnect(): Promise<void> {
     console.log(
       `[SecureConnection] Force reconnecting... wsState=${this.ws?.readyState}, connState=${this.connectionState}, isRelay=${this.isRelayConnection}`,
     );
+
+    const activeConnectionAttempt = this.connectionPromise;
+    if (activeConnectionAttempt) {
+      // A lazy fetch/subscribe recovery is already rebuilding the same secure
+      // transport. Let it finish so forceReconnect does not orphan its promise.
+      try {
+        await activeConnectionAttempt;
+        return;
+      } catch {
+        // The active recovery failed; fall through to a forced reconnect.
+      }
+    }
 
     if (this.ws) {
       this.ws.onclose = null;

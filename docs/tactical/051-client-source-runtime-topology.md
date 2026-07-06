@@ -620,8 +620,10 @@ Near-term implementation slices:
 4. Superseded: slices 4–6 of this list are replaced by the T1–T10 sequence in
    [`057-source-transport-boundary.md`](057-source-transport-boundary.md),
    which carries the transport contract implementation, the stream/activity
-   moves, global deletion, and a minimal two-server smoke. Full coexistence
-   proof (relay concurrency, auth isolation) remains Phase 8 here.
+   moves, global deletion, and a minimal two-server smoke. The remaining
+   secure/relay and auth-isolation proof is recorded as a Phase 8 caveat and
+   should stay deferred until product work wants a UI that keeps two remote
+   clients/sources mounted at once.
 
 Completed read-side slice:
 
@@ -719,32 +721,54 @@ Acceptance:
 - Persisted snapshots are versioned and source/auth scoped.
 - Restored persisted snapshots are always revalidated through `SourceApiClient`.
 
-## Phase 8: Prove Coexistence Against Real Servers
+## Phase 8: Deferred Full Coexistence Proof
+
+Status: Deferred until a product feature wants a UI with two live clients or
+sources mounted at once. The current single-source UX should not change merely
+to satisfy this proof.
 
 The fake-runtime tests in earlier phases prove key isolation, not capability.
-If the architecture claims two runtimes can coexist, that claim must be
-exercised against real servers before it is recorded as supported — otherwise
-the code is organized as if it has a capability it has never run. This phase
-is also where the caveats planning cannot foresee are expected to surface:
-shared singletons the earlier phases missed, relay behavior under concurrent
-connections, auth interactions.
+T10 in [`057-source-transport-boundary.md`](057-source-transport-boundary.md)
+now exercises the cheap real-server path: one localhost source plus one plain
+direct WebSocket source, against two temporary-profile servers. That is enough
+for the current one-source-at-a-time product surface and for guarding the
+source-transport boundary. It does not prove full secure/relay coexistence.
 
 Intent:
 
-- Run two YA servers locally (`PORT`/`YEP_PROFILE` already support this) and
-  connect one client to both through the registry — behind a dev-only flag or
-  an E2E test, not a product surface.
-- Exercise, at minimum: independent activity subscriptions; independent
-  session-detail loads for identical project/session ids; disposal of one
-  source while the other stays live; auth failure on one source without an
-  app-wide login redirect.
+- When a two-client or multi-source UI becomes product work, run two YA
+  servers locally and connect one client to both through secure/relay-capable
+  transports behind a dev-only flag or E2E test.
+- Exercise, at minimum: two concurrent `SecureConnection` instances, relay
+  reconnect/re-pair behavior on one source while the other stays live,
+  independent activity subscriptions, independent session-detail loads for
+  identical project/session ids, provider-backed live session streams where a
+  deterministic mock provider is enough, disposal of one source while the
+  other stays live, and auth failure on one source without an app-wide login
+  redirect.
 
 Acceptance:
 
-- An E2E/integration test or a documented dev surface instantiates two real
+- Before YA exposes or claims two secure/relay sources in one UI, an
+  E2E/integration test or documented dev surface instantiates two real
   runtimes against two real servers and passes the isolation checks.
-- Anything that only works with fakes is recorded as a known gap in this
-  document, not claimed as supported.
+- Anything that only works with fakes, localhost, or plain direct WebSocket is
+  recorded as a known gap in this document, not claimed as full secure/relay
+  coexistence support.
+
+Known caveats:
+
+- T10 does not exercise two concurrent relay-backed `SecureConnection`
+  instances, slot replacement during relay reconnect, or relay auth/pairing
+  failure isolation.
+- Auth-required signaling still has global edges (`authEvents`). A per-source
+  login-required UX may be needed before one source can fail auth without
+  changing the rest of the app.
+- T10 covers activity, session-watch, persisted session detail, and independent
+  no-active-process session-stream failures. It does not cover two
+  provider-owned live session streams running at once.
+- Suspension policy for non-current runtimes is still a product/resource-cost
+  decision, especially if a future UI keeps multiple remote clients mounted.
 
 ## Multi-Host UI Follow-On
 
@@ -811,7 +835,7 @@ The first useful implementation series is complete when:
 - tests prove two fake runtimes do not cross cache or API calls;
 - no multi-host UI has been introduced by accident.
 
-Until Phase 8 runs, coexistence is a typed-but-unexercised claim. Documents
-and code comments describing this architecture must not state multi-source
-coexistence as an existing capability before two real runtimes have been
-exercised against two real servers.
+After T10, minimal localhost plus plain-WebSocket coexistence is exercised
+against two real servers. Full secure/relay multi-client coexistence remains
+unsupported until the Phase 8 caveats above are addressed; documents and code
+comments must not claim more than the T10 path has proven.

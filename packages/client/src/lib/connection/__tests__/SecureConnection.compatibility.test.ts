@@ -64,6 +64,148 @@ function srpVerifyServerInfoProof(params: {
 }
 
 describe("SecureConnection protocol compatibility", () => {
+  it("does not tear down an in-flight ensureConnected recovery", async () => {
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "test-password",
+    ) as unknown as {
+      ws: {
+        close: ReturnType<typeof vi.fn>;
+        onclose: unknown;
+        onerror: unknown;
+        onmessage: unknown;
+      } | null;
+      connectionState: string;
+      ensureConnected: () => Promise<void>;
+      forceReconnect: () => Promise<void>;
+      connectAndAuthenticate: ReturnType<typeof vi.fn>;
+      protocol: {
+        rejectAllPending: ReturnType<typeof vi.fn>;
+        notifySubscriptionsClosed: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    let resolveConnect!: () => void;
+    conn.connectAndAuthenticate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveConnect = () => {
+            conn.connectionState = "authenticated";
+            resolve();
+          };
+        }),
+    );
+    const close = vi.fn();
+    conn.ws = {
+      close,
+      onclose: vi.fn(),
+      onerror: vi.fn(),
+      onmessage: vi.fn(),
+    };
+    conn.protocol = {
+      rejectAllPending: vi.fn(),
+      notifySubscriptionsClosed: vi.fn(),
+    };
+
+    const recovery = conn.ensureConnected();
+    await Promise.resolve();
+
+    const forced = conn.forceReconnect();
+    await Promise.resolve();
+
+    expect(conn.connectAndAuthenticate).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+    expect(conn.protocol.rejectAllPending).not.toHaveBeenCalled();
+    expect(conn.protocol.notifySubscriptionsClosed).not.toHaveBeenCalled();
+
+    resolveConnect();
+
+    await expect(recovery).resolves.toBeUndefined();
+    await expect(forced).resolves.toBeUndefined();
+    expect(conn.connectAndAuthenticate).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("starts a fresh forced reconnect if in-flight recovery fails", async () => {
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "test-password",
+    ) as unknown as {
+      ws: {
+        close: ReturnType<typeof vi.fn>;
+        onclose: unknown;
+        onerror: unknown;
+        onmessage: unknown;
+      } | null;
+      connectionState: string;
+      ensureConnected: () => Promise<void>;
+      forceReconnect: () => Promise<void>;
+      connectAndAuthenticate: ReturnType<typeof vi.fn>;
+      protocol: {
+        rejectAllPending: ReturnType<typeof vi.fn>;
+        notifySubscriptionsClosed: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    let rejectFirst!: (error: Error) => void;
+    let resolveSecond!: () => void;
+    conn.connectAndAuthenticate = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSecond = () => {
+              conn.connectionState = "authenticated";
+              resolve();
+            };
+          }),
+      );
+    const close = vi.fn();
+    conn.ws = {
+      close,
+      onclose: vi.fn(),
+      onerror: vi.fn(),
+      onmessage: vi.fn(),
+    };
+    conn.protocol = {
+      rejectAllPending: vi.fn(),
+      notifySubscriptionsClosed: vi.fn(),
+    };
+
+    const recovery = conn.ensureConnected();
+    await Promise.resolve();
+
+    const forced = conn.forceReconnect();
+    await Promise.resolve();
+
+    expect(conn.connectAndAuthenticate).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+
+    const recoveryError = new Error("resume failed");
+    rejectFirst(recoveryError);
+
+    await expect(recovery).rejects.toBe(recoveryError);
+    await vi.waitFor(() =>
+      expect(conn.connectAndAuthenticate).toHaveBeenCalledTimes(2),
+    );
+
+    expect(conn.protocol.rejectAllPending).toHaveBeenCalledTimes(1);
+    expect(conn.protocol.notifySubscriptionsClosed).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+
+    resolveSecond();
+
+    await expect(forced).resolves.toBeUndefined();
+  });
+
   it("rejects full SRP when server omits the transport nonce", async () => {
     const onAuthenticated = vi.fn();
     const conn = new SecureConnection(

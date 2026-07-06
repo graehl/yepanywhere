@@ -178,7 +178,7 @@ and props stable.
 | 2.3 | Done 2026-07-06 | `SessionPage.tsx` composer submission/attachments | Extract staged/uploaded attachment preparation and draft transfer helpers. | Preserved object URL cleanup and staged attachment batch invariants. Added focused helper tests; client console budget unchanged. Tier 3 substitute with focused client E2E. |
 | 2.4 | Done 2026-07-06 | `MessageList.tsx` selection and quote behavior | Extract selected-text shielding, quote button placement, copy handling, and selection helpers. | Moved DOM-local selection/quote behavior into `useMessageListSelectionQuote.tsx`; `MessageList.tsx` still owns transcript rendering, scroll/follow state, search, and row actions. Tier 3 substitute with focused client E2E. |
 | 2.5 | Not started | `MessageList.tsx` scroll/follow snapshots | Extract scroll-follow, catch-up, and retained scroll snapshot hooks. | High risk. Tripwire matrix: rendering row (`RENDERING_PERFORMANCE.md`, scrollback stability). Tier 3 plus manual browser pass. |
-| 2.6 | Not started | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Keep pure selector work in `lib/sessionDetail/`; avoid duplicating selector ownership. |
+| 2.6 | Done 2026-07-06 | `MessageList.tsx` isearch UI state | Extract reverse search state/projections that are still DOM-local. | Moved React state, match projections, visible-group filtering, panel rendering, guide dispatch, and repeat timers into `useMessageListIsearch.tsx`; pure search selectors stay in `lib/sessionDetail/search.ts`. Tier 3 substitute with focused client E2E. |
 | 2.7 | Not started | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Preserve compact mobile overflow and liveness display. |
 | 2.8 | Not started | `MessageInput.tsx` textarea mechanics | Extract undoable text edits, resize, slash matching, and speech target helpers. | Preserve browser undo stack and focus behavior. |
 | 2.9 | Not started | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Preserve i18n and staged attachment behavior; run `pnpm i18n:scan` if copy moves. Coordinate with doc 054: WS-006 added a workstream selector to this form. |
@@ -256,6 +256,54 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.6 — MessageList Isearch UI State (Landed 2026-07-06, this commit)
+
+Moved:
+- Reverse-search React state, selected-target tracking, input/focus restore
+  refs, arrow-repeat timers, match/selection/panel/navigator projections,
+  visible-turn-group filtering, guide-state dispatch, search panel rendering,
+  and query/case/selection callbacks -> `useMessageListIsearch.tsx`.
+
+Signature conversions:
+- The hook takes explicit `containerRef`, `displayRenderItems`, `turnGroups`,
+  and `inert` inputs instead of closing over `MessageList.tsx` locals.
+- `MessageList.tsx` keeps the keyboard coordinator for Ctrl+End/Ctrl+O and
+  delegates search-specific actions to hook callbacks. Search Enter still calls
+  `MessageList`'s `scrollToRenderId`, so transcript scroll/follow ownership
+  remains in the component.
+
+Behavior changes:
+- None intended. The pure match, scope, panel-label, navigator-state, and
+  visible-group selector functions stayed in `lib/sessionDetail/search.ts` via
+  the existing `renderSelectors` surface.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `MessageList` and `renderSelectors` tests; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`; staged diff reviewed
+  with `--color-moved`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`. The root test run still
+  emitted the baseline suite chatter recorded above.
+- Client tripwires: `packages/client/RENDERING_PERFORMANCE.md`,
+  `topics/scrollback-view-stability.md`, and `topics/console-chatter.md` were
+  read before editing; `pnpm console:scan` stayed within the committed budget.
+- User-visible copy move: `pnpm i18n:scan` passed with the existing 3 warnings
+  outside this slice.
+- Client E2E substitute: focused `pnpm --filter client test:e2e --
+  e2e/session-streams.spec.ts e2e/project-new-session-cta.spec.ts` passed
+  with the existing Vite and `NO_COLOR`/`FORCE_COLOR` warnings. Full
+  `pnpm test:e2e` was not rerun for this docs/code slice because the previous
+  run in this environment failed only in the environment-gated physical
+  Android stream smoke (`2G0YC1ZF93041Z` reported `failed` instead of
+  `connected`); the focused transcript/session specs are the relevant
+  substitute.
+
+Follow-ups recorded:
+- `MessageList.tsx` still owns scroll/follow snapshots; row 2.5 remains the
+  next `MessageList` boundary slice, but it is higher risk and should include
+  browser/manual scroll verification if started.
 
 ### Slice 2.4 — MessageList Selection/Quote Behavior (Landed 2026-07-06, this commit)
 

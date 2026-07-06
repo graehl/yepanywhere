@@ -17,6 +17,7 @@ import {
 import { createPortal } from "react-dom";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
+import { useMessageListIsearch } from "../hooks/useMessageListIsearch";
 import { useMessageListSelectionQuote } from "../hooks/useMessageListSelectionQuote";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
@@ -27,10 +28,7 @@ import {
   MESSAGE_STALE_THRESHOLD_MS,
 } from "../lib/messageAge";
 import type { ActiveToolApproval } from "../lib/preprocessMessages";
-import {
-  dispatchSessionIsearchGuideState,
-  type SessionIsearchScope,
-} from "../lib/sessionIsearchGuide";
+import type { SessionIsearchScope } from "../lib/sessionIsearchGuide";
 import {
   decideSessionScrollRestore,
   DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
@@ -49,29 +47,17 @@ import {
   buildTimelineEntryDisplayRows,
   buildVisibleTimelineEntries,
   countThinkingItems,
-  getActiveSearchAnchors,
-  getAllTurnSearchAnchors,
   getDisplayRenderItems,
-  getFullSessionSearchAnchors,
   getLastTimestampedRenderItem,
   getLatestVisibleTimestampMs,
   getLatestThinkingItemId,
   getNextProgressiveEntryCount,
   getProgressiveTimelineVisibility,
-  getSearchNavigatorStateProjection,
   getTailEntryCountForRenderItemTarget,
-  getSearchMatchProjection,
-  getSearchPanelProjection,
-  getSearchReady,
-  getSearchSelectionProjection,
-  getSearchVisibleTurnGroups,
   getThinkingItemIds,
   getThinkingTextLengths,
-  getUserTurnNavAnchors,
-  getUserTurnSearchAnchors,
   groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
-  hasSearchableUserTurn,
   hasVisibleThinkingTextDelta,
   reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
@@ -91,10 +77,8 @@ import { MessageAge } from "./MessageAge";
 import { ProcessingIndicator } from "./ProcessingIndicator";
 import { RenderItemComponent } from "./RenderItemComponent";
 import {
-  type UserTurnNavAnchor,
   UserTurnNavigator,
   type UserTurnNavMotionCue,
-  type UserTurnNavSearchState,
 } from "./UserTurnNavigator";
 import { CopyTextButton } from "./ui/CopyTextButton";
 import { LinkifiedText } from "./ui/LinkifiedText";
@@ -236,18 +220,7 @@ function getTranscriptPositionTimestampMs(
   );
 }
 
-interface UserTurnSearchSession {
-  active: boolean;
-  scope: SessionIsearchScope;
-  query: string;
-  caseSensitive: boolean;
-  selectedId: string | null;
-  originalScrollTop: number | null;
-}
-
 const NAV_MOTION_CUE_CLEAR_MS = 760;
-const SEARCH_ARROW_REPEAT_DELAY_MS = 150;
-const SEARCH_ARROW_REPEAT_INTERVAL_MS = 42;
 const MIN_BOTTOM_FOLLOW_THRESHOLD_PX = 120;
 const MAX_BOTTOM_FOLLOW_THRESHOLD_PX = 520;
 const BOTTOM_FOLLOW_VIEWPORT_FRACTION = 0.45;
@@ -783,19 +756,6 @@ export const MessageList = memo(function MessageList({
   const previousProgressiveRevealActiveRef = useRef(false);
   const scrollSnapshotWritesSuppressedRef = useRef(false);
   const previousScrollSnapshotWritesSuppressedRef = useRef(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
-  const searchOriginalScrollTopRef = useRef<number | null>(null);
-  const selectedSearchTargetIdRef = useRef<string | null>(null);
-  const searchArrowRepeatTimeoutRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const searchArrowRepeatIntervalRef = useRef<ReturnType<
-    typeof setInterval
-  > | null>(null);
-  const searchArrowRepeatDirectionRef = useRef<"previous" | "next" | null>(
-    null,
-  );
   const [thinkingItemsVisible, setThinkingItemsVisible] = useState(() => {
     // "Show thinking" preference seeds the render gate's default; "default"
     // falls back to the live eye-toggle value. The eye icon still overrides
@@ -824,14 +784,6 @@ export const MessageList = memo(function MessageList({
   >(null);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
-  const [userTurnSearch, setUserTurnSearch] = useState<UserTurnSearchSession>({
-    active: false,
-    scope: "user",
-    query: "",
-    caseSensitive: false,
-    selectedId: null,
-    originalScrollTop: null,
-  });
   const { t } = useI18n();
   const nowMs = useRelativeNow();
 
@@ -1094,152 +1046,26 @@ export const MessageList = memo(function MessageList({
       turnGroups: turnGroups.length,
     });
   }, [messages.length, displayRenderItems.length, turnGroups.length]);
-  const hasUserSearchableTurn = useMemo(
-    () => hasSearchableUserTurn(displayRenderItems),
-    [displayRenderItems],
-  );
-  const getUserTurnNavAnchorList = useCallback(
-    (): UserTurnNavAnchor[] => getUserTurnNavAnchors(displayRenderItems),
-    [displayRenderItems],
-  );
-  const searchReady = getSearchReady({
-    active: userTurnSearch.active,
-    query: userTurnSearch.query,
+  const {
+    active: searchActive,
+    scope: searchScope,
+    visibleTurnGroups,
+    getNavigatorAnchors,
+    searchState: userTurnNavSearchState,
+    searchPanel,
+    closeSearch,
+    getSelectedSearchTargetId,
+    handleSearchArrowKey,
+    moveSearchSelection,
+    openSearch,
+    selectSearchMatch,
+    stopSearchArrowRepeat,
+  } = useMessageListIsearch({
+    containerRef,
+    displayRenderItems,
+    inert,
+    turnGroups,
   });
-  const includeUserTurnSearchAnchors =
-    searchReady && userTurnSearch.scope === "user";
-  const userTurnSearchAnchors = useMemo<UserTurnNavAnchor[]>(() => {
-    if (!includeUserTurnSearchAnchors) {
-      return [];
-    }
-    return getUserTurnSearchAnchors(displayRenderItems);
-  }, [includeUserTurnSearchAnchors, displayRenderItems]);
-  const includeAllTurnSearchAnchors =
-    searchReady && userTurnSearch.scope === "all";
-  const sessionTurnNavAnchors = useMemo<UserTurnNavAnchor[]>(() => {
-    if (!includeAllTurnSearchAnchors) {
-      return [];
-    }
-    return getAllTurnSearchAnchors(displayRenderItems);
-  }, [includeAllTurnSearchAnchors, displayRenderItems]);
-  const includeFullSessionSearchAnchors =
-    searchReady && userTurnSearch.scope === "full";
-  const fullSessionSearchAnchors = useMemo<UserTurnNavAnchor[]>(() => {
-    if (!includeFullSessionSearchAnchors) {
-      return [];
-    }
-    return getFullSessionSearchAnchors(turnGroups);
-  }, [includeFullSessionSearchAnchors, turnGroups]);
-  const activeSearchAnchors = getActiveSearchAnchors({
-    allAnchors: sessionTurnNavAnchors,
-    fullAnchors: fullSessionSearchAnchors,
-    scope: userTurnSearch.scope,
-    userAnchors: userTurnSearchAnchors,
-  });
-  const userTurnSearchProjection = useMemo(
-    () =>
-      getSearchMatchProjection({
-        anchors: activeSearchAnchors,
-        caseSensitive: userTurnSearch.caseSensitive,
-        query: userTurnSearch.query,
-        searchReady,
-      }),
-    [
-      activeSearchAnchors,
-      searchReady,
-      userTurnSearch.caseSensitive,
-      userTurnSearch.query,
-    ],
-  );
-  const userTurnSearchMatches = userTurnSearchProjection.matches;
-  const userTurnSearchMatchIds = userTurnSearchProjection.matchIds;
-  const userTurnSearchMatchTargetIds = userTurnSearchProjection.matchTargetIds;
-  const userTurnSearchPreviewsById = userTurnSearchProjection.previewsById;
-  const userTurnSearchSelectionProjection = useMemo(
-    () =>
-      getSearchSelectionProjection({
-        anchors: activeSearchAnchors,
-        previewsById: userTurnSearchPreviewsById,
-        searchReady,
-        selectedId: userTurnSearch.selectedId,
-      }),
-    [
-      activeSearchAnchors,
-      searchReady,
-      userTurnSearch.selectedId,
-      userTurnSearchPreviewsById,
-    ],
-  );
-  const selectedSearchAnchor = userTurnSearchSelectionProjection.selectedAnchor;
-  const selectedSearchTargetId =
-    userTurnSearchSelectionProjection.selectedTargetId;
-  selectedSearchTargetIdRef.current = selectedSearchTargetId;
-  const userTurnSearchPreview =
-    userTurnSearchSelectionProjection.selectedPreview;
-  const searchPanelProjection = useMemo(
-    () =>
-      getSearchPanelProjection({
-        matches: userTurnSearchMatches,
-        scope: userTurnSearch.scope,
-        searchReady,
-        selectedId: userTurnSearch.selectedId,
-      }),
-    [
-      searchReady,
-      userTurnSearch.scope,
-      userTurnSearch.selectedId,
-      userTurnSearchMatches,
-    ],
-  );
-  const getNavigatorAnchors = useCallback(
-    () =>
-      searchReady
-        ? userTurnSearchMatches
-        : userTurnSearch.active
-          ? []
-          : getUserTurnNavAnchorList(),
-    [
-      getUserTurnNavAnchorList,
-      searchReady,
-      userTurnSearch.active,
-      userTurnSearchMatches,
-    ],
-  );
-  const userTurnNavSearchState = useMemo<UserTurnNavSearchState | null>(
-    () =>
-      getSearchNavigatorStateProjection({
-        caseSensitive: userTurnSearch.caseSensitive,
-        matchIds: userTurnSearchMatchIds,
-        preview: userTurnSearchPreview,
-        previewsById: userTurnSearchPreviewsById,
-        query: userTurnSearch.query,
-        searchReady,
-        selectedAnchorId: selectedSearchAnchor?.id,
-      }),
-    [
-      searchReady,
-      selectedSearchAnchor?.id,
-      userTurnSearch.caseSensitive,
-      userTurnSearch.query,
-      userTurnSearchPreviewsById,
-      userTurnSearchMatchIds,
-      userTurnSearchPreview,
-    ],
-  );
-
-  useEffect(() => {
-    dispatchSessionIsearchGuideState({
-      active: userTurnSearch.active,
-      scope: userTurnSearch.scope,
-    });
-  }, [userTurnSearch.active, userTurnSearch.scope]);
-
-  useEffect(
-    () => () => {
-      dispatchSessionIsearchGuideState({ active: false, scope: "user" });
-    },
-    [],
-  );
   const updateScrollPositionTimestamp = useCallback(
     (options: { atBottom?: boolean } = {}) => {
       const content = containerRef.current;
@@ -1369,21 +1195,6 @@ export const MessageList = memo(function MessageList({
     if (!onCorrectLatestUserMessage) return null;
     return selectLatestCorrectablePrompt(renderItems);
   }, [renderItems, onCorrectLatestUserMessage]);
-  const visibleTurnGroups = useMemo(() => {
-    return getSearchVisibleTurnGroups({
-      matchIds: userTurnSearchMatchIds,
-      matchTargetIds: userTurnSearchMatchTargetIds,
-      scope: userTurnSearch.scope,
-      searchReady,
-      turnGroups,
-    });
-  }, [
-    searchReady,
-    turnGroups,
-    userTurnSearch.scope,
-    userTurnSearchMatchIds,
-    userTurnSearchMatchTargetIds,
-  ]);
   const visibleTimelineEntries = useMemo(() => {
     return buildVisibleTimelineEntries({
       asides: btwAsides,
@@ -1392,7 +1203,7 @@ export const MessageList = memo(function MessageList({
   }, [btwAsides, visibleTurnGroups]);
   const progressiveRenderAllowed =
     progressiveRenderEnabled &&
-    !userTurnSearch.active &&
+    !searchActive &&
     visibleTimelineEntries.length > 0;
   const progressiveRenderCycleKey = progressiveRenderKey ?? "default";
   const progressiveInitialEntryCount = useMemo(
@@ -1767,71 +1578,6 @@ export const MessageList = memo(function MessageList({
     }, NAV_MOTION_CUE_CLEAR_MS);
   }, []);
 
-  const moveUserTurnSearchSelection = useCallback(
-    (direction: "previous" | "next") => {
-      setUserTurnSearch((previous) => {
-        if (!previous.active || userTurnSearchMatches.length === 0) {
-          return previous;
-        }
-        const currentIndex = previous.selectedId
-          ? userTurnSearchMatches.findIndex(
-              (anchor) => anchor.id === previous.selectedId,
-            )
-          : -1;
-        const step = direction === "previous" ? -1 : 1;
-        const fallbackIndex =
-          direction === "previous" ? userTurnSearchMatches.length - 1 : 0;
-        const nextIndex =
-          currentIndex >= 0
-            ? (currentIndex + step + userTurnSearchMatches.length) %
-              userTurnSearchMatches.length
-            : fallbackIndex;
-        const nextSelectedId = userTurnSearchMatches[nextIndex]?.id ?? null;
-        return { ...previous, selectedId: nextSelectedId };
-      });
-    },
-    [userTurnSearchMatches],
-  );
-  const stopUserTurnSearchArrowRepeat = useCallback(() => {
-    if (searchArrowRepeatTimeoutRef.current !== null) {
-      clearTimeout(searchArrowRepeatTimeoutRef.current);
-      searchArrowRepeatTimeoutRef.current = null;
-    }
-    if (searchArrowRepeatIntervalRef.current !== null) {
-      clearInterval(searchArrowRepeatIntervalRef.current);
-      searchArrowRepeatIntervalRef.current = null;
-    }
-    searchArrowRepeatDirectionRef.current = null;
-  }, []);
-  const startUserTurnSearchArrowRepeat = useCallback(
-    (direction: "previous" | "next") => {
-      if (
-        searchArrowRepeatDirectionRef.current === direction &&
-        (searchArrowRepeatTimeoutRef.current !== null ||
-          searchArrowRepeatIntervalRef.current !== null)
-      ) {
-        return;
-      }
-      stopUserTurnSearchArrowRepeat();
-      searchArrowRepeatDirectionRef.current = direction;
-      searchArrowRepeatTimeoutRef.current = setTimeout(() => {
-        searchArrowRepeatTimeoutRef.current = null;
-        moveUserTurnSearchSelection(direction);
-        searchArrowRepeatIntervalRef.current = setInterval(() => {
-          moveUserTurnSearchSelection(direction);
-        }, SEARCH_ARROW_REPEAT_INTERVAL_MS);
-      }, SEARCH_ARROW_REPEAT_DELAY_MS);
-    },
-    [moveUserTurnSearchSelection, stopUserTurnSearchArrowRepeat],
-  );
-  const selectUserTurnSearchMatch = useCallback((id: string) => {
-    setUserTurnSearch((previous) =>
-      previous.active ? { ...previous, selectedId: id } : previous,
-    );
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-    });
-  }, []);
   const scrollToRenderId = useCallback(
     (
       id: string,
@@ -1873,123 +1619,9 @@ export const MessageList = memo(function MessageList({
     });
   }, [forceScrollToCurrent]);
 
-  const closeUserTurnSearch = useCallback((restoreScroll: boolean) => {
-    const scrollTopToRestore = restoreScroll
-      ? searchOriginalScrollTopRef.current
-      : null;
-    const focusTarget = restoreScroll ? searchRestoreFocusRef.current : null;
-    searchOriginalScrollTopRef.current = null;
-    searchRestoreFocusRef.current = null;
-
-    if (restoreScroll || focusTarget) {
-      requestAnimationFrame(() => {
-        const scrollContainer = containerRef.current?.parentElement;
-        if (scrollContainer && scrollTopToRestore !== null) {
-          scrollContainer.scrollTop = scrollTopToRestore;
-        }
-        if (focusTarget?.isConnected) {
-          focusTarget.focus({ preventScroll: true });
-        }
-      });
-    }
-
-    setUserTurnSearch((previous) => {
-      return {
-        active: false,
-        scope: previous.scope,
-        query: "",
-        caseSensitive: false,
-        selectedId: null,
-        originalScrollTop: null,
-      };
-    });
-  }, []);
-
-  const openUserTurnSearch = useCallback(
-    (scope: SessionIsearchScope) => {
-      const canSearch =
-        scope === "user"
-          ? hasUserSearchableTurn
-          : displayRenderItems.length > 0;
-      if (!canSearch) {
-        return;
-      }
-      const activeElement = document.activeElement;
-      searchRestoreFocusRef.current =
-        activeElement instanceof HTMLElement && activeElement !== document.body
-          ? activeElement
-          : null;
-      const scrollContainer = containerRef.current?.parentElement;
-      searchOriginalScrollTopRef.current = scrollContainer?.scrollTop ?? null;
-      setUserTurnSearch({
-        active: true,
-        scope,
-        query: "",
-        caseSensitive: false,
-        selectedId: null,
-        originalScrollTop: searchOriginalScrollTopRef.current,
-      });
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      });
-    },
-    [hasUserSearchableTurn, displayRenderItems.length],
-  );
-
-  const handleUserTurnSearchQueryChange = useCallback((query: string) => {
-    setUserTurnSearch((previous) => ({
-      ...previous,
-      query,
-      selectedId: null,
-    }));
-  }, []);
-
-  const toggleUserTurnSearchCaseSensitive = useCallback(() => {
-    setUserTurnSearch((previous) =>
-      previous.active
-        ? {
-            ...previous,
-            caseSensitive: !previous.caseSensitive,
-            selectedId: null,
-          }
-        : previous,
-    );
-  }, []);
-
-  useEffect(() => {
-    if (!userTurnSearch.active) {
-      stopUserTurnSearchArrowRepeat();
-      return;
-    }
-    setUserTurnSearch((previous) => {
-      if (!previous.active) {
-        return previous;
-      }
-      let nextSelectedId: string | null = null;
-      if (searchReady && userTurnSearchMatches.length > 0) {
-        nextSelectedId =
-          previous.selectedId && userTurnSearchMatchIds.has(previous.selectedId)
-            ? previous.selectedId
-            : (userTurnSearchMatches[userTurnSearchMatches.length - 1]?.id ??
-              null);
-      }
-      if (previous.selectedId === nextSelectedId) {
-        return previous;
-      }
-      return { ...previous, selectedId: nextSelectedId };
-    });
-  }, [
-    searchReady,
-    stopUserTurnSearchArrowRepeat,
-    userTurnSearch.active,
-    userTurnSearchMatches,
-    userTurnSearchMatchIds,
-  ]);
-
   useEffect(() => {
     if (inert) {
-      stopUserTurnSearchArrowRepeat();
+      stopSearchArrowRepeat();
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2021,42 +1653,36 @@ export const MessageList = memo(function MessageList({
       if (requestedScope) {
         event.preventDefault();
         event.stopPropagation();
-        if (userTurnSearch.active && userTurnSearch.scope === requestedScope) {
-          moveUserTurnSearchSelection("previous");
+        if (searchActive && searchScope === requestedScope) {
+          moveSearchSelection("previous");
         } else {
-          openUserTurnSearch(requestedScope);
+          openSearch(requestedScope);
         }
         return;
       }
-      if (!userTurnSearch.active) {
+      if (!searchActive) {
         return;
       }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
         event.stopPropagation();
         const direction = event.key === "ArrowUp" ? "previous" : "next";
-        if (
-          !event.repeat ||
-          searchArrowRepeatDirectionRef.current !== direction
-        ) {
-          moveUserTurnSearchSelection(direction);
-          startUserTurnSearchArrowRepeat(direction);
-        }
+        handleSearchArrowKey(direction, event.repeat);
         return;
       }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        stopUserTurnSearchArrowRepeat();
-        closeUserTurnSearch(true);
+        stopSearchArrowRepeat();
+        closeSearch(true);
         return;
       }
       if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        const selectedId = selectedSearchTargetIdRef.current;
-        stopUserTurnSearchArrowRepeat();
-        closeUserTurnSearch(false);
+        const selectedId = getSelectedSearchTargetId();
+        stopSearchArrowRepeat();
+        closeSearch(false);
         if (selectedId) {
           requestAnimationFrame(() =>
             scrollToRenderId(selectedId, "auto", "center", true),
@@ -2066,7 +1692,7 @@ export const MessageList = memo(function MessageList({
     };
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        stopUserTurnSearchArrowRepeat();
+        stopSearchArrowRepeat();
       }
     };
 
@@ -2075,20 +1701,21 @@ export const MessageList = memo(function MessageList({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
-      stopUserTurnSearchArrowRepeat();
+      stopSearchArrowRepeat();
     };
   }, [
-    closeUserTurnSearch,
-    moveUserTurnSearchSelection,
-    openUserTurnSearch,
+    closeSearch,
+    getSelectedSearchTargetId,
+    handleSearchArrowKey,
+    moveSearchSelection,
+    openSearch,
     scrollToCurrent,
     scrollToRenderId,
-    startUserTurnSearchArrowRepeat,
-    stopUserTurnSearchArrowRepeat,
+    searchActive,
+    searchScope,
+    stopSearchArrowRepeat,
     toggleThinkingItemsVisible,
     inert,
-    userTurnSearch.active,
-    userTurnSearch.scope,
   ]);
 
   // Load older messages with scroll position preservation
@@ -2493,70 +2120,10 @@ export const MessageList = memo(function MessageList({
     shouldWaitForInitialAnchorRestore,
   ]);
 
-  const searchPanelTarget =
-    userTurnSearch.active && typeof document !== "undefined"
-      ? document.querySelector<HTMLElement>(".session-input-inner")
-      : null;
   const followButtonTarget =
     !isScrolledToBottom && typeof document !== "undefined"
       ? document.querySelector<HTMLElement>(".session-input-inner")
       : null;
-  const searchPanel = userTurnSearch.active ? (
-    <div
-      className="user-turn-search-panel"
-      role="search"
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          closeUserTurnSearch(false);
-        }
-      }}
-    >
-      <div className="user-turn-search-main">
-        <span className="user-turn-search-label">
-          {searchPanelProjection.scopeLabel}
-        </span>
-        <input
-          ref={searchInputRef}
-          className="user-turn-search-input"
-          value={userTurnSearch.query}
-          onChange={(event) =>
-            handleUserTurnSearchQueryChange(event.target.value)
-          }
-          placeholder="reverse search"
-          aria-label={searchPanelProjection.scopeAriaLabel}
-        />
-        <button
-          type="button"
-          className={[
-            "user-turn-search-case-toggle",
-            userTurnSearch.caseSensitive ? "is-active" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          aria-label="Case-sensitive search"
-          aria-pressed={userTurnSearch.caseSensitive}
-          title={
-            userTurnSearch.caseSensitive
-              ? "Case-sensitive search on"
-              : "Case-sensitive search off"
-          }
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={toggleUserTurnSearchCaseSensitive}
-        >
-          Aa
-        </button>
-        <span className="user-turn-search-count">
-          {searchPanelProjection.countLabel}
-        </span>
-      </div>
-      <div className="user-turn-search-help">
-        <span>
-          {searchPanelProjection.shortcutKeys} prev · ↑↓ matches · click selects
-        </span>
-        <span>Enter jump+close · Esc cancel · Aa case</span>
-      </div>
-    </div>
-  ) : null;
   const followButtonLabel = newOutputBelowVisible
     ? t("sessionNewOutputBelow")
     : t("sessionFollow");
@@ -2601,7 +2168,7 @@ export const MessageList = memo(function MessageList({
           setIsScrolledToBottom(false);
           updateScrollPositionTimestamp({ atBottom: false });
         }}
-        onSearchMatchSelect={selectUserTurnSearchMatch}
+        onSearchMatchSelect={selectSearchMatch}
         onTrimAnchor={onTrimBeforeUserMessage}
         onForkBeforeAnchor={onForkBeforeUserMessage}
         onForkAfterAnchor={onForkAfterUserMessage}
@@ -2609,9 +2176,7 @@ export const MessageList = memo(function MessageList({
         onPreviewTimestampChange={setHoveredMarkerTimestampMs}
         searchState={userTurnNavSearchState}
       />
-      {searchPanelTarget && searchPanel
-        ? createPortal(searchPanel, searchPanelTarget)
-        : searchPanel}
+      {searchPanel}
       {followButtonTarget && followButton
         ? createPortal(followButton, followButtonTarget)
         : followButton}

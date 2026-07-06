@@ -16,6 +16,15 @@ const DEFAULT_SETTINGS: DeveloperModeSettings = {
   showConnectionBars: false,
 };
 
+function getBrowserLocalStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeSettings(raw: unknown): DeveloperModeSettings {
   if (!raw || typeof raw !== "object") {
     return DEFAULT_SETTINGS;
@@ -33,14 +42,9 @@ function normalizeSettings(raw: unknown): DeveloperModeSettings {
 }
 
 function loadSettings(): DeveloperModeSettings {
-  // Guard for SSR/test environments where localStorage may not be fully available
-  if (
-    typeof localStorage === "undefined" ||
-    typeof localStorage.getItem !== "function"
-  ) {
-    return DEFAULT_SETTINGS;
-  }
-  const stored = localStorage.getItem(UI_KEYS.developerMode);
+  const storage = getBrowserLocalStorage();
+  if (!storage || typeof storage.getItem !== "function") return DEFAULT_SETTINGS;
+  const stored = storage.getItem(UI_KEYS.developerMode);
   if (!stored) return DEFAULT_SETTINGS;
   try {
     return normalizeSettings(JSON.parse(stored));
@@ -50,14 +54,9 @@ function loadSettings(): DeveloperModeSettings {
 }
 
 function saveSettings(settings: DeveloperModeSettings) {
-  // Guard for SSR/test environments where localStorage may not be fully available
-  if (
-    typeof localStorage === "undefined" ||
-    typeof localStorage.setItem !== "function"
-  ) {
-    return;
-  }
-  localStorage.setItem(UI_KEYS.developerMode, JSON.stringify(settings));
+  const storage = getBrowserLocalStorage();
+  if (!storage || typeof storage.setItem !== "function") return;
+  storage.setItem(UI_KEYS.developerMode, JSON.stringify(settings));
 }
 
 // Simple external store for cross-component sync
@@ -87,11 +86,9 @@ export function setRemoteLogCollectionEnabledValue(enabled: boolean): void {
 
 export function __resetDeveloperModeForTest(): void {
   currentSettings = DEFAULT_SETTINGS;
-  if (
-    typeof localStorage !== "undefined" &&
-    typeof localStorage.removeItem === "function"
-  ) {
-    localStorage.removeItem(UI_KEYS.developerMode);
+  const storage = getBrowserLocalStorage();
+  if (storage && typeof storage.removeItem === "function") {
+    storage.removeItem(UI_KEYS.developerMode);
   }
   for (const listener of listeners) {
     listener();

@@ -87,6 +87,10 @@ const CURRENT_RESUME_PROTOCOL_VERSION = 3;
 const UPLOAD_BUFFER_HIGH_WATER_BYTES = 512 * 1024;
 const UPLOAD_BUFFER_LOW_WATER_BYTES = 256 * 1024;
 const UPLOAD_BUFFER_POLL_MS = 16;
+// WebSocket readyState constants are spec-defined. Using local constants keeps
+// node-environment unit tests independent of host WebSocket globals.
+const WEBSOCKET_OPEN_STATE = 1;
+const WEBSOCKET_CLOSED_STATE = 3;
 
 /** Stored session for resumption (persisted to localStorage) */
 export interface StoredSession {
@@ -211,7 +215,7 @@ export class SecureConnection implements Connection {
         sendMessage: (msg) => this.send(msg),
         sendUploadChunk: async (id, offset, chunk) => {
           const payload = encodeUploadChunkPayload(id, offset, chunk);
-          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          if (!this.ws || this.ws.readyState !== WEBSOCKET_OPEN_STATE) {
             throw new Error("WebSocket not connected");
           }
           if (!this.sessionKey) {
@@ -228,7 +232,7 @@ export class SecureConnection implements Connection {
         ensureConnected: () => this.ensureConnected(),
         isConnected: () =>
           this.connectionState === "authenticated" &&
-          this.ws?.readyState === WebSocket.OPEN,
+          this.ws?.readyState === WEBSOCKET_OPEN_STATE,
       },
       {
         debugEnabled: () => getRelayDebugEnabled(),
@@ -339,7 +343,7 @@ export class SecureConnection implements Connection {
    */
   private resumeOnExistingSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (!this.ws || this.ws.readyState !== WEBSOCKET_OPEN_STATE) {
         reject(new Error("WebSocket is not open"));
         return;
       }
@@ -809,7 +813,7 @@ export class SecureConnection implements Connection {
    */
   private async ensureConnected(): Promise<void> {
     if (
-      this.ws?.readyState === WebSocket.OPEN &&
+      this.ws?.readyState === WEBSOCKET_OPEN_STATE &&
       this.connectionState === "authenticated"
     ) {
       return;
@@ -1416,9 +1420,7 @@ export class SecureConnection implements Connection {
    * Send an encrypted message over the WebSocket.
    */
   private send(msg: RemoteClientMessage): void {
-    const websocketOpenState =
-      typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
-    if (!this.ws || this.ws.readyState !== websocketOpenState) {
+    if (!this.ws || this.ws.readyState !== WEBSOCKET_OPEN_STATE) {
       throw new Error("WebSocket not connected");
     }
     if (!this.sessionKey) {
@@ -1462,9 +1464,7 @@ export class SecureConnection implements Connection {
   }
 
   sendSpeechAudioFrame(data: ArrayBuffer | Uint8Array | ArrayBufferView): void {
-    const websocketOpenState =
-      typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
-    if (!this.ws || this.ws.readyState !== websocketOpenState) {
+    if (!this.ws || this.ws.readyState !== WEBSOCKET_OPEN_STATE) {
       throw new Error("WebSocket not connected");
     }
     if (!this.sessionKey) {
@@ -1486,8 +1486,7 @@ export class SecureConnection implements Connection {
   }
 
   getSpeechSocketReadyState(): number {
-    const closedState = typeof WebSocket !== "undefined" ? WebSocket.CLOSED : 3;
-    return this.ws?.readyState ?? closedState;
+    return this.ws?.readyState ?? WEBSOCKET_CLOSED_STATE;
   }
 
   getSpeechSocketBufferedAmount(): number {
@@ -1621,17 +1620,17 @@ export class SecureConnection implements Connection {
 
   private async waitForUploadBackpressure(): Promise<void> {
     const ws = this.ws;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WEBSOCKET_OPEN_STATE) return;
     if (ws.bufferedAmount <= UPLOAD_BUFFER_HIGH_WATER_BYTES) return;
 
     while (
-      ws.readyState === WebSocket.OPEN &&
+      ws.readyState === WEBSOCKET_OPEN_STATE &&
       ws.bufferedAmount > UPLOAD_BUFFER_LOW_WATER_BYTES
     ) {
       await wait(UPLOAD_BUFFER_POLL_MS);
     }
 
-    if (ws.readyState !== WebSocket.OPEN) {
+    if (ws.readyState !== WEBSOCKET_OPEN_STATE) {
       throw new Error("WebSocket not connected");
     }
   }
@@ -1755,7 +1754,7 @@ export class SecureConnection implements Connection {
    */
   private authenticateOnExistingSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (!this.ws || this.ws.readyState !== WEBSOCKET_OPEN_STATE) {
         reject(new Error("WebSocket is not open"));
         return;
       }

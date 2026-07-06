@@ -19,7 +19,11 @@ import {
   geminiProjectMap,
   hashProjectPath,
 } from "./gemini-project-map.js";
-import { encodeProjectId } from "./paths.js";
+import {
+  canonicalizeProjectPath,
+  encodeProjectId,
+  getProjectIdentityKey,
+} from "./paths.js";
 
 // Re-export constants for compatibility
 export { GEMINI_DIR, GEMINI_TMP_DIR, hashProjectPath };
@@ -33,6 +37,31 @@ interface GeminiSessionInfo {
   filePath: string;
   startTime: string;
   mtime: number;
+}
+
+function chooseDisplayProjectPath(
+  variants: Map<string, { count: number; lastActivity: number }>,
+): string | null {
+  let bestPath: string | null = null;
+  let bestCount = -1;
+  let bestLastActivity = -1;
+
+  for (const [path, stats] of variants) {
+    if (
+      bestPath === null ||
+      stats.count > bestCount ||
+      (stats.count === bestCount && stats.lastActivity > bestLastActivity) ||
+      (stats.count === bestCount &&
+        stats.lastActivity === bestLastActivity &&
+        path < bestPath)
+    ) {
+      bestPath = path;
+      bestCount = stats.count;
+      bestLastActivity = stats.lastActivity;
+    }
+  }
+
+  return bestPath;
 }
 
 export interface GeminiScannerOptions {
@@ -92,18 +121,32 @@ export class GeminiSessionScanner {
         cwd: string | null;
         projectHash: string;
         dirName: string;
+        pathVariants: Map<string, { count: number; lastActivity: number }>;
       }
     >();
 
     for (const session of sessions) {
-      const cwd = await geminiProjectMap.get(session.projectHash);
-      const key = cwd ?? session.projectHash;
+      const rawCwd = await geminiProjectMap.get(session.projectHash);
+      const cwd = rawCwd ? canonicalizeProjectPath(rawCwd) : null;
+      const key = cwd ? getProjectIdentityKey(cwd) : session.projectHash;
 
       const existing = projectMap.get(key);
       if (existing) {
         existing.sessions.push(session);
         if (session.mtime > existing.lastActivity) {
           existing.lastActivity = session.mtime;
+        }
+        if (cwd) {
+          const variant = existing.pathVariants.get(cwd);
+          if (variant) {
+            variant.count += 1;
+            variant.lastActivity = Math.max(variant.lastActivity, session.mtime);
+          } else {
+            existing.pathVariants.set(cwd, {
+              count: 1,
+              lastActivity: session.mtime,
+            });
+          }
         }
       } else {
         projectMap.set(key, {
@@ -112,6 +155,17 @@ export class GeminiSessionScanner {
           cwd: cwd ?? null,
           projectHash: session.projectHash,
           dirName: session.dirName,
+          pathVariants: cwd
+            ? new Map([
+                [
+                  cwd,
+                  {
+                    count: 1,
+                    lastActivity: session.mtime,
+                  },
+                ],
+              ])
+            : new Map(),
         });
       }
     }
@@ -119,9 +173,12 @@ export class GeminiSessionScanner {
     // Convert to Project[]
     const projects: Project[] = [];
     for (const data of projectMap.values()) {
-      const path = data.cwd ?? `gemini:${data.projectHash.slice(0, 8)}`;
+      const path =
+        chooseDisplayProjectPath(data.pathVariants) ??
+        data.cwd ??
+        `gemini:${data.projectHash.slice(0, 8)}`;
       const name = data.cwd
-        ? basename(data.cwd)
+        ? basename(path)
         : `Gemini ${data.projectHash.slice(0, 8)}`;
 
       projects.push({
@@ -169,12 +226,18 @@ export class GeminiSessionScanner {
 
     // Otherwise, hash the path and look for matching sessions
     const targetHash = hashProjectPath(projectPath);
+    const targetIdentityKey = getProjectIdentityKey(projectPath);
 
     // Ensure we have this path registered
     await geminiProjectMap.set(targetHash, projectPath);
+    const hashToCwd = await geminiProjectMap.getAll();
 
     return sessions
-      .filter((s) => s.projectHash === targetHash)
+      .filter((s) => {
+        if (s.projectHash === targetHash) return true;
+        const cwd = hashToCwd.get(s.projectHash);
+        return !!cwd && getProjectIdentityKey(cwd) === targetIdentityKey;
+      })
       .sort((a, b) => b.mtime - a.mtime);
   }
 

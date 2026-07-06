@@ -824,6 +824,53 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(summaries[0].id).toBe(sessionId);
   });
 
+  it("filters Windows cwd case variants as the same project", async () => {
+    const upperSessionId = "windows-case-upper";
+    const lowerSessionId = "windows-case-lower";
+    const now = new Date().toISOString();
+    for (const [sessionId, cwd] of [
+      [upperSessionId, "C:/Users/sox/Documents/code/mclone"],
+      [lowerSessionId, "c:/users/sox/documents/code/mclone"],
+    ] as const) {
+      await writeFile(
+        join(testDir, `${sessionId}.jsonl`),
+        `${[
+          JSON.stringify({
+            type: "session_meta",
+            timestamp: now,
+            payload: {
+              id: sessionId,
+              cwd,
+              timestamp: now,
+              model_provider: "openai",
+            },
+          }),
+          JSON.stringify({
+            type: "event_msg",
+            timestamp: now,
+            payload: {
+              type: "user_message",
+              message: "Hello world",
+            },
+          }),
+        ].join("\n")}\n`,
+      );
+    }
+
+    const filteredReader = new CodexSessionReader({
+      sessionsDir: testDir,
+      projectPath: "C:/Users/sox/Documents/code/mclone",
+    });
+
+    const summaries = await filteredReader.listSessions(
+      encodeProjectId("C:/Users/sox/Documents/code/mclone"),
+    );
+    expect(summaries.map((summary) => summary.id).sort()).toEqual([
+      lowerSessionId,
+      upperSessionId,
+    ]);
+  });
+
   it("identifies codex based on model name (gpt-4)", async () => {
     const sessionId = "heuristic-openai";
     await createSessionFile(sessionId, undefined, "gpt-4-turbo");

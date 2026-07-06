@@ -8,6 +8,7 @@ import {
   decodeProjectId,
   encodeProjectId,
   getFileTypeFromRelativePath,
+  getProjectIdentityKey,
   getProjectName,
   getSessionFilePath,
   getSessionIdFromPath,
@@ -198,15 +199,15 @@ describe("Project Path Utilities", () => {
       ).toBe("user/code/deep/nested/project");
     });
 
-    it("normalizes Windows paths with backslashes", () => {
+    it("case-folds Windows drive home paths", () => {
       expect(
         normalizeProjectPathForDedup("C:\\Users\\pf\\Projects\\myapp"),
-      ).toBe("pf/Projects/myapp");
+      ).toBe("pf/projects/myapp");
     });
 
     it("normalizes Windows paths with forward slashes", () => {
       expect(normalizeProjectPathForDedup("C:/Users/pf/Projects/myapp")).toBe(
-        "pf/Projects/myapp",
+        "pf/projects/myapp",
       );
     });
 
@@ -229,8 +230,42 @@ describe("Project Path Utilities", () => {
     it("normalizes non-home Windows paths to a stable separator format", () => {
       const backslash = normalizeProjectPathForDedup("D:\\work\\repo");
       const forwardSlash = normalizeProjectPathForDedup("d:/work/repo");
-      expect(backslash).toBe("D:/work/repo");
+      expect(backslash).toBe("d:/work/repo");
       expect(backslash).toBe(forwardSlash);
+    });
+
+    it("matches Windows drive paths that differ only by segment case", () => {
+      const upper = normalizeProjectPathForDedup(
+        "C:/Users/sox/Documents/code/mclone",
+      );
+      const lower = normalizeProjectPathForDedup(
+        "c:/users/sox/documents/code/mclone",
+      );
+      expect(upper).toBe(lower);
+    });
+
+    it("keeps WSL-like paths case-sensitive", () => {
+      const upper = normalizeProjectPathForDedup(
+        "/mnt/c/Users/sox/Documents/code/mclone",
+      );
+      const lower = normalizeProjectPathForDedup(
+        "/mnt/c/Users/sox/documents/code/mclone",
+      );
+      expect(upper).not.toBe(lower);
+    });
+  });
+
+  describe("getProjectIdentityKey", () => {
+    it("case-folds Windows drive paths", () => {
+      expect(getProjectIdentityKey("C:/Users/sox/Documents/code/mclone")).toBe(
+        getProjectIdentityKey("c:\\users\\sox\\documents\\code\\mclone"),
+      );
+    });
+
+    it("preserves POSIX case sensitivity", () => {
+      expect(getProjectIdentityKey("/Users/sox/Documents/code/mclone")).not.toBe(
+        getProjectIdentityKey("/Users/sox/documents/code/mclone"),
+      );
     });
   });
 

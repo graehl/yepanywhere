@@ -28,7 +28,11 @@ import {
   isCodexRolloutFileName,
   preferPlainCodexRollouts,
 } from "../utils/codexRolloutFiles.js";
-import { canonicalizeProjectPath, encodeProjectId } from "./paths.js";
+import {
+  canonicalizeProjectPath,
+  encodeProjectId,
+  getProjectIdentityKey,
+} from "./paths.js";
 
 export const CODEX_SESSIONS_DIR =
   process.env.CODEX_SESSIONS_DIR ?? getDefaultCodexSessionsDir();
@@ -49,6 +53,31 @@ interface CodexSessionInfo {
   timestamp: string;
   mtime: number;
   isSubagent: boolean;
+}
+
+function chooseDisplayProjectPath(
+  variants: Map<string, { count: number; lastActivity: number }>,
+): string {
+  let bestPath: string | null = null;
+  let bestCount = -1;
+  let bestLastActivity = -1;
+
+  for (const [path, stats] of variants) {
+    if (
+      bestPath === null ||
+      stats.count > bestCount ||
+      (stats.count === bestCount && stats.lastActivity > bestLastActivity) ||
+      (stats.count === bestCount &&
+        stats.lastActivity === bestLastActivity &&
+        path < bestPath)
+    ) {
+      bestPath = path;
+      bestCount = stats.count;
+      bestLastActivity = stats.lastActivity;
+    }
+  }
+
+  return bestPath ?? "";
 }
 
 export interface CodexScannerOptions {
@@ -117,7 +146,11 @@ export class CodexSessionScanner {
     // Group sessions by cwd
     const projectMap = new Map<
       string,
-      { sessions: CodexSessionInfo[]; lastActivity: number }
+      {
+        sessions: CodexSessionInfo[];
+        lastActivity: number;
+        pathVariants: Map<string, { count: number; lastActivity: number }>;
+      }
     >();
 
     for (const session of sessions) {
@@ -126,23 +159,44 @@ export class CodexSessionScanner {
       }
 
       const projectPath = canonicalizeProjectPath(session.cwd);
-      const existing = projectMap.get(projectPath);
+      const projectKey = getProjectIdentityKey(projectPath);
+      const existing = projectMap.get(projectKey);
       if (existing) {
         existing.sessions.push(session);
         if (session.mtime > existing.lastActivity) {
           existing.lastActivity = session.mtime;
         }
+        const variant = existing.pathVariants.get(projectPath);
+        if (variant) {
+          variant.count += 1;
+          variant.lastActivity = Math.max(variant.lastActivity, session.mtime);
+        } else {
+          existing.pathVariants.set(projectPath, {
+            count: 1,
+            lastActivity: session.mtime,
+          });
+        }
       } else {
-        projectMap.set(projectPath, {
+        projectMap.set(projectKey, {
           sessions: [session],
           lastActivity: session.mtime,
+          pathVariants: new Map([
+            [
+              projectPath,
+              {
+                count: 1,
+                lastActivity: session.mtime,
+              },
+            ],
+          ]),
         });
       }
     }
 
     // Convert to Project[]
     const projects: Project[] = [];
-    for (const [cwd, data] of projectMap) {
+    for (const data of projectMap.values()) {
+      const cwd = chooseDisplayProjectPath(data.pathVariants);
       projects.push({
         id: encodeProjectId(cwd),
         path: cwd,
@@ -177,11 +231,12 @@ export class CodexSessionScanner {
   ): Promise<CodexSessionInfo[]> {
     const sessions = await this.scanAllSessions();
     const canonicalProjectPath = canonicalizeProjectPath(projectPath);
+    const projectIdentityKey = getProjectIdentityKey(canonicalProjectPath);
     return sessions
       .filter(
         (s) =>
           !s.isSubagent &&
-          canonicalizeProjectPath(s.cwd) === canonicalProjectPath,
+          getProjectIdentityKey(s.cwd) === projectIdentityKey,
       )
       .sort((a, b) => b.mtime - a.mtime);
   }

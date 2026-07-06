@@ -3,7 +3,8 @@ import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import { CodexSessionScanner } from "../../src/projects/codex-scanner.js";
 import { createCodexSessionDiscoveryIndex } from "../../src/sessions/codex-discovery.js";
 import { getCodexRolloutDiscoveryIdentity } from "../../src/utils/codexRolloutFiles.js";
@@ -23,6 +24,15 @@ function makeSessionMeta(
       ...extra,
     },
   });
+}
+
+async function withExpectedScannerWarning<T>(run: () => Promise<T>): Promise<T> {
+  const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
+  try {
+    return await run();
+  } finally {
+    warn.mockRestore();
+  }
 }
 
 const zstdCompressSync = (
@@ -223,6 +233,38 @@ describe("CodexSessionScanner", () => {
     expect(projects).toHaveLength(1);
     expect(projects[0].path).toBe("C:/Users/kyle/Documents/webvam");
     expect(projects[0].sessionCount).toBe(2);
+  });
+
+  it("deduplicates Windows cwd variants that differ only by segment case", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    tempDirs.push(sessionsDir);
+
+    const dateDir = join(sessionsDir, "2026", "02", "03");
+    await mkdir(dateDir, { recursive: true });
+
+    const id1 = randomUUID();
+    const id2 = randomUUID();
+    const id3 = randomUUID();
+
+    await writeFile(
+      join(dateDir, `rollout-${id1}.jsonl`),
+      `${makeSessionMeta(id1, "C:/Users/sox/Documents/code/mclone")}\n`,
+    );
+    await writeFile(
+      join(dateDir, `rollout-${id2}.jsonl`),
+      `${makeSessionMeta(id2, "C:/Users/sox/Documents/code/mclone")}\n`,
+    );
+    await writeFile(
+      join(dateDir, `rollout-${id3}.jsonl`),
+      `${makeSessionMeta(id3, "c:/users/sox/documents/code/mclone")}\n`,
+    );
+
+    const scanner = new CodexSessionScanner({ sessionsDir });
+    const projects = await scanner.listProjects();
+
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("C:/Users/sox/Documents/code/mclone");
+    expect(projects[0].sessionCount).toBe(3);
   });
 
   it("parses session_meta with very large base_instructions over 64KB", async () => {
@@ -548,7 +590,9 @@ describe("CodexSessionScanner", () => {
     await writeFile(join(dateDir, "rollout-empty.jsonl"), "");
 
     const scanner = new CodexSessionScanner({ sessionsDir });
-    const projects = await scanner.listProjects();
+    const projects = await withExpectedScannerWarning(() =>
+      scanner.listProjects(),
+    );
     expect(projects).toHaveLength(0);
   });
 
@@ -564,7 +608,9 @@ describe("CodexSessionScanner", () => {
     );
 
     const scanner = new CodexSessionScanner({ sessionsDir });
-    const projects = await scanner.listProjects();
+    const projects = await withExpectedScannerWarning(() =>
+      scanner.listProjects(),
+    );
     expect(projects).toHaveLength(0);
   });
 

@@ -20,7 +20,7 @@ import {
   type UrlProjectId,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
-import { canonicalizeProjectPath } from "../projects/paths.js";
+import { getProjectIdentityKey } from "../projects/paths.js";
 import {
   type CodexRolloutDiscoveryMetadata,
   readCodexRolloutMetadata,
@@ -1163,7 +1163,7 @@ export class SessionIndexService implements ISessionIndexService {
   ): { sessionId: string; scopeKey: string; isSubagent: boolean } {
     return {
       sessionId: metadata.id,
-      scopeKey: `codex::${sessionsDir}::${canonicalizeProjectPath(
+      scopeKey: `codex::${sessionsDir}::${getProjectIdentityKey(
         metadata.cwd,
       )}`,
       isSubagent: metadata.isSubagent,

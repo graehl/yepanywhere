@@ -3,6 +3,7 @@ import {
   isUrlProjectId,
   toUrlProjectId,
   type ProjectQueueItemSummary,
+  type UrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
@@ -15,6 +16,8 @@ import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import {
   canonicalizeProjectPath,
+  decodeProjectId,
+  getProjectIdentityKey,
   isAbsolutePath,
   isDetachedProjectPath,
 } from "../projects/paths.js";
@@ -117,23 +120,55 @@ function isVisibleProjectQueueItem(item: ProjectQueueItemSummary): boolean {
   return item.status === "queued" || item.status === "failed";
 }
 
-function countVisibleProjectQueueItems(
-  items: readonly ProjectQueueItemSummary[],
-): number {
-  return items.filter(isVisibleProjectQueueItem).length;
+function projectIdsShareIdentity(left: string, right: string): boolean {
+  if (left === right) return true;
+  try {
+    return (
+      getProjectIdentityKey(decodeProjectId(left as UrlProjectId)) ===
+      getProjectIdentityKey(decodeProjectId(right as UrlProjectId))
+    );
+  } catch {
+    return false;
+  }
 }
 
-function getProjectQueueCounts(
-  projectQueueService: ProjectsDeps["projectQueueService"],
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  if (!projectQueueService) return counts;
+function addProjectActivityCounts(
+  left: ProjectActivityCounts,
+  right: ProjectActivityCounts,
+): ProjectActivityCounts {
+  return {
+    activeOwnedCount: left.activeOwnedCount + right.activeOwnedCount,
+    activeExternalCount: left.activeExternalCount + right.activeExternalCount,
+    projectQueueBlockingCount:
+      left.projectQueueBlockingCount + right.projectQueueBlockingCount,
+  };
+}
 
-  for (const item of projectQueueService.listAll()) {
-    if (!isVisibleProjectQueueItem(item)) continue;
-    counts.set(item.projectId, (counts.get(item.projectId) ?? 0) + 1);
+function getActivityCountsForProject(
+  counts: Map<string, ProjectActivityCounts>,
+  projectId: string,
+): ProjectActivityCounts {
+  let total = emptyProjectActivityCounts();
+  for (const [candidateProjectId, candidateCounts] of counts.entries()) {
+    if (projectIdsShareIdentity(candidateProjectId, projectId)) {
+      total = addProjectActivityCounts(total, candidateCounts);
+    }
   }
-  return counts;
+  return total;
+}
+
+function getProjectQueueCountForProject(
+  projectQueueService: ProjectsDeps["projectQueueService"],
+  projectId: string,
+): number {
+  if (!projectQueueService) return 0;
+  return projectQueueService
+    .listAll()
+    .filter(
+      (item) =>
+        isVisibleProjectQueueItem(item) &&
+        projectIdsShareIdentity(item.projectId, projectId),
+    ).length;
 }
 
 /**
@@ -195,11 +230,11 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     if (!deps.supervisor) return ownedSessions;
 
     for (const process of deps.supervisor.getAllProcesses()) {
-      if (process.projectId === projectId) {
+      if (projectIdsShareIdentity(process.projectId, projectId)) {
         const now = new Date().toISOString();
         ownedSessions.set(process.sessionId, {
           id: process.sessionId,
-          projectId: process.projectId,
+          projectId: projectId as UrlProjectId,
           title: null, // Title will be populated once file has content
           fullTitle: null,
           createdAt: process.startedAt.toISOString(),
@@ -334,17 +369,19 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.supervisor,
       deps.externalTracker,
     );
-    const projectQueueCounts = getProjectQueueCounts(deps.projectQueueService);
 
     // Enrich projects with active counts (all keyed by UrlProjectId now)
     const projects = rawProjects.map((project) => {
-      const counts = activityCounts.get(project.id);
+      const counts = getActivityCountsForProject(activityCounts, project.id);
       return {
         ...project,
-        activeOwnedCount: counts?.activeOwnedCount ?? 0,
-        activeExternalCount: counts?.activeExternalCount ?? 0,
-        projectQueueBlockingCount: counts?.projectQueueBlockingCount ?? 0,
-        projectQueueCount: projectQueueCounts.get(project.id) ?? 0,
+        activeOwnedCount: counts.activeOwnedCount,
+        activeExternalCount: counts.activeExternalCount,
+        projectQueueBlockingCount: counts.projectQueueBlockingCount,
+        projectQueueCount: getProjectQueueCountForProject(
+          deps.projectQueueService,
+          project.id,
+        ),
       };
     });
 
@@ -380,19 +417,17 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.supervisor,
       deps.externalTracker,
     );
-    const counts = activityCounts.get(project.id);
+    const counts = getActivityCountsForProject(activityCounts, project.id);
     const projectQueueCount = deps.projectQueueService
-      ? countVisibleProjectQueueItems(
-          deps.projectQueueService.listProject(project.id).items,
-        )
+      ? getProjectQueueCountForProject(deps.projectQueueService, project.id)
       : 0;
 
     return c.json({
       project: {
         ...project,
-        activeOwnedCount: counts?.activeOwnedCount ?? 0,
-        activeExternalCount: counts?.activeExternalCount ?? 0,
-        projectQueueBlockingCount: counts?.projectQueueBlockingCount ?? 0,
+        activeOwnedCount: counts.activeOwnedCount,
+        activeExternalCount: counts.activeExternalCount,
+        projectQueueBlockingCount: counts.projectQueueBlockingCount,
         projectQueueCount,
       },
     });
@@ -520,10 +555,11 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     );
 
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)
-    sessions = addMissingOwnedSessions(sessions, projectId);
+    const resolvedProjectId = project.id;
+    sessions = addMissingOwnedSessions(sessions, resolvedProjectId);
 
     const enriched = enrichSessions(sessions).filter(
-      (session) => session.projectId === projectId,
+      (session) => projectIdsShareIdentity(session.projectId, resolvedProjectId),
     );
 
     return c.json({ sessions: enriched });

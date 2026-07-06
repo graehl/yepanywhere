@@ -27,6 +27,7 @@ import type { UrlProjectId } from "@yep-anywhere/shared";
 import {
   PI_SESSIONS_DIR,
   canonicalizeProjectPath,
+  getProjectIdentityKey,
   readCwdFromSessionFile,
 } from "../projects/paths.js";
 import {
@@ -112,6 +113,7 @@ interface PiParsedSession {
 export class PiSessionReader implements ISessionReader {
   private sessionsDir: string;
   private projectPath?: string;
+  private projectIdentityKey?: string;
 
   private sessionCache: Map<string, PiSessionInfo> = new Map();
   private cacheTimestamp = 0;
@@ -124,6 +126,9 @@ export class PiSessionReader implements ISessionReader {
     this.sessionsDir = options.sessionsDir ?? PI_SESSIONS_DIR;
     this.projectPath = options.projectPath
       ? canonicalizeProjectPath(options.projectPath)
+      : undefined;
+    this.projectIdentityKey = this.projectPath
+      ? getProjectIdentityKey(this.projectPath)
       : undefined;
   }
 
@@ -154,7 +159,7 @@ export class PiSessionReader implements ISessionReader {
       return [];
     }
 
-    const targetCwd = this.projectPath;
+    const targetCwd = this.projectIdentityKey;
 
     for (const encoded of cwdDirs) {
       const cwdDir = join(this.sessionsDir, encoded);
@@ -177,7 +182,9 @@ export class PiSessionReader implements ISessionReader {
         if (!cwd) continue;
 
         const normalized = canonicalizeProjectPath(cwd);
-        if (targetCwd && normalized !== targetCwd) continue;
+        if (targetCwd && getProjectIdentityKey(normalized) !== targetCwd) {
+          continue;
+        }
 
         try {
           const st = await stat(filePath);
@@ -550,6 +557,6 @@ export class PiSessionReader implements ISessionReader {
   }
 
   getIndexScopeKey(sessionDir: string): string {
-    return `pi::${sessionDir}::${this.projectPath ?? "*"}`;
+    return `pi::${sessionDir}::${this.projectIdentityKey ?? "*"}`;
   }
 }

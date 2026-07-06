@@ -266,6 +266,84 @@ describe("ProjectScanner cache", () => {
     });
   });
 
+  it("merges Windows drive project paths that differ only by case", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+
+    const canonicalPath = "C:/Users/sox/Documents/code/mclone";
+    const lowerCasePath = "C:/Users/sox/documents/code/mclone";
+
+    await createClaudeProject(
+      projectsDir,
+      "host-upper",
+      canonicalPath,
+      "sess-upper-1",
+    );
+    await createClaudeProject(
+      projectsDir,
+      "host-upper",
+      canonicalPath,
+      "sess-upper-2",
+    );
+    await createClaudeProject(
+      projectsDir,
+      "host-lower",
+      lowerCasePath,
+      "sess-lower-1",
+    );
+
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+    });
+
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0]).toMatchObject({
+      id: encodeProjectId(canonicalPath),
+      path: canonicalPath,
+      name: "mclone",
+      sessionCount: 3,
+    });
+
+    await expect(
+      scanner.getProject(encodeProjectId(lowerCasePath)),
+    ).resolves.toMatchObject({
+      id: encodeProjectId(canonicalPath),
+      path: canonicalPath,
+    });
+  });
+
+  it("keeps WSL-like project path casing distinct", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+
+    await createClaudeProject(
+      projectsDir,
+      "host-upper",
+      "/mnt/c/Users/sox/Documents/code/mclone",
+      "sess-upper",
+    );
+    await createClaudeProject(
+      projectsDir,
+      "host-lower",
+      "/mnt/c/Users/sox/documents/code/mclone",
+      "sess-lower",
+    );
+
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+    });
+
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(2);
+  });
+
   it("invalidates shared codex scanner cache on codex file-change events", async () => {
     const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
     tempDirs.push(projectsDir);

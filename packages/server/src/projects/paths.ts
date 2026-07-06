@@ -151,6 +151,24 @@ export function canonicalizeProjectPath(path: string): string {
   });
 }
 
+function isWindowsDriveProjectPath(path: string): boolean {
+  return /^[a-zA-Z]:\//.test(path);
+}
+
+/**
+ * Return the internal identity key used for project membership comparisons.
+ *
+ * Windows drive paths are case-insensitive in the common Win32 path model, so
+ * path spellings that differ only by casing should not create separate YA
+ * projects. POSIX/WSL-style paths remain case-sensitive.
+ */
+export function getProjectIdentityKey(path: string): string {
+  const normalized = canonicalizeProjectPath(path);
+  return isWindowsDriveProjectPath(normalized)
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
 /**
  * Normalize a project path for cross-machine deduplication.
  *
@@ -165,15 +183,18 @@ export function canonicalizeProjectPath(path: string): string {
  */
 export function normalizeProjectPathForDedup(path: string): string {
   const normalized = canonicalizeProjectPath(path);
+  const caseInsensitive = isWindowsDriveProjectPath(normalized);
   // Unix: /Users/kgraehl/dotfiles or /home/kgraehl/dotfiles
   const unixMatch = normalized.match(/^\/(?:Users|home)\/(.+)$/);
   if (unixMatch?.[1]) return unixMatch[1];
   // Windows: C:/Users/kgraehl/dotfiles (after backslash normalization)
-  const winMatch = normalized.match(/^[a-zA-Z]:\/(?:Users|home)\/(.+)$/);
-  if (winMatch?.[1]) return winMatch[1];
+  const winMatch = normalized.match(/^[a-zA-Z]:\/(?:Users|home)\/(.+)$/i);
+  if (winMatch?.[1]) {
+    return caseInsensitive ? winMatch[1].toLowerCase() : winMatch[1];
+  }
   const rootMatch = normalized.match(/^\/root\/(.+)$/);
   if (rootMatch?.[1]) return `root/${rootMatch[1]}`;
-  return normalized;
+  return caseInsensitive ? normalized.toLowerCase() : normalized;
 }
 
 /**

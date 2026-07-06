@@ -51,7 +51,7 @@ describe("ProjectMetadataService", () => {
                 addedAt: "2026-04-06T09:00:00.000Z",
               },
               oldForwardSlashId: {
-                path: "c:/Users/kyle/Documents/webvam",
+                path: "c:/users/kyle/documents/webvam",
                 addedAt: "2026-04-06T10:00:00.000Z",
               },
             },
@@ -66,7 +66,7 @@ describe("ProjectMetadataService", () => {
       await newService.initialize();
 
       const projects = newService.getAllProjects();
-      const canonicalPath = "C:/Users/kyle/Documents/webvam";
+      const canonicalPath = "C:/users/kyle/documents/webvam";
       const canonicalProjectId = encodeProjectId(canonicalPath);
       expect(Object.keys(projects)).toEqual([canonicalProjectId]);
       expect(projects[canonicalProjectId]).toEqual({
@@ -117,6 +117,34 @@ describe("ProjectMetadataService", () => {
       );
       expect(service.getMetadata("legacy-id")).toBeUndefined();
     });
+
+    it("deduplicates Windows project metadata by path identity", async () => {
+      await service.addProject(
+        "legacy-a",
+        "C:\\Users\\kyle\\Documents\\webvam",
+      );
+      await service.addProject(
+        "legacy-b",
+        "C:\\Users\\kyle\\documents\\webvam",
+      );
+
+      const projects = service.getAllProjects();
+      expect(Object.keys(projects)).toHaveLength(1);
+      expect(
+        service.getMetadata(
+          encodeProjectId("C:/Users/kyle/Documents/webvam"),
+        ),
+      ).toBeUndefined();
+      expect(
+        service.getMetadata(
+          encodeProjectId("C:/Users/kyle/documents/webvam"),
+        ),
+      ).toEqual(
+        expect.objectContaining({
+          path: "C:/Users/kyle/documents/webvam",
+        }),
+      );
+    });
   });
 
   describe("removeProject", () => {
@@ -158,6 +186,18 @@ describe("ProjectMetadataService", () => {
 
       expect(service.isHiddenProject(projectId)).toBe(false);
       expect(service.getMetadata(projectId)).toBeDefined();
+    });
+
+    it("hides Windows project casing variants together", async () => {
+      const addedPath = "C:/Users/kyle/Documents/webvam";
+      const hiddenPath = "C:/Users/kyle/documents/webvam";
+      await service.addProject(encodeProjectId(addedPath), addedPath);
+
+      await service.hideProject(encodeProjectId(hiddenPath), hiddenPath);
+
+      expect(service.getAllProjects()).toEqual({});
+      expect(service.isHiddenProjectPath(addedPath)).toBe(true);
+      expect(service.isHiddenProjectPath(hiddenPath)).toBe(true);
     });
   });
 

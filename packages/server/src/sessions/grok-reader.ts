@@ -35,6 +35,7 @@ import type {
 import {
   GROK_SESSIONS_DIR,
   canonicalizeProjectPath,
+  getProjectIdentityKey,
 } from "../projects/paths.js";
 
 export interface GrokSessionReaderOptions {
@@ -88,6 +89,7 @@ interface GrokSessionInfo {
 export class GrokSessionReader implements ISessionReader {
   private sessionsDir: string;
   private projectPath?: string;
+  private projectIdentityKey?: string;
 
   private sessionCache: Map<string, GrokSessionInfo> = new Map();
   private cacheTimestamp = 0;
@@ -97,6 +99,9 @@ export class GrokSessionReader implements ISessionReader {
     this.sessionsDir = options.sessionsDir ?? GROK_SESSIONS_DIR;
     this.projectPath = options.projectPath
       ? canonicalizeProjectPath(options.projectPath)
+      : undefined;
+    this.projectIdentityKey = this.projectPath
+      ? getProjectIdentityKey(this.projectPath)
       : undefined;
   }
 
@@ -118,7 +123,7 @@ export class GrokSessionReader implements ISessionReader {
       return [];
     }
 
-    const targetCwd = this.projectPath;
+    const targetCwd = this.projectIdentityKey;
 
     for (const encoded of cwdDirs) {
       if (encoded === "session_search.sqlite") continue;
@@ -131,7 +136,7 @@ export class GrokSessionReader implements ISessionReader {
       }
 
       const normalized = canonicalizeProjectPath(decodedCwd);
-      if (targetCwd && normalized !== targetCwd) {
+      if (targetCwd && getProjectIdentityKey(normalized) !== targetCwd) {
         continue;
       }
 
@@ -1169,6 +1174,6 @@ export class GrokSessionReader implements ISessionReader {
   }
 
   getIndexScopeKey(sessionDir: string): string {
-    return `grok::${sessionDir}::${this.projectPath ?? "*"}`;
+    return `grok::${sessionDir}::${this.projectIdentityKey ?? "*"}`;
   }
 }

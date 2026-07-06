@@ -8,7 +8,11 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { canonicalizeProjectPath, encodeProjectId } from "../projects/paths.js";
+import {
+  canonicalizeProjectPath,
+  encodeProjectId,
+  getProjectIdentityKey,
+} from "../projects/paths.js";
 
 export interface ProjectMetadata {
   /** The absolute path to the project directory */
@@ -136,7 +140,8 @@ export class ProjectMetadataService {
     if (projectId !== canonicalProjectId) {
       delete this.state.projects[projectId];
     }
-    delete this.state.hiddenProjects?.[canonicalProjectId];
+    this.deleteProjectsByIdentity(canonicalPath);
+    this.deleteHiddenProjectsByIdentity(canonicalPath);
     this.state.projects[canonicalProjectId] = {
       path: canonicalPath,
       addedAt: new Date().toISOString(),
@@ -167,7 +172,8 @@ export class ProjectMetadataService {
       delete this.state.hiddenProjects?.[projectId];
     }
 
-    delete this.state.projects[canonicalProjectId];
+    this.deleteProjectsByIdentity(canonicalPath);
+    this.deleteHiddenProjectsByIdentity(canonicalPath);
     this.state.hiddenProjects ??= {};
     this.state.hiddenProjects[canonicalProjectId] = {
       path: canonicalPath,
@@ -188,6 +194,17 @@ export class ProjectMetadataService {
    */
   isHiddenProject(projectId: string): boolean {
     return projectId in (this.state.hiddenProjects ?? {});
+  }
+
+  /**
+   * Check whether a project path is hidden using the same identity rules as
+   * project discovery.
+   */
+  isHiddenProjectPath(projectPath: string): boolean {
+    const targetIdentity = getProjectIdentityKey(projectPath);
+    return Object.values(this.state.hiddenProjects ?? {}).some(
+      (metadata) => getProjectIdentityKey(metadata.path) === targetIdentity,
+    );
   }
 
   /**
@@ -229,23 +246,33 @@ export class ProjectMetadataService {
   }
 
   private normalizeState(state: ProjectMetadataState): ProjectMetadataState {
-    const projects: Record<string, ProjectMetadata> = {};
-    const hiddenProjects: Record<string, HiddenProjectMetadata> = {};
+    const projectsByIdentity = new Map<
+      string,
+      { projectId: string; metadata: ProjectMetadata }
+    >();
+    const hiddenProjectsByIdentity = new Map<
+      string,
+      { projectId: string; metadata: HiddenProjectMetadata }
+    >();
 
     for (const [projectId, metadata] of Object.entries(state.projects ?? {})) {
       const canonicalPath = canonicalizeProjectPath(metadata.path);
       const canonicalProjectId = encodeProjectId(canonicalPath);
-      const existing = projects[canonicalProjectId];
+      const identity = getProjectIdentityKey(canonicalPath);
+      const existing = projectsByIdentity.get(identity);
 
       if (
         !existing ||
         new Date(metadata.addedAt).getTime() >
-          new Date(existing.addedAt).getTime()
+          new Date(existing.metadata.addedAt).getTime()
       ) {
-        projects[canonicalProjectId] = {
-          path: canonicalPath,
-          addedAt: metadata.addedAt,
-        };
+        projectsByIdentity.set(identity, {
+          projectId: canonicalProjectId,
+          metadata: {
+            path: canonicalPath,
+            addedAt: metadata.addedAt,
+          },
+        });
       }
 
       if (projectId !== canonicalProjectId) {
@@ -260,17 +287,21 @@ export class ProjectMetadataService {
     )) {
       const canonicalPath = canonicalizeProjectPath(metadata.path);
       const canonicalProjectId = encodeProjectId(canonicalPath);
-      const existing = hiddenProjects[canonicalProjectId];
+      const identity = getProjectIdentityKey(canonicalPath);
+      const existing = hiddenProjectsByIdentity.get(identity);
 
       if (
         !existing ||
         new Date(metadata.hiddenAt).getTime() >
-          new Date(existing.hiddenAt).getTime()
+          new Date(existing.metadata.hiddenAt).getTime()
       ) {
-        hiddenProjects[canonicalProjectId] = {
-          path: canonicalPath,
-          hiddenAt: metadata.hiddenAt,
-        };
+        hiddenProjectsByIdentity.set(identity, {
+          projectId: canonicalProjectId,
+          metadata: {
+            path: canonicalPath,
+            hiddenAt: metadata.hiddenAt,
+          },
+        });
       }
 
       if (projectId !== canonicalProjectId) {
@@ -280,8 +311,18 @@ export class ProjectMetadataService {
       }
     }
 
-    for (const hiddenProjectId of Object.keys(hiddenProjects)) {
-      delete projects[hiddenProjectId];
+    for (const hiddenIdentity of hiddenProjectsByIdentity.keys()) {
+      projectsByIdentity.delete(hiddenIdentity);
+    }
+
+    const projects: Record<string, ProjectMetadata> = {};
+    for (const { projectId, metadata } of projectsByIdentity.values()) {
+      projects[projectId] = metadata;
+    }
+
+    const hiddenProjects: Record<string, HiddenProjectMetadata> = {};
+    for (const { projectId, metadata } of hiddenProjectsByIdentity.values()) {
+      hiddenProjects[projectId] = metadata;
     }
 
     return {
@@ -289,5 +330,26 @@ export class ProjectMetadataService {
       hiddenProjects,
       version: CURRENT_VERSION,
     };
+  }
+
+  private deleteProjectsByIdentity(projectPath: string): void {
+    const targetIdentity = getProjectIdentityKey(projectPath);
+    for (const [projectId, metadata] of Object.entries(this.state.projects)) {
+      if (getProjectIdentityKey(metadata.path) === targetIdentity) {
+        delete this.state.projects[projectId];
+      }
+    }
+  }
+
+  private deleteHiddenProjectsByIdentity(projectPath: string): void {
+    if (!this.state.hiddenProjects) return;
+    const targetIdentity = getProjectIdentityKey(projectPath);
+    for (const [projectId, metadata] of Object.entries(
+      this.state.hiddenProjects,
+    )) {
+      if (getProjectIdentityKey(metadata.path) === targetIdentity) {
+        delete this.state.hiddenProjects[projectId];
+      }
+    }
   }
 }

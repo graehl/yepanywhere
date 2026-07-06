@@ -32,6 +32,10 @@ import type {
   ISessionReader,
   LoadedSession,
 } from "./types.js";
+import {
+  canonicalizeProjectPath,
+  getProjectIdentityKey,
+} from "../projects/paths.js";
 
 export interface GeminiSessionReaderOptions {
   /**
@@ -69,6 +73,7 @@ interface GeminiSessionCacheEntry {
 export class GeminiSessionReader implements ISessionReader {
   private sessionsDir: string;
   private projectPath?: string;
+  private projectIdentityKey?: string;
   private hashToCwd?: Map<string, string> | Promise<Map<string, string>>;
 
   // Cache of session ID -> file info for quick lookups
@@ -78,7 +83,12 @@ export class GeminiSessionReader implements ISessionReader {
 
   constructor(options: GeminiSessionReaderOptions) {
     this.sessionsDir = options.sessionsDir;
-    this.projectPath = options.projectPath;
+    this.projectPath = options.projectPath
+      ? canonicalizeProjectPath(options.projectPath)
+      : undefined;
+    this.projectIdentityKey = this.projectPath
+      ? getProjectIdentityKey(this.projectPath)
+      : undefined;
     this.hashToCwd = options.hashToCwd;
   }
 
@@ -88,7 +98,7 @@ export class GeminiSessionReader implements ISessionReader {
 
     for (const session of sessions) {
       // Filter by project path if set
-      if (this.projectPath) {
+      if (this.projectIdentityKey) {
         // Resolve hashToCwd if needed
         let map: Map<string, string> | undefined;
         if (this.hashToCwd instanceof Promise) {
@@ -98,7 +108,10 @@ export class GeminiSessionReader implements ISessionReader {
         }
 
         const cwd = map?.get(session.projectHash);
-        if (cwd !== this.projectPath) {
+        if (
+          !cwd ||
+          getProjectIdentityKey(cwd) !== this.projectIdentityKey
+        ) {
           continue;
         }
       }
@@ -250,7 +263,7 @@ export class GeminiSessionReader implements ISessionReader {
   }
 
   getIndexScopeKey(sessionDir: string): string {
-    return `gemini::${sessionDir}::${this.projectPath ?? "*"}`;
+    return `gemini::${sessionDir}::${this.projectIdentityKey ?? "*"}`;
   }
 
   /**

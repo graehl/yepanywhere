@@ -25,7 +25,10 @@ import {
 } from "@yep-anywhere/shared";
 import type { SessionDiscoveryIndex } from "../indexes/SessionDiscoveryIndex.js";
 import { getLogger } from "../logging/logger.js";
-import { canonicalizeProjectPath } from "../projects/paths.js";
+import {
+  canonicalizeProjectPath,
+  getProjectIdentityKey,
+} from "../projects/paths.js";
 import type {
   ContextUsage,
   Message,
@@ -430,6 +433,7 @@ function dedupeCodexEntries(entries: CodexSessionEntry[]): CodexSessionEntry[] {
 export class CodexSessionReader implements ISessionReader {
   private sessionsDir: string;
   private projectPath?: string;
+  private projectIdentityKey?: string;
   private dataDir?: string;
   private discoveryIndex?: SessionDiscoveryIndex;
   private slowLogThresholdMs: number;
@@ -446,6 +450,9 @@ export class CodexSessionReader implements ISessionReader {
     this.sessionsDir = options.sessionsDir;
     this.projectPath = options.projectPath
       ? canonicalizeProjectPath(options.projectPath)
+      : undefined;
+    this.projectIdentityKey = this.projectPath
+      ? getProjectIdentityKey(this.projectPath)
       : undefined;
     this.dataDir = options.dataDir;
     this.discoveryIndex =
@@ -507,8 +514,8 @@ export class CodexSessionReader implements ISessionReader {
     for (const session of sessions) {
       // Filter by project path if set
       if (
-        this.projectPath &&
-        canonicalizeProjectPath(session.cwd) !== this.projectPath
+        this.projectIdentityKey &&
+        getProjectIdentityKey(session.cwd) !== this.projectIdentityKey
       ) {
         continue;
       }
@@ -687,8 +694,8 @@ export class CodexSessionReader implements ISessionReader {
 
     for (const session of sessions) {
       if (
-        this.projectPath &&
-        canonicalizeProjectPath(session.cwd) !== this.projectPath
+        this.projectIdentityKey &&
+        getProjectIdentityKey(session.cwd) !== this.projectIdentityKey
       ) {
         continue;
       }
@@ -940,7 +947,7 @@ export class CodexSessionReader implements ISessionReader {
   }
 
   getIndexScopeKey(sessionDir: string): string {
-    return `codex::${sessionDir}::${this.projectPath ?? "*"}`;
+    return `codex::${sessionDir}::${this.projectIdentityKey ?? "*"}`;
   }
 
   async listSessionFiles(
@@ -952,8 +959,8 @@ export class CodexSessionReader implements ISessionReader {
     return sessions
       .filter(
         (session) =>
-          (!this.projectPath ||
-            canonicalizeProjectPath(session.cwd) === this.projectPath) &&
+          (!this.projectIdentityKey ||
+            getProjectIdentityKey(session.cwd) === this.projectIdentityKey) &&
           (!options?.activeAfterMs || session.mtime >= options.activeAfterMs),
       )
       .map((session) => ({

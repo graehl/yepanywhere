@@ -24,6 +24,7 @@ import {
   canonicalizeProjectPath,
   decodeProjectId,
   encodeProjectId,
+  getProjectIdentityKey,
   getProjectName,
   isAbsolutePath,
   normalizeProjectPathForDedup,
@@ -49,7 +50,7 @@ export interface ScannerOptions {
 
 const CLAUDE_PROJECT_SCAN_BATCH_SIZE = 16;
 const CWD_SCAN_BATCH_SIZE = 8;
-const PROJECT_SCAN_CACHE_VERSION = 3;
+const PROJECT_SCAN_CACHE_VERSION = 4;
 
 interface ProjectScanSourceState {
   projectsDir: string;
@@ -82,6 +83,7 @@ interface CachedProjectSnapshotData {
 interface ProjectSnapshot {
   projects: Project[];
   byId: Map<string, Project>;
+  byIdentityKey: Map<string, Project>;
   bySessionDirSuffix: Map<string, Project>;
   timestamp: number;
 }
@@ -260,10 +262,12 @@ export class ProjectScanner {
     timestamp = Date.now(),
   ): ProjectSnapshot {
     const byId = new Map<string, Project>();
+    const byIdentityKey = new Map<string, Project>();
     const bySessionDirSuffix = new Map<string, Project>();
 
     for (const project of projects) {
       byId.set(project.id, project);
+      byIdentityKey.set(getProjectIdentityKey(project.path), project);
 
       const primarySuffix = this.normalizeDirSuffix(
         this.sessionDirToSuffix(project.sessionDir),
@@ -285,6 +289,7 @@ export class ProjectScanner {
     return {
       projects,
       byId,
+      byIdentityKey,
       bySessionDirSuffix,
       timestamp,
     };
@@ -584,8 +589,16 @@ export class ProjectScanner {
   private async scanProjects(): Promise<Project[]> {
     const projects: Project[] = [];
     const seenPaths = new Set<string>();
+    const seenIdentityKeys = new Set<string>();
     // Map from normalized path to project index for cross-machine dedup
     const normalizedIndex = new Map<string, number>();
+
+    const findProjectByIdentity = (projectPath: string): Project | undefined =>
+      projects.find(
+        (project) =>
+          getProjectIdentityKey(project.path) ===
+          getProjectIdentityKey(projectPath),
+      );
 
     // ~/.claude/projects/ can have two structures:
     // 1. Projects directly as -home-user-project/
@@ -611,8 +624,8 @@ export class ProjectScanner {
         this.resolveProjectPathForKnownWorkstream(rawProjectPath),
       );
       if (this.isHiddenProjectPath(projectPath)) return;
-      if (seenPaths.has(projectPath)) return; // exact path duplicate
       seenPaths.add(projectPath);
+      seenIdentityKeys.add(getProjectIdentityKey(projectPath));
 
       const normalized = normalizeProjectPathForDedup(projectPath);
       const existingIdx = normalizedIndex.get(normalized);
@@ -621,11 +634,14 @@ export class ProjectScanner {
         // Cross-machine duplicate — merge into existing project
         const existing = projects[existingIdx];
         if (!existing) return;
+        const existingSessionCount = existing.sessionCount;
         addProviderSessionCount(existing, "claude", sessionCount);
         if (!existing.mergedSessionDirs) {
           existing.mergedSessionDirs = [];
         }
-        existing.mergedSessionDirs.push(sessionDir);
+        if (!existing.mergedSessionDirs.includes(sessionDir)) {
+          existing.mergedSessionDirs.push(sessionDir);
+        }
         existing.lastActivity = latestActivity(
           existing.lastActivity,
           lastActivity,
@@ -644,7 +660,21 @@ export class ProjectScanner {
         const newIsLocal =
           projectPath.startsWith(localHomePrefix) ||
           projectPath.startsWith(localHomePrefixWin);
-        if (!existingIsLocal && newIsLocal) {
+        const candidateHasMoreSessions =
+          getProjectIdentityKey(existing.path) ===
+            getProjectIdentityKey(projectPath) &&
+          sessionCount > existingSessionCount;
+        const candidateIsEquallyCommonAndLexicalFirst =
+          getProjectIdentityKey(existing.path) ===
+            getProjectIdentityKey(projectPath) &&
+          sessionCount === existingSessionCount &&
+          projectPath < existing.path;
+        if (
+          (!existingIsLocal && newIsLocal) ||
+          (existingIsLocal === newIsLocal &&
+            (candidateHasMoreSessions ||
+              candidateIsEquallyCommonAndLexicalFirst))
+        ) {
           existing.path = projectPath;
           existing.id = encodeProjectId(projectPath);
           existing.name = getProjectName(projectPath);
@@ -737,9 +767,7 @@ export class ProjectScanner {
           this.resolveProjectPathForKnownWorkstream(codexProject.path),
         );
         if (this.isHiddenProjectPath(projectPath)) continue;
-        const existing = projects.find(
-          (project) => canonicalizeProjectPath(project.path) === projectPath,
-        );
+        const existing = findProjectByIdentity(projectPath);
         if (existing) {
           addProviderSessionCount(
             existing,
@@ -751,9 +779,12 @@ export class ProjectScanner {
             existing.lastActivity,
             codexProject.lastActivity,
           );
+          seenPaths.add(projectPath);
+          seenIdentityKeys.add(getProjectIdentityKey(projectPath));
           continue;
         }
         seenPaths.add(projectPath);
+        seenIdentityKeys.add(getProjectIdentityKey(projectPath));
         projects.push({
           ...withProviderSessionCounts(codexProject),
           id: encodeProjectId(projectPath),
@@ -776,9 +807,7 @@ export class ProjectScanner {
           this.resolveProjectPathForKnownWorkstream(geminiProject.path),
         );
         if (this.isHiddenProjectPath(projectPath)) continue;
-        const existing = projects.find(
-          (project) => canonicalizeProjectPath(project.path) === projectPath,
-        );
+        const existing = findProjectByIdentity(projectPath);
         if (existing) {
           addProviderSessionCount(
             existing,
@@ -790,9 +819,12 @@ export class ProjectScanner {
             existing.lastActivity,
             geminiProject.lastActivity,
           );
+          seenPaths.add(projectPath);
+          seenIdentityKeys.add(getProjectIdentityKey(projectPath));
           continue;
         }
         seenPaths.add(projectPath);
+        seenIdentityKeys.add(getProjectIdentityKey(projectPath));
         projects.push({
           ...withProviderSessionCounts(geminiProject),
           id: encodeProjectId(projectPath),
@@ -811,7 +843,7 @@ export class ProjectScanner {
         const projectPath = canonicalizeProjectPath(metadata.path);
         if (this.isHiddenProjectPath(projectPath)) continue;
         // Skip if we've already seen this path from another source
-        if (seenPaths.has(projectPath)) continue;
+        if (seenIdentityKeys.has(getProjectIdentityKey(projectPath))) continue;
 
         // Verify the directory still exists
         try {
@@ -823,6 +855,7 @@ export class ProjectScanner {
         }
 
         seenPaths.add(projectPath);
+        seenIdentityKeys.add(getProjectIdentityKey(projectPath));
         const encodedPath = projectPath.replace(/[/\\:]/g, "-");
         projects.push({
           id: encodeProjectId(projectPath),
@@ -865,15 +898,22 @@ export class ProjectScanner {
 
   async getProject(projectId: string): Promise<Project | null> {
     const snapshot = await this.getSnapshot();
-    const project = snapshot.byId.get(projectId);
+    let project = snapshot.byId.get(projectId);
+    if (!project) {
+      try {
+        project = snapshot.byIdentityKey.get(
+          getProjectIdentityKey(decodeProjectId(projectId as UrlProjectId)),
+        );
+      } catch {
+        project = undefined;
+      }
+    }
     return project ? this.cloneProject(project) : null;
   }
 
   private isHiddenProjectPath(projectPath: string): boolean {
     if (!this.projectMetadataService) return false;
-    return this.projectMetadataService.isHiddenProject(
-      encodeProjectId(projectPath),
-    );
+    return this.projectMetadataService.isHiddenProjectPath(projectPath);
   }
 
   /**

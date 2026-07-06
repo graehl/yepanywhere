@@ -189,6 +189,7 @@ and props stable.
 | 2.9 | Done 2026-07-06 | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Moved pure helpers only; i18n copy, workstream selector behavior, and staged upload/submission effects stayed in the form. Focused helper tests were added. |
 | 2.10a | Done 2026-07-06 | Git diff large-preview admission guard | Add the server/client guard prerequisite before moving `GitStatusPage.tsx` diff preview components. | Server now returns bounded `previewSkipped` metadata before syntax highlighting oversized git previews; client also refuses to inject oversized highlighted HTML from older servers. |
 | 2.10 | Done 2026-07-06 | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Moved diff preview fetch/render, modal, skipped-preview state, and low-level diff renderers into `GitStatusDiffPreview.tsx`; page keeps selected-file/action/untracked-folder state and owns route-retention writes. |
+| 2.11 | Done 2026-07-06 | `SessionPage.tsx` `/btw` sticky cards | Move sticky `/btw` footer-card JSX into a focused render component after slice 2.2 moved the orchestration hook. | Render-only follow-up to slice 2.2. `SessionPage.tsx` still owns composer routing and callback wiring; focused component tests cover actions and expanded transcript transfer. |
 
 ## Phase 3: Existing Architecture-Aligned Migrations
 
@@ -273,6 +274,40 @@ Follow-ups recorded:
 
 ## Landing Notes
 
+### Slice 2.11 — SessionPage /btw Sticky Cards (Landed 2026-07-06, this commit)
+
+Moved:
+- Sticky `/btw` footer-card stack rendering, card action buttons, expanded
+  transcript rendering, and transfer-to-Mother-composer button wiring ->
+  `BtwAsideStickyCards.tsx`.
+
+Signature conversions:
+- `SessionPage.tsx` now passes aside card items and callbacks into
+  `BtwAsideStickyCards`; the page still owns focused aside state, hide/stop
+  handlers, expanded-state toggling, and composer-transfer behavior.
+
+Behavior changes:
+- None intended. Card text/classes, expand/show behavior, Done/Hide/Stop
+  actions, and expanded transcript transfer behavior were preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/components/__tests__/BtwAsideStickyCards.test.tsx
+  src/components/__tests__/BtwAsidePane.test.tsx
+  src/hooks/__tests__/useBtwAsides.test.ts`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2/3: `pnpm test`; `pnpm lint`; `pnpm typecheck`;
+  `pnpm console:scan`; Android-excluded client E2E via
+  `pnpm --filter @yep-anywhere/client test:e2e --grep-invert "physical Android"`.
+- Residual chatter: full tests and client E2E still emit the baseline
+  server/client log chatter, Vite chunk/browser-compatibility warnings, and
+  Node `NO_COLOR`/`FORCE_COLOR` warnings tracked in the baseline notes.
+
+Follow-ups recorded:
+- None.
+
 ### Slice 3.1 — useSessionMessages Returned-Detail Adapter Cutdown (Landed 2026-07-06, this commit)
 
 Moved:
@@ -355,9 +390,7 @@ Verification:
   Node `NO_COLOR`/`FORCE_COLOR` warnings tracked in the baseline notes.
 
 Follow-ups recorded:
-- Sticky `/btw` footer-card JSX still lives in `SessionPage.tsx`; moving it to
-  a component should be a separate move-only slice if it still ranks above the
-  remaining Phase 2/3/4 work.
+- Resolved by Slice 2.11.
 
 ### Slice 2.10 — GitStatusPage Diff Preview Module (Landed 2026-07-06, this commit)
 

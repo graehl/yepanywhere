@@ -19,7 +19,8 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import { BtwAsidePane, BtwAsideTranscript } from "../components/BtwAsidePane";
+import { BtwAsidePane } from "../components/BtwAsidePane";
+import { BtwAsideStickyCards } from "../components/BtwAsideStickyCards";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
 import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
@@ -4622,109 +4623,16 @@ function SessionPageContent({
             className={`session-connection-bar session-connection-${sessionConnectionStatus}`}
           />
           <div className="session-input-inner">
-            {composerStickyBtwAsides.length > 0 && (
-              <div
-                className="btw-aside-stack"
-                role="region"
-                aria-label="/btw asides"
-              >
-                {composerStickyBtwAsides.map((aside) => {
-                  const isFocused = focusedBtwAsideId === aside.id;
-                  const canExpand = Boolean(
-                    aside.request ||
-                      aside.followUps.length > 0 ||
-                      aside.responses.length > 0 ||
-                      (aside.turns?.length ?? 0) > 0,
-                  );
-                  return (
-                    <div
-                      key={aside.id}
-                      className={`btw-aside-card is-${aside.status} ${
-                        isFocused ? "is-focused" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="btw-aside-main"
-                        onClick={() => setFocusedBtwAsideId(aside.id)}
-                      >
-                        <span className="btw-aside-meta">
-                          /btw {aside.status}
-                        </span>
-                        <span className="btw-aside-request">
-                          {aside.request || "New aside"}
-                        </span>
-                        {aside.followUps.length > 0 && (
-                          <span className="btw-aside-followups">
-                            +{aside.followUps.length} follow-up
-                            {aside.followUps.length === 1 ? "" : "s"}
-                          </span>
-                        )}
-                        {aside.preview && (
-                          <span className="btw-aside-preview">
-                            {aside.preview}
-                          </span>
-                        )}
-                        {aside.error && (
-                          <span className="btw-aside-error">{aside.error}</span>
-                        )}
-                      </button>
-                      {aside.expanded && canExpand && (
-                        <BtwAsideTranscript
-                          aside={aside}
-                          autoScrollLatest
-                          onTransferToComposer={transferBtwTurnToMotherComposer}
-                        />
-                      )}
-                      <div className="btw-aside-actions">
-                        {canExpand && (
-                          <button
-                            type="button"
-                            className="btw-aside-action"
-                            onClick={() => toggleBtwAsideExpanded(aside.id)}
-                          >
-                            {aside.expanded ? "Less" : "Show"}
-                          </button>
-                        )}
-                        {isFocused && (
-                          <button
-                            type="button"
-                            className="btw-aside-action"
-                            onClick={() => hideBtwAside(aside.id)}
-                            title={t("btwAsideReturnComposerTitle")}
-                          >
-                            Done
-                          </button>
-                        )}
-                        {(aside.status === "starting" ||
-                          aside.status === "running") && (
-                          <button
-                            type="button"
-                            className="btw-aside-action btw-aside-action-stop"
-                            onClick={() => void handleStopBtwAside(aside.id)}
-                            title={
-                              isFocused
-                                ? "Stop this /btw aside and return to the main session"
-                                : "Stop this /btw aside"
-                            }
-                          >
-                            Stop
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btw-aside-action"
-                          onClick={() => hideBtwAside(aside.id)}
-                          title={t("btwAsideMoveToHistoryTitle")}
-                        >
-                          Hide
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <BtwAsideStickyCards
+              asides={composerStickyBtwAsides}
+              focusedAsideId={focusedBtwAsideId}
+              onFocusAside={setFocusedBtwAsideId}
+              onToggleAsideExpanded={toggleBtwAsideExpanded}
+              onDoneAside={hideBtwAside}
+              onHideAside={hideBtwAside}
+              onStopAside={(asideId) => void handleStopBtwAside(asideId)}
+              onTransferToComposer={transferBtwTurnToMotherComposer}
+            />
 
             {/* User question panel */}
             {pendingInputRequest &&

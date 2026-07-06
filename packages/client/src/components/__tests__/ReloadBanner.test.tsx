@@ -110,12 +110,16 @@ describe("ReloadBanner", () => {
     ).toBeTruthy();
   });
 
-  it("hides reload when safe for safe backend reloads", () => {
+  it("reloads immediately for safe backend reloads", () => {
+    const onReload = vi.fn();
     renderBanner({
       onRestartWhenSafe: vi.fn(),
+      onReload,
     });
 
-    expect(screen.getByRole("button", { name: "Reload Server" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reload Server" }));
+
+    expect(onReload).toHaveBeenCalledTimes(1);
     expect(
       screen.queryByRole("button", { name: "Reload When Safe" }),
     ).toBeNull();

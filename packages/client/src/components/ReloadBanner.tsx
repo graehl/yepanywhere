@@ -181,6 +181,11 @@ export function ReloadBanner({
   }, [confirmingImmediateReloadLabel]);
 
   const handleImmediateReloadClick = () => {
+    if (!showWarning) {
+      onReload();
+      return;
+    }
+
     if (!isConfirmingImmediateReload) {
       setConfirmingImmediateReloadLabel(primaryReloadLabel);
       return;

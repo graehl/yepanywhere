@@ -1,0 +1,1198 @@
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import {
+  CONCAT_SEPARATOR,
+  MessageQueue,
+  Process,
+  createControllableIterator,
+  createMockIterator,
+  waitFor,
+  withSessionQueuePersistence,
+} from "./process.test-support.js";
+import type {
+  ProcessEvent,
+  UrlProjectId,
+} from "./process.test-support.js";
+
+describe("Process", () => {
+  describe("deferred queue", () => {
+    it("includes attachment count in deferred queue summaries", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+
+      process.deferMessage({
+        text: "see attached",
+        tempId: "temp-1",
+        attachments: [
+          {
+            id: "file-1",
+            originalName: "screenshot.png",
+            name: "screenshot.png",
+            size: 1024,
+            mimeType: "image/png",
+            path: "/uploads/screenshot.png",
+          },
+        ],
+      });
+
+      expect(process.getDeferredQueueSummary()).toEqual([
+        {
+          tempId: "temp-1",
+          content: "see attached",
+          timestamp: expect.any(String),
+          attachmentCount: 1,
+          attachments: [
+            {
+              id: "file-1",
+              originalName: "screenshot.png",
+              name: "screenshot.png",
+              size: 1024,
+              mimeType: "image/png",
+              path: "/uploads/screenshot.png",
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("includes user message metadata in deferred queue summaries", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+      const metadata = {
+        deliveryIntent: "deferred" as const,
+        composition: {
+          typingStartedAt: "2026-04-25T00:00:10.000Z",
+          typingEndedAt: "2026-04-25T00:00:20.000Z",
+          lastEditedAt: "2026-04-25T00:00:19.000Z",
+          submittedAt: "2026-04-25T00:00:20.000Z",
+        },
+        clientTimestamp: 1770000000123,
+        serverReceivedAt: "2026-04-25T00:00:20.250Z",
+      };
+
+      process.deferMessage({
+        text: "later",
+        tempId: "temp-meta",
+        metadata,
+      });
+
+      expect(process.getDeferredQueueSummary()).toEqual([
+        {
+          tempId: "temp-meta",
+          content: "later",
+          timestamp: expect.any(String),
+          metadata,
+        },
+      ]);
+    });
+
+    it("persists only patient queue entries and deletes them on cancel", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const iterator = createMockIterator([
+          { type: "system", session_id: "sess-1" },
+        ]);
+
+        const process = new Process(iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage({
+          text: "short deferred",
+          tempId: "temp-deferred",
+          metadata: { deliveryIntent: "deferred" },
+        });
+        process.deferMessage({
+          text: "patient follow-up",
+          tempId: "temp-patient",
+          metadata: {
+            deliveryIntent: "patient",
+            serverReceivedAt: "2026-06-30T10:00:00.000Z",
+          },
+        });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toMatchObject([
+          {
+            sessionId: "sess-1",
+            projectId,
+            kind: "patient",
+            status: "queued",
+            message: {
+              text: "patient follow-up",
+              tempId: "temp-patient",
+              metadata: {
+                deliveryIntent: "patient",
+                serverReceivedAt: "2026-06-30T10:00:00.000Z",
+              },
+            },
+            source: { tempId: "temp-patient" },
+            createdAt: "2026-06-30T10:00:00.000Z",
+          },
+        ]);
+
+        expect(process.cancelDeferredMessage("temp-patient")).toBe(true);
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toEqual([]);
+      });
+    });
+
+    it("deletes persisted patient entries when they promote", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const controller = createControllableIterator();
+        const queue = new MessageQueue();
+        const process = new Process(controller.iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          queue,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage(
+          {
+            text: "patient follow-up",
+            tempId: "temp-patient",
+            metadata: { deliveryIntent: "patient" },
+          },
+          { promoteIfReady: true },
+        );
+        await process.waitForPatientQueuePersistenceIdle();
+        expect(service.list()).toHaveLength(1);
+
+        controller.push({ type: "result", session_id: "sess-1" });
+        await waitFor(() => expect(process.state.type).toBe("idle"));
+
+        expect(
+          process.promoteEligiblePatientDeferredMessages({
+            quietSinceMs: Date.now() - 30_000,
+          }),
+        ).toMatchObject({ promoted: true });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toEqual([]);
+
+        controller.finish();
+        await process.abort();
+      });
+    });
+
+    it("deletes the persisted row when a resumed entry promotes straight through", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const controller = createControllableIterator();
+        const queue = new MessageQueue();
+        // Outside the Claude patient lane a patient-tagged deferMessage with
+        // promoteIfReady sends immediately on an idle process; the durable
+        // row must still be released even though no queue entry ever exists.
+        const process = new Process(controller.iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          idleTimeoutMs: 100,
+          queue,
+          sessionQueuePersistenceService: service,
+        });
+
+        controller.push({ type: "result", session_id: "sess-1" });
+        await waitFor(() => expect(process.state.type).toBe("idle"));
+
+        await service.upsertItem({
+          id: "row-1",
+          sessionId: "sess-1",
+          projectId,
+          projectPath: "/tmp/process-session-queue",
+          provider: "codex",
+          kind: "patient",
+          message: {
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          },
+          createdAt: "2026-06-30T09:00:00.000Z",
+          updatedAt: "2026-06-30T09:00:00.000Z",
+          queuedAt: "2026-06-30T09:00:00.000Z",
+          status: "paused-after-restart",
+        });
+
+        const result = process.deferMessage(
+          {
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          },
+          {
+            promoteIfReady: true,
+            persistedQueueId: "row-1",
+            timestamp: "2026-06-30T09:00:00.000Z",
+          },
+        );
+        expect(result).toMatchObject({ success: true, promoted: true });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toEqual([]);
+
+        controller.finish();
+        await process.abort();
+      });
+    });
+
+    it("preserves patient queue entries as paused restart work", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const iterator = createMockIterator([
+          { type: "system", session_id: "sess-1" },
+        ]);
+        const process = new Process(iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage({
+          text: "patient follow-up",
+          tempId: "temp-patient",
+          metadata: {
+            deliveryIntent: "patient",
+            serverReceivedAt: "2026-06-30T10:00:00.000Z",
+          },
+        });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        const preserved =
+          await process.preservePatientDeferredMessagesForRestart();
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(preserved).toBe(1);
+        expect(process.getDeferredQueueSummary()).toEqual([]);
+        expect(service.list()).toMatchObject([
+          {
+            sessionId: "sess-1",
+            projectId,
+            kind: "patient",
+            status: "paused-after-restart",
+            message: {
+              text: "patient follow-up",
+              tempId: "temp-patient",
+              metadata: {
+                deliveryIntent: "patient",
+                serverReceivedAt: "2026-06-30T10:00:00.000Z",
+              },
+            },
+            source: { tempId: "temp-patient" },
+            createdAt: "2026-06-30T10:00:00.000Z",
+          },
+        ]);
+      });
+    });
+
+    it("drains deferred messages for replacement process recovery", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      process.deferMessage({ text: "first", tempId: "temp-1" });
+      process.deferMessage({ text: "second", tempId: "temp-2" });
+
+      const drained = process.drainDeferredMessages("promoted");
+
+      expect(drained).toMatchObject([
+        { text: "first", tempId: "temp-1" },
+        { text: "second", tempId: "temp-2" },
+      ]);
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "promoted",
+        tempId: "temp-1",
+        messages: [],
+      });
+    });
+
+    it("keeps steerable active-turn deferred messages editable", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      const result = process.deferMessage(
+        { text: "keep queued", tempId: "temp-queued" },
+        { promoteIfReady: true },
+      );
+
+      expect(result).toMatchObject({
+        success: true,
+        deferred: true,
+      });
+      expect(steerFn).not.toHaveBeenCalled();
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-queued",
+          content: "keep queued",
+        },
+      ]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "queued",
+        tempId: "temp-queued",
+      });
+
+      controller.finish();
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+      await process.abort();
+    });
+
+    it("emits a stitched user message when deferred turns promote after a non-steering turn", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        // Stitched flush is the opt-in path (YEP_DEFERRED_JOIN_WINDOW_S).
+        deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: false },
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      process.deferMessage({ text: "first queued", tempId: "temp-1" });
+      process.deferMessage({ text: "second queued", tempId: "temp-2" });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+
+      const userMessages = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message]
+          : [],
+      );
+      expect(userMessages).toMatchObject([
+        {
+          tempId: "temp-1",
+          message: {
+            role: "user",
+            content: `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+          },
+        },
+      ]);
+      expect(queue.depth).toBe(1);
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(
+        `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+      );
+      expect(process.state.type).toBe("in-turn");
+      expect(events[events.length - 1]).toMatchObject({
+        type: "state-change",
+        state: { type: "in-turn" },
+      });
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("lets regular deferred messages pass patient messages at turn end", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage({
+        text: "patient queued",
+        tempId: "temp-patient",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "regular queued",
+        tempId: "temp-regular",
+        metadata: { deliveryIntent: "deferred" },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toMatchObject([
+          {
+            tempId: "temp-patient",
+            content: "patient queued",
+            metadata: { deliveryIntent: "patient" },
+          },
+        ]),
+      );
+      expect(queue.depth).toBe(1);
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe("regular queued");
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("steers a patient entry and earlier patient entries as separate steers by default", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage({
+        text: "when done, patient one",
+        tempId: "temp-patient-1",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "regular queued",
+        tempId: "temp-regular",
+        metadata: { deliveryIntent: "deferred" },
+      });
+      process.deferMessage({
+        text: "patient two",
+        tempId: "temp-patient-2",
+        metadata: { deliveryIntent: "patient" },
+      });
+
+      // Only patient entries accept the steer-through action.
+      expect(
+        process.steerPatientDeferredMessagesThrough("temp-regular"),
+      ).toMatchObject({ success: false });
+
+      expect(
+        process.steerPatientDeferredMessagesThrough("temp-patient-2"),
+      ).toEqual({ success: true, steered: 2 });
+
+      // The regular deferred entry keeps its queue position.
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-regular" },
+      ]);
+
+      // Each patient message steers separately, prefix stripped, steer lane.
+      expect(queue.drain()).toMatchObject([
+        {
+          text: "patient one",
+          tempId: "temp-patient-1",
+          priority: "next",
+          metadata: { deliveryIntent: "steer" },
+        },
+        {
+          text: "patient two",
+          tempId: "temp-patient-2",
+          priority: "next",
+          metadata: { deliveryIntent: "steer" },
+        },
+      ]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("steers patient entries as one combined turn when send batching is enabled", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: false },
+      });
+
+      process.deferMessage({
+        text: "when done, patient one",
+        tempId: "temp-patient-1",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "patient two",
+        tempId: "temp-patient-2",
+        metadata: { deliveryIntent: "patient" },
+      });
+
+      expect(
+        process.steerPatientDeferredMessagesThrough("temp-patient-2"),
+      ).toEqual({ success: true, steered: 2 });
+
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(queue.drain()).toMatchObject([
+        {
+          text: `patient one\n\n${CONCAT_SEPARATOR}\n\npatient two`,
+          tempIds: ["temp-patient-1", "temp-patient-2"],
+          priority: "next",
+        },
+      ]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("marks Claude queued delivery with later priority after turn end", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage({
+        text: "claude queued",
+        tempId: "temp-claude-queued",
+        metadata: { deliveryIntent: "deferred" },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(queue.depth).toBe(1));
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value).toMatchObject({
+        priority: "later",
+        message: {
+          content: "claude queued",
+        },
+      });
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("keeps deferred messages queued at completed tool-result boundaries", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      process.deferMessage({
+        text: "patient queued",
+        tempId: "temp-patient",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "regular queued",
+        tempId: "temp-regular",
+        metadata: { deliveryIntent: "deferred" },
+      });
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-1" }],
+        },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(steerFn).not.toHaveBeenCalled();
+      expect(queue.depth).toBe(0);
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-patient",
+          content: "patient queued",
+          metadata: { deliveryIntent: "patient" },
+        },
+        {
+          tempId: "temp-regular",
+          content: "regular queued",
+          metadata: { deliveryIntent: "deferred" },
+        },
+      ]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes patient deferred messages only through the patient promotion path", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      const immediate = process.deferMessage(
+        {
+          text: "patient queued",
+          tempId: "temp-patient",
+          metadata: { deliveryIntent: "patient" },
+        },
+        { promoteIfReady: true },
+      );
+
+      expect(immediate).toMatchObject({ success: true, deferred: true });
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-patient",
+          content: "patient queued",
+          metadata: { deliveryIntent: "patient" },
+        },
+      ]);
+
+      expect(
+        process.promoteEligiblePatientDeferredMessages({
+          quietSinceMs: Date.now() - 30_000,
+        }),
+      ).toMatchObject({ promoted: true });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(process.state.type).toBe("in-turn");
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe("patient queued");
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes patient deferred messages one per boundary, not all at once", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage(
+        {
+          text: "first patient",
+          tempId: "temp-1",
+          metadata: { deliveryIntent: "patient" },
+        },
+        { promoteIfReady: true },
+      );
+      process.deferMessage(
+        {
+          text: "second patient",
+          tempId: "temp-2",
+          metadata: { deliveryIntent: "patient" },
+        },
+        { promoteIfReady: true },
+      );
+
+      // Move to a verified-idle boundary so the patient path can run.
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(process.getDeferredQueueSummary()).toHaveLength(2);
+
+      // First boundary: exactly one message is promoted, delivered verbatim
+      // (no `--------` join), with the second still deferred.
+      expect(
+        process.promoteEligiblePatientDeferredMessages({
+          quietSinceMs: Date.now() - 30_000,
+        }),
+      ).toMatchObject({ promoted: true });
+      expect(process.state.type).toBe("in-turn");
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-2", content: "second patient" },
+      ]);
+      const firstTurn = await queue[Symbol.asyncIterator]().next();
+      expect(firstTurn.value?.message.content).toBe("first patient");
+
+      // That turn completes -> idle again -> the second promotes on its own
+      // boundary, again verbatim.
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(
+        process.promoteEligiblePatientDeferredMessages({
+          quietSinceMs: Date.now() - 30_000,
+        }),
+      ).toMatchObject({ promoted: true });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      const secondTurn = await queue[Symbol.asyncIterator]().next();
+      expect(secondTurn.value?.message.content).toBe("second patient");
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes one verbatim deferred turn per delivery boundary", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      process.deferMessage({
+        text: "first queued",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+        },
+      });
+      process.deferMessage({
+        text: "second queued",
+        tempId: "temp-2",
+        metadata: {
+          deliveryIntent: "deferred",
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      // Default (vanilla) delivery: exactly one turn leaves the deferred
+      // queue per completed-turn boundary, with the user's text untouched.
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toHaveLength(1),
+      );
+      const firstContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      expect(firstContents).toEqual(["first queued"]);
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+      const allContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      expect(allContents).toEqual(["first queued", "second queued"]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("flushes deferred turns as one separator-joined turn when sends fall within the join window", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: false },
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      process.deferMessage({
+        text: "first queued",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+        },
+      });
+      process.deferMessage({
+        text: "second queued",
+        tempId: "temp-2",
+        metadata: {
+          deliveryIntent: "deferred",
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+
+      const userContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      expect(userContents).toHaveLength(1);
+      expect(userContents[0]).toBe(
+        `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+      );
+
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(userContents[0]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("splits queued turns at compose-time gaps wider than the join window", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { joinWindowSeconds: 60, composeAnchors: false },
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      // Sliding window: each send within 60s of the previous send extends
+      // the group. first→second gap is 30s (joins); second→third is 68s
+      // (splits), so the third delivers at the next boundary on its own.
+      const now = Date.now();
+      process.deferMessage({
+        text: "first queued",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 100_000).toISOString(),
+        },
+      });
+      process.deferMessage({
+        text: "second queued",
+        tempId: "temp-2",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 70_000).toISOString(),
+        },
+      });
+      process.deferMessage({
+        text: "third queued",
+        tempId: "temp-3",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 2_000).toISOString(),
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toHaveLength(1),
+      );
+      const firstContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      expect(firstContents).toEqual([
+        `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+      ]);
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+      const allContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      expect(allContents[allContents.length - 1]).toBe("third queued");
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("prefixes promoted deferred turns with compose-time anchors when opted in", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: true },
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      // Anchor on metadata.serverReceivedAt so age is computed against real
+      // now() at promotion without fake timers: first composed 45s ago, second
+      // 15s ago (a 30s gap between the two).
+      const now = Date.now();
+      process.deferMessage({
+        text: "first queued",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 45_000).toISOString(),
+        },
+      });
+      process.deferMessage({
+        text: "second queued",
+        tempId: "temp-2",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 15_000).toISOString(),
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+
+      const userContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message?.content as string]
+          : [],
+      );
+      // First chunk anchors against delivery time (~45s ago); second against
+      // the first chunk's compose time (exactly 30s later). The live echo is
+      // the same stitched turn that the provider receives.
+      expect(userContents).toHaveLength(1);
+      expect(userContents[0]).toMatch(
+        new RegExp(
+          `^\\(\\d+s ago\\)\\n\\nfirst queued\\n\\n${CONCAT_SEPARATOR}\\n\\n\\(30s later\\)\\n\\nsecond queued$`,
+        ),
+      );
+
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(userContents[0]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes deferred messages after turn completion, not completed tool results", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      process.deferMessage(
+        { text: "send after bash", tempId: "temp-tool-boundary" },
+        { promoteIfReady: true },
+      );
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "done",
+            },
+          ],
+        },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(steerFn).not.toHaveBeenCalled();
+      expect(queue.depth).toBe(0);
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-tool-boundary",
+          content: "send after bash",
+        },
+      ]);
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(queue.depth).toBe(1));
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message).toMatchObject({
+        content: "send after bash",
+      });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "promoted",
+        messages: [],
+      });
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes deferred messages immediately when the process is already idle", async () => {
+      const iterator = createMockIterator([
+        { type: "system", subtype: "init", session_id: "sess-1" },
+        { type: "result", session_id: "sess-1" },
+      ]);
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(process.state.type).toBe("idle");
+
+      const result = process.deferMessage(
+        { text: "idle race", tempId: "temp-idle" },
+        { promoteIfReady: true },
+      );
+
+      expect(result).toMatchObject({
+        success: true,
+        deferred: false,
+        promoted: true,
+        position: 1,
+      });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(process.queueDepth).toBe(1);
+    });
+  });
+});

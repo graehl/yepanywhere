@@ -237,7 +237,7 @@ can improve review when scenarios are independent.
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
 | 6.1 | Done 2026-07-06 | `MessageList.test.tsx` scenario files | Split by behavior area: progressive rendering, thinking, queue rows, selection/copy, scroll, search. | Split into six scenario files plus `MessageList.test-support.tsx`; assertions and shared fixture behavior preserved. |
-| 6.2 | Not started | `process.test.ts` scenario files | Split by queue, approvals, replay/streaming, liveness, recap, termination. | Preserve fake timers and cleanup discipline. |
+| 6.2 | Done 2026-07-06 | `process.test.ts` scenario files | Split by queue, approvals, replay/streaming, liveness, recap, termination. | Split into nine scenario files plus `process.test-support.ts`; fake-timer tests stayed in the liveness group and keep their existing `finally` cleanup. |
 | 6.3 | Done 2026-07-06 | `codex.test.ts` fixtures | Move repeated raw notification fixtures and expected SDK outputs into fixture modules. | Extracted scenario-named event fixtures only; conversion calls and assertions stay explicit in `codex.test.ts`. |
 | 6.4 | Not started | Route metadata tests | Split route metadata tests once route modules split. | Keep request/response assertions explicit. |
 
@@ -261,6 +261,53 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 6.2 — Process Scenario Test Split (Landed 2026-07-06, this commit)
+
+Moved:
+- Shared Process test helpers (`createMockIterator`,
+  `createControllableIterator`, `waitFor`, session-queue persistence setup,
+  recap provider setup, and common Process/MessageQueue/type imports) ->
+  `process.test-support.ts`.
+- The 103 Process/MessageQueue scenarios -> `process.queue.test.ts`,
+  `process.events-liveness.test.ts`, `process.runtime-status.test.ts`,
+  `process.recaps.test.ts`, `process.deferred-queue.test.ts`,
+  `process.lifecycle.test.ts`, `process.permission-mode.test.ts`,
+  `process.message-history.test.ts`, and `process.termination.test.ts`.
+
+Signature conversions:
+- None. Test bodies keep the same assertions and setup. The split follows the
+  former nested `describe` groups, with `deferred queue` separated from the
+  ordinary message-queue and slash-command cases.
+
+Behavior changes:
+- None. This is test-only organization. The three fake-timer tests remain in
+  `process.events-liveness.test.ts` and still restore real timers in `finally`
+  blocks.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `pnpm --filter @yep-anywhere/server test -- test/process.queue.test.ts
+  test/process.events-liveness.test.ts test/process.runtime-status.test.ts
+  test/process.recaps.test.ts test/process.deferred-queue.test.ts
+  test/process.lifecycle.test.ts test/process.permission-mode.test.ts
+  test/process.message-history.test.ts test/process.termination.test.ts`;
+  file-scoped `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Integrity check: a local indentation-aware script verified all 103 moved
+  `it(...)` bodies match `HEAD` exactly.
+- Architecture tripwire: `topics/architecture-mandates.md` was read before
+  editing because the split covers Process liveness, idle retention, deferred
+  queue, interrupt, and termination tests.
+- Chatter: the focused Process run and root test run still emit existing
+  approval/termination/session logger stdout/stderr; this slice did not add
+  production logging or change the test assertions that exercise those paths.
+
+Follow-ups recorded:
+- `process.deferred-queue.test.ts` remains the largest split file because the
+  patient/deferred queue scenarios share promotion, persistence, and join-window
+  setup. Further split it only if a queue-specific fixture helper can reduce
+  repetition without hiding delivery-boundary inputs.
 
 ### Slice 6.1 — MessageList Scenario Test Split (Landed 2026-07-06, this commit)
 

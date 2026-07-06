@@ -36,6 +36,13 @@ import {
   CodexProvider,
   type CodexProviderConfig,
 } from "../../../src/sdk/providers/codex.js";
+import {
+  codexAgentMessageDeltaFixtures,
+  codexContextCompactionFixtures,
+  codexInterruptedTurnFixtures,
+  codexRawFunctionCallFixtures,
+  createLiveEventState,
+} from "./codex-event-fixtures.js";
 
 vi.mock("../../../src/sdk/messageLogger.js", () => ({
   logSDKMessage: vi.fn(),
@@ -2028,16 +2035,6 @@ describe("CodexProvider Event Normalization", () => {
     return new CodexProvider();
   }
 
-  function createLiveEventState() {
-    return {
-      streamingTextByItemKey: new Map<string, string>(),
-      streamingReasoningSummaryByItemKey: new Map<string, string[]>(),
-      streamingToolOutputByItemKey: new Map<string, string>(),
-      toolCallContexts: new Map<string, unknown>(),
-      resultBackedToolItemsByTurnId: new Map<string, Set<string>>(),
-    };
-  }
-
   it("should have correct provider interface", () => {
     const provider = createTestProvider();
 
@@ -2863,54 +2860,24 @@ describe("CodexProvider Event Normalization", () => {
     const liveEventState = createLiveEventState();
 
     const first = provider.convertNotificationToSDKMessages(
-      {
-        method: "item/agentMessage/delta",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "item-1",
-          delta: "Hello",
-        },
-      },
+      codexAgentMessageDeltaFixtures.firstNotification,
       "session-1",
       new Map(),
       liveEventState,
     );
     const second = provider.convertNotificationToSDKMessages(
-      {
-        method: "item/agentMessage/delta",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "item-1",
-          delta: " world",
-        },
-      },
+      codexAgentMessageDeltaFixtures.secondNotification,
       "session-1",
       new Map(),
       liveEventState,
     );
 
-    expect(first[0]).toMatchObject({
-      type: "assistant",
-      session_id: "session-1",
-      uuid: "item-1-turn-1",
-      _isStreaming: true,
-      message: {
-        role: "assistant",
-        content: "Hello",
-      },
-    });
-    expect(second[0]).toMatchObject({
-      type: "assistant",
-      session_id: "session-1",
-      uuid: "item-1-turn-1",
-      _isStreaming: true,
-      message: {
-        role: "assistant",
-        content: "Hello world",
-      },
-    });
+    expect(first[0]).toMatchObject(
+      codexAgentMessageDeltaFixtures.expectedFirstMessage,
+    );
+    expect(second[0]).toMatchObject(
+      codexAgentMessageDeltaFixtures.expectedSecondMessage,
+    );
   });
 
   it("surfaces Codex context compaction thread items", () => {
@@ -2925,52 +2892,24 @@ describe("CodexProvider Event Normalization", () => {
 
     const liveEventState = createLiveEventState();
     const started = provider.convertNotificationToSDKMessages(
-      {
-        method: "item/started",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          item: {
-            id: "compact-1",
-            type: "contextCompaction",
-          },
-        },
-      },
+      codexContextCompactionFixtures.startedNotification,
       "session-1",
       new Map(),
       liveEventState,
     );
     const completed = provider.convertNotificationToSDKMessages(
-      {
-        method: "item/completed",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          item: {
-            id: "compact-1",
-            type: "contextCompaction",
-          },
-        },
-      },
+      codexContextCompactionFixtures.completedNotification,
       "session-1",
       new Map(),
       liveEventState,
     );
 
-    expect(started[0]).toMatchObject({
-      type: "system",
-      subtype: "status",
-      session_id: "session-1",
-      uuid: "compact-1-turn-1",
-      status: "compacting",
-    });
-    expect(completed[0]).toMatchObject({
-      type: "system",
-      subtype: "compact_boundary",
-      session_id: "session-1",
-      uuid: "compact-1-turn-1",
-      content: "Context compacted",
-    });
+    expect(started[0]).toMatchObject(
+      codexContextCompactionFixtures.expectedStartedMessage,
+    );
+    expect(completed[0]).toMatchObject(
+      codexContextCompactionFixtures.expectedCompletedMessage,
+    );
   });
 
   it("surfaces raw Codex compaction response items as compact boundaries", () => {
@@ -2984,29 +2923,15 @@ describe("CodexProvider Event Normalization", () => {
     };
 
     const messages = provider.convertNotificationToSDKMessages(
-      {
-        method: "rawResponseItem/completed",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          item: {
-            type: "compaction",
-            encrypted_content: "opaque",
-          },
-        },
-      },
+      codexContextCompactionFixtures.rawResponseCompletedNotification,
       "session-1",
       new Map(),
       createLiveEventState(),
     );
 
-    expect(messages[0]).toMatchObject({
-      type: "system",
-      subtype: "compact_boundary",
-      session_id: "session-1",
-      uuid: "codex-compaction-turn-1",
-      content: "Context compacted",
-    });
+    expect(messages[0]).toMatchObject(
+      codexContextCompactionFixtures.expectedRawResponseCompletedMessage,
+    );
   });
 
   it("surfaces interrupted live Codex turns as visible system boundaries", () => {
@@ -3020,40 +2945,16 @@ describe("CodexProvider Event Normalization", () => {
     };
 
     const messages = provider.convertNotificationToSDKMessages(
-      {
-        method: "turn/completed",
-        params: {
-          threadId: "thread-1",
-          turn: {
-            id: "turn-1",
-            items: [],
-            status: "interrupted",
-            error: null,
-            startedAt: null,
-            completedAt: 1_700_000_000,
-            durationMs: null,
-          },
-        },
-      },
+      codexInterruptedTurnFixtures.notification,
       "session-1",
       new Map(),
       createLiveEventState(),
     );
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({
-      type: "system",
-      subtype: "turn_aborted",
-      session_id: "session-1",
-      uuid: "codex-turn-interrupted-turn-1",
-      content: "Conversation interrupted",
-      reason: "interrupted",
-      sourceEvent: "turn/completed",
-      codexThreadId: "thread-1",
-      codexTurnId: "turn-1",
-      codexTurnStatus: "interrupted",
-      timestamp: "2023-11-14T22:13:20.000Z",
-    });
+    expect(messages[0]).toMatchObject(
+      codexInterruptedTurnFixtures.expectedMessage,
+    );
 
     expect(
       messages.some((message) => message.subtype === "turn_complete"),
@@ -3062,11 +2963,7 @@ describe("CodexProvider Event Normalization", () => {
       preprocessMessages(
         messages as Parameters<typeof preprocessMessages>[0],
       )[0],
-    ).toMatchObject({
-      type: "system",
-      subtype: "turn_aborted",
-      content: "Conversation interrupted",
-    });
+    ).toMatchObject(codexInterruptedTurnFixtures.expectedRenderMessage);
   });
 
   it("normalizes raw response function calls and outputs into tool messages", () => {
@@ -3081,74 +2978,24 @@ describe("CodexProvider Event Normalization", () => {
 
     const liveEventState = createLiveEventState();
     const toolUse = provider.convertNotificationToSDKMessages(
-      {
-        method: "rawResponseItem/completed",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          item: {
-            type: "function_call",
-            name: "exec_command",
-            call_id: "call-1",
-            arguments: '{"command":"pnpm lint"}',
-          },
-        },
-      },
+      codexRawFunctionCallFixtures.toolUseNotification,
       "session-1",
       new Map(),
       liveEventState,
     );
     const toolResult = provider.convertNotificationToSDKMessages(
-      {
-        method: "rawResponseItem/completed",
-        params: {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          item: {
-            type: "function_call_output",
-            call_id: "call-1",
-            output: "Process exited with code 0",
-          },
-        },
-      },
+      codexRawFunctionCallFixtures.toolResultNotification,
       "session-1",
       new Map(),
       liveEventState,
     );
 
-    expect(toolUse[0]).toMatchObject({
-      type: "assistant",
-      session_id: "session-1",
-      uuid: "call-1",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "tool_use",
-            id: "call-1",
-            name: "Bash",
-            input: {
-              command: "pnpm lint",
-            },
-          },
-        ],
-      },
-    });
-    expect(toolResult[0]).toMatchObject({
-      type: "user",
-      session_id: "session-1",
-      uuid: "call-1-result",
-      message: {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "call-1",
-            content: "Process exited with code 0",
-          },
-        ],
-      },
-    });
+    expect(toolUse[0]).toMatchObject(
+      codexRawFunctionCallFixtures.expectedToolUseMessage,
+    );
+    expect(toolResult[0]).toMatchObject(
+      codexRawFunctionCallFixtures.expectedToolResultMessage,
+    );
   });
 
   it("marks live result-backed tools incomplete when a turn completes first", () => {

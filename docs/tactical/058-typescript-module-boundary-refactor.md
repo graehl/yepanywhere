@@ -2,8 +2,8 @@
 
 Topic: typescript-module-boundary-refactor
 
-Status: Phase 2 in progress; low-risk Phase 1 helper slices landed and the
-remaining `sessions.ts` route-registrar extractions are deferred.
+Status: Broad low-risk slices in progress; the remaining `sessions.ts`
+route-registrar extractions are deferred.
 
 ## Contract
 
@@ -238,7 +238,7 @@ can improve review when scenarios are independent.
 |---|---|---|---|---|
 | 6.1 | Not started | `MessageList.test.tsx` scenario files | Split by behavior area: progressive rendering, thinking, queue rows, selection/copy, scroll, search. | Keep shared fixture helpers stable. |
 | 6.2 | Not started | `process.test.ts` scenario files | Split by queue, approvals, replay/streaming, liveness, recap, termination. | Preserve fake timers and cleanup discipline. |
-| 6.3 | Not started | `codex.test.ts` fixtures | Move repeated raw notification fixtures and expected SDK outputs into fixture modules. | Avoid hiding expected behavior behind opaque helpers. |
+| 6.3 | Done 2026-07-06 | `codex.test.ts` fixtures | Move repeated raw notification fixtures and expected SDK outputs into fixture modules. | Extracted scenario-named event fixtures only; conversion calls and assertions stay explicit in `codex.test.ts`. |
 | 6.4 | Not started | Route metadata tests | Split route metadata tests once route modules split. | Keep request/response assertions explicit. |
 
 ## Landing Template
@@ -261,6 +261,36 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 6.3 — Codex Provider Event Fixtures (Landed 2026-07-06, this commit)
+
+Moved:
+- Live event-state test setup plus repeated Codex app-server notification
+  fixtures and expected SDK/render outputs for agent message deltas, context
+  compaction, interrupted turns, and raw function-call/result events ->
+  `codex-event-fixtures.ts`.
+
+Signature conversions:
+- None. The tests still call `convertNotificationToSDKMessages()` directly and
+  still assert concrete expected objects; only the literal fixture data moved.
+
+Behavior changes:
+- None. This is test-only fixture organization.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `codex.test.ts`; file-scoped `node scripts/biome.cjs lint`;
+  `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Codex tripwire: Codex provider tests ran. Stream/persisted render parity was
+  not required because no production event conversion, persistence, or
+  transcript rendering code moved.
+
+Follow-ups recorded:
+- Command-execution orphan/background-process edge-case notifications remain
+  inline in `codex.test.ts`; move them only if a later fixture slice can keep
+  those scenario assertions as readable as the current inline form.
 
 ### Slice 4.2 — Codex Model Catalog Helpers (Landed 2026-07-06, this commit)
 

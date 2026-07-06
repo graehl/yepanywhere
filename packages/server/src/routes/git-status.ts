@@ -3,6 +3,8 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
+  type GitDiffPreviewSkipped,
+  type GitDiffResult,
   type GitFileChange,
   type GitIntegrationOptionReason,
   type GitIntegrationOptionsResult,
@@ -12,7 +14,6 @@ import {
   type GitRecentCommit,
   type GitStatusInfo,
   type GitUntrackedFolderInfo,
-  type PatchHunk,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -41,6 +42,8 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
 const remoteCheckedAtByProjectPath = new Map<string, string>();
 const gitOperationsByProjectPath = new Set<string>();
 const UNTRACKED_FOLDER_FILE_LIMIT = 500;
+const GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES = 256 * 1024;
+const GIT_DIFF_PREVIEW_MAX_LINE_CHARS = 20_000;
 const GIT_DECODE_PATHS_ARGS = ["-c", "core.quotePath=false"];
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
@@ -430,12 +433,25 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
 
     try {
+      const untrackedSizeSkip =
+        status === "?"
+          ? await getUntrackedDiffPreviewSizeSkip(project.path, path)
+          : null;
+      if (untrackedSizeSkip) {
+        return c.json(skippedGitDiffResult(untrackedSizeSkip));
+      }
+
       const { oldContent, newContent } = await getFileVersions(
         project.path,
         path,
         staged,
         status,
       );
+
+      const previewSkip = getDiffPreviewSkip(oldContent, newContent);
+      if (previewSkip) {
+        return c.json(skippedGitDiffResult(previewSkip));
+      }
 
       const contextLines = fullContext ? 999999 : 3;
       const augment = await computeEditAugment(
@@ -444,11 +460,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         contextLines,
       );
 
-      const result: {
-        diffHtml: string;
-        structuredPatch: PatchHunk[];
-        markdownHtml?: string;
-      } = {
+      const result: GitDiffResult = {
         diffHtml: augment.diffHtml,
         structuredPatch: augment.structuredPatch,
       };
@@ -472,6 +484,84 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   });
 
   return routes;
+}
+
+async function getUntrackedDiffPreviewSizeSkip(
+  cwd: string,
+  path: string,
+): Promise<GitDiffPreviewSkipped | null> {
+  const stats = await stat(resolve(cwd, path));
+  if (!stats.isFile() || stats.size <= GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES) {
+    return null;
+  }
+
+  return {
+    reason: "content-too-large",
+    totalBytes: stats.size,
+    maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
+    maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
+  };
+}
+
+function getDiffPreviewSkip(
+  oldContent: string,
+  newContent: string,
+): GitDiffPreviewSkipped | null {
+  const oldBytes = Buffer.byteLength(oldContent, "utf8");
+  const newBytes = Buffer.byteLength(newContent, "utf8");
+  const totalBytes = oldBytes + newBytes;
+  const maxLineChars = Math.max(
+    longestLineChars(oldContent),
+    longestLineChars(newContent),
+  );
+
+  if (totalBytes > GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES) {
+    return {
+      reason: "content-too-large",
+      totalBytes,
+      maxLineChars,
+      maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
+      maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
+    };
+  }
+
+  if (maxLineChars > GIT_DIFF_PREVIEW_MAX_LINE_CHARS) {
+    return {
+      reason: "line-too-long",
+      totalBytes,
+      maxLineChars,
+      maxTotalBytes: GIT_DIFF_PREVIEW_MAX_TOTAL_BYTES,
+      maxLineCharsLimit: GIT_DIFF_PREVIEW_MAX_LINE_CHARS,
+    };
+  }
+
+  return null;
+}
+
+function skippedGitDiffResult(
+  previewSkipped: GitDiffPreviewSkipped,
+): GitDiffResult {
+  return {
+    diffHtml: "",
+    structuredPatch: [],
+    previewSkipped,
+  };
+}
+
+function longestLineChars(content: string): number {
+  let longest = 0;
+  let current = 0;
+
+  for (let index = 0; index < content.length; index++) {
+    if (content.charCodeAt(index) === 10) {
+      longest = Math.max(longest, current);
+      current = 0;
+    } else {
+      current++;
+    }
+  }
+
+  return Math.max(longest, current);
 }
 
 /**

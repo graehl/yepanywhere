@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
+  type GitDiffResult,
   type GitIntegrationOptionsResult,
   type GitPushResult,
   type GitStatusInfo,
@@ -248,6 +249,94 @@ describe("git-status routes", () => {
       truncated: false,
       limit: 500,
     });
+  });
+
+  it("returns a bounded skipped preview for long-line untracked files", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(
+      join(repoDir, "large.json"),
+      `{"value":"${"x".repeat(30_000)}"}`,
+    );
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "large.json",
+        staged: false,
+        status: "?",
+      }),
+    });
+    const rawBody = await response.text();
+    const body = JSON.parse(rawBody) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(rawBody.length).toBeLessThan(2_000);
+    expect(body).toMatchObject({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: {
+        reason: "line-too-long",
+        maxLineChars: 30_012,
+        maxLineCharsLimit: 20_000,
+      },
+    });
+    expect(body.previewSkipped?.totalBytes).toBeGreaterThan(30_000);
+  });
+
+  it("skips untracked files over the preview byte budget", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "large.txt"), "line\n".repeat(60_000));
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "large.txt",
+        staged: false,
+        status: "?",
+      }),
+    });
+    const rawBody = await response.text();
+    const body = JSON.parse(rawBody) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(rawBody.length).toBeLessThan(2_000);
+    expect(body).toMatchObject({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: {
+        reason: "content-too-large",
+        maxTotalBytes: 262_144,
+        maxLineCharsLimit: 20_000,
+      },
+    });
+    expect(body.previewSkipped?.totalBytes).toBeGreaterThan(262_144);
+  });
+
+  it("returns normal git diff previews for small untracked files", async () => {
+    const repoDir = await createRepoWithUpstream();
+    await writeFile(join(repoDir, "small.ts"), "export const value = 1;\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(`/${projectId}/git/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "small.ts",
+        staged: false,
+        status: "?",
+      }),
+    });
+    const body = (await response.json()) as GitDiffResult;
+
+    expect(response.status).toBe(200);
+    expect(body.previewSkipped).toBeUndefined();
+    expect(body.diffHtml).toContain("<pre");
+    expect(body.structuredPatch).toHaveLength(1);
+    expect(body.structuredPatch[0]?.lines).toContain("+export const value = 1;");
   });
 
   it("reports automatic integration options for a clean diverged branch", async () => {

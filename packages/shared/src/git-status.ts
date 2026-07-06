@@ -1,3 +1,5 @@
+import type { PatchHunk } from "./types.js";
+
 export {
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
@@ -44,6 +46,39 @@ export interface GitUntrackedFolderInfo {
   truncated: boolean;
   /** Maximum number of files returned before truncation */
   limit: number;
+}
+
+export type GitDiffPreviewSkippedReason =
+  | "content-too-large"
+  | "line-too-long"
+  | "html-too-large";
+
+export interface GitDiffPreviewSkipped {
+  /** Why the preview was omitted or downgraded. */
+  reason: GitDiffPreviewSkippedReason;
+  /** Source content size in UTF-8 bytes, when known. */
+  totalBytes?: number;
+  /** Longest source line in JavaScript string characters, when known. */
+  maxLineChars?: number;
+  /** Highlighted HTML size in JavaScript string characters, for client guards. */
+  htmlChars?: number;
+  /** Source content byte budget that triggered this guard. */
+  maxTotalBytes?: number;
+  /** Per-line character budget that triggered this guard. */
+  maxLineCharsLimit?: number;
+  /** Highlighted HTML character budget that triggered this guard. */
+  maxHtmlChars?: number;
+}
+
+export interface GitDiffResult {
+  /** Syntax-highlighted diff HTML, omitted when previewSkipped is present. */
+  diffHtml: string;
+  /** Structured diff hunks for normal small previews. */
+  structuredPatch: PatchHunk[];
+  /** Rendered markdown preview HTML for small markdown files. */
+  markdownHtml?: string;
+  /** Bounded omission metadata for previews that are unsafe to render. */
+  previewSkipped?: GitDiffPreviewSkipped;
 }
 
 export interface GitStatusInfo {

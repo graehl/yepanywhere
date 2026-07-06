@@ -18378,6 +18378,54 @@ body:has(.session-page)
   color: var(--error-color);
 }
 
+.git-diff-preview-skipped {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--text-secondary);
+}
+
+.git-diff-preview-skipped-title {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.git-diff-preview-skipped-message {
+  max-width: 52rem;
+  line-height: 1.45;
+}
+
+.git-diff-preview-skipped-details {
+  display: grid;
+  max-width: 52rem;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.git-diff-preview-skipped-details > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.git-diff-preview-skipped-details dt {
+  color: var(--text-muted);
+}
+
+.git-diff-preview-skipped-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+}
+
 .modal:has(.git-untracked-folder-modal) {
   width: min(760px, calc(100vw - 32px));
   max-width: 760px;

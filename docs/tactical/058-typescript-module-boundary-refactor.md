@@ -187,7 +187,8 @@ and props stable.
 | 2.7 | Done 2026-07-06 | `MessageInputToolbar.tsx` view/control split | Separate toolbar measurement/overflow logic from presentational controls. | Moved bottom-row overflow measurement helpers, layout signature, measured tier hook, and layout refs into `useMessageInputToolbarLayout.ts`; compact status/liveness display behavior remains in the toolbar. Tier 3 with client E2E. |
 | 2.8 | Done 2026-07-06 | `MessageInput.tsx` textarea mechanics | Move undoable textarea edits, resize/collapsed cursor scrolling, slash suggestion matching, and speech target id helpers. | Browser undo/focus call sites stayed in `MessageInput.tsx`; focused helper/MessageInput tests and client E2E preserve behavior. |
 | 2.9 | Done 2026-07-06 | `NewSessionForm.tsx` project/options helpers | Move project sorting, provider option resolution, recap/prompt-suggestion defaults, and attachment helpers. | Moved pure helpers only; i18n copy, workstream selector behavior, and staged upload/submission effects stayed in the form. Focused helper tests were added. |
-| 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; do not refactor around an unbounded preview path. |
+| 2.10a | Done 2026-07-06 | Git diff large-preview admission guard | Add the server/client guard prerequisite before moving `GitStatusPage.tsx` diff preview components. | Server now returns bounded `previewSkipped` metadata before syntax highlighting oversized git previews; client also refuses to inject oversized highlighted HTML from older servers. |
+| 2.10 | Not started | `GitStatusPage.tsx` diff preview module | Extract diff fetch/render preview components after large-diff admission guards are in place. | Guard prerequisite landed in 2.10a. Read `docs/project/2026-07-06-git-status-large-diff-hang.md`; preserve skipped-preview behavior and do not reintroduce unbounded `diffHtml` rendering. |
 
 ## Phase 3: Existing Architecture-Aligned Migrations
 
@@ -261,6 +262,53 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 2.10a — Git Diff Large-Preview Admission Guard (Landed 2026-07-06, this commit)
+
+Moved:
+- No component/module boundary move yet; this landed the documented prerequisite
+  for row 2.10.
+
+Signature/API changes:
+- Added shared `GitDiffResult` and `GitDiffPreviewSkipped` response metadata
+  for `/git/diff`.
+- Client API typing now consumes the shared `GitDiffResult` instead of a local
+  inline shape.
+
+Behavior changes:
+- Oversized git diff previews now return bounded skipped-preview metadata
+  before syntax highlighting. The server skips untracked files above the
+  256 KiB preview byte budget and skips any preview with a line above 20,000
+  characters.
+- The client renders a compact skipped-preview state and refuses to inject
+  highlighted diff HTML above its defense-in-depth render budget.
+- Normal small git diff previews still render highlighted diffs.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/server test --
+  test/routes/git-status.test.ts`; focused
+  `pnpm --filter @yep-anywhere/client test --
+  src/pages/__tests__/GitStatusPage.test.tsx`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Tier 3: `pnpm --filter @yep-anywhere/client test:e2e --grep-invert
+  "physical Android"`.
+- Client tripwire: `pnpm console:scan` stayed at warnings `110/110`,
+  method.warn `61/61`, and method.error `95/95`, all `+0`.
+- I18n advisory: `pnpm i18n:scan` reported only the preexisting three
+  `main.tsx` raw-copy warnings.
+- Residual chatter: root `pnpm test` passed with the existing broad suite
+  server logs, negative-path WebSocket/SecureConnection stderr, and Codex
+  slow-scan WARN entries already documented for this refactor series. Client
+  E2E passed with the existing Vite browser-compatibility/chunk-size and Node
+  `NO_COLOR`/`FORCE_COLOR` warnings.
+
+Follow-ups recorded:
+- Row 2.10 is now unblocked for extracting `GitStatusPage.tsx` diff preview
+  fetch/render components into a focused module.
 
 ### Slice 4.6 — OpenCode Provider Model Helpers (Landed 2026-07-06, this commit)
 

@@ -14,6 +14,7 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
+  GitDiffResult,
   GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
@@ -1450,17 +1451,7 @@ export const api = {
       fullContext?: boolean;
     },
   ) =>
-    fetchJSON<{
-      diffHtml: string;
-      structuredPatch: Array<{
-        oldStart: number;
-        oldLines: number;
-        newStart: number;
-        newLines: number;
-        lines: string[];
-      }>;
-      markdownHtml?: string;
-    }>(`/projects/${projectId}/git/diff`, {
+    fetchJSON<GitDiffResult>(`/projects/${projectId}/git/diff`, {
       method: "POST",
       body: JSON.stringify(params),
     }),

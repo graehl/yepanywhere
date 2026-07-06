@@ -1,4 +1,6 @@
 import type {
+  GitDiffPreviewSkipped,
+  GitDiffResult,
   GitFileChange,
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,
@@ -55,20 +57,6 @@ import {
   type RouteRetentionKeyInput,
 } from "../lib/routeRetention";
 
-interface PatchHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  lines: string[];
-}
-
-interface GitDiffResult {
-  diffHtml: string;
-  structuredPatch: PatchHunk[];
-  markdownHtml?: string;
-}
-
 interface GitDiffViewState {
   showFullContext?: boolean;
   showMarkdownPreview?: boolean;
@@ -83,6 +71,7 @@ interface SourceControlRouteState {
 }
 
 const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
+const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
 
 function getSourceControlRouteRetentionKey(
   sourceKey: ClientSummarySourceKey,
@@ -1338,6 +1327,8 @@ function GitDiffContent({
 
   const markdownHtml =
     fullContextResult?.markdownHtml || diffResult.markdownHtml;
+  const oversizedHtmlSkip = getOversizedDiffHtmlSkip(displayResult.diffHtml);
+  const previewSkipped = displayResult.previewSkipped ?? oversizedHtmlSkip;
 
   return (
     <div className="diff-modal-content" ref={contentRef}>
@@ -1381,6 +1372,12 @@ function GitDiffContent({
             dangerouslySetInnerHTML={{ __html: markdownHtml }}
           />
         </div>
+      ) : previewSkipped ? (
+        <GitDiffPreviewSkippedState
+          file={file}
+          previewSkipped={previewSkipped}
+          t={t}
+        />
       ) : displayResult.diffHtml ? (
         <HighlightedDiff diffHtml={displayResult.diffHtml} />
       ) : (
@@ -1390,6 +1387,94 @@ function GitDiffContent({
       )}
     </div>
   );
+}
+
+function GitDiffPreviewSkippedState({
+  file,
+  previewSkipped,
+  t,
+}: {
+  file: GitFileChange;
+  previewSkipped: GitDiffPreviewSkipped;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  return (
+    <div className="git-diff-preview-skipped">
+      <div className="git-diff-preview-skipped-title">
+        {t("gitStatusDiffPreviewSkipped")}
+      </div>
+      <div className="git-diff-preview-skipped-message">
+        {getDiffPreviewSkippedMessage(previewSkipped, t)}
+      </div>
+      <dl className="git-diff-preview-skipped-details">
+        <div>
+          <dt>{t("gitStatusDiffPreviewSkippedPath")}</dt>
+          <dd>{file.path}</dd>
+        </div>
+        {previewSkipped.totalBytes !== undefined && (
+          <div>
+            <dt>{t("gitStatusDiffPreviewSkippedSize")}</dt>
+            <dd>{formatBytes(previewSkipped.totalBytes)}</dd>
+          </div>
+        )}
+        {previewSkipped.maxLineChars !== undefined && (
+          <div>
+            <dt>{t("gitStatusDiffPreviewSkippedLineLength")}</dt>
+            <dd>{previewSkipped.maxLineChars.toLocaleString()}</dd>
+          </div>
+        )}
+        {previewSkipped.htmlChars !== undefined && (
+          <div>
+            <dt>{t("gitStatusDiffPreviewSkippedHtmlSize")}</dt>
+            <dd>{previewSkipped.htmlChars.toLocaleString()}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+function getOversizedDiffHtmlSkip(
+  diffHtml: string,
+): GitDiffPreviewSkipped | null {
+  if (diffHtml.length <= GIT_DIFF_MAX_RENDERED_HTML_CHARS) {
+    return null;
+  }
+
+  return {
+    reason: "html-too-large",
+    htmlChars: diffHtml.length,
+    maxHtmlChars: GIT_DIFF_MAX_RENDERED_HTML_CHARS,
+  };
+}
+
+function getDiffPreviewSkippedMessage(
+  previewSkipped: GitDiffPreviewSkipped,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  switch (previewSkipped.reason) {
+    case "content-too-large":
+      return t("gitStatusDiffPreviewSkippedContentTooLarge");
+    case "line-too-long":
+      return t("gitStatusDiffPreviewSkippedLineTooLong");
+    case "html-too-large":
+      return t("gitStatusDiffPreviewSkippedHtmlTooLarge");
+  }
+  return t("gitStatusDiffPreviewSkippedContentTooLarge");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${formatFraction(bytes / 1024)} KB`;
+  }
+  return `${formatFraction(bytes / (1024 * 1024))} MB`;
+}
+
+function formatFraction(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(1);
 }
 
 function gitFileKey(file: GitFileChange): string {

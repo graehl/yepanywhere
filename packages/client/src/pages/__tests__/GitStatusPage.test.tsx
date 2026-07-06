@@ -191,6 +191,52 @@ describe("GitStatusPage route retention", () => {
   });
 });
 
+describe("GitStatusPage diff preview guards", () => {
+  it("shows server skipped-preview metadata instead of diff content", async () => {
+    mocks.getGitDiff.mockResolvedValueOnce({
+      diffHtml: "",
+      structuredPatch: [],
+      previewSkipped: {
+        reason: "line-too-long",
+        totalBytes: 30_012,
+        maxLineChars: 30_012,
+        maxLineCharsLimit: 20_000,
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("gitStatusDiffPreviewSkipped")).toBeDefined();
+    expect(
+      screen.getByText("gitStatusDiffPreviewSkippedLineTooLong"),
+    ).toBeDefined();
+    expect(
+      screen.getByText("gitStatusDiffPreviewSkippedLineLength"),
+    ).toBeDefined();
+  });
+
+  it("does not inject oversized highlighted diff html", async () => {
+    mocks.getGitDiff.mockResolvedValueOnce({
+      diffHtml: "x".repeat(1_000_001),
+      structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 1,
+          lines: ["-a", "+b"],
+        },
+      ],
+    });
+
+    renderPage();
+
+    expect(
+      await screen.findByText("gitStatusDiffPreviewSkippedHtmlTooLarge"),
+    ).toBeDefined();
+  });
+});
+
 describe("GitStatusPage untracked folders", () => {
   it("opens an untracked folder listing without loading a diff", async () => {
     mocks.useGitStatus.mockReturnValue({

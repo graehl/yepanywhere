@@ -111,6 +111,9 @@ export {
 } from "./types.js";
 
 export type {
+  GitDiffPreviewSkipped,
+  GitDiffPreviewSkippedReason,
+  GitDiffResult,
   GitFileChange,
   GitIntegrationOptionReason,
   GitIntegrationOptionsResult,

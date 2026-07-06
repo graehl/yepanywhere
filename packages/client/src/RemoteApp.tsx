@@ -74,11 +74,13 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
     queuedSessionMessageCount,
     safeRestartState,
     safeRestartMutating,
+    backendReloadSafetyKnown,
   } = useReloadNotifications();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
   const visibleReloads = getVisibleReloadBanners(
     !!isManualReloadMode,
     pendingReloads,
+    { backendReloadSafetyKnown },
   );
 
   return (

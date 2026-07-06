@@ -37,11 +37,15 @@ const IDLE_SAFE_RESTART_STATE: SafeRestartState = {
 export function getVisibleReloadBanners(
   isManualReloadMode: boolean,
   pendingReloads: PendingReloads,
+  options: { backendReloadSafetyKnown?: boolean } = {},
 ): PendingReloads {
   if (!isManualReloadMode) {
     return { backend: false, frontend: false };
   }
   if (pendingReloads.backend) {
+    if (options.backendReloadSafetyKnown === false) {
+      return { backend: false, frontend: false };
+    }
     return { backend: true, frontend: false };
   }
   return { backend: false, frontend: pendingReloads.frontend };
@@ -90,7 +94,9 @@ export function useReloadNotifications() {
   const [connected, setConnected] = useState(activityBus.connected);
   const [safeRestartState, setSafeRestartState] =
     useState<SafeRestartState>(IDLE_SAFE_RESTART_STATE);
+  const [safeRestartLoaded, setSafeRestartLoaded] = useState(false);
   const [safeRestartMutating, setSafeRestartMutating] = useState(false);
+  const [workerActivityLoaded, setWorkerActivityLoaded] = useState(false);
   const [workerActivity, setWorkerActivity] = useState<WorkerActivityEvent>({
     type: "worker-activity-changed",
     activeWorkers: 0,
@@ -133,7 +139,9 @@ export function useReloadNotifications() {
     // Sync worker activity
     fetchJSON<WorkerActivityEvent>("/status/workers")
       .then((data) => {
-        if (data) setWorkerActivity(data);
+        if (!data) return;
+        setWorkerActivity(data);
+        setWorkerActivityLoaded(true);
       })
       .catch(() => {
         // Ignore errors
@@ -143,6 +151,7 @@ export function useReloadNotifications() {
       .then((data) => {
         if (!data) return;
         setSafeRestartState(data);
+        setSafeRestartLoaded(true);
         if (data.status !== "idle") {
           showReloadIfNotDismissed("backend");
         }
@@ -194,18 +203,21 @@ export function useReloadNotifications() {
       activityBus.on("backend-reloaded", () => {
         setPendingReloads((prev) => ({ ...prev, backend: false }));
         setSafeRestartState(IDLE_SAFE_RESTART_STATE);
+        setSafeRestartLoaded(true);
       }),
     );
 
     unsubscribers.push(
       activityBus.on("worker-activity-changed", (data: WorkerActivityEvent) => {
         setWorkerActivity(data);
+        setWorkerActivityLoaded(true);
       }),
     );
 
     unsubscribers.push(
       activityBus.on("safe-restart-changed", (data) => {
         setSafeRestartState(data.state);
+        setSafeRestartLoaded(true);
         if (data.state.status !== "idle") {
           showReloadIfNotDismissed("backend");
         }
@@ -345,6 +357,7 @@ export function useReloadNotifications() {
     0,
     workerActivity.queuedSessionMessageCount ?? workerActivity.queueLength,
   );
+  const backendReloadSafetyKnown = workerActivityLoaded && safeRestartLoaded;
 
   return {
     isManualReloadMode,
@@ -362,6 +375,7 @@ export function useReloadNotifications() {
     queuedSessionMessageCount,
     safeRestartState,
     safeRestartMutating,
+    backendReloadSafetyKnown,
     unsafeToRestart:
       interruptibleSessionCount > 0 || queuedSessionMessageCount > 0,
   };

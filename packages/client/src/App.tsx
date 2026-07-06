@@ -66,10 +66,12 @@ function AppContent({ children }: Props) {
     queuedSessionMessageCount,
     safeRestartState,
     safeRestartMutating,
+    backendReloadSafetyKnown,
   } = useReloadNotifications();
   const visibleReloads = getVisibleReloadBanners(
     !!isManualReloadMode,
     pendingReloads,
+    { backendReloadSafetyKnown },
   );
 
   return (

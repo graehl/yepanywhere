@@ -205,7 +205,8 @@ of their planned slices.
 | 3.4 | Done 2026-07-06 | `api/client.ts` Git domain client | Extract the first domain-specific API module once source transport shims are stable. | Moved Git endpoint wrappers into `gitClient.ts` and the current-source JSON fetch helper into `sourceApiFetch.ts`; kept the exported `api` facade and `fetchJSON` export stable. |
 | 3.5 | Done 2026-07-06 | `api/client.ts` Auth domain client | Continue with standalone endpoint clusters only when they stay behind the stable facade. | Moved auth status/setup/login/logout/password/localhost-access wrappers into `authClient.ts`; kept the exported `api` facade and `AuthStatus` type export stable. |
 | 3.6 | Done 2026-07-06 | `api/client.ts` Recents domain client | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Moved recents fetch/visit/clear wrappers into `recentsClient.ts`; kept the exported `api` facade stable. |
-| 3.7 | Not started | `api/client.ts` additional domain clients | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Good candidates: server info/env/admin metadata, onboarding/browser-profile, or push-notification clusters. Treat public-share as session-adjacent and settings as moderate risk because of custom clear semantics. |
+| 3.7 | Done 2026-07-06 | `api/client.ts` Onboarding domain client | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Moved onboarding status/complete/reset wrappers into `onboardingClient.ts`; kept the exported `api` facade stable. |
+| 3.8 | Not started | `api/client.ts` additional domain clients | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Good candidates: server info/env/admin metadata, browser-profile, or push-notification clusters. Treat public-share as session-adjacent and settings as moderate risk because of custom clear semantics. |
 
 Phase 3 scope note:
 - Further `useSessionMessages` / `SessionDetailCoordinator` orchestration is
@@ -276,6 +277,43 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 3.7 — api/client Onboarding Domain Client (Landed 2026-07-06, this commit)
+
+Moved:
+- Onboarding status, complete, and reset endpoint wrappers ->
+  `onboardingClient.ts`.
+
+Signature conversions:
+- None. The exported `api` facade still exposes the same
+  `api.getOnboardingStatus`, `api.completeOnboarding`, and
+  `api.resetOnboarding` methods.
+
+Behavior changes:
+- None intended. Endpoint paths, HTTP methods, current-source transport
+  routing, and public call sites were preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/api/client.test.ts`; scoped `node scripts/biome.cjs lint`;
+  `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`;
+  `pnpm console:scan` unchanged from the current budget.
+- Tier 3 not run. This slice moved API wrappers behind the same facade and
+  added facade-path tests; it did not change route registration, onboarding
+  server behavior, transport framing, or rendered UI behavior.
+- Residual output: focused API tests still print the existing
+  `ConnectionManager` transition lines, and the broad suite still prints its
+  existing negative-path server/client logs. No new chatter was attributed to
+  this slice.
+
+Follow-ups recorded:
+- Row 3.8 tracks additional non-session `api/client.ts` domain-client
+  candidates. Public-share remains session-adjacent, and settings remains
+  moderate risk because `updateServerSettings` preserves explicit clears with
+  custom JSON serialization.
 
 ### Slice 3.6 — api/client Recents Domain Client (Landed 2026-07-06, this commit)
 

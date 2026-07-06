@@ -354,3 +354,45 @@ describe("api recents facade", () => {
     ]);
   });
 });
+
+describe("api onboarding facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves onboarding endpoint paths and methods", async () => {
+    await api.getOnboardingStatus();
+    await api.completeOnboarding();
+    await api.resetOnboarding();
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/onboarding", method: "GET", body: undefined },
+      {
+        url: "/api/onboarding/complete",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/api/onboarding/reset",
+        method: "POST",
+        body: undefined,
+      },
+    ]);
+  });
+});

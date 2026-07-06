@@ -59,6 +59,7 @@ import type {
 } from "../types";
 import { authApi } from "./authClient";
 import { gitApi } from "./gitClient";
+import { onboardingApi } from "./onboardingClient";
 import { getDesktopAuthToken } from "./plainFetch";
 import { recentsApi } from "./recentsClient";
 import { fetchJSON } from "./sourceApiFetch";
@@ -1432,17 +1433,7 @@ export const api = {
   ...recentsApi,
 
   // Onboarding API (first-run wizard state)
-  getOnboardingStatus: () => fetchJSON<{ complete: boolean }>("/onboarding"),
-
-  completeOnboarding: () =>
-    fetchJSON<{ success: boolean }>("/onboarding/complete", {
-      method: "POST",
-    }),
-
-  resetOnboarding: () =>
-    fetchJSON<{ success: boolean }>("/onboarding/reset", {
-      method: "POST",
-    }),
+  ...onboardingApi,
 
   // Browser profiles API (device origin tracking)
   getBrowserProfiles: () =>

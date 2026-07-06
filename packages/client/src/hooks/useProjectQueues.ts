@@ -12,9 +12,13 @@ import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { createClientQueryKey } from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
-import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
+import {
+  serverSupportsProjectQueue,
+  serverSupportsProjectQueueGlobalMoveToTop,
+} from "../lib/projectQueueVisibility";
 import {
   useProjectQueueDispatchState,
+  useProjectQueueGlobalItems,
   useProjectQueueItemsByProject,
   useProjectQueueProjectStatusesByProject,
   useProjectQueueRecoveredSessionQueues,
@@ -24,7 +28,7 @@ import { useVersion } from "./useVersion";
 
 export interface UseProjectQueuesResult {
   queuesByProject: Record<string, readonly ProjectQueueItemSummary[]>;
-  items: ProjectQueueItemSummary[];
+  items: readonly ProjectQueueItemSummary[];
   projectStatusesByProject: Record<string, ProjectQueueProjectStatus>;
   recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[];
   loading: boolean;
@@ -33,6 +37,7 @@ export interface UseProjectQueuesResult {
   mutatingDispatchState: boolean;
   mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
+  supportsGlobalMoveToTop: boolean;
   refetch: () => Promise<void>;
   pauseDispatch: () => Promise<void>;
   resumeDispatch: () => Promise<void>;
@@ -57,7 +62,7 @@ function uniqueProjectIds(projectIds: readonly string[]): string[] {
 
 function flattenQueues(
   queuesByProject: Record<string, readonly ProjectQueueItemSummary[]>,
-): ProjectQueueItemSummary[] {
+): readonly ProjectQueueItemSummary[] {
   return Object.values(queuesByProject).flat();
 }
 
@@ -83,6 +88,8 @@ export function useProjectQueues(
   const sourceSummary = runtime.summary;
   const remoteConnection = useOptionalRemoteConnection();
   const enabled = serverSupportsProjectQueue(version);
+  const supportsGlobalMoveToTop =
+    serverSupportsProjectQueueGlobalMoveToTop(version);
   const ready =
     !isRemoteClient() ||
     (remoteConnection !== null && remoteConnection.connection !== null);
@@ -90,9 +97,9 @@ export function useProjectQueues(
     () => uniqueProjectIds(projectIds),
     [projectIds],
   );
-  const storedQueuesByProject = useProjectQueueItemsByProject(
-    normalizedProjectIds,
-  );
+  const storedQueuesByProject =
+    useProjectQueueItemsByProject(normalizedProjectIds);
+  const storedGlobalItems = useProjectQueueGlobalItems(normalizedProjectIds);
   const storedDispatchState = useProjectQueueDispatchState();
   const storedRecoveredSessionQueues = useProjectQueueRecoveredSessionQueues();
   const storedProjectStatusesByProject =
@@ -105,7 +112,11 @@ export function useProjectQueues(
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const queryEnabled = enabled && normalizedProjectIds.length > 0;
   const hasData = Object.keys(storedQueuesByProject).length > 0;
-  const { loading, error: queryError, refetch } = useRetainedClientQuery({
+  const {
+    loading,
+    error: queryError,
+    refetch,
+  } = useRetainedClientQuery({
     sourceKey,
     key: PROJECT_QUEUE_QUERY_KEY,
     enabled: queryEnabled,
@@ -147,50 +158,75 @@ export function useProjectQueues(
     [sourceSummary],
   );
 
-  const deleteItem = useCallback(async (projectId: string, itemId: string) => {
-    setMutatingItemId(itemId);
-    setMutationError(null);
-    const requestSummary = sourceSummary;
-    try {
-      const response = await api.deleteProjectQueueItem(projectId, itemId);
-      requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
-    } catch (err) {
-      setMutationError(err instanceof Error ? err : new Error(String(err)));
-      throw err;
-    } finally {
-      setMutatingItemId(null);
-    }
-  }, [sourceSummary]);
+  const deleteItem = useCallback(
+    async (projectId: string, itemId: string) => {
+      setMutatingItemId(itemId);
+      setMutationError(null);
+      const requestSummary = sourceSummary;
+      try {
+        const response = await api.deleteProjectQueueItem(projectId, itemId);
+        requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
+      } catch (err) {
+        setMutationError(err instanceof Error ? err : new Error(String(err)));
+        throw err;
+      } finally {
+        setMutatingItemId(null);
+      }
+    },
+    [sourceSummary],
+  );
 
-  const retryItem = useCallback(async (projectId: string, itemId: string) => {
-    setMutatingItemId(itemId);
-    setMutationError(null);
-    const requestSummary = sourceSummary;
-    try {
-      const response = await api.retryProjectQueueItem(projectId, itemId);
-      requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
-    } catch (err) {
-      setMutationError(err instanceof Error ? err : new Error(String(err)));
-      throw err;
-    } finally {
-      setMutatingItemId(null);
-    }
-  }, [sourceSummary]);
+  const retryItem = useCallback(
+    async (projectId: string, itemId: string) => {
+      setMutatingItemId(itemId);
+      setMutationError(null);
+      const requestSummary = sourceSummary;
+      try {
+        const response = await api.retryProjectQueueItem(projectId, itemId);
+        requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
+      } catch (err) {
+        setMutationError(err instanceof Error ? err : new Error(String(err)));
+        throw err;
+      } finally {
+        setMutatingItemId(null);
+      }
+    },
+    [sourceSummary],
+  );
 
-  const moveItemToTop = useCallback(async (projectId: string, itemId: string) => {
-    setMutatingItemId(itemId);
-    setMutationError(null);
-    const requestSummary = sourceSummary;
-    try {
-      const response = await api.moveProjectQueueItemToTop(projectId, itemId);
-      requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
-    } catch (err) {
-      setMutationError(err instanceof Error ? err : new Error(String(err)));
-      throw err;
-    } finally {
-      setMutatingItemId(null);
-    }
-  }, [sourceSummary]);
+  const moveItemToTop = useCallback(
+    async (projectId: string, itemId: string) => {
+      setMutatingItemId(itemId);
+      setMutationError(null);
+      const requestSummary = sourceSummary;
+      try {
+        if (
+          storedDispatchState.status === "paused" &&
+          supportsGlobalMoveToTop
+        ) {
+          const response = await api.moveProjectQueueItemToGlobalTop(
+            projectId,
+            itemId,
+          );
+          requestSummary.reportProjectQueueGlobalCollectionSnapshot(
+            response.queue,
+          );
+        } else {
+          const response = await api.moveProjectQueueItemToTop(
+            projectId,
+            itemId,
+          );
+          requestSummary.reportProjectQueueCollectionSnapshot(response.queue);
+        }
+      } catch (err) {
+        setMutationError(err instanceof Error ? err : new Error(String(err)));
+        throw err;
+      } finally {
+        setMutatingItemId(null);
+      }
+    },
+    [sourceSummary, storedDispatchState.status, supportsGlobalMoveToTop],
+  );
 
   const refetchQueues = useCallback(async () => {
     setMutationError(null);
@@ -254,8 +290,13 @@ export function useProjectQueues(
   );
 
   const items = useMemo(
-    () => flattenQueues(enabled ? storedQueuesByProject : {}),
-    [enabled, storedQueuesByProject],
+    () =>
+      enabled
+        ? storedGlobalItems.length > 0
+          ? storedGlobalItems
+          : flattenQueues(storedQueuesByProject)
+        : [],
+    [enabled, storedGlobalItems, storedQueuesByProject],
   );
   const projectIdSet = useMemo(
     () => new Set(normalizedProjectIds),
@@ -272,7 +313,10 @@ export function useProjectQueues(
   );
 
   useEffect(() => {
-    if (!enabled || (items.length === 0 && recoveredSessionQueues.length === 0)) {
+    if (
+      !enabled ||
+      (items.length === 0 && recoveredSessionQueues.length === 0)
+    ) {
       return;
     }
     const timer = window.setInterval(() => {
@@ -292,6 +336,7 @@ export function useProjectQueues(
     mutatingDispatchState,
     mutatingPromoteItemId,
     dispatchState: enabled ? storedDispatchState : RUNNING_DISPATCH_STATE,
+    supportsGlobalMoveToTop: enabled && supportsGlobalMoveToTop,
     refetch: refetchQueues,
     pauseDispatch,
     resumeDispatch,

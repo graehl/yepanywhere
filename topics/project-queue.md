@@ -186,6 +186,15 @@ pause so users understand why durable backlog is not promoting automatically.
 Destructive item removal should use Delete/Remove wording, not Cancel, because
 it permanently removes the persisted queue item.
 
+While dispatch is paused, the Projects page may let the user move an item to
+the top of the visible global Project Queue list before resuming. While
+dispatch is running, reorder controls remain project-local because Project
+Queue still promotes at project-idle boundaries rather than through a single
+cross-project worker. New clients must only expose the paused global control
+when the server advertises the transitional
+`projectQueueGlobalMoveToTop` capability; older compatible servers fall back to
+project-local reorder controls.
+
 Each item on the projects page may offer a Start now control. Start now skips
 only the remaining quiet-window countdown; it still refuses when dispatch is
 paused, another item is already in flight for that project, or the project idle

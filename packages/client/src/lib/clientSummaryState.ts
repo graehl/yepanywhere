@@ -12,7 +12,11 @@ import type {
   ProjectQueueResponse,
   UrlProjectId,
 } from "@yep-anywhere/shared";
-import type { GlobalSessionItem, InboxItem, InboxResponse } from "../api/client";
+import type {
+  GlobalSessionItem,
+  InboxItem,
+  InboxResponse,
+} from "../api/client";
 import type { Project, SessionStatus } from "../types";
 import type {
   ProcessStateEvent,
@@ -141,6 +145,8 @@ export interface ProjectQueueProjectStatusRecord {
 
 export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
+  globalItems: readonly ProjectQueueItemSummary[];
+  globalItemsObservedAt?: number;
   dispatchState: ProjectQueueDispatchState;
   dispatchStateObservedAt?: number;
   recoveredSessionQueues: readonly ProjectQueueRecoveredSessionQueueSummary[];
@@ -234,10 +240,7 @@ const EMPTY_RECOVERED_SESSION_QUEUES: readonly ProjectQueueRecoveredSessionQueue
 const RUNNING_PROJECT_QUEUE_DISPATCH_STATE: ProjectQueueDispatchState = {
   status: "running",
 };
-const ACTIVE_INBOX_TIERS: readonly InboxTier[] = [
-  "needsAttention",
-  "active",
-];
+const ACTIVE_INBOX_TIERS: readonly InboxTier[] = ["needsAttention", "active"];
 
 export function createEmptyClientSummaryState(): ClientSummaryState {
   return {
@@ -251,6 +254,7 @@ export function createEmptyClientSummaryState(): ClientSummaryState {
     },
     projectQueues: {
       byProject: new Map(),
+      globalItems: EMPTY_PROJECT_QUEUE_ITEMS,
       dispatchState: RUNNING_PROJECT_QUEUE_DISPATCH_STATE,
       recoveredSessionQueues: EMPTY_RECOVERED_SESSION_QUEUES,
       projectStatusesByProject: new Map(),
@@ -498,10 +502,7 @@ function mergeProjectQueueItemDisplayMetadata(
   const existingById = new Map(existingItems.map((item) => [item.id, item]));
   let changed = false;
   const merged = snapshotItems.map((item) => {
-    if (
-      item.targetTitle !== undefined &&
-      item.targetFullTitle !== undefined
-    ) {
+    if (item.targetTitle !== undefined && item.targetFullTitle !== undefined) {
       return item;
     }
     const existing = existingById.get(item.id);
@@ -527,6 +528,61 @@ function mergeProjectQueueItemDisplayMetadata(
     };
   });
   return changed ? merged : snapshotItems;
+}
+
+function sameIdsIgnoringOrder(
+  a: readonly ProjectQueueItemSummary[],
+  b: readonly ProjectQueueItemSummary[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const ids = new Set(a.map((item) => item.id));
+  return b.every((item) => ids.has(item.id));
+}
+
+function mergeProjectQueueSnapshotIntoGlobalItems(
+  globalItems: readonly ProjectQueueItemSummary[],
+  projectId: UrlProjectId,
+  snapshotItems: readonly ProjectQueueItemSummary[],
+): readonly ProjectQueueItemSummary[] {
+  if (globalItems.length === 0) return snapshotItems;
+
+  const existingProjectItems = globalItems.filter(
+    (item) => item.projectId === projectId,
+  );
+  if (existingProjectItems.length === 0) {
+    return snapshotItems.length > 0
+      ? [...globalItems, ...snapshotItems]
+      : globalItems;
+  }
+
+  if (sameIdsIgnoringOrder(existingProjectItems, snapshotItems)) {
+    let snapshotIndex = 0;
+    return globalItems.map((item) =>
+      item.projectId === projectId ? snapshotItems[snapshotIndex++]! : item,
+    );
+  }
+
+  const snapshotById = new Map(snapshotItems.map((item) => [item.id, item]));
+  const placedIds = new Set<string>();
+  const merged: ProjectQueueItemSummary[] = [];
+  for (const item of globalItems) {
+    if (item.projectId !== projectId) {
+      merged.push(item);
+      continue;
+    }
+    const replacement = snapshotById.get(item.id);
+    if (!replacement) {
+      continue;
+    }
+    merged.push(replacement);
+    placedIds.add(replacement.id);
+  }
+  for (const item of snapshotItems) {
+    if (!placedIds.has(item.id)) {
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
 function inboxTierIdsEqual(
@@ -646,8 +702,7 @@ function putProjectQueueDispatchState(
 ): ClientSummaryState {
   if (!dispatchState) return state;
   if (
-    observedAt <
-    (state.projectQueues.dispatchStateObservedAt ?? NO_OBSERVATION)
+    observedAt < (state.projectQueues.dispatchStateObservedAt ?? NO_OBSERVATION)
   ) {
     return state;
   }
@@ -682,9 +737,8 @@ function putProjectQueueProjectStatuses(
   const nextProjectIds = new Set(Object.keys(projectStatuses));
 
   for (const [projectId, status] of Object.entries(projectStatuses)) {
-    const existing = state.projectQueues.projectStatusesByProject.get(
-      projectId,
-    );
+    const existing =
+      state.projectQueues.projectStatusesByProject.get(projectId);
     if (existing && existing.observedAt > observedAt) {
       continue;
     }
@@ -791,22 +845,31 @@ function putProjectQueueSnapshot(
     }
 
     if (projectQueueItemsEqual(existing.items, snapshotItems)) {
-      if (observedAt === existing.snapshotObservedAt) {
-        return next;
-      }
       const byProject = new Map(next.projectQueues.byProject);
       byProject.set(snapshot.projectId, {
         ...existing,
         observedAt: Math.max(existing.observedAt, observedAt),
         snapshotObservedAt: observedAt,
       });
-      return {
+      next = {
         ...next,
         projectQueues: {
           ...next.projectQueues,
           byProject,
         },
       };
+      if (
+        next.projectQueues.globalItemsObservedAt !== undefined &&
+        observedAt >= next.projectQueues.globalItemsObservedAt
+      ) {
+        return putProjectQueueGlobalItemsForProject(
+          next,
+          snapshot.projectId,
+          snapshotItems,
+          observedAt,
+        );
+      }
+      return next;
     }
   }
 
@@ -818,11 +881,50 @@ function putProjectQueueSnapshot(
     snapshotObservedAt: observedAt,
   });
 
-  return {
+  next = {
     ...next,
     projectQueues: {
       ...next.projectQueues,
       byProject,
+    },
+  };
+  if (
+    next.projectQueues.globalItemsObservedAt !== undefined &&
+    observedAt >= next.projectQueues.globalItemsObservedAt
+  ) {
+    return putProjectQueueGlobalItemsForProject(
+      next,
+      snapshot.projectId,
+      snapshotItems,
+      observedAt,
+    );
+  }
+  return next;
+}
+
+function putProjectQueueGlobalItemsForProject(
+  state: ClientSummaryState,
+  projectId: UrlProjectId,
+  snapshotItems: readonly ProjectQueueItemSummary[],
+  observedAt: number,
+): ClientSummaryState {
+  const globalItems = mergeProjectQueueSnapshotIntoGlobalItems(
+    state.projectQueues.globalItems,
+    projectId,
+    snapshotItems,
+  );
+  if (
+    projectQueueItemsEqual(state.projectQueues.globalItems, globalItems) &&
+    observedAt === state.projectQueues.globalItemsObservedAt
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    projectQueues: {
+      ...state.projectQueues,
+      globalItems,
+      globalItemsObservedAt: observedAt,
     },
   };
 }
@@ -832,8 +934,17 @@ function putProjectQueueGlobalSnapshot(
   snapshot: ProjectQueueGlobalCollectionSnapshot,
   observedAt: number,
 ): ClientSummaryState {
+  if (
+    observedAt < (state.projectQueues.globalItemsObservedAt ?? NO_OBSERVATION)
+  ) {
+    return state;
+  }
   const bySnapshotProject = new Map<UrlProjectId, ProjectQueueItemSummary[]>();
-  for (const item of snapshot.items) {
+  const snapshotItems = mergeProjectQueueItemDisplayMetadata(
+    state.projectQueues.globalItems,
+    snapshot.items,
+  );
+  for (const item of snapshotItems) {
     const items = bySnapshotProject.get(item.projectId);
     if (items) {
       items.push(item);
@@ -867,6 +978,20 @@ function putProjectQueueGlobalSnapshot(
       projectQueues: {
         ...next.projectQueues,
         byProject,
+      },
+    };
+  }
+
+  if (
+    !projectQueueItemsEqual(next.projectQueues.globalItems, snapshotItems) ||
+    observedAt !== next.projectQueues.globalItemsObservedAt
+  ) {
+    next = {
+      ...next,
+      projectQueues: {
+        ...next.projectQueues,
+        globalItems: snapshotItems,
+        globalItemsObservedAt: observedAt,
       },
     };
   }
@@ -1054,11 +1179,7 @@ function withContentFields(
     ...(canApplyObservedField(record.updatedAt, fields.updatedAt, isFresh)
       ? { updatedAt: fields.updatedAt }
       : {}),
-    ...(canApplyObservedField(
-      record.messageCount,
-      fields.messageCount,
-      isFresh,
-    )
+    ...(canApplyObservedField(record.messageCount, fields.messageCount, isFresh)
       ? { messageCount: fields.messageCount }
       : {}),
     ...(canApplyObservedField(record.provider, fields.provider, isFresh)
@@ -1502,7 +1623,9 @@ export function applyDraftSessionIdsSnapshot(
   draftSessionIds: ReadonlySet<string>,
   observedAt = Date.now(),
 ): ClientSummaryState {
-  if (stringSetsEqual(state.localDecorations.draftSessionIds, draftSessionIds)) {
+  if (
+    stringSetsEqual(state.localDecorations.draftSessionIds, draftSessionIds)
+  ) {
     return state;
   }
 
@@ -1807,6 +1930,20 @@ export function selectProjectQueueItemsByProject(
     }
   }
   return result;
+}
+
+export function selectProjectQueueGlobalItems(
+  state: ClientSummaryState,
+  projectIds: readonly string[],
+): readonly ProjectQueueItemSummary[] {
+  const selectedProjectIds = new Set(projectIds);
+  const source =
+    state.projectQueues.globalItemsObservedAt !== undefined
+      ? state.projectQueues.globalItems
+      : [...state.projectQueues.byProject.values()].flatMap(
+          (record) => record.items,
+        );
+  return source.filter((item) => selectedProjectIds.has(item.projectId));
 }
 
 export function selectProjectQueueDispatchState(

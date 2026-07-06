@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
   serverSupportsProjectQueue,
+  serverSupportsProjectQueueGlobalMoveToTop,
   shouldShowProjectQueueAffordance,
 } from "../projectQueueVisibility";
 
@@ -40,6 +42,29 @@ describe("serverSupportsProjectQueue", () => {
         },
         { hostedRemote: true },
       ),
+    ).toBe(true);
+  });
+});
+
+describe("serverSupportsProjectQueueGlobalMoveToTop", () => {
+  it("requires both the base and global move-to-top capabilities", () => {
+    expect(
+      serverSupportsProjectQueueGlobalMoveToTop({
+        capabilities: [PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY],
+      }),
+    ).toBe(false);
+    expect(
+      serverSupportsProjectQueueGlobalMoveToTop({
+        capabilities: [PROJECT_QUEUE_CAPABILITY],
+      }),
+    ).toBe(false);
+    expect(
+      serverSupportsProjectQueueGlobalMoveToTop({
+        capabilities: [
+          PROJECT_QUEUE_CAPABILITY,
+          PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
+        ],
+      }),
     ).toBe(true);
   });
 });

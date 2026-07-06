@@ -284,6 +284,7 @@ export function ProjectsPage() {
               mutatingDispatchState={projectQueues.mutatingDispatchState}
               mutatingPromoteItemId={projectQueues.mutatingPromoteItemId}
               dispatchState={projectQueues.dispatchState}
+              canMoveItemsToGlobalTop={projectQueues.supportsGlobalMoveToTop}
               projectStatusesByProject={projectQueues.projectStatusesByProject}
               highlightedItemId={highlightedQueueItemId}
               basePath={basePath}

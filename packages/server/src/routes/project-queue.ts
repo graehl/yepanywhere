@@ -48,6 +48,36 @@ export function createGlobalProjectQueueRoutes(
     return c.json(await globalQueueResponse(deps, dispatchState));
   });
 
+  routes.post("/:projectId/queue/:itemId/move-to-top", async (c) => {
+    const projectId = c.req.param("projectId");
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    let item: ProjectQueueItemSummary | null;
+    try {
+      item = await deps.projectQueueService.moveItemToGlobalTop(
+        projectId,
+        c.req.param("itemId"),
+      );
+      if (!item) {
+        return c.json({ error: "Project queue item not found" }, 404);
+      }
+      const queue = await globalQueueResponse(deps);
+      const enrichedItem =
+        queue.items.find((candidate) => candidate.id === item?.id) ?? item;
+      return c.json({
+        item: enrichedItem,
+        queue,
+      });
+    } catch (error) {
+      if (error instanceof ProjectQueueValidationError) {
+        return c.json(validationError(error.message), 400);
+      }
+      throw error;
+    }
+  });
+
   routes.post("/:projectId/promote-now", async (c) => {
     const projectId = c.req.param("projectId");
     if (!isUrlProjectId(projectId)) {
@@ -71,8 +101,10 @@ export function createGlobalProjectQueueRoutes(
         : {}),
       ...(body.force === true ? { force: true } : {}),
     };
-    const promoteResult =
-      await deps.projectQueueScheduler.promoteNow(projectId, options);
+    const promoteResult = await deps.projectQueueScheduler.promoteNow(
+      projectId,
+      options,
+    );
     const response: ProjectQueuePromoteNowResponse = {
       ...(await globalQueueResponse(deps)),
       promoteResult,
@@ -86,9 +118,7 @@ export function createGlobalProjectQueueRoutes(
 export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
   const routes = new Hono();
 
-  async function resolveProject(
-    projectId: string,
-  ): Promise<
+  async function resolveProject(projectId: string): Promise<
     | { project: Project }
     | {
         error: "Invalid project ID format" | "Project not found";
@@ -138,7 +168,8 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
       const queue = await projectQueueResponse(resolved.project, deps);
       return c.json(
         {
-          item: queue.items.find((candidate) => candidate.id === item.id) ?? item,
+          item:
+            queue.items.find((candidate) => candidate.id === item.id) ?? item,
           queue,
         },
         201,

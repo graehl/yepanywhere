@@ -126,3 +126,5 @@
   first paint of Settings or other lightweight routes when leaving a session.
 - typescript-module-boundary-refactor - Tracking-first refactor series for
   extracting large TypeScript/TSX files along existing module boundaries.
+- server-capabilities - Shared registry and lifecycle policy for `/api/version`
+  capability strings and transitional compatibility gates.

@@ -1,7 +1,7 @@
 # Project Queue Reorder And Titles
 
-Status: title enrichment and project-local move-to-top slices complete; narrow
-viewport visual QA remains.
+Status: title enrichment, project-local move-to-top, and paused global
+move-to-top slices complete; narrow viewport visual QA remains.
 
 Topic: project-queue-reorder-and-titles
 
@@ -23,9 +23,12 @@ using the session index cache first.
 
 ## Decisions
 
-- Keep reorder scope project-local. A move-to-top action must not move an item
-  across projects or ahead of lower-level work that Project Queue already waits
-  behind.
+- Keep running reorder scope project-local. A move-to-top action must not move
+  an item ahead of lower-level work that Project Queue already waits behind.
+  While global dispatch is paused, the Projects page may additionally move an
+  item to the top of the visible global Project Queue list before Resume when
+  the server advertises the transitional
+  `projectQueueGlobalMoveToTop` capability.
 - Do not reuse the existing `promoted` event reason for manual reorder. In this
   feature, promotion already means scheduler dispatch from Project Queue into
   provider/session work. Use a reorder-oriented reason such as `reordered`.
@@ -59,6 +62,7 @@ Implementation status:
 - [x] Provider summary resolution uses the index service when available.
 - [x] Project Queue API title enrichment.
 - [x] Project-local move-to-top mutation.
+- [x] Paused global move-to-top mutation with transitional capability gate.
 - [x] Client hook and manager UI controls.
 
 ## Remaining Implementation

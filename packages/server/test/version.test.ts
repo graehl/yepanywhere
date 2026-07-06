@@ -1,3 +1,7 @@
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Dynamic import so vi.resetModules() gives us fresh module state (clears cache)
@@ -325,7 +329,10 @@ describe("GET /version", () => {
   it("advertises Project Queue support as a server capability", async () => {
     const { getServerCapabilities } = await importVersion();
 
-    expect(getServerCapabilities()).toContain("projectQueue");
+    expect(getServerCapabilities()).toContain(PROJECT_QUEUE_CAPABILITY);
+    expect(getServerCapabilities()).toContain(
+      PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
+    );
   });
 
   it("reports update-available for stale bridge binaries", async () => {

@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
+import { PROJECT_QUEUE_CAPABILITY } from "../../lib/projectQueueVisibility";
 import { ProjectsPage } from "../ProjectsPage";
 
 const state = vi.hoisted(() => ({
@@ -27,7 +28,7 @@ const state = vi.hoisted(() => ({
     string,
     { needsAttention: number; active: number; total: number }
   >(),
-  version: { capabilities: ["projectQueue"] as string[] } as {
+  version: { capabilities: [] as string[] } as {
     capabilities?: string[];
     remoteCompatibilityLevel?: number;
   },
@@ -129,7 +130,7 @@ describe("ProjectsPage", () => {
     state.projectStatusesByProject = {};
     state.dispatchState = { status: "running" };
     state.inboxCountsByProject = new Map();
-    state.version = { capabilities: ["projectQueue"] };
+    state.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
     state.isRemoteClient = false;
     state.mockUseProjectQueues.mockReset();
   });
@@ -165,8 +166,9 @@ describe("ProjectsPage", () => {
     const highlighted = document.querySelector(
       '[data-project-queue-item-id="queue-1"]',
     );
-    expect(highlighted?.classList.contains("project-queue-item--highlighted"))
-      .toBe(true);
+    expect(
+      highlighted?.classList.contains("project-queue-item--highlighted"),
+    ).toBe(true);
   });
 
   it("hides project queue UI without the server capability", () => {
@@ -181,9 +183,7 @@ describe("ProjectsPage", () => {
     );
 
     expect(state.mockUseProjectQueues).toHaveBeenCalledWith([]);
-    expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(
-      null,
-    );
+    expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(null);
     expect(screen.queryByText("Queued project work")).toBe(null);
     expect(screen.queryByTitle("Project Queue items: 1")).toBe(null);
   });
@@ -191,7 +191,7 @@ describe("ProjectsPage", () => {
   it("hides project queue UI for hosted remote servers below the compatible level", () => {
     state.isRemoteClient = true;
     state.version = {
-      capabilities: ["projectQueue"],
+      capabilities: [PROJECT_QUEUE_CAPABILITY],
       remoteCompatibilityLevel: 0,
     };
 
@@ -204,9 +204,7 @@ describe("ProjectsPage", () => {
     );
 
     expect(state.mockUseProjectQueues).toHaveBeenCalledWith([]);
-    expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(
-      null,
-    );
+    expect(screen.queryByRole("heading", { name: "Project Queue" })).toBe(null);
     expect(screen.queryByText("Queued project work")).toBe(null);
     expect(screen.queryByTitle("Project Queue items: 1")).toBe(null);
   });

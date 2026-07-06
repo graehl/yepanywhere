@@ -138,7 +138,9 @@ describe("ProjectQueueService", () => {
     const events: string[] = [];
     eventBus.subscribe((event) => {
       if (event.type === "project-queue-changed") {
-        events.push(`${event.reason}:${event.itemId ?? ""}:${event.items.length}`);
+        events.push(
+          `${event.reason}:${event.itemId ?? ""}:${event.items.length}`,
+        );
       }
     });
     const service = await createService(eventBus);
@@ -301,8 +303,15 @@ describe("ProjectQueueService", () => {
       ),
     );
 
-    expect(service.listProject(projectId).items.map((item) => item.message.text))
-      .toEqual(["message 0", "message 1", "message 2", "message 3", "message 4"]);
+    expect(
+      service.listProject(projectId).items.map((item) => item.message.text),
+    ).toEqual([
+      "message 0",
+      "message 1",
+      "message 2",
+      "message 3",
+      "message 4",
+    ]);
   });
 
   it("moves an item to the top of its project-local queue", async () => {
@@ -354,11 +363,9 @@ describe("ProjectQueueService", () => {
       id: second.id,
       messagePreview: "second project item",
     });
-    expect(service.listProject(projectId).items.map((item) => item.id)).toEqual([
-      second.id,
-      first.id,
-      third.id,
-    ]);
+    expect(service.listProject(projectId).items.map((item) => item.id)).toEqual(
+      [second.id, first.id, third.id],
+    );
     expect(service.listAll().map((item) => item.id)).toEqual([
       second.id,
       other.id,
@@ -368,10 +375,62 @@ describe("ProjectQueueService", () => {
     expect(events).toContain(`reordered:${second.id}`);
 
     const reloaded = await createService();
-    expect(reloaded.listProject(projectId).items.map((item) => item.id)).toEqual([
-      second.id,
+    expect(
+      reloaded.listProject(projectId).items.map((item) => item.id),
+    ).toEqual([second.id, first.id, third.id]);
+  });
+
+  it("moves an item to the global queue top while dispatch is paused", async () => {
+    const eventBus = new EventBus();
+    const events: string[] = [];
+    eventBus.subscribe((event) => {
+      if (event.type === "project-queue-changed") {
+        events.push(`${event.reason}:${event.itemId ?? ""}`);
+      }
+    });
+    const service = await createService(eventBus);
+    const otherProjectId = toUrlProjectId("/tmp/project-queue-other");
+    const first = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first project item" },
+      },
+    });
+    const other = await service.createItem({
+      projectId: otherProjectId,
+      projectPath: "/tmp/project-queue-other",
+      request: {
+        target: { type: "existing-session", sessionId: "session-other" },
+        message: { text: "other project item" },
+      },
+    });
+
+    await expect(
+      service.moveItemToGlobalTop(otherProjectId, other.id),
+    ).rejects.toBeInstanceOf(ProjectQueueValidationError);
+
+    await service.pauseDispatch();
+    const moved = await service.moveItemToGlobalTop(otherProjectId, other.id);
+
+    expect(moved).toMatchObject({
+      id: other.id,
+      messagePreview: "other project item",
+    });
+    expect(service.listAll().map((item) => item.id)).toEqual([
+      other.id,
       first.id,
-      third.id,
+    ]);
+    expect(service.listProject(projectId).items.map((item) => item.id)).toEqual(
+      [first.id],
+    );
+    expect(events).toContain(`reordered:${other.id}`);
+
+    const reloaded = await createService();
+    expect(reloaded.listAll().map((item) => item.id)).toEqual([
+      other.id,
+      first.id,
     ]);
   });
 
@@ -398,12 +457,12 @@ describe("ProjectQueueService", () => {
         message: { text: "changed" },
       }),
     ).rejects.toBeInstanceOf(ProjectQueueValidationError);
-    await expect(service.deleteItem(projectId, created.id)).rejects.toBeInstanceOf(
-      ProjectQueueValidationError,
-    );
-    await expect(service.retryItem(projectId, created.id)).rejects.toBeInstanceOf(
-      ProjectQueueValidationError,
-    );
+    await expect(
+      service.deleteItem(projectId, created.id),
+    ).rejects.toBeInstanceOf(ProjectQueueValidationError);
+    await expect(
+      service.retryItem(projectId, created.id),
+    ).rejects.toBeInstanceOf(ProjectQueueValidationError);
     await expect(
       service.moveItemToTop(projectId, created.id),
     ).rejects.toBeInstanceOf(ProjectQueueValidationError);

@@ -20,6 +20,7 @@ import type { Project } from "../../types";
 import { ProjectQueueSection } from "../ProjectQueueSection";
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
+const OTHER_PROJECT_ID = "project-2" as ProjectQueueItemSummary["projectId"];
 
 const project: Project = {
   id: PROJECT_ID,
@@ -85,6 +86,7 @@ function renderSection(
   dispatchState: ProjectQueueDispatchState = { status: "running" },
   recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[] = [],
   projectStatusesByProject: Record<string, ProjectQueueProjectStatus> = {},
+  canMoveItemsToGlobalTop = false,
 ) {
   render(
     <I18nProvider>
@@ -99,6 +101,7 @@ function renderSection(
           mutatingDispatchState={false}
           mutatingPromoteItemId={null}
           dispatchState={dispatchState}
+          canMoveItemsToGlobalTop={canMoveItemsToGlobalTop}
           projectStatusesByProject={projectStatusesByProject}
           highlightedItemId={highlightedItemId}
           onPauseDispatch={handlers.onPauseDispatch}
@@ -149,9 +152,7 @@ describe("ProjectQueueSection", () => {
       screen
         .getByRole("link", { name: "Session session-" })
         .getAttribute("href"),
-    ).toBe(
-      "/projects/project-1/sessions/session-abcdef",
-    );
+    ).toBe("/projects/project-1/sessions/session-abcdef");
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
@@ -181,13 +182,14 @@ describe("ProjectQueueSection", () => {
       [makeRecoveredSessionQueue()],
     );
 
-    expect(screen.getByRole("heading", { name: "Paused Session Queue" }))
-      .toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Paused Session Queue" }),
+    ).toBeTruthy();
     expect(screen.getByText("Recovered queued message")).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "Recovered session" }).getAttribute(
-        "href",
-      ),
+      screen
+        .getByRole("link", { name: "Recovered session" })
+        .getAttribute("href"),
     ).toBe("/projects/project-1/sessions/session-recovered");
 
     const text = document.body.textContent ?? "";
@@ -197,13 +199,9 @@ describe("ProjectQueueSection", () => {
   });
 
   it("shows recovered session queues without project queue controls", () => {
-    renderSection(
-      [],
-      undefined,
-      undefined,
-      { status: "running" },
-      [makeRecoveredSessionQueue()],
-    );
+    renderSection([], undefined, undefined, { status: "running" }, [
+      makeRecoveredSessionQueue(),
+    ]);
 
     expect(screen.getByText("Recovered queued message")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
@@ -232,12 +230,11 @@ describe("ProjectQueueSection", () => {
       { [PROJECT_ID]: makeProjectStatus("paused") },
     );
 
-    expect(screen.getByText("Dispatch is paused after server restart."))
-      .toBeTruthy();
     expect(
-      screen.getByText(
-        /After Resume, the next item may still wait up to 30s/,
-      ),
+      screen.getByText("Dispatch is paused after server restart."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/After Resume, the next item may still wait up to 30s/),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
 
@@ -263,6 +260,66 @@ describe("ProjectQueueSection", () => {
     expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "2");
   });
 
+  it("offers move-to-top for paused items that are not first globally", () => {
+    const handlers = renderSection(
+      [
+        makeItem("other", "queued", { projectId: OTHER_PROJECT_ID }),
+        makeItem("1"),
+      ],
+      undefined,
+      undefined,
+      {
+        status: "paused",
+        reason: "manual",
+        pausedAt: "2026-06-30T00:00:00.000Z",
+      },
+      [],
+      {
+        [PROJECT_ID]: makeProjectStatus("paused"),
+        [OTHER_PROJECT_ID]: makeProjectStatus("paused", {
+          projectId: OTHER_PROJECT_ID,
+        }),
+      },
+      true,
+    );
+
+    const moveButtons = screen.getAllByRole("button", { name: "Move to top" });
+    expect(moveButtons).toHaveLength(1);
+    fireEvent.click(moveButtons[0]!);
+
+    expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "1");
+  });
+
+  it("falls back to project-local move-to-top on paused older servers", () => {
+    const handlers = renderSection(
+      [
+        makeItem("other", "queued", { projectId: OTHER_PROJECT_ID }),
+        makeItem("1"),
+        makeItem("2"),
+      ],
+      undefined,
+      undefined,
+      {
+        status: "paused",
+        reason: "manual",
+        pausedAt: "2026-06-30T00:00:00.000Z",
+      },
+      [],
+      {
+        [PROJECT_ID]: makeProjectStatus("paused"),
+        [OTHER_PROJECT_ID]: makeProjectStatus("paused", {
+          projectId: OTHER_PROJECT_ID,
+        }),
+      },
+    );
+
+    const moveButtons = screen.getAllByRole("button", { name: "Move to top" });
+    expect(moveButtons).toHaveLength(1);
+    fireEvent.click(moveButtons[0]!);
+
+    expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "2");
+  });
+
   it("starts a queued item immediately when only the quiet window remains", () => {
     const handlers = renderSection(
       [makeItem("1")],
@@ -276,11 +333,9 @@ describe("ProjectQueueSection", () => {
     expect(screen.getByText(/Waiting for project quiet/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start now" }));
 
-    expect(handlers.onPromoteNow).toHaveBeenCalledWith(
-      "project-1",
-      "1",
-      { force: false },
-    );
+    expect(handlers.onPromoteNow).toHaveBeenCalledWith("project-1", "1", {
+      force: false,
+    });
   });
 
   it("surfaces a force-start override when blockers remain", () => {
@@ -296,11 +351,9 @@ describe("ProjectQueueSection", () => {
     expect(screen.getByText(/Blocked: session- in turn/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Force start" }));
 
-    expect(handlers.onPromoteNow).toHaveBeenCalledWith(
-      "project-1",
-      "1",
-      { force: true },
-    );
+    expect(handlers.onPromoteNow).toHaveBeenCalledWith("project-1", "1", {
+      force: true,
+    });
   });
 
   it("highlights a linked queue item", () => {
@@ -309,8 +362,9 @@ describe("ProjectQueueSection", () => {
     const highlighted = document.querySelector(
       '[data-project-queue-item-id="2"]',
     );
-    expect(highlighted?.classList.contains("project-queue-item--highlighted"))
-      .toBe(true);
+    expect(
+      highlighted?.classList.contains("project-queue-item--highlighted"),
+    ).toBe(true);
   });
 
   it("edits queued item text", async () => {
@@ -323,11 +377,9 @@ describe("ProjectQueueSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(handlers.onUpdateItem).toHaveBeenCalledWith(
-        "project-1",
-        "4",
-        { text: "Edited queued work" },
-      ),
+      expect(handlers.onUpdateItem).toHaveBeenCalledWith("project-1", "4", {
+        text: "Edited queued work",
+      }),
     );
   });
 

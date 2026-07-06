@@ -1,7 +1,15 @@
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
+  serverHasCapability,
+} from "@yep-anywhere/shared";
 import { isRemoteClient } from "./connection";
 
-export const PROJECT_QUEUE_CAPABILITY = "projectQueue";
 export const PROJECT_QUEUE_REMOTE_COMPATIBILITY_LEVEL = 10;
+export {
+  PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY,
+};
 
 export interface ProjectQueueCapabilitySource {
   capabilities?: readonly string[];
@@ -26,7 +34,7 @@ export function serverSupportsProjectQueue(
   version: ProjectQueueCapabilitySource | null | undefined,
   options: ProjectQueueSupportOptions = {},
 ): boolean {
-  if (!version?.capabilities?.includes(PROJECT_QUEUE_CAPABILITY)) {
+  if (!serverHasCapability(version, PROJECT_QUEUE_CAPABILITY)) {
     return false;
   }
 
@@ -34,8 +42,18 @@ export function serverSupportsProjectQueue(
   if (!hostedRemote) return true;
 
   return (
-    (version.remoteCompatibilityLevel ?? 0) >=
+    (version?.remoteCompatibilityLevel ?? 0) >=
     PROJECT_QUEUE_REMOTE_COMPATIBILITY_LEVEL
+  );
+}
+
+export function serverSupportsProjectQueueGlobalMoveToTop(
+  version: ProjectQueueCapabilitySource | null | undefined,
+  options: ProjectQueueSupportOptions = {},
+): boolean {
+  return (
+    serverSupportsProjectQueue(version, options) &&
+    serverHasCapability(version, PROJECT_QUEUE_GLOBAL_MOVE_TO_TOP_CAPABILITY)
   );
 }
 

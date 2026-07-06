@@ -496,9 +496,7 @@ export const api = {
     fetchJSON<ProjectQueueResponse>(`/projects/${projectId}/queue`),
 
   getProjectWorkstreams: (projectId: string) =>
-    fetchJSON<ProjectWorkstreamsResponse>(
-      `/projects/${projectId}/workstreams`,
-    ),
+    fetchJSON<ProjectWorkstreamsResponse>(`/projects/${projectId}/workstreams`),
 
   getProjectWorkstreamCheckoutPreview: (projectId: string, label: string) => {
     const params = new URLSearchParams({ label });
@@ -591,6 +589,17 @@ export const api = {
       queue: ProjectQueueResponse;
     }>(
       `/projects/${projectId}/queue/${encodeURIComponent(itemId)}/move-to-top`,
+      {
+        method: "POST",
+      },
+    ),
+
+  moveProjectQueueItemToGlobalTop: (projectId: string, itemId: string) =>
+    fetchJSON<{
+      item: ProjectQueueItemSummary;
+      queue: ProjectQueueListResponse;
+    }>(
+      `/project-queue/${encodeURIComponent(projectId)}/queue/${encodeURIComponent(itemId)}/move-to-top`,
       {
         method: "POST",
       },

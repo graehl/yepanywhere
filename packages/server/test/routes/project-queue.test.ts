@@ -1,4 +1,5 @@
 import {
+  type ProjectQueueItemSummary,
   type ProjectQueuePromoteNowRequest,
   toUrlProjectId,
   type UrlProjectId,
@@ -65,7 +66,9 @@ describe("Project Queue Routes", () => {
   }
 
   function createGlobalRoutes(
-    overrides: Partial<Parameters<typeof createGlobalProjectQueueRoutes>[0]> = {},
+    overrides: Partial<
+      Parameters<typeof createGlobalProjectQueueRoutes>[0]
+    > = {},
   ) {
     return createGlobalProjectQueueRoutes({
       projectQueueService: service,
@@ -115,11 +118,14 @@ describe("Project Queue Routes", () => {
       messagePreview: "do this after the project settles",
     });
 
-    const patchResponse = await routes.request(`/${projectId}/queue/${itemId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ message: { text: "updated text" } }),
-      headers: { "Content-Type": "application/json" },
-    });
+    const patchResponse = await routes.request(
+      `/${projectId}/queue/${itemId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ message: { text: "updated text" } }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
     expect(patchResponse.status).toBe(200);
     expect((await patchResponse.json()).item.messagePreview).toBe(
       "updated text",
@@ -171,8 +177,46 @@ describe("Project Queue Routes", () => {
       id: second.item.id,
       messagePreview: "second queued item",
     });
-    expect(moved.queue.items.map((item: ProjectQueueItemSummary) => item.id))
-      .toEqual([second.item.id, first.item.id]);
+    expect(
+      moved.queue.items.map((item: ProjectQueueItemSummary) => item.id),
+    ).toEqual([second.item.id, first.item.id]);
+  });
+
+  it("moves a project queue item to the global top while paused", async () => {
+    const otherProjectId = toUrlProjectId("/tmp/project-queue-route-other");
+    const first = await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first queued item" },
+      },
+    });
+    const other = await service.createItem({
+      projectId: otherProjectId,
+      projectPath: "/tmp/project-queue-route-other",
+      request: {
+        target: { type: "new-session", title: "Start later" },
+        message: { text: "second queued item" },
+      },
+    });
+    await service.pauseDispatch();
+
+    const moveResponse = await createGlobalRoutes().request(
+      `/${otherProjectId}/queue/${other.id}/move-to-top`,
+      { method: "POST" },
+    );
+
+    expect(moveResponse.status).toBe(200);
+    const moved = await moveResponse.json();
+    expect(moved.item).toMatchObject({
+      id: other.id,
+      messagePreview: "second queued item",
+    });
+    expect(moved.queue.dispatchState).toMatchObject({ status: "paused" });
+    expect(
+      moved.queue.items.map((item: ProjectQueueItemSummary) => item.id),
+    ).toEqual([other.id, first.id]);
   });
 
   it("rejects invalid queue requests", async () => {
@@ -252,21 +296,22 @@ describe("Project Queue Routes", () => {
       })),
       promoteNow: vi.fn(
         async (id: UrlProjectId, options: ProjectQueuePromoteNowRequest) => ({
-        promoted: true,
-        itemId: options.itemId,
-        sessionId: "session-1",
-        reason: "promoted" as const,
-        status: {
-          projectId: id,
-          state: "empty" as const,
-          idle: true,
-          blockers: [],
-          dispatchPaused: false,
-          inFlight: false,
-          quietWindowMs: 30_000,
-          itemCount: 0,
-        },
-      })),
+          promoted: true,
+          itemId: options.itemId,
+          sessionId: "session-1",
+          reason: "promoted" as const,
+          status: {
+            projectId: id,
+            state: "empty" as const,
+            idle: true,
+            blockers: [],
+            dispatchPaused: false,
+            inFlight: false,
+            quietWindowMs: 30_000,
+            itemCount: 0,
+          },
+        }),
+      ),
     };
 
     const routes = createGlobalRoutes({ projectQueueScheduler });
@@ -530,10 +575,7 @@ describe("Project Queue Routes", () => {
   });
 });
 
-function makeSessionSummary(
-  sessionId: string,
-  title: string,
-): SessionSummary {
+function makeSessionSummary(sessionId: string, title: string): SessionSummary {
   return {
     id: sessionId,
     projectId: toUrlProjectId("/tmp/project-queue-route"),

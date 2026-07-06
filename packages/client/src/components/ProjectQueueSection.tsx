@@ -14,7 +14,7 @@ type Translate = ReturnType<typeof useI18n>["t"];
 
 interface ProjectQueueSectionProps {
   projects: Project[];
-  items: ProjectQueueItemSummary[];
+  items: readonly ProjectQueueItemSummary[];
   recoveredSessionQueues?: ProjectQueueRecoveredSessionQueueSummary[];
   loading: boolean;
   error: Error | null;
@@ -22,6 +22,7 @@ interface ProjectQueueSectionProps {
   mutatingDispatchState: boolean;
   mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
+  canMoveItemsToGlobalTop?: boolean;
   projectStatusesByProject?: Record<string, ProjectQueueProjectStatus>;
   highlightedItemId?: string | null;
   basePath?: string;
@@ -128,10 +129,7 @@ function formatProjectQueueBlocker(blocker: string, t: Translate): string {
   }
 }
 
-function summarizeBlockers(
-  blockers: readonly string[],
-  t: Translate,
-): string {
+function summarizeBlockers(blockers: readonly string[], t: Translate): string {
   const formatted = blockers
     .slice(0, 3)
     .map((blocker) => formatProjectQueueBlocker(blocker, t));
@@ -299,6 +297,16 @@ function isFirstMovableProjectQueueItem(
   return firstMovable?.id === item.id;
 }
 
+function isFirstMovableQueueItem(
+  item: ProjectQueueItemSummary,
+  items: readonly ProjectQueueItemSummary[],
+): boolean {
+  const firstMovable = items.find(
+    (candidate) => candidate.status !== "dispatching",
+  );
+  return firstMovable?.id === item.id;
+}
+
 export function ProjectQueueSection({
   projects,
   items,
@@ -309,6 +317,7 @@ export function ProjectQueueSection({
   mutatingDispatchState,
   mutatingPromoteItemId,
   dispatchState,
+  canMoveItemsToGlobalTop = false,
   projectStatusesByProject = {},
   highlightedItemId,
   basePath = "",
@@ -365,7 +374,10 @@ export function ProjectQueueSection({
   if (!hasContent && !error) return null;
 
   return (
-    <section className="project-queue-section" aria-labelledby="project-queue-title">
+    <section
+      className="project-queue-section"
+      aria-labelledby="project-queue-title"
+    >
       <div className="project-queue-section__header">
         <div>
           <h2 id="project-queue-title">{t("projectQueueTitle")}</h2>
@@ -471,7 +483,8 @@ export function ProjectQueueSection({
             const isDispatching = item.status === "dispatching";
             const isEditing = editingItemId === item.id;
             const isHighlighted = highlightedItemId === item.id;
-            const canEdit = item.status === "queued" || item.status === "failed";
+            const canEdit =
+              item.status === "queued" || item.status === "failed";
             const projectStatus = projectStatusesByProject[item.projectId];
             const readiness = readinessLabel(projectStatus, nowMs, t);
             const blockerSummary = projectStatus
@@ -483,8 +496,12 @@ export function ProjectQueueSection({
               item.status === "queued" &&
               projectStatus?.state !== "paused" &&
               projectStatus?.state !== "dispatching";
+            const useGlobalMoveToTop = !!pausedState && canMoveItemsToGlobalTop;
             const canMoveToTop =
-              canEdit && !isFirstMovableProjectQueueItem(item, items);
+              canEdit &&
+              (useGlobalMoveToTop
+                ? !isFirstMovableQueueItem(item, items)
+                : !isFirstMovableProjectQueueItem(item, items));
             const canSaveEdit =
               !isMutating &&
               (editText.trim().length > 0 ||

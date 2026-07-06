@@ -48,6 +48,7 @@ import {
   selectProviderRuntimeStatusForSession,
   selectProjectQueuedSessionIds,
   selectProjectQueueDispatchState,
+  selectProjectQueueGlobalItems,
   selectProjectQueueSidebarCount,
   selectProjectQueueItemsByProject,
   selectProjectQueueProjectStatusesByProject,
@@ -325,11 +326,8 @@ function startActivityBusSubscription(
     onActivityBusSource(sourceKey, "process-state-changed", (event) =>
       reduceProcessStateChanged(sourceKey, event),
     ),
-    onActivityBusSource(
-      sourceKey,
-      "provider-runtime-status-changed",
-      (event) =>
-        reduceProviderRuntimeStatusChanged(sourceKey, event),
+    onActivityBusSource(sourceKey, "provider-runtime-status-changed", (event) =>
+      reduceProviderRuntimeStatusChanged(sourceKey, event),
     ),
     onActivityBusSource(sourceKey, "session-status-changed", (event) =>
       reduceSessionStatusChanged(sourceKey, event),
@@ -506,9 +504,7 @@ function useDraftDecorationSubscription(): void {
   );
 }
 
-export function subscribeClientSummary(
-  listener: StoreListener,
-): () => void {
+export function subscribeClientSummary(listener: StoreListener): () => void {
   let releaseActivityBus = retainActivityBusSubscription(
     getCurrentClientSummarySourceKey(),
   );
@@ -670,18 +666,39 @@ export function useProjectQueueItemsByProject(
     () => (projectIdsKey ? projectIdsKey.split("\0") : []),
     [projectIdsKey],
   );
+  return useMemo(() => {
+    const state = store.getState();
+    return selectProjectQueueItemsByProject(
+      {
+        ...state,
+        projectQueues: { ...state.projectQueues, byProject },
+      },
+      selectedProjectIds,
+    );
+  }, [store, byProject, selectedProjectIds]);
+}
+
+export function useProjectQueueGlobalItems(
+  projectIds: readonly string[],
+): readonly ProjectQueueItemSummary[] {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  const projectQueues = useStore(store, (state) => state.projectQueues);
+  const projectIdsKey = projectIds.join("\0");
+  const selectedProjectIds = useMemo(
+    () => (projectIdsKey ? projectIdsKey.split("\0") : []),
+    [projectIdsKey],
+  );
   return useMemo(
-    () => {
-      const state = store.getState();
-      return selectProjectQueueItemsByProject(
+    () =>
+      selectProjectQueueGlobalItems(
         {
-          ...state,
-          projectQueues: { ...state.projectQueues, byProject },
+          ...store.getState(),
+          projectQueues,
         },
         selectedProjectIds,
-      );
-    },
-    [store, byProject, selectedProjectIds],
+      ),
+    [store, projectQueues, selectedProjectIds],
   );
 }
 
@@ -730,30 +747,24 @@ export function useProjectQueueSidebarCount(
         }`,
     )
     .join("\0");
-  const selectedProjects = useMemo(
-    () => {
-      void projectsKey;
-      return projects.map((project) => ({
-        id: project.id,
-        projectQueueCount: project.projectQueueCount,
-        snapshotObservedAt: project.snapshotObservedAt,
-      }));
-    },
-    [projects, projectsKey],
-  );
-  return useMemo(
-    () => {
-      const state = store.getState();
-      return selectProjectQueueSidebarCount(
-        {
-          ...state,
-          projectQueues: { ...state.projectQueues, byProject },
-        },
-        selectedProjects,
-      );
-    },
-    [store, byProject, selectedProjects],
-  );
+  const selectedProjects = useMemo(() => {
+    void projectsKey;
+    return projects.map((project) => ({
+      id: project.id,
+      projectQueueCount: project.projectQueueCount,
+      snapshotObservedAt: project.snapshotObservedAt,
+    }));
+  }, [projects, projectsKey]);
+  return useMemo(() => {
+    const state = store.getState();
+    return selectProjectQueueSidebarCount(
+      {
+        ...state,
+        projectQueues: { ...state.projectQueues, byProject },
+      },
+      selectedProjects,
+    );
+  }, [store, byProject, selectedProjects]);
 }
 
 export function useKnownProjectQueueItems(): readonly ProjectQueueItemSummary[] {
@@ -783,19 +794,16 @@ export function useProjectQueuedSessionIds(
     () => (projectIdsKey ? projectIdsKey.split("\0") : []),
     [projectIdsKey],
   );
-  return useMemo(
-    () => {
-      const state = store.getState();
-      return selectProjectQueuedSessionIds(
-        {
-          ...state,
-          projectQueues: { ...state.projectQueues, byProject },
-        },
-        selectedProjectIds,
-      );
-    },
-    [store, byProject, selectedProjectIds],
-  );
+  return useMemo(() => {
+    const state = store.getState();
+    return selectProjectQueuedSessionIds(
+      {
+        ...state,
+        projectQueues: { ...state.projectQueues, byProject },
+      },
+      selectedProjectIds,
+    );
+  }, [store, byProject, selectedProjectIds]);
 }
 
 export function useDraftSessionIds(): ReadonlySet<string> {
@@ -816,14 +824,8 @@ export function useInboxCounts(): InboxCounts {
     store,
     (state) => state.inbox.tiers.needsAttention.length,
   );
-  const active = useStore(
-    store,
-    (state) => state.inbox.tiers.active.length,
-  );
-  const total = useStore(
-    store,
-    (state) => selectInboxCounts(state).total,
-  );
+  const active = useStore(store, (state) => state.inbox.tiers.active.length);
+  const total = useStore(store, (state) => selectInboxCounts(state).total);
   return useMemo(
     () => ({ needsAttention, active, total }),
     [needsAttention, active, total],
@@ -882,12 +884,16 @@ export function useStarredSessionRecords(): SessionCollectionRecord[] {
   return useMemo(() => selectStarredSessionRecords(state), [state]);
 }
 
-export function useRecentSessionRecords(now?: number): SessionCollectionRecord[] {
+export function useRecentSessionRecords(
+  now?: number,
+): SessionCollectionRecord[] {
   const state = useClientSummaryState();
   return useMemo(() => selectRecentSessionRecords(state, now), [state, now]);
 }
 
-export function useOlderSessionRecords(now?: number): SessionCollectionRecord[] {
+export function useOlderSessionRecords(
+  now?: number,
+): SessionCollectionRecord[] {
   const state = useClientSummaryState();
   return useMemo(() => selectOlderSessionRecords(state, now), [state, now]);
 }
@@ -897,13 +903,10 @@ export function useSessionCollectionQueryRecords(
 ): SessionCollectionRecord[] {
   const state = useClientSummaryState();
   const key = createGlobalSessionsQueryKey(query);
-  return useMemo(
-    () => {
-      void key;
-      return selectSessionCollectionQueryRecords(state, query);
-    },
-    [state, key, query],
-  );
+  return useMemo(() => {
+    void key;
+    return selectSessionCollectionQueryRecords(state, query);
+  }, [state, key, query]);
 }
 
 export function useSessionCollectionQueryState(

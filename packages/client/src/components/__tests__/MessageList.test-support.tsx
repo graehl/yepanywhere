@@ -1,0 +1,250 @@
+import { cleanup } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
+import { AgentContentProvider } from "../../contexts/AgentContentContext";
+import { RenderModeProvider } from "../../contexts/RenderModeContext";
+import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
+import { StreamingMarkdownProvider } from "../../contexts/StreamingMarkdownContext";
+import type { Message } from "../../types";
+import { MessageList } from "../MessageList";
+
+vi.mock("../../i18n", () => ({
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) => {
+      const translations: Record<string, string> = {
+        processingThinkingTranscriptHide:
+          "Hide thinking transcript rows (display only; the agent keeps working)",
+        processingThinkingTranscriptShowHidden:
+          "Show hidden thinking transcript rows",
+        processingThinkingTranscriptShowWhenAvailable:
+          "Show thinking transcript rows when available",
+        sessionQuoteBlock: "Quote this block",
+        sessionSteerNow: "Steer now",
+        sessionSteerQueuedMessageNow: "Steer queued message now",
+        sessionSteerQueuedMessageThrough:
+          "Steer this and {count} earlier patient message{suffix} now",
+        sessionQueuedInlineEditLabel: "Edit queued message text",
+        sessionQueuedInlineSave: "Save edit",
+        sessionQueuedInlineCancel: "Cancel edit (Esc)",
+        sessionLoading: "Loading session...",
+        sessionProgressiveRenderingAriaLabel: "Transcript rendering progress",
+        sessionProgressiveRenderingStatus: "Rendering transcript {percent}%",
+        sessionFollow: "Follow",
+        sessionFollowLatestOutput: "Follow latest session output",
+        sessionNewOutputBelow: "New output below",
+        sessionNewOutputBelowTitle: "Jump to latest session output",
+        sessionQuoteSelection: "Quote selection",
+        sessionQuoteSelectionShort: "Quote",
+        projectQueueAttachmentOnly: "Attachment-only message",
+        projectQueueInlineStatusQueued: "Project Queue (#{position})",
+        projectQueueInlineStatusDispatching:
+          "Project Queue sending (#{position})",
+        projectQueueInlineStatusFailed: "Project Queue failed (#{position})",
+        projectQueueInlineCopy: "Copy Project Queue message",
+        projectQueueInlineCancel: "Delete Project Queue item",
+        projectQueueDelete: "Delete",
+        userPromptCopyAction: "Copy message text",
+        userPromptEditAction: "Edit latest message",
+      };
+      const value = translations[key] ?? key;
+      return value.replace(/\{(\w+)\}/g, (_, param: string) =>
+        String(params?.[param] ?? `{${param}}`),
+      );
+    },
+  }),
+}));
+
+const originalClipboard = navigator.clipboard;
+const originalMatchMedia = window.matchMedia;
+
+
+export function userMessage(
+  uuid: string,
+  content: string,
+  timestamp?: string,
+): Message {
+  return {
+    type: "user",
+    uuid,
+    timestamp,
+    message: { role: "user", content },
+  };
+}
+
+export function assistantMessage(
+  uuid: string,
+  content: string,
+  timestamp?: string,
+): Message {
+  return {
+    type: "assistant",
+    uuid,
+    timestamp,
+    message: { role: "assistant", content },
+  };
+}
+
+export function assistantToolUseMessage(
+  uuid: string,
+  content: NonNullable<Message["message"]>["content"],
+  timestamp?: string,
+): Message {
+  return {
+    type: "assistant",
+    uuid,
+    timestamp,
+    message: { role: "assistant", content },
+  };
+}
+
+export function codexThinkingMessage(
+  uuid: string,
+  thinking: string,
+  timestamp?: string,
+  isStreaming = false,
+): Message {
+  return {
+    type: "assistant",
+    uuid,
+    timestamp,
+    _isStreaming: isStreaming,
+    message: {
+      role: "assistant",
+      content: [{ type: "thinking", thinking }],
+    },
+  };
+}
+
+export function systemMessage(
+  uuid: string,
+  content: string,
+  details?: Array<NonNullable<Message["content"]>>,
+): Message {
+  return {
+    type: "system",
+    uuid,
+    subtype: "compact_boundary",
+    content,
+    ...(details ? { details } : {}),
+  };
+}
+
+export function recapMessage(uuid: string, content: string): Message {
+  return {
+    type: "system",
+    uuid,
+    subtype: "away_summary",
+    content,
+  };
+}
+
+export function dispatchCopyEvent() {
+  const setData = vi.fn();
+  const event = new Event("copy", {
+    bubbles: true,
+    cancelable: true,
+  }) as ClipboardEvent;
+  Object.defineProperty(event, "clipboardData", {
+    configurable: true,
+    value: { setData },
+  });
+
+  document.dispatchEvent(event);
+  return { event, setData };
+}
+
+export function stubClipboardWriteText() {
+  const writeText = vi.fn(async () => undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  return writeText;
+}
+
+export function mockPointerCoarse(matches: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((query: string) => {
+      const mediaQueryList = {
+        matches: query === "(pointer: coarse)" ? matches : false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(() => false),
+      } as MediaQueryList;
+      return mediaQueryList;
+    }),
+  });
+}
+
+export function SessionTranscriptHarness({ messages }: { messages: Message[] }) {
+  return (
+    <StreamingMarkdownProvider>
+      <RenderModeProvider>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/repo"
+          sessionId="session-1"
+        >
+          <AgentContentProvider
+            agentContent={{}}
+            mergeLoadedAgentContent={() => {}}
+            toolUseToAgent={new Map()}
+            projectId="project-1"
+            sessionId="session-1"
+          >
+            <MessageList
+              messages={messages}
+              provider="codex"
+              markdownAugments={{
+                "assistant-1": {
+                  html: '<ol><li>First item</li><li>Second item</li></ol><pre class="code-block"><code>const superLongIdentifierName = "value";</code></pre>',
+                },
+              }}
+            />
+          </AgentContentProvider>
+        </SessionMetadataProvider>
+      </RenderModeProvider>
+    </StreamingMarkdownProvider>
+  );
+}
+
+export function installMessageListTestEnvironment() {
+  beforeEach(() => {
+    vi.useRealTimers();
+
+    class ResizeObserverMock {
+      observe() {}
+      disconnect() {}
+    }
+
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: ResizeObserverMock,
+    });
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    document.querySelectorAll(".session-input-inner").forEach((node) => {
+      node.remove();
+    });
+    document.querySelectorAll("textarea").forEach((node) => {
+      node.remove();
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: originalClipboard,
+    });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
+    });
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+}

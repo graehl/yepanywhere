@@ -236,7 +236,7 @@ can improve review when scenarios are independent.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 6.1 | Not started | `MessageList.test.tsx` scenario files | Split by behavior area: progressive rendering, thinking, queue rows, selection/copy, scroll, search. | Keep shared fixture helpers stable. |
+| 6.1 | Done 2026-07-06 | `MessageList.test.tsx` scenario files | Split by behavior area: progressive rendering, thinking, queue rows, selection/copy, scroll, search. | Split into six scenario files plus `MessageList.test-support.tsx`; assertions and shared fixture behavior preserved. |
 | 6.2 | Not started | `process.test.ts` scenario files | Split by queue, approvals, replay/streaming, liveness, recap, termination. | Preserve fake timers and cleanup discipline. |
 | 6.3 | Done 2026-07-06 | `codex.test.ts` fixtures | Move repeated raw notification fixtures and expected SDK outputs into fixture modules. | Extracted scenario-named event fixtures only; conversion calls and assertions stay explicit in `codex.test.ts`. |
 | 6.4 | Not started | Route metadata tests | Split route metadata tests once route modules split. | Keep request/response assertions explicit. |
@@ -261,6 +261,45 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 6.1 — MessageList Scenario Test Split (Landed 2026-07-06, this commit)
+
+Moved:
+- Shared jsdom cleanup, ResizeObserver setup, i18n mock translations, message
+  builders, clipboard/pointer helpers, and the transcript harness ->
+  `MessageList.test-support.tsx`.
+- The 62 `MessageList` scenarios -> `MessageList.rendering.test.tsx`,
+  `MessageList.thinking.test.tsx`, `MessageList.queue.test.tsx`,
+  `MessageList.selection.test.tsx`, `MessageList.scroll.test.tsx`, and
+  `MessageList.search.test.tsx`.
+
+Signature conversions:
+- None. Test bodies keep the same assertions and props. Scenario files import
+  the shared support module before `MessageList` so the hoisted i18n mock is
+  registered before the component under test loads.
+
+Behavior changes:
+- None. This is test-only organization.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/client exec tsc --noEmit`; focused
+  `pnpm --filter @yep-anywhere/client test -- MessageList`; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`. The focused
+  `MessageList` run was warning-free; the root test run still emitted existing
+  unrelated suite stdout/stderr chatter.
+- Client tripwires: `packages/client/RENDERING_PERFORMANCE.md`,
+  `topics/scrollback-view-stability.md`, and `topics/console-chatter.md` were
+  read before editing; `pnpm console:scan` stayed within the committed budget
+  at warnings 110/110, `method.warn` 61/61, and `method.error` 95/95.
+- Client E2E: skipped because no production client code or user-visible
+  behavior changed; the split preserves the existing scenario assertions.
+
+Follow-ups recorded:
+- `MessageList.scroll.test.tsx` remains the largest scenario file because the
+  scroll/follow cases share dense DOM geometry setup. Split it further only
+  with enough helper extraction to improve readability without hiding the
+  scroll-anchor inputs.
 
 ### Slice 1.7 — Settings Parser Split (Landed 2026-07-06, this commit)
 

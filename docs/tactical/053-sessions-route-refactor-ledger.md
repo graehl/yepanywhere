@@ -475,14 +475,15 @@ node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/serv
 
 ### SRR-010: Move Patient Queue Summary Shaping
 
-Status: proposed. First code slice of the module-boundary campaign
-(`docs/tactical/058-typescript-module-boundary-refactor.md`, slice 1.1).
+Status: done. First code slice of the module-boundary campaign
+(`docs/tactical/058-typescript-module-boundary-refactor.md`, slice 1.1),
+landed together with SRR-011.
 
 Destination: new file
 `packages/server/src/routes/session-queue-summaries.ts`.
 
-Estimated line delta: about `-130` to `-170` lines from `sessions.ts`, with a
-similar-size module added.
+Line delta: combined SRR-010/SRR-011 route-file delta is `-135` net lines
+from `sessions.ts`; this module adds 131 lines.
 
 Problem:
 
@@ -502,6 +503,17 @@ Likely change:
 - leave `isApprovalAuditLogEnabled` behind — it is interleaved in the same
   region but belongs to a different domain.
 
+Implemented:
+
+- moved `persistedPatientQueueSummary`, `recoveredPatientQueueSummaries`,
+  `recoveredPatientQueueItems`, `sessionQueueSummaries`,
+  `recoveredPatientUserMessage`, and `livePatientEntriesNewerThan` into
+  `session-queue-summaries.ts`;
+- used a narrow `SessionQueueSummaryDeps` interface instead of importing
+  `SessionsDeps` back from the route file;
+- kept recovered-queue route handlers, queue mutation, process reactivation,
+  and event emission in `sessions.ts`.
+
 Relationship to SRR-005: SRR-005 owns the recovered-queue *resume/steer*
 machinery. This item is read-side shaping only. If both land they stay
 separate modules; do not grow either into a general queue bucket.
@@ -511,23 +523,31 @@ Risk:
 - low. Shaping is pure given its inputs, but the summary field spreads
   (`tempId`, attachments, metadata, status mapping) must stay byte-identical.
 
-Suggested verification:
+Verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
-pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts
-node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-queue-summaries.ts
+pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts test/routes/sessions-clone-codex.test.ts test/routes/recents.test.ts
+node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-queue-summaries.ts packages/server/src/routes/session-provider-resolution.ts
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
 ```
+
+Focused route tests passed with the preexisting sessions-metadata WARN/INFO
+log chatter for negative-path Claude resume/compact cases. Root tests passed
+with the baseline suite chatter recorded in doc 058.
 
 ### SRR-011: Move Provider Name Guards And Resolution Deps
 
-Status: proposed. Pairs with SRR-010 as campaign slice 1.1; may land as a
-separate commit.
+Status: done. Paired with SRR-010 as campaign slice 1.1.
 
 Destination: new file
 `packages/server/src/routes/session-provider-resolution.ts`.
 
-Estimated line delta: about `-60` to `-90` lines from `sessions.ts`.
+Line delta: included in the combined SRR-010/SRR-011 `sessions.ts` `-135`
+net-line delta; this module adds 55 lines.
 
 Problem:
 
@@ -547,15 +567,32 @@ Likely change:
 - leave `getSessionSlashCommands` in place unless its import graph stays
   clean after the move; do not force it into this module.
 
+Implemented:
+
+- moved `isClaudeSdkProviderName`, `isCodexProviderName`, and
+  `providerResolutionDeps` into `session-provider-resolution.ts`;
+- used a narrow `SessionProviderResolutionDeps` interface instead of importing
+  `SessionsDeps` back from the route file;
+- left `isQueuedResponse`, `isQueueFullResponse`, and
+  `getSessionSlashCommands` in `sessions.ts`.
+
 Risk:
 
 - low. Guards are pure; the deps builder is a field-mapping function. Every
   call site must pass identical arguments after the move.
 
-Suggested verification:
+Verification:
 
 ```bash
 pnpm --filter @yep-anywhere/shared build && pnpm --filter @yep-anywhere/server exec tsc --noEmit
 pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts test/routes/sessions-clone-codex.test.ts test/routes/recents.test.ts
 node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-provider-resolution.ts
+git diff --check
+pnpm lint
+pnpm typecheck
+pnpm test
 ```
+
+Focused route tests passed with the preexisting sessions-metadata WARN/INFO
+log chatter for negative-path Claude resume/compact cases. Root tests passed
+with the baseline suite chatter recorded in doc 058.

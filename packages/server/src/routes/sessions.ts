@@ -8,14 +8,12 @@ import {
   type ProviderName,
   type RecapMode,
   type SessionMetadataResponse,
-  type SessionQueuedMessageSummary,
   type SessionOwnership,
   type ShowThinking,
   type ThinkingOption,
   type TranscriptDisplayObject,
   type UploadedFile,
   type UserQuestionAnswers,
-  type UserMessageDeliveryIntent,
   type UserMessageMetadata,
   type UrlProjectId,
   type WorkstreamId,
@@ -83,7 +81,6 @@ import {
   augmentPersistedSessionMessages,
 } from "../sessions/persisted-augments.js";
 import {
-  type ProviderResolutionDeps,
   findSessionSummaryAcrossProviders,
   getSessionSources,
 } from "../sessions/provider-resolution.js";
@@ -120,6 +117,18 @@ import {
   type ClaudeResumeApiErrorBlocker,
   getClaudeResumeBlockerFromReader,
 } from "./session-claude-resume-guard.js";
+import {
+  isClaudeSdkProviderName,
+  isCodexProviderName,
+  providerResolutionDeps,
+} from "./session-provider-resolution.js";
+import {
+  livePatientEntriesNewerThan,
+  recoveredPatientQueueItems,
+  recoveredPatientQueueSummaries,
+  recoveredPatientUserMessage,
+  sessionQueueSummaries,
+} from "./session-queue-summaries.js";
 import type { EventBus } from "../watcher/index.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
@@ -141,12 +150,6 @@ function roundedMs(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function isClaudeSdkProviderName(
-  provider: ProviderName | undefined,
-): provider is "claude" | "claude-ollama" {
-  return provider === "claude" || provider === "claude-ollama";
-}
-
 /**
  * Type guard to check if a result is a QueuedResponse
  */
@@ -163,12 +166,6 @@ function isQueueFullResponse(
   result: Process | QueuedResponse | QueueFullResponse,
 ): result is QueueFullResponse {
   return "error" in result && result.error === "queue_full";
-}
-
-function isCodexProviderName(
-  provider: ProviderName | string | undefined,
-): provider is "codex" | "codex-oss" {
-  return provider === "codex" || provider === "codex-oss";
 }
 
 const AUTO_COMPACT_CONTEXT_PERCENT_THRESHOLD = 85;
@@ -219,142 +216,10 @@ export interface SessionsDeps {
   dataDir?: string;
 }
 
-function providerResolutionDeps(deps: SessionsDeps): ProviderResolutionDeps {
-  return {
-    readerFactory: deps.readerFactory,
-    sessionIndexService: deps.sessionIndexService,
-    codexSessionsDir: deps.codexSessionsDir,
-    codexReaderFactory: deps.codexReaderFactory,
-    geminiSessionsDir: deps.geminiSessionsDir,
-    geminiReaderFactory: deps.geminiReaderFactory,
-    geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-    grokSessionsDir: deps.grokSessionsDir,
-    grokReaderFactory: deps.grokReaderFactory,
-    piSessionsDir: deps.piSessionsDir,
-    piReaderFactory: deps.piReaderFactory,
-  };
-}
-
-function persistedPatientQueueSummary(
-  item: PersistedSessionQueuedMessage,
-): SessionQueuedMessageSummary {
-  const attachmentCount =
-    (item.message.attachments?.length ?? 0) +
-    (item.message.images?.length ?? 0) +
-    (item.message.documents?.length ?? 0);
-  const tempId = item.message.tempId ?? item.source?.tempId;
-
-  return {
-    id: item.id,
-    ...(tempId ? { tempId } : {}),
-    content: item.message.text,
-    timestamp: item.queuedAt,
-    ...(item.message.attachments?.length
-      ? { attachments: item.message.attachments }
-      : {}),
-    ...(attachmentCount > 0 ? { attachmentCount } : {}),
-    ...(item.message.metadata ? { metadata: item.message.metadata } : {}),
-    kind: "patient",
-    status: item.status === "paused-after-restart" ? item.status : "queued",
-    sessionId: item.sessionId,
-    projectId: item.projectId,
-    queuedAt: item.queuedAt,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-  };
-}
-
 function isApprovalAuditLogEnabled(deps: SessionsDeps): boolean {
   return (
     deps.serverSettingsService?.getSetting("approvalAuditLogEnabled") === true
   );
-}
-
-function recoveredPatientQueueSummaries(
-  deps: SessionsDeps,
-  sessionId: string,
-): SessionQueuedMessageSummary[] {
-  return recoveredPatientQueueItems(deps, sessionId).map(
-    persistedPatientQueueSummary,
-  );
-}
-
-function recoveredPatientQueueItems(
-  deps: SessionsDeps,
-  sessionId: string,
-): PersistedSessionQueuedMessage[] {
-  if (!deps.sessionQueuePersistenceService) {
-    return [];
-  }
-  return deps.sessionQueuePersistenceService
-    .listSession(sessionId)
-    .filter(
-      (item) =>
-        item.kind === "patient" && item.status === "paused-after-restart",
-    )
-    .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
-}
-
-function sessionQueueSummaries(
-  deps: SessionsDeps,
-  sessionId: string,
-  process: Process | undefined,
-): SessionQueuedMessageSummary[] {
-  const recovered = recoveredPatientQueueSummaries(deps, sessionId);
-  if (process && typeof process.getDeferredQueueSummary === "function") {
-    const messages: SessionQueuedMessageSummary[] = [
-      ...process.getDeferredQueueSummary(),
-      ...recovered,
-    ];
-    return messages.sort((left, right) =>
-      (left.queuedAt ?? left.timestamp).localeCompare(
-        right.queuedAt ?? right.timestamp,
-      ),
-    );
-  }
-  if (process) {
-    return recovered;
-  }
-  return recovered;
-}
-
-function recoveredPatientUserMessage(
-  item: PersistedSessionQueuedMessage,
-): UserMessage {
-  const mode = item.message.mode ?? item.mode;
-  const metadata: UserMessageMetadata = {
-    ...item.message.metadata,
-    deliveryIntent: "patient" satisfies UserMessageDeliveryIntent,
-  };
-  // Live-queue chip actions (cancel, steer) address entries by tempId, so a
-  // recovered entry that was persisted without one gets a stable fallback.
-  const tempId =
-    item.message.tempId ?? item.source?.tempId ?? `recovered-${item.id}`;
-  return {
-    ...item.message,
-    tempId,
-    ...(mode ? { mode } : {}),
-    metadata,
-  };
-}
-
-/**
- * Count live patient queue entries composed after the given recovered entry.
- * Resuming or steering the recovered entry would deliver its older content
- * behind these newer ones, so callers reject while any exist. Regular
- * deferred entries never block recovered work: the regular lane delivers on
- * turn boundaries and may pass patient work by design.
- */
-function livePatientEntriesNewerThan(
-  process: Process | undefined,
-  queuedAt: string,
-): number {
-  const live = process?.getDeferredQueueSummary() ?? [];
-  return live.filter(
-    (entry) =>
-      entry.metadata?.deliveryIntent === "patient" &&
-      entry.timestamp.localeCompare(queuedAt) > 0,
-  ).length;
 }
 
 async function resolveSessionReaderForAgentContent({

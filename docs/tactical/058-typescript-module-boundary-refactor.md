@@ -2,7 +2,7 @@
 
 Topic: typescript-module-boundary-refactor
 
-Status: Baseline recorded; no refactor slices have started.
+Status: Phase 1 in progress; slice 1.1 landed.
 
 ## Contract
 
@@ -143,14 +143,14 @@ groups, and `create*Routes()` aggregators can remain stable.
 as SRR items, following its proposed/accepted/done process. That ledger has
 already landed SRR-001 (request parsing helpers), SRR-002
 (`providerResolutionDeps` dedup), SRR-006 (Claude resume guard), SRR-007
-(worker queue routes), and SRR-008 (compact thresholds) — the flat
-domain-named `routes/session-*.ts` pattern those items established is the
-pattern here. Do not create a `routes/sessions/` directory or a shared
-helpers bucket.
+(worker queue routes), SRR-008 (compact thresholds), SRR-010 (queue summary
+shaping), and SRR-011 (provider resolution helpers) — the flat domain-named
+`routes/session-*.ts` pattern those items established is the pattern here. Do
+not create a `routes/sessions/` directory or a shared helpers bucket.
 
 | Slice | Status | Target | Intent | Tripwires / Notes |
 |---|---|---|---|---|
-| 1.1 | Proposed as SRR-010/SRR-011 | `sessions.ts` queue summary shaping + provider guards | Land SRR-010 (patient/deferred queue summary shaping into `session-queue-summaries.ts`) and SRR-011 (provider name guards and resolution deps into `session-provider-resolution.ts`). | Move-only; shaping and guards, not queue behavior. Restart/fork helpers are excluded — they are larger and behavior-heavy. Tier 1. |
+| 1.1 | Done 2026-07-06 as SRR-010/SRR-011 | `sessions.ts` queue summary shaping + provider guards | Land SRR-010 (patient/deferred queue summary shaping into `session-queue-summaries.ts`) and SRR-011 (provider name guards and resolution deps into `session-provider-resolution.ts`). | Move-only; shaping and guards, not queue behavior. Restart/fork helpers are excluded — they are larger and behavior-heavy. Tier 1. |
 | 1.2 | Not started | Session detail routes | Extract metadata, agent content, and `GET /projects/:projectId/sessions/:sessionId` handlers behind a local registrar; propose as an SRR item first. | Preserve pagination, compact-tail, augment, and unread semantics. Tier 3: session-detail tests plus server E2E. |
 | 1.3 | Not started | Start/create/resume/reactivate routes | Extract new-session, two-phase create, resume, and reactivation handlers; propose as an SRR item first. | Preserve provider selection, YA-visible session ids, executor persistence, queue-full behavior, and remote sync behavior. Overlaps SRR-004 (launch option normalization) — sequence with it. |
 | 1.4 | Not started | Restart/fork/recap/retitle routes | Extract restart, fork, recap, fork-summary, and retitle flows; propose as an SRR item first. | Higher risk than 1.2/1.3; preserve handoff/fork semantics and recap background behavior. Tier 3. |
@@ -251,4 +251,36 @@ Follow-ups recorded:
 
 ## Landing Notes
 
-None yet.
+### Slice 1.1 — Sessions Route Helper Boundaries (Landed 2026-07-06, this commit)
+
+Moved:
+- `persistedPatientQueueSummary`,
+  `recoveredPatientQueueSummaries`, `recoveredPatientQueueItems`,
+  `sessionQueueSummaries`, `recoveredPatientUserMessage`, and
+  `livePatientEntriesNewerThan` -> `session-queue-summaries.ts`.
+- `isClaudeSdkProviderName`, `isCodexProviderName`, and
+  `providerResolutionDeps` -> `session-provider-resolution.ts`.
+
+Signature conversions:
+- Queue summary helpers accept `SessionQueueSummaryDeps` instead of the route
+  file's `SessionsDeps`.
+- `providerResolutionDeps` accepts `SessionProviderResolutionDeps` instead of
+  the route file's `SessionsDeps`.
+
+Behavior changes:
+- None.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`;
+  `pnpm --filter @yep-anywhere/server test -- test/routes/sessions-metadata.test.ts test/routes/sessions-clone-codex.test.ts test/routes/recents.test.ts`;
+  `node scripts/biome.cjs lint packages/server/src/routes/sessions.ts packages/server/src/routes/session-queue-summaries.ts packages/server/src/routes/session-provider-resolution.ts`;
+  `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Residual risk: the focused route test run still emits the preexisting
+  sessions-metadata WARN/INFO log chatter for negative-path Claude
+  resume/compact cases, and root `pnpm test` still emits the baseline suite
+  chatter recorded above; chatter cleanup remains outside this move slice.
+
+Follow-ups recorded:
+- Phase 1.2 still needs a proposed SRR item before implementation.

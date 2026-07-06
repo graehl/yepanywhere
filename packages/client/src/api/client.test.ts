@@ -235,3 +235,75 @@ describe("api git facade", () => {
     ]);
   });
 });
+
+describe("api auth facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves auth endpoint paths, methods, and bodies", async () => {
+    await api.getAuthStatus();
+    await api.enableAuth("enable-pw");
+    await api.disableAuth();
+    await api.setupAccount("setup-pw");
+    await api.login("login-pw");
+    await api.logout();
+    await api.changePassword("new-pw");
+    await api.setLocalhostAccess(true);
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/auth/status", method: "GET", body: undefined },
+      {
+        url: "/api/auth/enable",
+        method: "POST",
+        body: JSON.stringify({ password: "enable-pw" }),
+      },
+      {
+        url: "/api/auth/disable",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/api/auth/setup",
+        method: "POST",
+        body: JSON.stringify({ password: "setup-pw" }),
+      },
+      {
+        url: "/api/auth/login",
+        method: "POST",
+        body: JSON.stringify({ password: "login-pw" }),
+      },
+      {
+        url: "/api/auth/logout",
+        method: "POST",
+        body: undefined,
+      },
+      {
+        url: "/api/auth/change-password",
+        method: "POST",
+        body: JSON.stringify({ newPassword: "new-pw" }),
+      },
+      {
+        url: "/api/auth/localhost-access",
+        method: "POST",
+        body: JSON.stringify({ open: true }),
+      },
+    ]);
+  });
+});

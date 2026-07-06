@@ -203,7 +203,8 @@ of their planned slices.
 | 3.2 | Done 2026-07-06 | `clientSummaryState.ts` source-store helpers | Split pure collection/reducer/query helpers only when touching summary-state behavior. | Moved shared summary collection model/defaults into `clientSummaryCollections.ts` and read-only query/selector helpers into `clientSummaryQueries.ts`; reducer/update paths stay in `clientSummaryState.ts`. |
 | 3.3 | Not started | `SecureConnection.ts` internals | Extract only when aligned with source-transport boundary work or clear pure helpers. | Owned by `topics/source-transport.md` / doc 057; preserve parity rows and full transport tests. |
 | 3.4 | Done 2026-07-06 | `api/client.ts` Git domain client | Extract the first domain-specific API module once source transport shims are stable. | Moved Git endpoint wrappers into `gitClient.ts` and the current-source JSON fetch helper into `sourceApiFetch.ts`; kept the exported `api` facade and `fetchJSON` export stable. |
-| 3.5 | Not started | `api/client.ts` additional domain clients | Continue with standalone endpoint clusters only when they stay behind the stable facade. | Good candidates: server metadata/settings/auth or public-share clusters. Avoid session-heavy methods until a dedicated higher-risk slice. |
+| 3.5 | Done 2026-07-06 | `api/client.ts` Auth domain client | Continue with standalone endpoint clusters only when they stay behind the stable facade. | Moved auth status/setup/login/logout/password/localhost-access wrappers into `authClient.ts`; kept the exported `api` facade and `AuthStatus` type export stable. |
+| 3.6 | Not started | `api/client.ts` additional domain clients | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Good candidates: server info/env/admin metadata, recents/onboarding/browser-profile, or push-notification clusters. Treat public-share as session-adjacent and settings as moderate risk because of custom clear semantics. |
 
 Phase 3 scope note:
 - Further `useSessionMessages` / `SessionDetailCoordinator` orchestration is
@@ -274,6 +275,45 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 3.5 — api/client Auth Domain Client (Landed 2026-07-06, this commit)
+
+Moved:
+- Auth status, enable, disable, setup, login, logout, password-change, and
+  localhost-access endpoint wrappers -> `authClient.ts`.
+- `AuthStatus` type -> `authClient.ts`, re-exported from `api/client.ts`.
+
+Signature conversions:
+- None. The exported `api` facade still exposes the same `api.getAuthStatus`,
+  `api.enableAuth`, `api.disableAuth`, `api.setupAccount`, `api.login`,
+  `api.logout`, `api.changePassword`, and `api.setLocalhostAccess` methods.
+
+Behavior changes:
+- None intended. Endpoint paths, HTTP methods, request bodies, current-source
+  transport routing, and public call sites were preserved.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/api/client.test.ts
+  src/pages/settings/__tests__/LocalAccessSettings.test.tsx`; scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`;
+  `pnpm console:scan` unchanged from the current budget.
+- Tier 3 not run. This slice moved API wrappers behind the same facade and
+  added facade-path tests; it did not change route registration, auth server
+  behavior, transport framing, or rendered UI behavior.
+- Residual output: focused API tests still print the existing
+  `ConnectionManager` transition lines, and the broad suite still prints its
+  existing negative-path server/client logs. No new chatter was attributed to
+  this slice.
+
+Follow-ups recorded:
+- Row 3.6 tracks additional non-session `api/client.ts` domain-client
+  candidates. Public-share is explicitly session-adjacent, and settings is
+  moderate risk because `updateServerSettings` preserves explicit clears with
+  custom JSON serialization.
 
 ### Slice 3.4 — api/client Git Domain Client (Landed 2026-07-06, this commit)
 

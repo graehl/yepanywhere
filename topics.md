@@ -122,3 +122,5 @@
   transcript payloads in retained client state.
 - source-transport - Source-bound transport facade for localhost, plain
   multiplex WebSocket, and secure/relay modes with visible channel status.
+- session-exit-navigation-latency - Large transcript routes must not delay
+  first paint of Settings or other lightweight routes when leaving a session.

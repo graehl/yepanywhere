@@ -37,6 +37,9 @@ function renderNavigationLayout(path = "/agents") {
 
 function renderNavigationLayoutWithSessionLinger(
   path = "/projects/project-1/sessions/session-1",
+  options: {
+    onSessionRender?: (parked: boolean, sessionId: string) => void;
+  } = {},
 ) {
   render(
     <MemoryRouter initialEntries={[path]}>
@@ -44,19 +47,24 @@ function renderNavigationLayoutWithSessionLinger(
         <Route
           element={
             <NavigationLayout
-              sessionElement={(route, { parked }) => (
-                <div
-                  data-testid="session-layer"
-                  data-session-id={route.sessionId}
-                  data-parked={parked ? "true" : "false"}
-                >
-                  <Link to="/agents">Agents</Link>
-                  <Link to="/projects/project-1/file?path=README.md">File</Link>
-                  <Link to="/projects/project-1/sessions/session-2">
-                    Session 2
-                  </Link>
-                </div>
-              )}
+              sessionElement={(route, { parked }) => {
+                options.onSessionRender?.(parked, route.sessionId);
+                return (
+                  <div
+                    data-testid="session-layer"
+                    data-session-id={route.sessionId}
+                    data-parked={parked ? "true" : "false"}
+                  >
+                    <Link to="/agents">Agents</Link>
+                    <Link to="/projects/project-1/file?path=README.md">
+                      File
+                    </Link>
+                    <Link to="/projects/project-1/sessions/session-2">
+                      Session 2
+                    </Link>
+                  </div>
+                );
+              }}
             />
           }
         >
@@ -182,10 +190,19 @@ describe("NavigationLayout", () => {
   });
 
   it("does not park session DOM when session linger is disabled", () => {
-    renderNavigationLayoutWithSessionLinger();
+    const sessionRenders: string[] = [];
+    renderNavigationLayoutWithSessionLinger(
+      "/projects/project-1/sessions/session-1",
+      {
+        onSessionRender: (parked, sessionId) => {
+          sessionRenders.push(`${sessionId}:${parked ? "parked" : "active"}`);
+        },
+      },
+    );
 
     fireEvent.click(screen.getByText("Agents"));
 
+    expect(sessionRenders).not.toContain("session-1:parked");
     expect(screen.queryByTestId("session-layer")).toBeNull();
     expect(screen.getByTestId("route-content")).toBeTruthy();
   });

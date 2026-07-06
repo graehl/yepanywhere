@@ -51,5 +51,7 @@
 - Client source runtime topology (per-YA-server runtime boundary above summary/query/session-detail stores)
 - Session media handles (problem statement for lazy transcript image/blob
   payloads behind authenticated server media IDs)
+- Session exit navigation latency (large transcript should not delay first
+  paint of Settings/other lightweight routes)
 - Workstreams (lane-aware Project Queue; each lane is a real checkout of the
   repository syncing through the shared upstream)

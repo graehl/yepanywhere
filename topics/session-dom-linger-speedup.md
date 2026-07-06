@@ -269,6 +269,12 @@ navigation effects, and transcript-level global interaction listeners. The
 stream and render state stay alive until the 60-second expiry unmounts the
 parked layer.
 
+The inverse latency problem is tracked separately in
+[`session-exit-navigation-latency.md`](session-exit-navigation-latency.md):
+leaving a large session for Settings or another lightweight route should paint
+the new foreground route immediately, even when DOM linger is disabled or when
+the old session can be parked for fast Back/reselect.
+
 Browser smoke against a 173-message Codex session verified:
 
 - session -> Source Control parks the session layer while Source Control is

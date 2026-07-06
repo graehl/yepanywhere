@@ -323,7 +323,9 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
     return () => window.clearTimeout(timer);
   }, [lingerRoute]);
 
-  const renderedSessionRoute = currentSessionRoute ?? lingerRoute;
+  const parkedSessionRoute =
+    sessionDomLingerEnabled && !currentSessionRoute ? lingerRoute : null;
+  const renderedSessionRoute = currentSessionRoute ?? parkedSessionRoute;
   const sessionLayerVisible = Boolean(
     currentSessionRoute &&
       renderedSessionRoute &&

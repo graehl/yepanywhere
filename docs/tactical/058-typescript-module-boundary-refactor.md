@@ -214,7 +214,7 @@ extracting pure protocol/model/normalization modules with strong fixtures.
 | 4.3 | Done 2026-07-06 | Codex notification guards | Move `as*Notification` guards and raw notification classifiers into a protocol module. | Guard-only extraction; approval request param guards stay in `codex.ts`. Focused guard tests and existing Codex provider fixtures preserve stream/persisted conversion behavior. |
 | 4.4 | Not started | Codex live event conversion | Move live turn state, streaming message construction, and item-to-SDK conversion. | Higher risk; preserve live-delta suppression and replay behavior. Tier 3. |
 | 4.5 | Done 2026-07-06 | Codex recap/summary helpers | Move recap prompts, fork-backed summary prompt/params, retitle prompt, helper model selection, text cleanup, and summary capture helpers. | App-server orchestration and non-turn request decline behavior stayed in `codex.ts`; focused helper/provider/render-parity tests preserve provider-visible prompts and summary output behavior. |
-| 4.6 | Not started | Claude/OpenCode provider helper splits | Apply the proven Codex split pattern only where clear seams exist. | Avoid abstracting providers together unless duplication becomes real and tested. |
+| 4.6 | Done 2026-07-06 | OpenCode provider model helpers | Move OpenCode model selection, local-GLM model descriptions, and verbose variant parsing. | Provider process/HTTP/SSE orchestration and message conversion stayed in `opencode.ts`; no Claude/OpenCode shared abstraction introduced. |
 
 ## Phase 5: Load-Bearing Supervisor And Process Files
 
@@ -261,6 +261,34 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 4.6 — OpenCode Provider Model Helpers (Landed 2026-07-06, this commit)
+
+Moved:
+- `OpenCodeModelSelection`, `LOCAL_GLM_MODEL_PREFIX`,
+  `getLocalGlmModelDescription(...)`, `parseOpenCodeModelSelection(...)`, and
+  `parseOpenCodeModelVariants(...)` -> `opencode-models.ts`.
+
+Signature conversions:
+- None. The moved helpers already accepted all inputs as parameters.
+
+Behavior changes:
+- None intended. `opencode.ts` still owns CLI discovery, per-session server
+  lifecycle, HTTP/SSE flow, liveness/status handling, interactive prompts, and
+  message conversion.
+- No provider-general or Claude/OpenCode shared abstraction was introduced.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/server exec tsc --noEmit`; focused
+  `pnpm --filter @yep-anywhere/server test --
+  test/sdk/providers/opencode-model-variants.test.ts
+  test/sdk/providers/opencode.test.ts`; file-scoped
+  `node scripts/biome.cjs lint`; `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`.
+- Chatter: focused OpenCode provider tests retain their existing OpenCode
+  server lifecycle info logs; root tests passed with the existing broad suite
+  logging and negative-path stderr already documented for this refactor series.
 
 ### Slice 2.8 — MessageInput Textarea Mechanics (Landed 2026-07-06, this commit)
 

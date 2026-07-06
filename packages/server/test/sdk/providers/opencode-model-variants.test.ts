@@ -1,7 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { parseOpenCodeModelVariants } from "../../../src/sdk/providers/opencode.js";
+import {
+  getLocalGlmModelDescription,
+  parseOpenCodeModelSelection,
+  parseOpenCodeModelVariants,
+} from "../../../src/sdk/providers/opencode-models.js";
 
-describe("parseOpenCodeModelVariants", () => {
+describe("OpenCode model helpers", () => {
+  it("parses provider/model selections for message requests", () => {
+    expect(parseOpenCodeModelSelection(undefined)).toBeUndefined();
+    expect(parseOpenCodeModelSelection("default")).toBeUndefined();
+    expect(parseOpenCodeModelSelection("auto")).toBeUndefined();
+    expect(parseOpenCodeModelSelection("github-copilot/claude-opus-4.8")).toEqual(
+      {
+        providerID: "github-copilot",
+        modelID: "claude-opus-4.8",
+      },
+    );
+    expect(parseOpenCodeModelSelection("local-glm/Qwen/Qwen3.6-27B")).toEqual({
+      providerID: "local-glm",
+      modelID: "Qwen/Qwen3.6-27B",
+    });
+    expect(() => parseOpenCodeModelSelection("claude-opus-4.8")).toThrow(
+      'OpenCode model must use provider/model format, got "claude-opus-4.8"',
+    );
+    expect(() => parseOpenCodeModelSelection("github-copilot/")).toThrow(
+      'OpenCode model must use provider/model format, got "github-copilot/"',
+    );
+  });
+
+  it("describes local GLM launch commands", () => {
+    expect(
+      getLocalGlmModelDescription("local-glm/Qwen/Qwen3.6-27B"),
+    ).toContain("pixi run vllm serve Qwen/Qwen3.6-27B-FP8");
+    expect(
+      getLocalGlmModelDescription("local-glm/custom/model"),
+    ).toContain("pixi run vllm serve custom/model --served-model-name custom/model");
+  });
+
   it("extracts effort variant levels per model from verbose output", () => {
     const verbose = [
       "github-copilot/claude-opus-4.8",

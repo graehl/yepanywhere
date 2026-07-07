@@ -22,10 +22,10 @@ interface BulkActionBarProps {
   canMarkRead?: boolean;
   /** True if any selected item can be marked as unread (is read) */
   canMarkUnread?: boolean;
-  /** Archive all filtered sessions (shown when filters active, no selection) */
-  onArchiveAllFiltered?: () => Promise<void>;
-  /** Number of archivable sessions in filtered results */
-  archivableFilteredCount?: number;
+  /** Select all filtered sessions (shown when filters active, no selection) */
+  onSelectAllFiltered?: () => void;
+  /** Number of sessions in filtered results */
+  filteredCount?: number;
 }
 
 /**
@@ -48,13 +48,13 @@ export function BulkActionBar({
   canUnstar = true,
   canMarkRead = true,
   canMarkUnread = true,
-  onArchiveAllFiltered,
-  archivableFilteredCount = 0,
+  onSelectAllFiltered,
+  filteredCount = 0,
 }: BulkActionBarProps) {
   const { t } = useI18n();
-  // Show "Archive all N" bar when filters are active but no manual selection
+  // Show a filtered select-all shortcut when filters are active but no manual selection.
   if (selectedCount === 0) {
-    if (!onArchiveAllFiltered || archivableFilteredCount === 0) {
+    if (!onSelectAllFiltered || filteredCount === 0) {
       return null;
     }
 
@@ -64,10 +64,10 @@ export function BulkActionBar({
           <button
             type="button"
             className="bulk-action-button bulk-action-button--primary"
-            onClick={onArchiveAllFiltered}
+            onClick={onSelectAllFiltered}
             disabled={isPending}
-            title={t("bulkArchiveAllFilteredTitle", {
-              count: archivableFilteredCount,
+            title={t("bulkSelectAllFilteredTitle", {
+              count: filteredCount,
             })}
           >
             <svg
@@ -81,13 +81,10 @@ export function BulkActionBar({
               strokeLinejoin="round"
               aria-hidden="true"
             >
-              <polyline points="21 8 21 21 3 21 3 8" />
-              <rect x="1" y="3" width="22" height="5" />
-              <line x1="10" y1="12" x2="14" y2="12" />
+              <polyline points="9 11 12 14 22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
             </svg>
-            <span>
-              {t("bulkArchiveAll", { count: archivableFilteredCount })}
-            </span>
+            <span>{t("bulkSelectAllFiltered", { count: filteredCount })}</span>
           </button>
         </div>
       </div>

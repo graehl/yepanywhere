@@ -683,29 +683,6 @@ export function GlobalSessionsPage() {
     }
   }, [selectedIds, isBulkActionPending, handleClearSelection]);
 
-  // "Archive all" for filtered results (no manual selection needed)
-  const handleArchiveAllFiltered = useCallback(async () => {
-    if (isBulkActionPending) return;
-    const archivable = filteredSessions.filter((s) => !s.isArchived);
-    if (archivable.length === 0) return;
-    setIsBulkActionPending(true);
-    try {
-      await Promise.all(
-        archivable.map((s) =>
-          api.updateSessionMetadata(s.id, { archived: true }),
-        ),
-      );
-    } finally {
-      setIsBulkActionPending(false);
-    }
-  }, [filteredSessions, isBulkActionPending]);
-
-  // Count of archivable sessions in filtered results
-  const archivableFilteredCount = useMemo(
-    () => filteredSessions.filter((s) => !s.isArchived).length,
-    [filteredSessions],
-  );
-
   // Compute which bulk actions are applicable based on selection
   const bulkActionState = useMemo(() => {
     const selectedSessions = sessions.filter((s) => selectedIds.has(s.id));
@@ -1192,10 +1169,8 @@ export function GlobalSessionsPage() {
             canUnstar={bulkActionState.canUnstar}
             canMarkRead={bulkActionState.canMarkRead}
             canMarkUnread={bulkActionState.canMarkUnread}
-            onArchiveAllFiltered={
-              hasFilters ? handleArchiveAllFiltered : undefined
-            }
-            archivableFilteredCount={archivableFilteredCount}
+            onSelectAllFiltered={hasFilters ? handleSelectAll : undefined}
+            filteredCount={filteredSessions.length}
           />
         </div>
       </main>

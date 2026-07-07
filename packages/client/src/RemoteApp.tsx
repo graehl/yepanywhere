@@ -45,6 +45,7 @@ import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConn
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { useVersion } from "./hooks/useVersion";
 import { initClientLogCollection } from "./lib/diagnostics";
+import { getRelayCanonicalRedirectTarget } from "./lib/remoteRoutePaths";
 
 interface Props {
   children: ReactNode;
@@ -154,6 +155,7 @@ export function UnauthenticatedGate() {
 export function ConnectionGate() {
   const {
     connection,
+    currentRelayUsername,
     isAutoResuming,
     autoResumeError,
     clearAutoResumeError,
@@ -162,12 +164,10 @@ export function ConnectionGate() {
   const { connectionState } = useActivityBusState();
   const location = useLocation();
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
-
-  // During reconnection, stay on the current page — don't redirect to /login.
-  // SourceTransportStatus is the source of truth; React connection state may be stale.
-  if (connectionState === "reconnecting") {
-    return <Outlet />;
-  }
+  const relayCanonicalTarget = getRelayCanonicalRedirectTarget(
+    location,
+    currentRelayUsername,
+  );
 
   // During auto-resume, don't redirect - show loading state
   // This preserves the current URL so we stay on the same page after successful resume
@@ -178,6 +178,16 @@ export function ConnectionGate() {
         <p>Reconnecting...</p>
       </div>
     );
+  }
+
+  if (connection && relayCanonicalTarget) {
+    return <Navigate to={relayCanonicalTarget} replace />;
+  }
+
+  // During reconnection, stay on the current page — don't redirect to /login.
+  // SourceTransportStatus is the source of truth; React connection state may be stale.
+  if (connectionState === "reconnecting") {
+    return <Outlet />;
   }
 
   // Not connected (and not auto-resuming)

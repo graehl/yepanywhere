@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.7.1] - 2026-07-07
+
+### Fixed
+- Redirect connected relay sessions from direct hosted routes such as
+  `/remote/projects` to the relay-scoped project route before source-runtime
+  data fetches start.
+
 ## [site-v1.7.0] - 2026-07-06
 
 ### Added

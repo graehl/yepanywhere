@@ -556,3 +556,64 @@ describe("api push facade", () => {
     ]);
   });
 });
+
+describe("api file facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves file endpoint paths, methods, query params, and bodies", async () => {
+    await api.getFile("project-a", "src/a b.ts");
+    await api.getFile("project-a", "src/a b.ts", true, 10, 12, "range");
+    const rawUrl = api.getFileRawUrl("project-a", "media/a b.png", true);
+    await api.expandDiffContext(
+      "project-a",
+      "src/a.ts",
+      "old",
+      "new",
+      "full file",
+    );
+
+    expect(rawUrl).toBe(
+      "/api/projects/project-a/files/raw?path=media%2Fa+b.png&download=true",
+    );
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      {
+        url: "/api/projects/project-a/files?path=src%2Fa+b.ts",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/files?path=src%2Fa+b.ts&highlight=true&line=10&lineEnd=12&view=range",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/project-a/diff/expand",
+        method: "POST",
+        body: JSON.stringify({
+          filePath: "src/a.ts",
+          oldString: "old",
+          newString: "new",
+          originalFile: "full file",
+        }),
+      },
+    ]);
+  });
+});

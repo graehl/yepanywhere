@@ -474,3 +474,85 @@ describe("api server metadata facade", () => {
     ]);
   });
 });
+
+describe("api push facade", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    resetApiRoutingState();
+    fetchMock.mockImplementation(async () => okJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetApiRoutingState();
+  });
+
+  it("preserves push endpoint paths, methods, and bodies", async () => {
+    const subscription = {
+      endpoint: "https://push.example/subscription",
+      keys: { p256dh: "p256dh-key", auth: "auth-key" },
+    } satisfies PushSubscriptionJSON;
+    const settings = {
+      toolApproval: false,
+      userQuestion: true,
+    };
+
+    await api.getPushPublicKey();
+    await api.subscribePush("browser-a", subscription, "Laptop");
+    await api.unsubscribePush("browser-a");
+    await api.getPushSubscriptions();
+    await api.testPush("browser-a", "Hello", "persistent", "high");
+    await api.deletePushSubscription("browser profile/a");
+    await api.getNotificationSettings();
+    await api.updateNotificationSettings(settings);
+
+    expect(
+      fetchMock.mock.calls.map(([url, request]) => ({
+        url,
+        method: request?.method ?? "GET",
+        body: request?.body,
+      })),
+    ).toEqual([
+      { url: "/api/push/vapid-public-key", method: "GET", body: undefined },
+      {
+        url: "/api/push/subscribe",
+        method: "POST",
+        body: JSON.stringify({
+          browserProfileId: "browser-a",
+          subscription,
+          deviceName: "Laptop",
+        }),
+      },
+      {
+        url: "/api/push/unsubscribe",
+        method: "POST",
+        body: JSON.stringify({ browserProfileId: "browser-a" }),
+      },
+      { url: "/api/push/subscriptions", method: "GET", body: undefined },
+      {
+        url: "/api/push/test",
+        method: "POST",
+        body: JSON.stringify({
+          browserProfileId: "browser-a",
+          message: "Hello",
+          urgency: "persistent",
+          deliveryUrgency: "high",
+        }),
+      },
+      {
+        url: "/api/push/subscriptions/browser%20profile%2Fa",
+        method: "DELETE",
+        body: undefined,
+      },
+      { url: "/api/push/settings", method: "GET", body: undefined },
+      {
+        url: "/api/push/settings",
+        method: "PUT",
+        body: JSON.stringify(settings),
+      },
+    ]);
+  });
+});

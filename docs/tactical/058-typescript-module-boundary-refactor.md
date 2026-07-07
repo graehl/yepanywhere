@@ -208,7 +208,8 @@ of their planned slices.
 | 3.7 | Done 2026-07-06 | `api/client.ts` Onboarding domain client | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Moved onboarding status/complete/reset wrappers into `onboardingClient.ts`; kept the exported `api` facade stable. |
 | 3.8 | Done 2026-07-06 | `api/client.ts` Browser Profiles domain client | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Moved browser-profile list/delete wrappers into `browserProfilesClient.ts`; kept the exported `api` facade stable. |
 | 3.9 | Done 2026-07-06 | `api/client.ts` Server Metadata domain client | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Moved version, server-info, env-settings, and restart wrappers plus their public types into `serverMetadataClient.ts`; kept the exported `api` facade and type exports stable. Network binding stayed in `api/client.ts` because it mutates runtime listener configuration. |
-| 3.10 | Not started | `api/client.ts` additional domain clients | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Good candidates: push-notification clusters or small read-only settings helpers. Treat public-share as session-adjacent, settings writes as moderate risk because of custom clear semantics, and network binding as runtime configuration work. |
+| 3.10 | Done 2026-07-07 | `api/client.ts` Push Notifications domain client | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Moved push public-key, subscribe/unsubscribe, subscriptions, test, delete, and notification-settings wrappers into `pushClient.ts`; kept the exported `api` facade stable. `getConnections` stayed in `api/client.ts` because it is connected-device state, not a push route. |
+| 3.11 | Not started | `api/client.ts` additional domain clients | Continue extracting non-session endpoint clusters that stay behind the stable facade. | Good candidates: small read-only settings helpers or file/diff helpers. Treat public-share as session-adjacent, settings writes as moderate risk because of custom clear semantics, and network binding as runtime configuration work. |
 
 Phase 3 scope note:
 - Further `useSessionMessages` / `SessionDetailCoordinator` orchestration is
@@ -279,6 +280,49 @@ Follow-ups recorded:
 ```
 
 ## Landing Notes
+
+### Slice 3.10 — api/client Push Notifications Domain Client (Landed 2026-07-07, this commit)
+
+Moved:
+- Push public-key, subscribe, unsubscribe, subscriptions list, test, delete,
+  notification settings read, and notification settings update endpoint
+  wrappers -> `pushClient.ts`.
+
+Signature conversions:
+- None. The exported `api` facade still exposes the same
+  `api.getPushPublicKey`, `api.subscribePush`, `api.unsubscribePush`,
+  `api.getPushSubscriptions`, `api.testPush`, `api.deletePushSubscription`,
+  `api.getNotificationSettings`, and `api.updateNotificationSettings` methods.
+
+Behavior changes:
+- None intended. Endpoint paths, HTTP methods, request bodies, encoded delete
+  ids, current-source transport routing, and public call sites were preserved.
+- `getConnections` stayed in `api/client.ts`; it reads connected-device state
+  from `/connections`, not a `/push/*` route.
+
+Verification:
+- Tier 1: `pnpm --filter @yep-anywhere/shared build`;
+  `pnpm --filter @yep-anywhere/client exec tsc --noEmit`;
+  focused `pnpm --filter @yep-anywhere/client test --
+  src/api/client.test.ts`; scoped `node scripts/biome.cjs lint`;
+  `git diff --check`.
+- Tier 2: `pnpm lint`; `pnpm typecheck`; `pnpm test`;
+  `pnpm console:scan` unchanged from the current budget.
+- Tier 3 not run. This slice moved API wrappers behind the same facade and
+  added facade-path tests; it did not change route registration,
+  push-notification server behavior, transport framing, or rendered UI
+  behavior.
+- Residual output: focused API tests still print the existing
+  `ConnectionManager` transition lines, and the broad suite still prints its
+  existing negative-path server/client logs. No new chatter was attributed to
+  this slice.
+
+Follow-ups recorded:
+- Row 3.11 tracks remaining non-session `api/client.ts` domain-client
+  candidates. Public-share remains session-adjacent, settings writes remain
+  moderate risk because `updateServerSettings` preserves explicit clears with
+  custom JSON serialization, and network binding remains runtime configuration
+  work.
 
 ### Slice 3.9 — api/client Server Metadata Domain Client (Landed 2026-07-06, this commit)
 

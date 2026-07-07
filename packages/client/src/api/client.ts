@@ -61,6 +61,7 @@ import { browserProfilesApi } from "./browserProfilesClient";
 import { gitApi } from "./gitClient";
 import { onboardingApi } from "./onboardingClient";
 import { getDesktopAuthToken } from "./plainFetch";
+import { pushApi, pushSettingsApi } from "./pushClient";
 import { recentsApi } from "./recentsClient";
 import { serverMetadataApi } from "./serverMetadataClient";
 import { fetchJSON } from "./sourceApiFetch";
@@ -1160,100 +1161,12 @@ export const api = {
     }),
 
   // Push notification API
-  getPushPublicKey: () =>
-    fetchJSON<{ publicKey: string }>("/push/vapid-public-key"),
-
-  subscribePush: (
-    browserProfileId: string,
-    subscription: PushSubscriptionJSON,
-    deviceName?: string,
-  ) =>
-    fetchJSON<{ success: boolean; browserProfileId: string }>(
-      "/push/subscribe",
-      {
-        method: "POST",
-        body: JSON.stringify({ browserProfileId, subscription, deviceName }),
-      },
-    ),
-
-  unsubscribePush: (browserProfileId: string) =>
-    fetchJSON<{ success: boolean; browserProfileId: string }>(
-      "/push/unsubscribe",
-      {
-        method: "POST",
-        body: JSON.stringify({ browserProfileId }),
-      },
-    ),
-
-  getPushSubscriptions: () =>
-    fetchJSON<{
-      count: number;
-      subscriptions: Array<{
-        browserProfileId: string;
-        createdAt: string;
-        deviceName?: string;
-        endpointDomain: string;
-        deviceType: "android" | "ios" | "mobile" | "desktop" | "unknown";
-      }>;
-    }>("/push/subscriptions"),
-
-  testPush: (
-    browserProfileId: string,
-    message?: string,
-    urgency?: "normal" | "persistent" | "silent",
-    deliveryUrgency?: "very-low" | "low" | "normal" | "high",
-  ) =>
-    fetchJSON<{ success: boolean }>("/push/test", {
-      method: "POST",
-      body: JSON.stringify({
-        browserProfileId,
-        message,
-        urgency,
-        deliveryUrgency,
-      }),
-    }),
-
-  deletePushSubscription: (browserProfileId: string) =>
-    fetchJSON<{ success: boolean }>(
-      `/push/subscriptions/${encodeURIComponent(browserProfileId)}`,
-      { method: "DELETE" },
-    ),
+  ...pushApi,
 
   // Connected devices API
   getConnections: () => fetchJSON<ConnectionsResponse>("/connections"),
 
-  getNotificationSettings: () =>
-    fetchJSON<{
-      settings: {
-        toolApproval: boolean;
-        userQuestion: boolean;
-        sessionHalted: boolean;
-        projectInactive: boolean;
-        yaInactive: boolean;
-      };
-    }>("/push/settings"),
-
-  updateNotificationSettings: (
-    settings: Partial<{
-      toolApproval: boolean;
-      userQuestion: boolean;
-      sessionHalted: boolean;
-      projectInactive: boolean;
-      yaInactive: boolean;
-    }>,
-  ) =>
-    fetchJSON<{
-      settings: {
-        toolApproval: boolean;
-        userQuestion: boolean;
-        sessionHalted: boolean;
-        projectInactive: boolean;
-        yaInactive: boolean;
-      };
-    }>("/push/settings", {
-      method: "PUT",
-      body: JSON.stringify(settings),
-    }),
+  ...pushSettingsApi,
 
   // File API
   getFile: (

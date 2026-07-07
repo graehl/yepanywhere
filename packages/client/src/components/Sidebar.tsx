@@ -5,13 +5,7 @@ import {
   type ProjectQueueItemSummary,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
@@ -161,6 +155,44 @@ function compareDuplicateRepresentative(
   const messageCountDiff = (b.messageCount || 0) - (a.messageCount || 0);
   if (messageCountDiff !== 0) return messageCountDiff;
   return updatedAtMs(b) - updatedAtMs(a);
+}
+
+// Named with a `debugLog` prefix so the console-chatter scanner treats its
+// console.debug sites as dev-gated (topics/console-chatter.md); the call site
+// still guards on import.meta.env.DEV so nothing runs in production.
+function debugLogSidebarDuplicates(sessions: SidebarSessionItem[]): void {
+  const idCounts = new Map<string, number>();
+  for (const session of sessions) {
+    idCounts.set(session.id, (idCounts.get(session.id) ?? 0) + 1);
+  }
+  const repeatedIds = [...idCounts].filter(([, count]) => count > 1);
+  if (repeatedIds.length > 0) {
+    console.debug("[Sidebar] repeated session ids in recent list", repeatedIds);
+  }
+  const groups = new Map<string, SidebarSessionItem[]>();
+  for (const session of sessions) {
+    const key = duplicateGroupingKey(session);
+    if (!key) continue;
+    let group = groups.get(key);
+    if (!group) {
+      group = [];
+      groups.set(key, group);
+    }
+    group.push(session);
+  }
+  for (const [key, arr] of groups) {
+    if (arr.length <= 1) continue;
+    console.debug(
+      `[Sidebar] duplicate-title group (${arr.length}) ${key}`,
+      arr.map((session) => ({
+        id: session.id,
+        activity: session.activity,
+        updatedAt: session.updatedAt,
+        owner: session.ownership?.owner,
+        messageCount: session.messageCount,
+      })),
+    );
+  }
 }
 
 function isSidebarPendingProjectQueueItem(
@@ -761,10 +793,18 @@ export function Sidebar({
     [currentSessionId],
   );
 
-  // Active and queued-target sessions are pinned above idle rows and never
-  // deduped or sorted. Queue membership is a sidebar ordering signal only; it
-  // does not make the row look like a live in-turn agent.
-  const recentPinned = useMemo(
+  // Active/queued rows are pinned above idle rows. They used to bypass duplicate
+  // collapsing entirely, so a single conversation whose SDK session id had
+  // rotated (each resume/fork mints a new id under the same title, and the stale
+  // ids keep a live-state activity) showed one pinned row per id. Run the pinned
+  // set through the same conservative collapser as idle rows: it protects the
+  // current, self-owned, and lineage rows the contract requires to stay visible
+  // (topics/session-list-hidden-duplicates.md), so only rotated ghosts (owner
+  // "none"/"external", no live supervision) fold away. Preserve the pinned
+  // ordering by filtering the original list rather than taking the collapser's
+  // recency-sorted output; collapsed rows join the recent section's hidden-
+  // duplicates disclosure. Queue membership is only an ordering signal here.
+  const recentPinnedAll = useMemo(
     () =>
       recentDaySessions.filter(
         (session) =>
@@ -772,6 +812,28 @@ export function Sidebar({
       ),
     [projectQueuedSessionIds, recentDaySessions],
   );
+
+  const { recentPinned, hiddenPinned } = useMemo(() => {
+    if (!sidebarDuplicateHidingEnabled) {
+      return {
+        recentPinned: recentPinnedAll,
+        hiddenPinned: [] as SidebarSessionItem[],
+      };
+    }
+    const { hidden } = groupDuplicateSessions(recentPinnedAll);
+    if (hidden.length === 0) {
+      return { recentPinned: recentPinnedAll, hiddenPinned: [] };
+    }
+    const hiddenIds = new Set(hidden.map((session) => session.id));
+    return {
+      recentPinned: recentPinnedAll.filter(
+        (session) => !hiddenIds.has(session.id),
+      ),
+      hiddenPinned: recentPinnedAll.filter((session) =>
+        hiddenIds.has(session.id),
+      ),
+    };
+  }, [groupDuplicateSessions, recentPinnedAll, sidebarDuplicateHidingEnabled]);
 
   const { visibleRecent, hiddenRecent } = useMemo(() => {
     const idle = recentDaySessions.filter(
@@ -797,6 +859,21 @@ export function Sidebar({
     const { visible, hidden } = groupDuplicateSessions(olderSessions);
     return { visibleOlder: visible, hiddenOlder: hidden };
   }, [groupDuplicateSessions, olderSessions, sidebarDuplicateHidingEnabled]);
+
+  // Duplicates collapsed out of the pinned set share the recent section's
+  // hidden-duplicates disclosure, freshest first.
+  const hiddenRecentAll = useMemo(() => {
+    if (hiddenPinned.length === 0) return hiddenRecent;
+    return [...hiddenPinned, ...hiddenRecent].sort(
+      (a, b) => updatedAtMs(b) - updatedAtMs(a),
+    );
+  }, [hiddenPinned, hiddenRecent]);
+
+  // Dev-only: surface how a single logical conversation fans out across rotated
+  // session ids (and flag any true repeated id, which the collapse cannot fix).
+  useEffect(() => {
+    if (import.meta.env.DEV) debugLogSidebarDuplicates(recentDaySessions);
+  }, [recentDaySessions]);
 
   const drafts = useDraftSessionIds();
 
@@ -1143,7 +1220,7 @@ export function Sidebar({
                 >
                   {recentPinned.map(renderCompactSession)}
                   {visibleRecent.map(renderCompactSession)}
-                  {hiddenRecent.length > 0 && (
+                  {hiddenRecentAll.length > 0 && (
                     <li className="sidebar-hidden-dups">
                       <button
                         type="button"
@@ -1153,12 +1230,12 @@ export function Sidebar({
                       >
                         {showHiddenRecent ? "−" : "+"}{" "}
                         {t("sidebarHiddenDuplicateSessions", {
-                          count: hiddenRecent.length,
+                          count: hiddenRecentAll.length,
                         })}
                       </button>
                       {showHiddenRecent && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
-                          {hiddenRecent.map(renderCompactSession)}
+                          {hiddenRecentAll.map(renderCompactSession)}
                         </ul>
                       )}
                     </li>

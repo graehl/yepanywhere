@@ -58,6 +58,15 @@ dash, dot, hit target, and preview label all use it, so they stay aligned.
 constants in `UserTurnNavigator.tsx`, **not** user-facing settings. If a setting
 is ever wanted, expose `MARKER_SPREAD_PX` (0 → max) as the one knob.
 
+## Search preview hover stability
+
+Ctrl-S search mode renders match-preview excerpts beside the turn rail, and
+hovering a preview may expand it into a richer multi-line facsimile. Expansion
+must keep the preview's right edge anchored: the visual card may grow leftward,
+but it must not translate its hitbox horizontally away from the pointer. A
+horizontal shift makes pointer-leave collapse the preview, which moves it back
+under the pointer and creates a hover/collapse loop.
+
 ## Bottom-bar position age
 
 The composer bottom bar may show a contextual turn-position age immediately to

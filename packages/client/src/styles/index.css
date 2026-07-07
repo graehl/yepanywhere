@@ -3153,7 +3153,6 @@ a.sidebar-nav-item {
 }
 
 .user-turn-nav-preview.is-expanded.is-pinned-expanded {
-  transform: translate(-92px, -50%);
   z-index: 3;
 }
 

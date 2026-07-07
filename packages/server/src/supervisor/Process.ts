@@ -1375,6 +1375,16 @@ export class Process {
 
     const interrupted = await this.interruptFn();
 
+    if (interrupted !== false) {
+      this.resolvePendingToolApprovals({
+        message: "Operation interrupted",
+        interrupt: true,
+      });
+      if (this._state.type === "waiting-input") {
+        this.transitionToInTurnForWake("tool-approval-resolved");
+      }
+    }
+
     // After interrupt, drain all queued messages (direct + deferred) and deliver
     // as a single concatenated batch with the interrupt preamble so the agent
     // knows to treat prior work as resumable.
@@ -1627,16 +1637,10 @@ export class Process {
     this.iteratorDone = true;
     this.clearProviderRuntimeStatus();
 
-    // Resolve all pending tool approvals with denial
-    for (const pending of this.pendingToolApprovals.values()) {
-      pending.resolve({
-        behavior: "deny",
-        message: `Process terminated: ${reason}`,
-        interrupt: true,
-      });
-    }
-    this.pendingToolApprovals.clear();
-    this.pendingToolApprovalQueue = [];
+    this.resolvePendingToolApprovals({
+      message: `Process terminated: ${reason}`,
+      interrupt: true,
+    });
 
     this.setState({ type: "terminated", reason, error });
     this.emit({ type: "terminated", reason, error });
@@ -3139,16 +3143,25 @@ export class Process {
    * Works for both real SDK (canUseTool callback) and mock SDK (input_request message).
    */
   getPendingInputRequest(): InputRequest | null {
-    // Check real SDK pending approvals queue first
-    const firstId = this.pendingToolApprovalQueue[0];
-    if (firstId !== undefined) {
-      return this.pendingToolApprovals.get(firstId)?.request ?? null;
-    }
-    // For mock SDK, check state directly
     if (this._state.type === "waiting-input") {
       return this._state.request;
     }
     return null;
+  }
+
+  private resolvePendingToolApprovals(options: {
+    message: string;
+    interrupt: true;
+  }): void {
+    for (const pending of this.pendingToolApprovals.values()) {
+      pending.resolve({
+        behavior: "deny",
+        message: options.message,
+        interrupt: options.interrupt,
+      });
+    }
+    this.pendingToolApprovals.clear();
+    this.pendingToolApprovalQueue = [];
   }
 
   subscribe(listener: Listener): () => void {

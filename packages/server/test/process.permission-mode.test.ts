@@ -1,17 +1,10 @@
-import {
-  describe,
-  expect,
-  it,
-} from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   MessageQueue,
   Process,
   createMockIterator,
 } from "./process.test-support.js";
-import type {
-  ProcessEvent,
-  UrlProjectId,
-} from "./process.test-support.js";
+import type { ProcessEvent, UrlProjectId } from "./process.test-support.js";
 
 describe("Process", () => {
   describe("permission mode", () => {
@@ -693,6 +686,42 @@ describe("Process", () => {
       // No more pending requests
       expect(process.getPendingInputRequest()).toBeNull();
       expect(process.state.type).toBe("in-turn");
+    });
+
+    it("clears pending approvals on interrupt", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+        interruptFn: async () => true,
+      });
+
+      const abortController = new AbortController();
+      const approvalPromise = process.handleToolApproval(
+        "Bash",
+        { command: "ls -la" },
+        { signal: abortController.signal },
+      );
+
+      expect(process.state.type).toBe("waiting-input");
+      expect(process.getPendingInputRequest()?.toolName).toBe("Bash");
+
+      const interrupted = await process.interrupt();
+
+      expect(interrupted).toBe(true);
+      expect(process.state.type).toBe("in-turn");
+      expect(process.getPendingInputRequest()).toBeNull();
+
+      const result = await approvalPromise;
+      expect(result).toMatchObject({
+        behavior: "deny",
+        message: "Operation interrupted",
+        interrupt: true,
+      });
     });
   });
 });

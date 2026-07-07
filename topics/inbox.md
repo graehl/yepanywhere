@@ -30,6 +30,12 @@ The tier order is:
 Each tier is sorted by `updatedAt` descending and capped at 20 items. Archived
 sessions are skipped before tiering.
 
+`pendingInputType` is live process state, not durable session-summary state.
+Inbox may place a session in `needsAttention` only when the owned process is
+currently in `waiting-input` with an actionable request. A stale provider
+approval callback left behind by a stop/interrupt must be resolved or ignored;
+it must not keep an active or idle session in the approval tier.
+
 ## Unread Meaning
 
 Unread state comes from `NotificationService.hasUnread(session.id,

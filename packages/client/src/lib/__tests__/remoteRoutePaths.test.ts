@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getRelayCanonicalRedirectTarget } from "../remoteRoutePaths";
+import {
+  getRelayCanonicalRedirectTarget,
+  getSafeRemoteReturnTarget,
+} from "../remoteRoutePaths";
 
 describe("getRelayCanonicalRedirectTarget", () => {
   it("redirects direct app routes into the active relay namespace", () => {
@@ -34,5 +37,52 @@ describe("getRelayCanonicalRedirectTarget", () => {
     expect(
       getRelayCanonicalRedirectTarget({ pathname: "/projects" }, null),
     ).toBe(null);
+  });
+
+  it("does not redirect paths that are not direct app routes", () => {
+    expect(
+      getRelayCanonicalRedirectTarget(
+        { pathname: "/other-host/projects" },
+        "macbook",
+      ),
+    ).toBe(null);
+  });
+});
+
+describe("getSafeRemoteReturnTarget", () => {
+  it("redirects direct return targets into the active relay namespace", () => {
+    expect(
+      getSafeRemoteReturnTarget(
+        "/projects?queueItem=item-1#top",
+        "macbook",
+      ),
+    ).toBe("/macbook/projects?queueItem=item-1#top");
+  });
+
+  it("redirects the direct index return target to relay projects", () => {
+    expect(getSafeRemoteReturnTarget("/", "macbook")).toBe(
+      "/macbook/projects",
+    );
+  });
+
+  it("preserves already scoped relay return targets", () => {
+    expect(getSafeRemoteReturnTarget("/macbook/projects", "macbook")).toBe(
+      "/macbook/projects",
+    );
+  });
+
+  it("preserves direct return targets when no relay host is active", () => {
+    expect(getSafeRemoteReturnTarget("/projects", null)).toBe("/projects");
+  });
+
+  it("rejects protocol-relative return targets", () => {
+    expect(getSafeRemoteReturnTarget("//example.com/projects", "macbook")).toBe(
+      null,
+    );
+  });
+
+  it("rejects login return targets", () => {
+    expect(getSafeRemoteReturnTarget("/login?returnTo=/projects", "macbook"))
+      .toBe(null);
   });
 });

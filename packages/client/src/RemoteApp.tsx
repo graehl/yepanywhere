@@ -45,7 +45,10 @@ import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConn
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { useVersion } from "./hooks/useVersion";
 import { initClientLogCollection } from "./lib/diagnostics";
-import { getRelayCanonicalRedirectTarget } from "./lib/remoteRoutePaths";
+import {
+  getRelayCanonicalRedirectTarget,
+  getSafeRemoteReturnTarget,
+} from "./lib/remoteRoutePaths";
 
 interface Props {
   children: ReactNode;
@@ -126,14 +129,17 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
  * Renders <Outlet /> (login pages) when not connected.
  */
 export function UnauthenticatedGate() {
-  const { connection, isIntentionalDisconnect } = useRemoteConnection();
+  const { connection, currentRelayUsername, isIntentionalDisconnect } =
+    useRemoteConnection();
   const basePath = useRemoteBasePath();
   const location = useLocation();
 
   const loginParams = new URLSearchParams(location.search);
   const returnTo = loginParams.get("returnTo");
-  const safeReturnTo =
-    returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : null;
+  const safeReturnTo = getSafeRemoteReturnTarget(
+    returnTo,
+    currentRelayUsername,
+  );
 
   // If connected and user didn't intentionally disconnect, redirect to app
   if (connection && !isIntentionalDisconnect) {

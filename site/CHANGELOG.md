@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.7.2] - 2026-07-07
+
+### Fixed
+- Canonicalize relay login return targets so a direct hosted URL such as
+  `/remote/projects` does not keep redirecting back to `/remote/projects` after
+  login.
+
 ## [site-v1.7.1] - 2026-07-07
 
 ### Fixed

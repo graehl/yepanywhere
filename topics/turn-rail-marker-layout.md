@@ -99,6 +99,15 @@ match so every shown label exposes the needle on its single visible line. Hover
 expansion may still show the richer multi-line context from the search
 projection.
 
+Follow-up wish: restore the older pointer-driven rail browse behavior where
+moving the mouse near the right-side turn rail shifts which turn previews are
+shown, without requiring a committed scroll/jump first. Combine that with the
+dense preview contract above: before mouseover/focus each candidate stays a
+single first-match line rather than a whole-turn card; mouseover/focus expands
+only that candidate to richer whole-turn or multi-line context. The preview
+window may follow vertical pointer bands near the rail, but the marker hit
+targets stay fixed and must not reintroduce the hover/collapse loops above.
+
 ## Bottom-bar position age
 
 The composer bottom bar may show a contextual turn-position age immediately to

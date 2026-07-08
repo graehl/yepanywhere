@@ -29,41 +29,66 @@ jobs:
       url: https://latest.yepanywhere.com/
     runs-on: ubuntu-latest
     steps:
+      - name: Check Cloudflare deploy config
+        id: cloudflare-config
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+        run: |
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ] ||
+             [ -z "$CLOUDFLARE_API_TOKEN" ] ||
+             [ -z "$CLOUDFLARE_PAGES_PROJECT_NAME" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Cloudflare Pages deploy because CLOUDFLARE_* configuration is incomplete."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Checkout CI head
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install pnpm
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build shared package
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         run: pnpm --filter @yep-anywhere/shared build
 
       - name: Build remote client
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         run: |
           pnpm --filter @yep-anywhere/client exec tsc
           pnpm --filter @yep-anywhere/client exec vite build --config vite.config.remote.ts --base /
 
       - name: Prepare Cloudflare Pages output
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         run: |
           cp packages/client/dist-remote/remote.html packages/client/dist-remote/index.html
           rm -f packages/client/dist-remote/404.html
           test -f packages/client/dist-remote/index.html
 
       - name: Install Wrangler
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         run: npm ci --prefix sharing-worker
 
       - name: Deploy to Cloudflare Pages
+        if: steps.cloudflare-config.outputs.enabled == 'true'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

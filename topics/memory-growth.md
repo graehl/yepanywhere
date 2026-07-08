@@ -13,11 +13,17 @@
   last two compaction windows. Full direct session REST payloads can be tens of
   megabytes and thousands of normalized renderable messages, so they are
   diagnostic/debug surfaces rather than the default browser transcript load.
-- Aggressive client transcript truncation is URL opt-in, not the normal session
-  contract. `tailTurns=<n>` and `tailFrom=<message-id>` bound only the initial
-  non-incremental session detail response; streaming and `afterMessageId`
-  refreshes must append normally so the loaded tail can grow without repeated
-  recutting.
+- Compact-boundary tails are not by themselves a sufficient browser bound for
+  Claude sessions with sparse compaction. Normal client session loads also send
+  a conservative recent-turn cap, currently `tailTurns=20`, unless the URL
+  explicitly chooses `tailTurns` or `tailFrom`. This keeps a session with one
+  old compaction from rendering nearly the whole transcript by default while
+  preserving explicit URL opt-in for stronger or different transcript windows.
+- Custom aggressive transcript truncation remains URL opt-in, not a hidden
+  recut on every refresh. `tailTurns=<n>` and `tailFrom=<message-id>` bound
+  only the initial non-incremental session detail response; streaming and
+  `afterMessageId` refreshes must append normally so the loaded tail can grow
+  without repeated recutting.
 - The old in-tab session-load cache was a developer convenience only:
   `VITE_SESSION_LOAD_CACHE=true` retained every visited transcript without
   production eviction or source/query invalidation. It proved the warm-return

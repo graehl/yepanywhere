@@ -51,6 +51,7 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 const DEFAULT_SESSION_DETAIL_RETENTION = getSessionDetailRetentionDefaults();
+const DEFAULT_INITIAL_TAIL_TURNS = 20;
 
 vi.mock("../../api/client", () => ({
   api: apiMocks,
@@ -160,17 +161,43 @@ function runtimeWrapper(runtime: YaSourceRuntime) {
   };
 }
 
+function defaultStoreEntryKey(projectId = "proj-1", sessionId = "sess-1") {
+  return {
+    sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+    projectId,
+    sessionId,
+    tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
+  };
+}
+
+function runtimeStoreEntryKey(
+  runtime: YaSourceRuntime,
+  projectId = "proj-1",
+  sessionId = "sess-1",
+) {
+  return {
+    sourceKey: runtime.sourceKey,
+    projectId,
+    sessionId,
+    tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
+  };
+}
+
+function defaultInitialTailRequest(extra: Record<string, unknown> = {}) {
+  return expect.objectContaining({
+    tailCompactions: 2,
+    tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
+    ...extra,
+  });
+}
+
 function readStoreMessageIds(
   projectId = "proj-1",
   sessionId = "sess-1",
 ): string[] | undefined {
   return defaultSessionDetailMemoryCache
     .readSelected(
-      {
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId,
-        sessionId,
-      },
+      defaultStoreEntryKey(projectId, sessionId),
       selectSessionDetailMessages,
     )
     ?.map((message) => message.uuid)
@@ -184,11 +211,7 @@ function readRuntimeMessageIds(
 ): string[] | undefined {
   return runtime.sessionDetails.cache
     .readSelected(
-      {
-        sourceKey: runtime.sourceKey,
-        projectId,
-        sessionId,
-      },
+      runtimeStoreEntryKey(runtime, projectId, sessionId),
       selectSessionDetailMessages,
     )
     ?.map((message) => message.uuid)
@@ -197,22 +220,14 @@ function readRuntimeMessageIds(
 
 function readStoreAgentContent(projectId = "proj-1", sessionId = "sess-1") {
   return defaultSessionDetailMemoryCache.readSelected(
-    {
-      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-      projectId,
-      sessionId,
-    },
+    defaultStoreEntryKey(projectId, sessionId),
     selectSessionDetailAgentContent,
   );
 }
 
 function readStoreToolUseToAgent(projectId = "proj-1", sessionId = "sess-1") {
   const entries = defaultSessionDetailMemoryCache.readSelected(
-    {
-      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-      projectId,
-      sessionId,
-    },
+    defaultStoreEntryKey(projectId, sessionId),
     selectSessionDetailToolUseToAgentEntries,
   );
   return entries ? new Map(entries) : undefined;
@@ -336,7 +351,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       "msg-1",
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
     await waitFor(() => expect(second.result.current.loading).toBe(false));
     expect(
@@ -376,6 +391,7 @@ describe("useSessionMessages cache", () => {
         projectId: "proj-1",
         sessionId: "sess-1",
         tailCompactions: 2,
+        tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
       }),
     );
     expect(secondRuntime.api.getSession).toHaveBeenCalledWith(
@@ -383,6 +399,7 @@ describe("useSessionMessages cache", () => {
         projectId: "proj-1",
         sessionId: "sess-1",
         tailCompactions: 2,
+        tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
       }),
     );
     expect(first.result.current.messages.map((message) => message.uuid)).toEqual(
@@ -395,11 +412,7 @@ describe("useSessionMessages cache", () => {
     expect(readRuntimeMessageIds(secondRuntime)).toEqual(["msg-second"]);
     expect(
       firstRuntime.sessionDetails.cache.readSelected(
-        {
-          sourceKey: secondRuntime.sourceKey,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        runtimeStoreEntryKey(secondRuntime),
         selectSessionDetailMessages,
       ),
     ).toBeUndefined();
@@ -643,11 +656,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(rendered.result.current.loading).toBe(false));
     expect(rendered.result.current.pagination?.totalMessageCount).toBe(1);
 
-    const storeKey = {
-      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-      projectId: "proj-1",
-      sessionId: "sess-1",
-    };
+    const storeKey = defaultStoreEntryKey();
     expect(
       defaultSessionDetailMemoryCache
         .read(storeKey)
@@ -742,11 +751,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -809,11 +814,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "setSessionMetadata",
           session: {
@@ -880,11 +881,7 @@ describe("useSessionMessages cache", () => {
     ).toEqual(["msg-1"]);
 
     act(() => {
-      defaultSessionDetailMemoryCache.deleteEntry({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      });
+      defaultSessionDetailMemoryCache.deleteEntry(defaultStoreEntryKey());
     });
 
     await waitFor(() => expect(rendered.result.current.messages).toEqual([]));
@@ -939,11 +936,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "mergeLoadedAgentContent",
           agentId: "task-store",
@@ -992,11 +985,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "registerToolUseAgent",
           toolUseId: "toolu_store",
@@ -1164,11 +1153,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "registerToolUseAgent",
           toolUseId: "toolu_store",
@@ -1315,11 +1300,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -1394,11 +1375,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -1473,11 +1450,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -1594,7 +1567,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       undefined,
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
     expect(result.current.messages.map((message) => message.uuid)).toEqual([
       "msg-1",
@@ -1661,11 +1634,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -1818,7 +1787,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       undefined,
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
 
     first.unmount();
@@ -1834,11 +1803,7 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.messages).toEqual([]);
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -1859,7 +1824,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       "msg-1",
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
 
     await waitFor(() => expect(second.result.current.loading).toBe(false));
@@ -2052,7 +2017,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       undefined,
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
     await waitFor(() => expect(second.result.current.loading).toBe(false));
     expect(
@@ -2129,7 +2094,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       "msg-1",
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
   });
 
@@ -2300,7 +2265,7 @@ describe("useSessionMessages cache", () => {
       "proj-1",
       "sess-1",
       "tail-msg-2",
-      { tailCompactions: 2 },
+      defaultInitialTailRequest(),
     );
     await waitFor(() => expect(second.result.current.loading).toBe(false));
 
@@ -2376,11 +2341,7 @@ describe("useSessionMessages cache", () => {
     expect(rendered.result.current.pagination?.hasOlderMessages).toBe(true);
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -2392,11 +2353,7 @@ describe("useSessionMessages cache", () => {
         },
       );
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "replaceTailWindow",
           session: {
@@ -2502,11 +2459,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: {
@@ -2860,11 +2813,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "mergeLoadedAgentContent",
           agentId: "task-store",
@@ -2886,11 +2835,7 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(
-      defaultSessionDetailMemoryCache.read({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      })?.agentContent,
+      defaultSessionDetailMemoryCache.read(defaultStoreEntryKey())?.agentContent,
     ).toMatchObject({
       "task-1": {
         messages: [streamMessage],
@@ -2948,11 +2893,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: storeOnlyMessage,
@@ -2970,11 +2911,7 @@ describe("useSessionMessages cache", () => {
     expect(result.current.messages[1]).toEqual(updated);
     expect(
       defaultSessionDetailMemoryCache
-        .read({
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        })
+        .read(defaultStoreEntryKey())
         ?.messages.map((message) => message.uuid),
     ).toEqual(["store-only-1", "streaming-1"]);
   });
@@ -3027,11 +2964,7 @@ describe("useSessionMessages cache", () => {
     act(() => {
       result.current.handleStreamingUpdate(streaming);
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "applyStreamMessage",
           message: storeOnlyMessage,
@@ -3046,11 +2979,7 @@ describe("useSessionMessages cache", () => {
     ]);
     expect(
       defaultSessionDetailMemoryCache
-        .read({
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        })
+        .read(defaultStoreEntryKey())
         ?.messages.map((message) => message.uuid),
     ).toEqual(["durable-1", "store-only-1"]);
   });
@@ -3102,11 +3031,7 @@ describe("useSessionMessages cache", () => {
       model: "gpt-5.4",
     });
     expect(
-      defaultSessionDetailMemoryCache.read({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      })?.session,
+      defaultSessionDetailMemoryCache.read(defaultStoreEntryKey())?.session,
     ).toMatchObject({
       title: "After",
       model: "gpt-5.4",
@@ -3153,11 +3078,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "mergeLoadedAgentContent",
           agentId: "task-store",
@@ -3182,11 +3103,7 @@ describe("useSessionMessages cache", () => {
       status: "completed",
     });
     expect(
-      defaultSessionDetailMemoryCache.read({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      })?.agentContent,
+      defaultSessionDetailMemoryCache.read(defaultStoreEntryKey())?.agentContent,
     ).toMatchObject({
       "task-1": {
         messages: [loadedMessage],
@@ -3235,11 +3152,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "mergeLoadedAgentContent",
           agentId: "task-store",
@@ -3262,11 +3175,7 @@ describe("useSessionMessages cache", () => {
       contextUsage,
     });
     expect(
-      defaultSessionDetailMemoryCache.read({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      })?.agentContent,
+      defaultSessionDetailMemoryCache.read(defaultStoreEntryKey())?.agentContent,
     ).toMatchObject({
       "task-1": {
         messages: [],
@@ -3325,11 +3234,7 @@ describe("useSessionMessages cache", () => {
 
     act(() => {
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "mergeLoadedAgentContent",
           agentId: "task-store",
@@ -3352,11 +3257,7 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(
-      defaultSessionDetailMemoryCache.read({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      })?.agentContent["task-1"],
+      defaultSessionDetailMemoryCache.read(defaultStoreEntryKey())?.agentContent["task-1"],
     ).toEqual({
       messages: [updated],
       status: "running",
@@ -3413,11 +3314,7 @@ describe("useSessionMessages cache", () => {
         status: "running",
       });
       defaultSessionDetailMemoryCache.dispatch(
-        {
-          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-          projectId: "proj-1",
-          sessionId: "sess-1",
-        },
+        defaultStoreEntryKey(),
         {
           type: "mergeLoadedAgentContent",
           agentId: "task-store",
@@ -3439,11 +3336,7 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(
-      defaultSessionDetailMemoryCache.read({
-        sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        projectId: "proj-1",
-        sessionId: "sess-1",
-      })?.agentContent,
+      defaultSessionDetailMemoryCache.read(defaultStoreEntryKey())?.agentContent,
     ).toMatchObject({
       "task-1": {
         messages: [durableMessage],

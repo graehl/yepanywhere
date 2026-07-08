@@ -66,6 +66,8 @@ import type {
 export type SessionLoadResult = SessionDetailLoadCompleteResult;
 export type { AgentContent, AgentContentMap } from "../lib/sessionDetail/types";
 
+const DEFAULT_INITIAL_TAIL_TURNS = 20;
+
 export type SessionMetadataUpdate =
   | SessionMetadata
   | null
@@ -187,6 +189,8 @@ export function useSessionMessages(
     onLoadComplete,
     onLoadError,
   } = options;
+  const effectiveTailTurns =
+    tailTurns ?? (tailFrom ? undefined : DEFAULT_INITIAL_TAIL_TURNS);
   const runtime = useCurrentSourceRuntime();
   const sourceKey = runtime.sourceKey;
   const sourceSummary = runtime.summary;
@@ -195,10 +199,10 @@ export function useSessionMessages(
       sourceKey,
       projectId,
       sessionId,
-      tailTurns,
+      tailTurns: effectiveTailTurns,
       tailFrom,
     }),
-    [projectId, sessionId, sourceKey, tailFrom, tailTurns],
+    [effectiveTailTurns, projectId, sessionId, sourceKey, tailFrom],
   );
   const coordinator = useMemo(
     () => createSessionDetailCoordinator({ entryKey: snapshotKey, runtime }),
@@ -622,7 +626,7 @@ export function useSessionMessages(
         projectId,
         sessionId,
         tailCompactions: 2,
-        tailTurns,
+        tailTurns: effectiveTailTurns,
         tailFrom,
         restoredFromSnapshot: initialLoad.restoredFromSnapshot,
       },
@@ -674,7 +678,7 @@ export function useSessionMessages(
         sessionId,
         afterMessageId: initialAfterMessageId,
         tailCompactions: 2,
-        tailTurns,
+        tailTurns: effectiveTailTurns,
         tailFrom,
       })
       .then(async (data) => {
@@ -749,7 +753,7 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
-    tailTurns,
+    effectiveTailTurns,
     tailFrom,
     detailedLoadingProgress,
     onLoadComplete,
@@ -864,6 +868,8 @@ export function useSessionMessages(
                 projectId,
                 sessionId,
                 tailCompactions: 2,
+                tailTurns: effectiveTailTurns,
+                tailFrom,
               },
         );
         sourceSummary.reportProviderRuntimeStatusSnapshot(
@@ -886,8 +892,10 @@ export function useSessionMessages(
     });
   }, [
     coordinator,
+    effectiveTailTurns,
     projectId,
     sessionId,
+    tailFrom,
     readStoreLastMessageId,
     reportStoreDivergence,
     sourceApi,

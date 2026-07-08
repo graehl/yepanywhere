@@ -25,6 +25,31 @@ function getRuleDeclarations(css: string, selector: string): string {
 }
 
 describe("turn navigation preview CSS contract", () => {
+  it("keeps collapsed search previews readable with a one-line box", async () => {
+    const css = await readStylesheet();
+    const declarations = getRuleDeclarations(
+      css,
+      ".user-turn-nav-preview.is-search-preview:not(.is-expanded)",
+    );
+    const compactDeclarations = getRuleDeclarations(
+      css,
+      ".user-turn-nav-preview.is-search-preview.is-compact:not(.is-expanded)",
+    );
+
+    for (const rule of [declarations, compactDeclarations]) {
+      expect(rule).toMatch(
+        /height:\s*var\(--user-turn-nav-search-preview-collapsed-height,\s*15px\)\s*;/,
+      );
+      expect(rule).toMatch(
+        /max-height:\s*var\(--user-turn-nav-search-preview-collapsed-height,\s*15px\)\s*;/,
+      );
+      expect(rule).toMatch(/padding:\s*0 5px\s*;/);
+      expect(rule).toMatch(/font-size:\s*var\(--font-size-xs\)\s*;/);
+      expect(rule).toMatch(/line-height:\s*13px\s*;/);
+      expect(rule).not.toMatch(/max-height:\s*1\.25em\s*;/);
+    }
+  });
+
   it("keeps pinned search-preview expansion anchored horizontally", async () => {
     const css = await readStylesheet();
     const declarations = getRuleDeclarations(

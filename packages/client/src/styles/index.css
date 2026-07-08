@@ -2854,7 +2854,7 @@ a.sidebar-nav-item {
 
 .user-turn-nav {
   position: fixed;
-  z-index: 25;
+  z-index: 55;
   width: min(380px, calc(100vw - 16px));
   pointer-events: none;
 }
@@ -3101,7 +3101,7 @@ a.sidebar-nav-item {
   max-height: 4.4em;
   margin: 0;
   padding: 6px 8px;
-  transform: translateY(-50%);
+  transform: translateY(var(--user-turn-nav-preview-translate-y, -50%));
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-secondary) 96%, transparent);
@@ -3129,8 +3129,19 @@ a.sidebar-nav-item {
   box-shadow: 0 6px 22px rgb(0 0 0 / 0.24);
 }
 
+.user-turn-nav-preview.is-search-preview:not(.is-expanded) {
+  height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  max-height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  padding: 0 5px;
+  font-size: var(--font-size-xs);
+  line-height: 13px;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+}
+
 .user-turn-nav-preview.is-search-active {
   border-color: var(--primary-color);
+  z-index: 2;
 }
 
 .user-turn-nav-preview.is-expanded {
@@ -3263,6 +3274,14 @@ a.sidebar-nav-item {
   font-size: var(--font-size-xs);
   line-height: 1.25;
   -webkit-line-clamp: 1;
+}
+
+.user-turn-nav-preview.is-search-preview.is-compact:not(.is-expanded) {
+  height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  max-height: var(--user-turn-nav-search-preview-collapsed-height, 15px);
+  padding: 0 5px;
+  font-size: var(--font-size-xs);
+  line-height: 13px;
 }
 
 @media (min-width: 900px) {
@@ -3996,7 +4015,9 @@ a.sidebar-nav-item {
   font-size: var(--font-size-base);
   -webkit-user-select: text;
   user-select: text;
-  transition: opacity 0.35s ease, box-shadow 0.35s ease;
+  transition:
+    opacity 0.35s ease,
+    box-shadow 0.35s ease;
 }
 
 /* Sent but not yet proven in the durable transcript: fainter bubble with a

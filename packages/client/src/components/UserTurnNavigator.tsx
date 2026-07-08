@@ -3,6 +3,7 @@ import {
   memo,
   type ReactElement,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   type TouchEvent as ReactTouchEvent,
   useCallback,
@@ -82,6 +83,7 @@ interface UserTurnPreviewLabel {
   id: string;
   targetId: string;
   topPx: number;
+  verticalAnchor: "start" | "center" | "end";
   text: string;
   compact: boolean;
   short: boolean;
@@ -120,13 +122,22 @@ const MARKER_HIT_MAX_PX = 18;
 // sessions N*gap can exceed the rail and markers pile up at the bottom.
 // Internal tuning constant, not a user setting.
 const MARKER_SPREAD_PX = 3;
-const PREVIEW_VERTICAL_MARGIN_PX = 22;
+const PREVIEW_EDGE_MARGIN_PX = 1;
+const PREVIEW_VERTICAL_MARGIN_PX = 5;
+const PREVIEW_EDGE_ANCHOR_EPSILON_PX = 0.5;
 const PREVIEW_FULL_MIN_GAP_PX = 62;
-const PREVIEW_COMPACT_MIN_GAP_PX = 24;
+const SEARCH_PREVIEW_COLLAPSED_LABEL_HEIGHT_PX = 15;
+const SEARCH_PREVIEW_COLLAPSED_VISUAL_GAP_PX = 1;
+const PREVIEW_COMPACT_MIN_GAP_PX =
+  SEARCH_PREVIEW_COLLAPSED_LABEL_HEIGHT_PX +
+  SEARCH_PREVIEW_COLLAPSED_VISUAL_GAP_PX;
 const NAV_REVEAL_HOTZONE_PX = 64;
-const MAX_SEARCH_PREVIEW_LABELS = 32;
+const MAX_SEARCH_PREVIEW_LABELS = 64;
 const SHORT_PREVIEW_MAX_CHARS = 48;
 const MOTION_CUE_CLEAR_MS = 760;
+const SEARCH_MARKER_HOVER_STICKY_Y_PX = 1;
+const COLLAPSED_SEARCH_PREVIEW_PREFIX_CHARS = 24;
+const COLLAPSED_SEARCH_PREVIEW_SUFFIX_CHARS = 118;
 
 type LayoutUpdateKind = "full" | "scroll";
 
@@ -249,6 +260,38 @@ function renderHighlightedText(
   return parts;
 }
 
+function getCollapsedSearchPreviewText(
+  text: string,
+  query: string,
+  caseSensitive = false,
+): string {
+  const compactText = normalizePreviewText(text).replace(/\s+/g, " ").trim();
+  const compactQuery = query.replace(/\s+/g, " ").trim();
+  if (!compactText || !compactQuery) {
+    return compactText;
+  }
+
+  const searchableText = caseSensitive
+    ? compactText
+    : compactText.toLowerCase();
+  const searchableQuery = caseSensitive
+    ? compactQuery
+    : compactQuery.toLowerCase();
+  const index = searchableText.indexOf(searchableQuery);
+  if (index === -1) {
+    return compactText;
+  }
+
+  const start = Math.max(0, index - COLLAPSED_SEARCH_PREVIEW_PREFIX_CHARS);
+  const end = Math.min(
+    compactText.length,
+    index + compactQuery.length + COLLAPSED_SEARCH_PREVIEW_SUFFIX_CHARS,
+  );
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < compactText.length ? "..." : "";
+  return `${prefix}${compactText.slice(start, end).trim()}${suffix}`;
+}
+
 function isPreviewLineMono(line: string): boolean {
   return (
     /(^|\s)(cat|find|git|grep|pnpm|rg|sed|tsx?|vitest)\b/.test(line) ||
@@ -354,8 +397,13 @@ function renderPreviewLabelText(
   }
 
   if (!label.expanded) {
+    const collapsedText = getCollapsedSearchPreviewText(
+      label.text,
+      searchState.query,
+      searchState.caseSensitive,
+    );
     return renderHighlightedText(
-      normalizePreviewText(label.text),
+      collapsedText,
       searchState.query,
       searchState.caseSensitive,
     );
@@ -559,7 +607,9 @@ function spreadPreviewLabels(
   compact: boolean,
 ): UserTurnPreviewLabel[] {
   if (labels.length <= 1) {
-    return labels;
+    return labels.map((label) =>
+      anchorPreviewLabelToRailEdge(label, layoutHeight),
+    );
   }
 
   const preferredGap = compact
@@ -597,10 +647,55 @@ function spreadPreviewLabels(
     current.topPx = Math.max(current.topPx, previous.topPx + minGap);
   }
 
-  return placed.map((label) => ({
-    ...label,
-    topPx: clamp(label.topPx, minTop, maxTop),
-  }));
+  return placed.map((label) =>
+    anchorPreviewLabelToRailEdge(
+      {
+        ...label,
+        topPx: clamp(label.topPx, minTop, maxTop),
+      },
+      layoutHeight,
+    ),
+  );
+}
+
+function anchorPreviewLabelToRailEdge(
+  label: UserTurnPreviewLabel,
+  layoutHeight: number,
+): UserTurnPreviewLabel {
+  if (!label.active) {
+    return { ...label, verticalAnchor: "center" };
+  }
+  if (
+    label.topPx <=
+    PREVIEW_VERTICAL_MARGIN_PX + PREVIEW_EDGE_ANCHOR_EPSILON_PX
+  ) {
+    return {
+      ...label,
+      topPx: PREVIEW_EDGE_MARGIN_PX,
+      verticalAnchor: "start",
+    };
+  }
+  const maxCenterTop = Math.max(
+    PREVIEW_VERTICAL_MARGIN_PX,
+    layoutHeight - PREVIEW_VERTICAL_MARGIN_PX,
+  );
+  if (label.topPx >= maxCenterTop - PREVIEW_EDGE_ANCHOR_EPSILON_PX) {
+    return {
+      ...label,
+      topPx: Math.max(
+        PREVIEW_EDGE_MARGIN_PX,
+        layoutHeight - PREVIEW_EDGE_MARGIN_PX,
+      ),
+      verticalAnchor: "end",
+    };
+  }
+  return { ...label, verticalAnchor: "center" };
+}
+
+function getPreviewTranslateY(anchor: UserTurnPreviewLabel["verticalAnchor"]) {
+  if (anchor === "start") return "0";
+  if (anchor === "end") return "-100%";
+  return "-50%";
 }
 
 function getSearchPreviewWindow(
@@ -668,6 +763,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   const [previewWindowAnchorId, setPreviewWindowAnchorId] = useState<
     string | null
   >(null);
+  const markerHoverBandRef = useRef<{ id: string; clientY: number } | null>(
+    null,
+  );
   const [railActive, setRailActive] = useState(false);
   const [internalMotionCue, setInternalMotionCue] =
     useState<UserTurnNavMotionCue | null>(null);
@@ -996,7 +1094,28 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     },
     [layout?.markers, onPreviewTimestampChange],
   );
+  const focusMarkerPreview = useCallback(
+    (id: string, event?: ReactPointerEvent<HTMLElement>) => {
+      if (searchState && event) {
+        const previousBand = markerHoverBandRef.current;
+        if (
+          previousBand &&
+          previousBand.id !== id &&
+          Math.abs(event.clientY - previousBand.clientY) <=
+            SEARCH_MARKER_HOVER_STICKY_Y_PX
+        ) {
+          return;
+        }
+        if (!previousBand || previousBand.id !== id) {
+          markerHoverBandRef.current = { id, clientY: event.clientY };
+        }
+      }
+      focusPreview(id);
+    },
+    [focusPreview, searchState],
+  );
   const clearPreview = useCallback(() => {
+    markerHoverBandRef.current = null;
     setPreviewId(null);
     setPreviewWindowAnchorId(null);
     onPreviewTimestampChange?.(null);
@@ -1042,9 +1161,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         layout.height,
       );
       const expandedId =
-        previewId && searchMatchIds.has(previewId)
-          ? previewId
-          : searchState.activeId;
+        previewId && searchMatchIds.has(previewId) ? previewId : null;
       const rawTops = previewMarkers.map((marker) =>
         clamp(
           marker.renderTopPct * layout.height,
@@ -1079,6 +1196,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
           short: !crowded && isShortSingleLinePreview(text),
           active: marker.id === searchState.activeId,
           expanded,
+          verticalAnchor: "center" as const,
           pinned: expanded && marker.id === previewId,
         };
       });
@@ -1109,6 +1227,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         short: isShortSingleLinePreview(hoverPreviewMarker.preview),
         active: false,
         expanded: false,
+        verticalAnchor: "center" as const,
         pinned: false,
       },
     ];
@@ -1141,6 +1260,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
           right: `${layout.right}px`,
           height: `${layout.height}px`,
           "--user-turn-nav-preview-max-width": `${layout.previewMaxWidthPx}px`,
+          "--user-turn-nav-search-preview-collapsed-height": `${SEARCH_PREVIEW_COLLAPSED_LABEL_HEIGHT_PX}px`,
         } as CSSProperties
       }
       onMouseLeave={clearPreview}
@@ -1211,9 +1331,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               onFocus={() => focusPreview(marker.id)}
               onBlur={clearPreview}
               onMouseDown={keepSearchFocusOnMouseDown}
-              onPointerEnter={() => focusPreview(marker.id)}
-              onPointerMove={() => focusPreview(marker.id)}
-              onPointerDown={() => focusPreview(marker.id)}
+              onPointerEnter={(event) => focusMarkerPreview(marker.id, event)}
+              onPointerMove={(event) => focusMarkerPreview(marker.id, event)}
+              onPointerDown={(event) => focusMarkerPreview(marker.id, event)}
             >
               <span className="user-turn-nav-marker-line" />
             </button>
@@ -1250,9 +1370,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                 onTouchMove={clearLongPress}
                 onFocus={() => focusPreview(marker.id)}
                 onBlur={clearPreview}
-                onPointerEnter={() => focusPreview(marker.id)}
-                onPointerMove={() => focusPreview(marker.id)}
-                onPointerDown={() => focusPreview(marker.id)}
+                onPointerEnter={(event) => focusMarkerPreview(marker.id, event)}
+                onPointerMove={(event) => focusMarkerPreview(marker.id, event)}
+                onPointerDown={(event) => focusMarkerPreview(marker.id, event)}
               >
                 <span className="user-turn-nav-trim-dot" />
               </button>
@@ -1279,7 +1399,14 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             ]
               .filter(Boolean)
               .join(" ")}
-            style={{ top: `${label.topPx}px` }}
+            style={
+              {
+                top: `${label.topPx}px`,
+                "--user-turn-nav-preview-translate-y": getPreviewTranslateY(
+                  label.verticalAnchor,
+                ),
+              } as CSSProperties
+            }
             aria-label={label.text}
             title={label.text}
             onClick={() => handleAnchorClick(label.id, label.targetId)}

@@ -76,6 +76,29 @@ preview label is a committed jump target; closing search after that jump should
 leave the full transcript centered on the clicked row rather than restoring the
 pre-search scroll position.
 
+Marker-hover paging is sticky within a horizontal band. Once a hashmark owns the
+preview window, entering another marker at the same pointer Y must not page the
+window; the user may move horizontally between the rail marks and their preview
+text without a flicker. Paging to a different marker happens when the pointer
+actually moves up/down to another band, or after the pointer fully leaves and the
+preview state clears.
+
+Active search previews at the rail edges anchor inside the rail instead of
+remaining vertically centered. A first-turn / top-edge hit uses the rail top as
+the preview top, and a bottom-edge hit uses the rail bottom as the preview
+bottom, so at least the hit line remains visible instead of slipping under the
+session header or footer chrome. Non-active hover expansion keeps the existing
+center position so hovering a preview label remains presentation-only.
+
+Pre-hover search previews, including the active hit, are dense one-line hit
+summaries rather than mini cards. The collapsed box height must be large enough
+for one readable text line, and the layout pitch should leave only about a
+one-pixel visual gap between boxes; do not reclaim height by clipping the text
+line into a hairline. Their displayed text is re-excerpted around the first
+match so every shown label exposes the needle on its single visible line. Hover
+expansion may still show the richer multi-line context from the search
+projection.
+
 ## Bottom-bar position age
 
 The composer bottom bar may show a contextual turn-position age immediately to

@@ -79,6 +79,15 @@ function dispatchPointerMove(
   element.dispatchEvent(event);
 }
 
+function dispatchElementPointerMove(element: HTMLElement, clientY: number) {
+  element.dispatchEvent(
+    new MouseEvent("pointermove", {
+      bubbles: true,
+      clientY,
+    }),
+  );
+}
+
 describe("UserTurnNavigator", () => {
   beforeEach(() => {
     class ResizeObserverMock {
@@ -438,12 +447,12 @@ describe("UserTurnNavigator", () => {
     expect(
       container.querySelectorAll(".user-turn-nav-preview-match"),
     ).toHaveLength(3);
-    expect(previews[1]?.classList.contains("is-expanded")).toBe(true);
     expect(
-      [previews[0], previews[2]].every((preview) =>
-        preview?.classList.contains("is-compact"),
-      ),
+      previews.every((preview) => preview?.classList.contains("is-compact")),
     ).toBe(true);
+    expect(
+      previews.some((preview) => preview.classList.contains("is-expanded")),
+    ).toBe(false);
   });
 
   it("pulses the preview for one remaining search match", async () => {
@@ -489,8 +498,59 @@ describe("UserTurnNavigator", () => {
     });
     const preview = container.querySelector(".user-turn-nav-preview");
     expect(preview?.classList.contains("is-single-search-match")).toBe(true);
-    expect(preview?.classList.contains("is-expanded")).toBe(true);
+    expect(preview?.classList.contains("is-expanded")).toBe(false);
     expect(preview?.textContent).toBe("Only matching request");
+  });
+
+  it("anchors a top-edge active search preview inside the rail", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const row = document.createElement("div");
+
+    row.dataset.renderId = "user-1";
+    messageList.append(row);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 160);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 160 });
+    row.getBoundingClientRect = () => rect({ top: 100, height: 24 });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const { container } = render(
+      <UserTurnNavigator
+        anchors={[{ id: "user-1", preview: "first visible match" }]}
+        messageListRef={{ current: messageList }}
+        searchState={{
+          activeId: "user-1",
+          matchIds: new Set(["user-1"]),
+          preview: "first visible match",
+          query: "visible",
+          previewsById: new Map([["user-1", "first visible match"]]),
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".user-turn-nav-preview")).toBeTruthy();
+    });
+    const preview = container.querySelector<HTMLElement>(
+      ".user-turn-nav-preview",
+    );
+    expect(preview?.classList.contains("is-expanded")).toBe(false);
+    expect(preview?.style.top).toBe("1px");
+    expect(
+      preview?.style.getPropertyValue("--user-turn-nav-preview-translate-y"),
+    ).toBe("0");
   });
 
   it("keeps search preview targets fixed while hovering across them", async () => {
@@ -596,11 +656,78 @@ describe("UserTurnNavigator", () => {
     await waitFor(() => {
       expect(userPreview.classList.contains("is-expanded")).toBe(false);
       expect(
-        container
-          .querySelector('[aria-label="system match snippet"]')
-          ?.classList.contains("is-expanded"),
-      ).toBe(true);
+        Array.from(
+          container.querySelectorAll(".user-turn-nav-preview"),
+          (preview) => preview.classList.contains("is-expanded"),
+        ),
+      ).toEqual([false, false, false]);
     });
+  });
+
+  it("focuses collapsed search previews around the needle", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const rows = ["user-1", "assistant-1"].map((id) => {
+      const row = document.createElement("div");
+      row.dataset.renderId = id;
+      return row;
+    });
+
+    messageList.append(...rows);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 180);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 180 });
+    rows[0]!.getBoundingClientRect = () => rect({ top: 120, height: 24 });
+    rows[1]!.getBoundingClientRect = () => rect({ top: 210, height: 24 });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const longPreview = `${"leading context ".repeat(
+      12,
+    )}needle should appear in the collapsed first line with useful right context`;
+
+    const { container } = render(
+      <UserTurnNavigator
+        anchors={[
+          { id: "user-1", preview: longPreview },
+          { id: "assistant-1", preview: "active needle snippet" },
+        ]}
+        messageListRef={{ current: messageList }}
+        searchState={{
+          activeId: "assistant-1",
+          matchIds: new Set(["user-1", "assistant-1"]),
+          preview: "active needle snippet",
+          query: "needle",
+          previewsById: new Map([
+            ["user-1", longPreview],
+            ["assistant-1", "active needle snippet"],
+          ]),
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".user-turn-nav-preview")).toHaveLength(
+        2,
+      );
+    });
+    const collapsed = container.querySelector<HTMLElement>(
+      '[aria-label^="leading context"]',
+    );
+    expect(collapsed?.classList.contains("is-expanded")).toBe(false);
+    expect(collapsed?.textContent).toContain("needle should appear");
+    expect(collapsed?.textContent?.startsWith("leading context")).toBe(false);
+    expect(collapsed?.textContent?.startsWith("...")).toBe(true);
   });
 
   it("keeps crowded expanded previews in vertical order when focus moves", async () => {
@@ -658,7 +785,7 @@ describe("UserTurnNavigator", () => {
       />
     );
 
-    const { container, rerender } = render(
+    const { container } = render(
       renderNavigator("assistant-1", "assistant match snippet"),
     );
 
@@ -676,14 +803,13 @@ describe("UserTurnNavigator", () => {
       [...initialTopValues].sort((a, b) => a - b),
     );
 
-    rerender(renderNavigator("user-1", "user match snippet"));
+    const userPreview = container.querySelector<HTMLElement>(
+      '[aria-label="user match snippet"]',
+    );
+    fireEvent.pointerEnter(userPreview!);
 
     await waitFor(() => {
-      expect(
-        container
-          .querySelector('[aria-label="user match snippet"]')
-          ?.classList.contains("is-expanded"),
-      ).toBe(true);
+      expect(userPreview?.classList.contains("is-expanded")).toBe(true);
     });
     const topValues = Array.from(
       container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
@@ -759,6 +885,11 @@ describe("UserTurnNavigator", () => {
       name: "Explored / Grep: pattern: searchNeedle",
     });
 
+    expect(preview.classList.contains("is-expanded")).toBe(false);
+    fireEvent.pointerEnter(preview);
+    await waitFor(() => {
+      expect(preview.classList.contains("is-expanded")).toBe(true);
+    });
     expect(
       Array.from(
         container.querySelectorAll(".user-turn-nav-preview-facsimile-tag"),
@@ -775,11 +906,7 @@ describe("UserTurnNavigator", () => {
     expect(
       container.querySelector(".user-turn-nav-preview")?.textContent,
     ).not.toContain("Explored / Grep");
-    expect(
-      container
-        .querySelector(".user-turn-nav-preview")
-        ?.classList.contains("is-expanded"),
-    ).toBe(true);
+    expect(preview.classList.contains("is-expanded")).toBe(true);
     expect(
       container
         .querySelector(".user-turn-nav-preview")
@@ -845,7 +972,15 @@ describe("UserTurnNavigator", () => {
       />,
     );
 
-    await screen.findByRole("button", { name: previewText });
+    const previewButton = await screen.findByRole("button", {
+      name: previewText,
+    });
+
+    expect(previewButton.classList.contains("is-expanded")).toBe(false);
+    fireEvent.pointerEnter(previewButton);
+    await waitFor(() => {
+      expect(previewButton.classList.contains("is-expanded")).toBe(true);
+    });
 
     const preview = container.querySelector(".user-turn-nav-preview");
     const lines = Array.from(
@@ -863,7 +998,7 @@ describe("UserTurnNavigator", () => {
     expect(preview?.textContent).not.toContain("\\n");
   });
 
-  it("keeps spaced search previews multi-line when there is room", async () => {
+  it("keeps spaced search previews one-line until hover", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");
     const rows = ["user-1", "assistant-1", "system-1"].map((id) => {
@@ -933,13 +1068,25 @@ describe("UserTurnNavigator", () => {
     ).toBe(false);
     expect(
       previews.some((preview) => preview.classList.contains("is-expanded")),
-    ).toBe(true);
+    ).toBe(false);
+
+    const activePreview = container.querySelector<HTMLElement>(
+      '[aria-label="assistant match snippet with enough surrounding detail"]',
+    );
+    fireEvent.pointerEnter(activePreview!);
+    await waitFor(() => {
+      expect(activePreview?.classList.contains("is-expanded")).toBe(true);
+    });
+    expect(
+      container.querySelector(".user-turn-nav-preview-facsimile-line")
+        ?.textContent,
+    ).toBe("assistant match snippet with enough surrounding detail");
   });
 
   it("keeps search previews near the active match instead of rendering every match", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");
-    const rows = Array.from({ length: 14 }, (_, index) => {
+    const rows = Array.from({ length: 28 }, (_, index) => {
       const row = document.createElement("div");
       row.dataset.renderId = `match-${index + 1}`;
       return row;
@@ -974,7 +1121,7 @@ describe("UserTurnNavigator", () => {
         }))}
         messageListRef={{ current: messageList }}
         searchState={{
-          activeId: "match-13",
+          activeId: "match-26",
           matchIds: new Set(
             rows.map((row) => row.dataset.renderId).filter(Boolean) as string[],
           ),
@@ -1002,12 +1149,12 @@ describe("UserTurnNavigator", () => {
     );
     expect(previewTexts.length).toBeLessThan(rows.length);
     expect(previewTexts).not.toContain("match snippet 1");
-    expect(previewTexts).toContain("match snippet 13");
+    expect(previewTexts).toContain("match snippet 26");
 
     const topPreview = container.querySelector<HTMLElement>(
       ".user-turn-nav-preview",
     );
-    expect(topPreview?.textContent).toBe("match snippet 7");
+    expect(topPreview?.textContent).toBe("match snippet 15");
     const initialPreviewTexts = Array.from(
       container.querySelectorAll(".user-turn-nav-preview"),
       (preview) => preview.textContent,
@@ -1034,16 +1181,16 @@ describe("UserTurnNavigator", () => {
         container.querySelectorAll(".user-turn-nav-preview"),
         (preview) => preview.textContent,
       );
-      expect(shiftedPreviewTexts).toContain("match snippet 4");
-      expect(shiftedPreviewTexts).toContain("match snippet 7");
-      expect(shiftedPreviewTexts).not.toContain("match snippet 14");
+      expect(shiftedPreviewTexts).toContain("match snippet 9");
+      expect(shiftedPreviewTexts).toContain("match snippet 15");
+      expect(shiftedPreviewTexts).not.toContain("match snippet 28");
     });
 
     const visibleAfterTopHover = Array.from(
       container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
     );
     const bottomPreview = visibleAfterTopHover[visibleAfterTopHover.length - 1];
-    expect(bottomPreview?.textContent).toBe("match snippet 11");
+    expect(bottomPreview?.textContent).toBe("match snippet 22");
     const bottomMarker = screen.getByRole("button", {
       name: `Jump to turn: ${bottomPreview?.getAttribute("aria-label")}`,
     });
@@ -1054,16 +1201,106 @@ describe("UserTurnNavigator", () => {
         container.querySelectorAll(".user-turn-nav-preview"),
         (preview) => preview.textContent,
       );
-      expect(shiftedPreviewTexts).toContain("match snippet 14");
-      expect(shiftedPreviewTexts).toContain("match snippet 11");
+      expect(shiftedPreviewTexts).toContain("match snippet 28");
+      expect(shiftedPreviewTexts).toContain("match snippet 22");
       expect(shiftedPreviewTexts).not.toContain("match snippet 1");
+    });
+  });
+
+  it("keeps the preview window stable across same-band hash hovers", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const rows = Array.from({ length: 28 }, (_, index) => {
+      const row = document.createElement("div");
+      row.dataset.renderId = `match-${index + 1}`;
+      return row;
+    });
+
+    messageList.append(...rows);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 2000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 240);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 240 });
+    rows.forEach((row, index) => {
+      row.getBoundingClientRect = () =>
+        rect({ top: 110 + index * 8, height: 20 });
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const { container } = render(
+      <UserTurnNavigator
+        anchors={rows.map((row, index) => ({
+          id: row.dataset.renderId ?? "",
+          preview: `match snippet ${index + 1}`,
+        }))}
+        messageListRef={{ current: messageList }}
+        searchState={{
+          activeId: "match-26",
+          matchIds: new Set(
+            rows.map((row) => row.dataset.renderId).filter(Boolean) as string[],
+          ),
+          preview: "active match snippet",
+          query: "match",
+          previewsById: new Map(
+            rows.map((row, index) => [
+              row.dataset.renderId ?? "",
+              `match snippet ${index + 1}`,
+            ]),
+          ),
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(".user-turn-nav-preview").length,
+      ).toBeGreaterThan(1);
+    });
+
+    const getPreviewTexts = () =>
+      Array.from(
+        container.querySelectorAll(".user-turn-nav-preview"),
+        (preview) => preview.textContent,
+      );
+    const initialPreviewTexts = getPreviewTexts();
+    const middleVisibleMarker = screen.getByRole("button", {
+      name: "Jump to turn: match snippet 20",
+    });
+    act(() => {
+      dispatchElementPointerMove(middleVisibleMarker, 132);
+    });
+    expect(getPreviewTexts()).toEqual(initialPreviewTexts);
+
+    const offWindowMarker = screen.getByRole("button", {
+      name: "Jump to turn: match snippet 1",
+    });
+    act(() => {
+      dispatchElementPointerMove(offWindowMarker, 132);
+    });
+    expect(getPreviewTexts()).toEqual(initialPreviewTexts);
+
+    act(() => {
+      dispatchElementPointerMove(offWindowMarker, 120);
+    });
+    await waitFor(() => {
+      expect(getPreviewTexts()).toContain("match snippet 1");
     });
   });
 
   it("prefills tall search rails with prior match previews", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");
-    const rows = Array.from({ length: 40 }, (_, index) => {
+    const rows = Array.from({ length: 70 }, (_, index) => {
       const row = document.createElement("div");
       row.dataset.renderId = `match-${index + 1}`;
       return row;
@@ -1098,7 +1335,7 @@ describe("UserTurnNavigator", () => {
         }))}
         messageListRef={{ current: messageList }}
         searchState={{
-          activeId: "match-38",
+          activeId: "match-68",
           matchIds: new Set(
             rows.map((row) => row.dataset.renderId).filter(Boolean) as string[],
           ),
@@ -1124,9 +1361,11 @@ describe("UserTurnNavigator", () => {
       container.querySelectorAll<HTMLElement>(".user-turn-nav-preview"),
     );
     const firstTop = Number.parseFloat(previews[0]?.style.top ?? "");
-    expect(firstTop).toBeLessThanOrEqual(40);
+    expect(firstTop).toBeLessThanOrEqual(24);
+    expect(previews.length).toBeGreaterThan(40);
+    expect(previews.length).toBeLessThanOrEqual(64);
     expect(previews.map((preview) => preview.textContent)).toContain(
-      "match snippet 38",
+      "match snippet 68",
     );
   });
 });

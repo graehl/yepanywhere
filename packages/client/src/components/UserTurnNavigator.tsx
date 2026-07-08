@@ -979,16 +979,18 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     [searchState],
   );
   const focusPreview = useCallback(
-    (id: string) => {
+    (id: string, allowWindowShift = true) => {
       if (notchMenuOpenRef.current) return; // menu open: no preview (anti-strobe)
       setPreviewId((current) => (current === id ? current : id));
-      setPreviewWindowAnchorId((current) => {
-        const visibleIds = visiblePreviewIdsRef.current;
-        const visibleIndex = visibleIds.indexOf(id);
-        const atVisibleEdge =
-          visibleIndex === 0 || visibleIndex === visibleIds.length - 1;
-        return visibleIndex === -1 || atVisibleEdge ? id : current;
-      });
+      if (allowWindowShift) {
+        setPreviewWindowAnchorId((current) => {
+          const visibleIds = visiblePreviewIdsRef.current;
+          const visibleIndex = visibleIds.indexOf(id);
+          const atVisibleEdge =
+            visibleIndex === 0 || visibleIndex === visibleIds.length - 1;
+          return visibleIndex === -1 || atVisibleEdge ? id : current;
+        });
+      }
       const marker = layout?.markers.find((candidate) => candidate.id === id);
       onPreviewTimestampChange?.(marker?.timestampMs ?? null);
     },
@@ -1282,10 +1284,10 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             title={label.text}
             onClick={() => handleAnchorClick(label.id, label.targetId)}
             onMouseDown={keepSearchFocusOnMouseDown}
-            onFocus={() => focusPreview(label.id)}
+            onFocus={() => focusPreview(label.id, false)}
             onBlur={clearPreview}
-            onPointerEnter={() => focusPreview(label.id)}
-            onPointerMove={() => focusPreview(label.id)}
+            onPointerEnter={() => focusPreview(label.id, false)}
+            onPointerMove={() => focusPreview(label.id, false)}
           >
             {hasSearchMatches
               ? renderPreviewLabelText(label, searchState)

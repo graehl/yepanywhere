@@ -7,12 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import {
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   installMessageListTestEnvironment,
   assistantMessage,
@@ -23,6 +18,90 @@ import {
 import { MessageList } from "../MessageList";
 
 installMessageListTestEnvironment();
+
+function rect({
+  top,
+  height,
+  right = 500,
+  width = 400,
+}: {
+  top: number;
+  height: number;
+  right?: number;
+  width?: number;
+}): DOMRect {
+  return {
+    x: right - width,
+    y: top,
+    top,
+    right,
+    bottom: top + height,
+    left: right - width,
+    width,
+    height,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+function setReadonlyNumber(
+  element: HTMLElement,
+  key: "clientHeight" | "clientWidth" | "offsetWidth" | "scrollHeight",
+  value: number,
+) {
+  Object.defineProperty(element, key, {
+    configurable: true,
+    value,
+  });
+}
+
+function installSearchGeometry(rowOffsets: Record<string, number>) {
+  const messageList = document.querySelector<HTMLElement>(".message-list");
+  if (!messageList?.parentElement) {
+    throw new Error("MessageList did not render a scroll container");
+  }
+  const scrollContainer = messageList.parentElement;
+  let scrollTop = 0;
+  const scrollTo = vi.fn(
+    (optionsOrX?: ScrollToOptions | number, y?: number) => {
+      scrollTop =
+        typeof optionsOrX === "number"
+          ? optionsOrX
+          : Number(optionsOrX?.top ?? y ?? 0);
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    },
+  );
+
+  Object.defineProperty(scrollContainer, "scrollTop", {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value) => {
+      scrollTop = Number(value);
+    },
+  });
+  setReadonlyNumber(scrollContainer, "scrollHeight", 1800);
+  setReadonlyNumber(scrollContainer, "clientHeight", 200);
+  setReadonlyNumber(scrollContainer, "clientWidth", 360);
+  setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+  scrollContainer.getBoundingClientRect = () => rect({ top: 100, height: 200 });
+  Object.defineProperty(scrollContainer, "scrollTo", {
+    configurable: true,
+    value: scrollTo,
+  });
+
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-render-id]",
+  )) {
+    const renderId = row.dataset.renderId;
+    const topOffset = renderId ? rowOffsets[renderId] : undefined;
+    if (topOffset === undefined) {
+      continue;
+    }
+    row.getBoundingClientRect = () =>
+      rect({ top: 100 + topOffset - scrollTop, height: 24 });
+  }
+
+  return { scrollTo };
+}
 
 describe("MessageList reverse search", () => {
   it("opens reverse user-turn search with Ctrl+R and hides nonmatches", async () => {
@@ -165,6 +244,63 @@ describe("MessageList reverse search", () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+  it("keeps a clicked all-turn preview as the exit position", async () => {
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "unmatched setup request"),
+          assistantMessage("assistant-1", "assistant needle answer"),
+          userMessage("user-2", "later unmatched request"),
+          assistantMessage("assistant-2", "later unmatched answer"),
+        ]}
+      />,
+    );
+
+    const { scrollTo } = installSearchGeometry({
+      "user-1": 20,
+      "assistant-1": 420,
+      "user-2": 900,
+      "assistant-2": 1320,
+    });
+
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search all turns",
+    });
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    const preview = await screen.findByRole("button", {
+      name: "assistant needle answer",
+    });
+    fireEvent.click(preview);
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({ top: 408, behavior: "auto" });
+    });
+    expect(
+      screen.getByRole("textbox", { name: "Reverse search all turns" }),
+    ).toBe(input);
+
+    fireEvent.blur(input, { relatedTarget: null });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Reverse search all turns" }),
+      ).toBeNull();
+    });
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        top: 332,
+        behavior: "auto",
+      });
+    });
+    expect(screen.getByText("unmatched setup request")).toBeTruthy();
+  });
+
   it("repeats all-turn search arrow movement at a fast cadence", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -273,7 +409,7 @@ describe("MessageList reverse search", () => {
     });
     expect(screen.getByText("Full session")).toBeTruthy();
     expect(screen.getByText(/Ctrl\+Alt\+S prev/)).toBeTruthy();
-    expect(screen.getByText(/click selects/)).toBeTruthy();
+    expect(screen.getByText(/click jumps/)).toBeTruthy();
     expect(screen.getByText(/Enter jump\+close/)).toBeTruthy();
 
     fireEvent.change(fullInput, { target: { value: "Explored" } });

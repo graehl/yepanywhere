@@ -1008,7 +1008,26 @@ describe("UserTurnNavigator", () => {
       ".user-turn-nav-preview",
     );
     expect(topPreview?.textContent).toBe("match snippet 7");
+    const initialPreviewTexts = Array.from(
+      container.querySelectorAll(".user-turn-nav-preview"),
+      (preview) => preview.textContent,
+    );
     fireEvent.pointerEnter(topPreview!);
+
+    await waitFor(() => {
+      expect(topPreview?.classList.contains("is-expanded")).toBe(true);
+    });
+    expect(
+      Array.from(
+        container.querySelectorAll(".user-turn-nav-preview"),
+        (preview) => preview.textContent,
+      ),
+    ).toEqual(initialPreviewTexts);
+
+    const topMarker = screen.getByRole("button", {
+      name: `Jump to turn: ${topPreview?.getAttribute("aria-label")}`,
+    });
+    fireEvent.pointerEnter(topMarker);
 
     await waitFor(() => {
       const shiftedPreviewTexts = Array.from(
@@ -1025,7 +1044,10 @@ describe("UserTurnNavigator", () => {
     );
     const bottomPreview = visibleAfterTopHover[visibleAfterTopHover.length - 1];
     expect(bottomPreview?.textContent).toBe("match snippet 11");
-    fireEvent.pointerEnter(bottomPreview!);
+    const bottomMarker = screen.getByRole("button", {
+      name: `Jump to turn: ${bottomPreview?.getAttribute("aria-label")}`,
+    });
+    fireEvent.pointerEnter(bottomMarker);
 
     await waitFor(() => {
       const shiftedPreviewTexts = Array.from(

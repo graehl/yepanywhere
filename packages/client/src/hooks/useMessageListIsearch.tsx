@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n";
 import {
   dispatchSessionIsearchGuideState,
   type SessionIsearchScope,
@@ -67,8 +68,47 @@ interface UseMessageListIsearchResult {
   ) => void;
   moveSearchSelection: (direction: "previous" | "next") => void;
   openSearch: (scope: SessionIsearchScope) => void;
-  selectSearchMatch: (id: string) => void;
+  selectSearchMatch: (id: string, targetId?: string) => void;
   stopSearchArrowRepeat: () => void;
+}
+
+function findRenderRow(
+  messageList: HTMLDivElement | null,
+  id: string,
+): HTMLElement | null {
+  if (!messageList) return null;
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-render-id]",
+  )) {
+    if (row.dataset.renderId === id) {
+      return row;
+    }
+  }
+  return null;
+}
+
+function scrollSearchTargetIntoView(
+  containerRef: RefObject<HTMLDivElement | null>,
+  targetId: string,
+) {
+  const messageList = containerRef.current;
+  const scrollContainer = messageList?.parentElement;
+  const row = findRenderRow(messageList, targetId);
+  if (!scrollContainer || !row) {
+    return;
+  }
+
+  const scrollRect = scrollContainer.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  const offset = Math.max(
+    0,
+    (scrollContainer.clientHeight - rowRect.height) / 2,
+  );
+  const nextTop = Math.max(
+    0,
+    scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
+  );
+  scrollContainer.scrollTo({ top: nextTop, behavior: "auto" });
 }
 
 export function useMessageListIsearch({
@@ -77,9 +117,11 @@ export function useMessageListIsearch({
   inert,
   turnGroups,
 }: UseMessageListIsearchOptions): UseMessageListIsearchResult {
+  const { t } = useI18n();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
+  const committedSearchTargetIdRef = useRef<string | null>(null);
   const selectedSearchTargetIdRef = useRef<string | null>(null);
   const searchArrowRepeatTimeoutRef = useRef<ReturnType<
     typeof setTimeout
@@ -263,6 +305,7 @@ export function useMessageListIsearch({
 
   const moveSearchSelection = useCallback(
     (direction: "previous" | "next") => {
+      committedSearchTargetIdRef.current = null;
       setUserTurnSearch((previous) => {
         if (!previous.active || userTurnSearchMatches.length === 0) {
           return previous;
@@ -327,7 +370,8 @@ export function useMessageListIsearch({
     },
     [moveSearchSelection, startSearchArrowRepeat],
   );
-  const selectSearchMatch = useCallback((id: string) => {
+  const selectSearchMatch = useCallback((id: string, targetId?: string) => {
+    committedSearchTargetIdRef.current = targetId ?? id;
     setUserTurnSearch((previous) =>
       previous.active ? { ...previous, selectedId: id } : previous,
     );
@@ -337,14 +381,19 @@ export function useMessageListIsearch({
   }, []);
   const closeSearch = useCallback(
     (restoreScroll: boolean) => {
-      const scrollTopToRestore = restoreScroll
+      const committedTargetId = committedSearchTargetIdRef.current;
+      committedSearchTargetIdRef.current = null;
+      const restoreOriginalPosition = restoreScroll && !committedTargetId;
+      const scrollTopToRestore = restoreOriginalPosition
         ? searchOriginalScrollTopRef.current
         : null;
-      const focusTarget = restoreScroll ? searchRestoreFocusRef.current : null;
+      const focusTarget = restoreOriginalPosition
+        ? searchRestoreFocusRef.current
+        : null;
       searchOriginalScrollTopRef.current = null;
       searchRestoreFocusRef.current = null;
 
-      if (restoreScroll || focusTarget) {
+      if (restoreOriginalPosition || focusTarget) {
         requestAnimationFrame(() => {
           const scrollContainer = containerRef.current?.parentElement;
           if (scrollContainer && scrollTopToRestore !== null) {
@@ -366,6 +415,14 @@ export function useMessageListIsearch({
           originalScrollTop: null,
         };
       });
+
+      if (committedTargetId) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            scrollSearchTargetIntoView(containerRef, committedTargetId);
+          });
+        });
+      }
     },
     [containerRef],
   );
@@ -385,6 +442,7 @@ export function useMessageListIsearch({
           : null;
       const scrollContainer = containerRef.current?.parentElement;
       searchOriginalScrollTopRef.current = scrollContainer?.scrollTop ?? null;
+      committedSearchTargetIdRef.current = null;
       setUserTurnSearch({
         active: true,
         scope,
@@ -401,6 +459,7 @@ export function useMessageListIsearch({
     [containerRef, hasUserSearchableTurn, displayRenderItems.length],
   );
   const handleQueryChange = useCallback((query: string) => {
+    committedSearchTargetIdRef.current = null;
     setUserTurnSearch((previous) => ({
       ...previous,
       query,
@@ -408,6 +467,7 @@ export function useMessageListIsearch({
     }));
   }, []);
   const toggleCaseSensitive = useCallback(() => {
+    committedSearchTargetIdRef.current = null;
     setUserTurnSearch((previous) =>
       previous.active
         ? {
@@ -511,9 +571,11 @@ export function useMessageListIsearch({
       </div>
       <div className="user-turn-search-help">
         <span>
-          {searchPanelProjection.shortcutKeys} prev · ↑↓ matches · click selects
+          {t("sessionSearchHelpNavigate", {
+            shortcutKeys: searchPanelProjection.shortcutKeys,
+          })}
         </span>
-        <span>Enter jump+close · Esc cancel · Aa case</span>
+        <span>{t("sessionSearchHelpClose")}</span>
       </div>
     </div>
   ) : null;

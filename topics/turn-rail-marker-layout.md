@@ -67,6 +67,15 @@ but it must not translate its hitbox horizontally away from the pointer. A
 horizontal shift makes pointer-leave collapse the preview, which moves it back
 under the pointer and creates a hover/collapse loop.
 
+Preview-label hover is presentation-only: it may expand the hovered card, but it
+must not recenter or page the preview window, because moving the label stack
+under the pointer causes the same hover/collapse loop. The right-side rail
+markers may still recenter/page the preview window on hover, since their hit
+targets stay fixed while the text labels move. A click on either a marker or a
+preview label is a committed jump target; closing search after that jump should
+leave the full transcript centered on the clicked row rather than restoring the
+pre-search scroll position.
+
 ## Bottom-bar position age
 
 The composer bottom bar may show a contextual turn-position age immediately to

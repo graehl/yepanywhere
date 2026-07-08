@@ -909,6 +909,8 @@
   "toolbarShortcutUserTurnReverseSearch": "User-turn reverse search",
   "toolbarShortcutAllTurnReverseSearch": "All-turn reverse search",
   "toolbarShortcutFullSessionReverseSearch": "Full-session reverse search",
+  "sessionSearchHelpNavigate": "{shortcutKeys} prev · ↑↓ matches · click jumps",
+  "sessionSearchHelpClose": "Enter jump+close · Esc cancel · Aa case",
   "toolbarShortcutSteerCurrentTurn": "Steer current turn",
   "toolbarShortcutQueueCurrentTurn": "Queue message",
   "toolbarShortcutProjectQueue": "Queue for Project Queue",

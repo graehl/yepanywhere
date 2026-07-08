@@ -32,6 +32,9 @@ vi.mock("../../i18n", () => ({
         sessionFollowLatestOutput: "Follow latest session output",
         sessionNewOutputBelow: "New output below",
         sessionNewOutputBelowTitle: "Jump to latest session output",
+        sessionSearchHelpNavigate:
+          "{shortcutKeys} prev · ↑↓ matches · click jumps",
+        sessionSearchHelpClose: "Enter jump+close · Esc cancel · Aa case",
         sessionQuoteSelection: "Quote selection",
         sessionQuoteSelectionShort: "Quote",
         projectQueueAttachmentOnly: "Attachment-only message",
@@ -55,7 +58,6 @@ vi.mock("../../i18n", () => ({
 
 const originalClipboard = navigator.clipboard;
 const originalMatchMedia = window.matchMedia;
-
 
 export function userMessage(
   uuid: string,
@@ -180,7 +182,11 @@ export function mockPointerCoarse(matches: boolean) {
   });
 }
 
-export function SessionTranscriptHarness({ messages }: { messages: Message[] }) {
+export function SessionTranscriptHarness({
+  messages,
+}: {
+  messages: Message[];
+}) {
   return (
     <StreamingMarkdownProvider>
       <RenderModeProvider>

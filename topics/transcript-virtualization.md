@@ -18,9 +18,14 @@ See also:
 
 Topic: transcript-virtualization
 
-Status: planned 2026-07-09. Stage 1 (memo/clock decoupling) is the immediate,
-low-risk win; Stage 2 (windowed rendering) is the real bound and is a larger
-change touching scroll anchoring, the turn rail, search, and selection.
+Status: 2026-07-09. Stage 1 item 1 (stabilize MessageList's callback props)
+landed — idle CPU on the full transcript dropped ~22% → ~9% and layout passes
+~7.3/s → ~0.5/s, so the transcript-scaling per-second churn is gone; the ~9%
+residual is small timer-driven widgets (roughly constant, not O(rows)). Stage 1
+items 2–3 (row-map inline arrows, per-row clock decoupling) remain but are lower
+priority now. Stage 2 (windowed rendering) still bounds the *static* DOM size and
+is the larger change touching scroll anchoring, the turn rail, search, and
+selection.
 
 ## Problem (one line)
 

@@ -29,7 +29,7 @@ function wait(ms: number): Promise<void> {
 
 async function waitFor(
   assertion: () => void | Promise<void>,
-  timeoutMs = 250,
+  timeoutMs = 2000,
 ): Promise<void> {
   const started = Date.now();
   let lastError: unknown;

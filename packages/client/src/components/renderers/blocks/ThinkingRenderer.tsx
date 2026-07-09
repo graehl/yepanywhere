@@ -57,7 +57,7 @@ function ThinkingRendererComponent({
           <span className="thinking-icon">▲</span>
         </button>
         <div className="thinking-content">
-          <ThinkingText text={thinking} />
+          <ThinkingText text={thinking} isStreaming={context.isStreaming} />
         </div>
       </div>
     );

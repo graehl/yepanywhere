@@ -70,7 +70,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         <span className="collapsible__icon">▸</span>
       </summary>
       <div className="collapsible__content">
-        <ThinkingText text={thinking} />
+        <ThinkingText text={thinking} isStreaming={isStreaming} />
       </div>
     </details>
   );

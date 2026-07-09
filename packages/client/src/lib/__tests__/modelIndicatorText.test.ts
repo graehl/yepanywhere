@@ -47,6 +47,13 @@ describe("getModelIndicatorModelLabel", () => {
   });
 
   describe("codex models", () => {
+    it.each([
+      ["gpt-5.6-sol", "Cd ☀"],
+      ["gpt-5.6-terra", "Cd ♁"],
+      ["gpt-5.6-luna", "Cd ☾"],
+    ])("%s uses its semantic short glyph", (model, expected) => {
+      expect(getModelIndicatorModelLabel("codex", model)).toBe(expected);
+    });
     it("gpt-5.4-mini", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-5.4-mini")).toBe(
         "Cd ◇ 5.4-mini",

@@ -124,6 +124,34 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-07-09:
+
+- Installed Codex is `codex-cli 0.144.0`. Root `package.json` now records
+  `yepAnywhere.codexCli.expectedVersion` and `compatibleThroughVersion` as
+  `0.144.0`.
+- `pnpm codex:protocol:check` reported four new and thirteen changed generated
+  files. The refreshed subset adds extracted web-search and image-generation
+  item types, thread history/extra fields, provider-model fallback control,
+  custom multi-agent mode hints, session-budget errors, richer MCP app context,
+  and direct `lastTurnId` fork boundaries. YA does not send the new optional
+  thread controls; existing web-search/image item fields remain compatible.
+  `thread/rollback` is deprecated but still available, so adopting direct fork
+  boundaries is a design follow-up rather than a 0.144 compatibility blocker.
+- App-server `model/list` added `gpt-5.6-sol`, `gpt-5.6-terra`, and
+  `gpt-5.6-luna`. It marks Sol as default with low reasoning effort and exposes
+  `max` plus `ultra` effort where supported. YA now ranks Sol first and uses it
+  as the fallback default for CLI 0.144+, while preserving the GPT-5.5 fallback
+  catalog for 0.124 through 0.143 installs.
+- Compact model badges use semantic glyphs for the named 5.6 variants:
+  `Cd ☀` (Sol), `Cd ♁` (Terra), and `Cd ☾` (Luna).
+- Codex's best-effort shared arg0-temp janitor still emits a known
+  `Directory not empty` warning while concurrent Codex sessions populate that
+  directory. The protocol check itself completes cleanly and reports the
+  generated subset up to date.
+
+Status: Codex 0.144 compatibility, GPT-5.6 model defaults/catalog, and compact
+glyphs refreshed; no additional provider runtime change is required.
+
 Current source refresh, 2026-06-29:
 
 - Installed Codex is `codex-cli 0.142.4`; npm `@openai/codex` `latest` is
@@ -273,6 +301,20 @@ Difference detectors:
   by `claude-sdk-schema` or visible normalization tests.
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
+
+Current source refresh, 2026-07-09:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.199` to `0.3.205`.
+  Its bundled Linux executable and the independently installed `claude` both
+  report Claude Code `2.1.205`; root `package.json` records the paired runtime
+  and SDK compatibility markers.
+- The SDK control methods YA uses for model/command discovery, model and
+  thinking updates, interruption, and MCP status remain present. Focused Claude
+  provider tests pass, and no YA runtime source change is indicated by this
+  package refresh.
+
+Status: Claude Code 2.1.205 / SDK 0.3.205 compatibility refresh complete as a
+package and marker update; no new runtime behavior change was introduced.
 
 Current source refresh, 2026-07-03:
 

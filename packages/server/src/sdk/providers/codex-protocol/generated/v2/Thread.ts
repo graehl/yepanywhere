@@ -4,11 +4,21 @@
 import type { AbsolutePathBuf } from "../AbsolutePathBuf.js";
 import type { GitInfo } from "./GitInfo.js";
 import type { SessionSource } from "./SessionSource.js";
+import type { ThreadExtra } from "./ThreadExtra.js";
+import type { ThreadHistoryMode } from "./ThreadHistoryMode.js";
 import type { ThreadSource } from "./ThreadSource.js";
 import type { ThreadStatus } from "./ThreadStatus.js";
 import type { Turn } from "./Turn.js";
 
-export type Thread = { id: string,
+export type Thread = {
+/**
+ * Identifier for this thread. Codex-generated thread IDs are UUIDv7.
+ */
+id: string,
+/**
+ * Optional implementation-specific thread data.
+ */
+extra: ThreadExtra | null,
 /**
  * Session id shared by threads that belong to the same session tree.
  */
@@ -29,6 +39,10 @@ preview: string,
  * Whether the thread is ephemeral and should not be materialized on disk.
  */
 ephemeral: boolean,
+/**
+ * Persisted thread history contract selected when this thread was created.
+ */
+historyMode: ThreadHistoryMode,
 /**
  * Model provider used for this thread (for example, 'openai').
  */

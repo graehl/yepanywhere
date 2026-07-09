@@ -24,6 +24,29 @@ type ModelGlyphRule = {
   match?: "contains" | "exact";
 };
 
+const codexModelGlyphRules: ReadonlyArray<ModelGlyphRule> = [
+  { patterns: ["gpt-5.6-sol"], glyph: "☀", fixedSuffix: "" },
+  { patterns: ["gpt-5.6-terra"], glyph: "♁", fixedSuffix: "" },
+  { patterns: ["gpt-5.6-luna"], glyph: "☾", fixedSuffix: "" },
+  {
+    patterns: [
+      "gpt-5.4-codex-spark",
+      "gpt-5.4-spark",
+      "gpt-5.3-codex-spark",
+      "gpt-5.3-spark",
+    ],
+    glyph: "⚡",
+    fixedSuffix: "",
+  },
+  { patterns: ["gpt-5.5"], glyph: "◆" },
+  { patterns: ["gpt-5.4-mini"], glyph: "◇" },
+  { patterns: ["gpt-5.4-nano"], glyph: "◇" },
+  { patterns: ["gpt-5.4"], glyph: "◇" },
+  { patterns: ["gpt-5.3"], glyph: "◆" },
+  { patterns: ["gpt-5"], glyph: "◆" },
+  { patterns: ["gpt-4"], glyph: "⧉" },
+];
+
 const modelGlyphRulesByProvider: Readonly<
   Record<string, ReadonlyArray<ModelGlyphRule>>
 > = {
@@ -52,44 +75,8 @@ const modelGlyphRulesByProvider: Readonly<
     { patterns: ["sonnet"], glyph: "♪" },
     { patterns: ["haiku"], glyph: "✎" },
   ],
-  codex: [
-    {
-      patterns: [
-        "gpt-5.4-codex-spark",
-        "gpt-5.4-spark",
-        "gpt-5.3-codex-spark",
-        "gpt-5.3-spark",
-      ],
-      glyph: "⚡",
-      fixedSuffix: "",
-    },
-    { patterns: ["gpt-5.5"], glyph: "◆" },
-    { patterns: ["gpt-5.4-mini"], glyph: "◇" },
-    { patterns: ["gpt-5.4-nano"], glyph: "◇" },
-    { patterns: ["gpt-5.4"], glyph: "◇" },
-    { patterns: ["gpt-5.3"], glyph: "◆" },
-    { patterns: ["gpt-5"], glyph: "◆" },
-    { patterns: ["gpt-4"], glyph: "⧉" },
-  ],
-  "codex-oss": [
-    {
-      patterns: [
-        "gpt-5.4-codex-spark",
-        "gpt-5.4-spark",
-        "gpt-5.3-codex-spark",
-        "gpt-5.3-spark",
-      ],
-      glyph: "⚡",
-      fixedSuffix: "",
-    },
-    { patterns: ["gpt-5.5"], glyph: "◆" },
-    { patterns: ["gpt-5.4-mini"], glyph: "◇" },
-    { patterns: ["gpt-5.4-nano"], glyph: "◇" },
-    { patterns: ["gpt-5.4"], glyph: "◇" },
-    { patterns: ["gpt-5.3"], glyph: "◆" },
-    { patterns: ["gpt-5"], glyph: "◆" },
-    { patterns: ["gpt-4"], glyph: "⧉" },
-  ],
+  codex: codexModelGlyphRules,
+  "codex-oss": codexModelGlyphRules,
   gemini: [
     { patterns: ["2.5-pro"], glyph: "✹" },
     { patterns: ["2.5-flash"], glyph: "⚡" },

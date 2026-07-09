@@ -1,9 +1,13 @@
 import type { ModelInfo } from "@yep-anywhere/shared";
 
 export const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
+export const CODEX_CLI_GPT56_MIN_VERSION = "0.144.0";
 
 const PREFERRED_MODEL_ORDER = [
+  "gpt-5.6-sol",
   "gpt-5.5",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
   "gpt-5.4",
   "gpt-5.4-mini",
   "gpt-5.3-codex",
@@ -14,46 +18,46 @@ const PREFERRED_MODEL_ORDER = [
   "gpt-5.1-codex-mini",
 ] as const;
 
-export const FALLBACK_CODEX_MODELS: ModelInfo[] = [
-  {
-    id: "gpt-5.5",
-    name: "GPT-5.5",
-    description:
-      "Frontier model for complex coding, research, and real-world work.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: [
-      {
-        reasoningEffort: "low",
-        description: "Fast responses with lighter reasoning",
-      },
-      {
-        reasoningEffort: "medium",
-        description: "Balances speed and reasoning depth for everyday tasks",
-      },
-      {
-        reasoningEffort: "high",
-        description: "Greater reasoning depth for complex problems",
-      },
-      {
-        reasoningEffort: "xhigh",
-        description: "Extra high reasoning depth for complex problems",
-      },
-    ],
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-    serviceTiers: [
-      {
-        id: "priority",
-        name: "Fast",
-        description: "1.5x speed, increased usage",
-      },
-    ],
-  },
+const GPT55_FALLBACK_CODEX_MODEL: ModelInfo = {
+  id: "gpt-5.5",
+  name: "GPT-5.5",
+  description:
+    "Frontier model for complex coding, research, and real-world work.",
+  defaultReasoningEffort: "medium",
+  supportedReasoningEfforts: [
+    {
+      reasoningEffort: "low",
+      description: "Fast responses with lighter reasoning",
+    },
+    {
+      reasoningEffort: "medium",
+      description: "Balances speed and reasoning depth for everyday tasks",
+    },
+    {
+      reasoningEffort: "high",
+      description: "Greater reasoning depth for complex problems",
+    },
+    {
+      reasoningEffort: "xhigh",
+      description: "Extra high reasoning depth for complex problems",
+    },
+  ],
+  inputModalities: ["text", "image"],
+  supportsPersonality: true,
+  serviceTiers: [
+    {
+      id: "priority",
+      name: "Fast",
+      description: "1.5x speed, increased usage",
+    },
+  ],
+};
+
+const GPT54_AND_OLDER_FALLBACK_CODEX_MODELS: ModelInfo[] = [
   {
     id: "gpt-5.4",
     name: "GPT-5.4",
     description: "Strong model for everyday coding.",
-    isDefault: true,
     defaultReasoningEffort: "medium",
     supportedReasoningEfforts: [
       {
@@ -113,6 +117,91 @@ export const FALLBACK_CODEX_MODELS: ModelInfo[] = [
   { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
   { id: "gpt-5.3-codex-spark", name: "GPT-5.3-Codex-Spark" },
   { id: "gpt-5.2", name: "GPT-5.2" },
+];
+
+const GPT55_FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  GPT55_FALLBACK_CODEX_MODEL,
+  ...GPT54_AND_OLDER_FALLBACK_CODEX_MODELS,
+];
+
+const GPT56_REASONING_EFFORTS: NonNullable<
+  ModelInfo["supportedReasoningEfforts"]
+> = [
+  {
+    reasoningEffort: "low",
+    description: "Fast responses with lighter reasoning",
+  },
+  {
+    reasoningEffort: "medium",
+    description: "Balances speed and reasoning depth for everyday tasks",
+  },
+  {
+    reasoningEffort: "high",
+    description: "Greater reasoning depth for complex problems",
+  },
+  {
+    reasoningEffort: "xhigh",
+    description: "Extra high reasoning depth for complex problems",
+  },
+  {
+    reasoningEffort: "max",
+    description: "Maximum reasoning depth for the hardest problems",
+  },
+];
+
+const GPT56_ULTRA_REASONING_EFFORT = {
+  reasoningEffort: "ultra",
+  description: "Maximum reasoning with automatic task delegation",
+};
+
+const GPT56_SERVICE_TIERS: NonNullable<ModelInfo["serviceTiers"]> = [
+  {
+    id: "priority",
+    name: "Fast",
+    description: "1.5x speed, increased usage",
+  },
+];
+
+export const FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  {
+    id: "gpt-5.6-sol",
+    name: "GPT-5.6-Sol",
+    description: "Latest frontier agentic coding model.",
+    isDefault: true,
+    defaultReasoningEffort: "low",
+    supportedReasoningEfforts: [
+      ...GPT56_REASONING_EFFORTS,
+      GPT56_ULTRA_REASONING_EFFORT,
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: false,
+    serviceTiers: GPT56_SERVICE_TIERS,
+  },
+  GPT55_FALLBACK_CODEX_MODEL,
+  {
+    id: "gpt-5.6-terra",
+    name: "GPT-5.6-Terra",
+    description: "Balanced agentic coding model for everyday work.",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      ...GPT56_REASONING_EFFORTS,
+      GPT56_ULTRA_REASONING_EFFORT,
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: false,
+    serviceTiers: GPT56_SERVICE_TIERS,
+  },
+  {
+    id: "gpt-5.6-luna",
+    name: "GPT-5.6-Luna",
+    description: "Fast and affordable agentic coding model.",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: GPT56_REASONING_EFFORTS,
+    inputModalities: ["text", "image"],
+    supportsPersonality: false,
+    serviceTiers: GPT56_SERVICE_TIERS,
+  },
+  ...GPT54_AND_OLDER_FALLBACK_CODEX_MODELS,
 ];
 
 export const LEGACY_FALLBACK_CODEX_MODELS: ModelInfo[] = [
@@ -186,11 +275,11 @@ function splitSemver(version: string): { parts: number[]; pre: string | null } {
 export function getFallbackCodexModelsForCliVersion(
   version: string | null,
 ): ModelInfo[] {
-  if (
-    version &&
-    compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0
-  ) {
+  if (version && compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0) {
     return LEGACY_FALLBACK_CODEX_MODELS;
+  }
+  if (version && compareSemver(version, CODEX_CLI_GPT56_MIN_VERSION) < 0) {
+    return GPT55_FALLBACK_CODEX_MODELS;
   }
   return FALLBACK_CODEX_MODELS;
 }
@@ -199,10 +288,7 @@ export function normalizeCodexModelList(models: AppServerModel[]): ModelInfo[] {
   const orderLookup = new Map<string, number>(
     PREFERRED_MODEL_ORDER.map((id, idx) => [id, idx]),
   );
-  const deduped = new Map<
-    string,
-    { model: ModelInfo; serverIndex: number }
-  >();
+  const deduped = new Map<string, { model: ModelInfo; serverIndex: number }>();
 
   for (const [serverIndex, model] of models.entries()) {
     if (model.hidden === true) continue;
@@ -319,17 +405,20 @@ function getModelSortRank(
   serverIndex: number,
   orderLookup: Map<string, number>,
 ): number {
-  if (model.id === "gpt-5.5") {
+  if (model.id === "gpt-5.6-sol") {
     return 0;
   }
-  if (model.isDefault) {
+  if (model.id === "gpt-5.5") {
     return 1;
+  }
+  if (model.isDefault) {
+    return 2;
   }
   const preferredRank = orderLookup.get(model.id);
   if (preferredRank !== undefined) {
-    return 2 + preferredRank;
+    return 3 + preferredRank;
   }
-  return 2 + PREFERRED_MODEL_ORDER.length + serverIndex;
+  return 3 + PREFERRED_MODEL_ORDER.length + serverIndex;
 }
 
 function formatModelName(value: string): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CODEX_CLI_GPT55_MIN_VERSION,
+  CODEX_CLI_GPT56_MIN_VERSION,
   compareSemver,
   getFallbackCodexModelsForCliVersion,
   normalizeCodexModelList,
@@ -21,11 +22,9 @@ describe("Codex model catalog", () => {
     expect(compareSemver("0.124.0", CODEX_CLI_GPT55_MIN_VERSION)).toBe(0);
   });
 
-  it("selects legacy fallback models only before GPT-5.5 support", () => {
+  it("selects fallback models supported by the installed CLI generation", () => {
     expect(
-      getFallbackCodexModelsForCliVersion("0.123.9").map(
-        (model) => model.id,
-      ),
+      getFallbackCodexModelsForCliVersion("0.123.9").map((model) => model.id),
     ).toEqual([
       "gpt-5.3-codex",
       "gpt-5.2-codex",
@@ -33,29 +32,55 @@ describe("Codex model catalog", () => {
       "gpt-5.2",
       "gpt-5.1-codex-mini",
     ]);
-    expect(
-      getFallbackCodexModelsForCliVersion(CODEX_CLI_GPT55_MIN_VERSION).map(
-        (model) => model.id,
-      ),
-    ).toEqual([
+    const gpt55Models = [
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
       "gpt-5.3-codex",
       "gpt-5.3-codex-spark",
       "gpt-5.2",
+    ];
+    expect(
+      getFallbackCodexModelsForCliVersion(CODEX_CLI_GPT55_MIN_VERSION).map(
+        (model) => model.id,
+      ),
+    ).toEqual(gpt55Models);
+    expect(
+      getFallbackCodexModelsForCliVersion("0.143.99").map((model) => model.id),
+    ).toEqual(gpt55Models);
+
+    const gpt56Models = getFallbackCodexModelsForCliVersion(
+      CODEX_CLI_GPT56_MIN_VERSION,
+    );
+    expect(gpt56Models.map((model) => model.id)).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex",
+      "gpt-5.3-codex-spark",
+      "gpt-5.2",
     ]);
-    expect(getFallbackCodexModelsForCliVersion(null)[0]?.id).toBe("gpt-5.5");
+    expect(
+      gpt56Models.filter((model) => model.isDefault).map((model) => model.id),
+    ).toEqual(["gpt-5.6-sol"]);
+    expect(getFallbackCodexModelsForCliVersion(null)[0]).toMatchObject({
+      id: "gpt-5.6-sol",
+      isDefault: true,
+      defaultReasoningEffort: "low",
+    });
   });
 
-  it("prefers GPT-5.5 over Codex's model/list default when available", () => {
+  it("prefers GPT-5.6 Sol as the best Codex model", () => {
     const models = normalizeCodexModelList([
       {
         id: "gpt-5.4",
         model: "gpt-5.4",
         displayName: "gpt-5.4",
         description: "Strong model for everyday coding.",
-        isDefault: true,
+        isDefault: false,
         defaultReasoningEffort: "medium",
         supportedReasoningEfforts: [
           {
@@ -69,6 +94,29 @@ describe("Codex model catalog", () => {
         ],
         inputModalities: ["text", "image"],
         supportsPersonality: true,
+        serviceTiers: [
+          {
+            id: "priority",
+            name: "Fast",
+            description: "1.5x speed, increased usage",
+          },
+        ],
+      },
+      {
+        id: "gpt-5.6-sol",
+        model: "gpt-5.6-sol",
+        displayName: "GPT-5.6-Sol",
+        description: "Latest frontier agentic coding model.",
+        isDefault: true,
+        defaultReasoningEffort: "low",
+        supportedReasoningEfforts: [
+          {
+            reasoningEffort: "ultra",
+            description: "Maximum reasoning with automatic task delegation",
+          },
+        ],
+        inputModalities: ["text", "image"],
+        supportsPersonality: false,
         serviceTiers: [
           {
             id: "priority",
@@ -114,21 +162,23 @@ describe("Codex model catalog", () => {
     ]);
 
     expect(models.map((model) => model.id)).toEqual([
+      "gpt-5.6-sol",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.3-codex",
     ]);
     expect(models[0]).toMatchObject({
-      name: "GPT-5.5",
-      defaultReasoningEffort: "medium",
+      name: "GPT-5.6-Sol",
+      isDefault: true,
+      defaultReasoningEffort: "low",
       supportedReasoningEfforts: [
         {
-          reasoningEffort: "high",
-          description: "Greater reasoning depth",
+          reasoningEffort: "ultra",
+          description: "Maximum reasoning with automatic task delegation",
         },
       ],
       inputModalities: ["text", "image"],
-      supportsPersonality: true,
+      supportsPersonality: false,
       serviceTiers: [
         {
           id: "priority",
@@ -137,9 +187,15 @@ describe("Codex model catalog", () => {
         },
       ],
     });
-    expect(models[1]).toMatchObject({
-      isDefault: true,
-      inputModalities: ["text", "image"],
-    });
+    expect(models[2]).toMatchObject({ inputModalities: ["text", "image"] });
+  });
+
+  it("keeps GPT-5.5 preferred when Sol is unavailable", () => {
+    const models = normalizeCodexModelList([
+      { id: "gpt-5.4", model: "gpt-5.4", isDefault: true },
+      { id: "gpt-5.5", model: "gpt-5.5", isDefault: false },
+    ]);
+
+    expect(models.map((model) => model.id)).toEqual(["gpt-5.5", "gpt-5.4"]);
   });
 });

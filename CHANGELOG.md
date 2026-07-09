@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Refresh Codex CLI/app-server compatibility through 0.144.0, prefer
+  GPT-5.6 Sol by default, and add compact Sol/Terra/Luna model glyphs. Upgrade
+  claude-agent-sdk and Claude Code compatibility through 0.3.205 / 2.1.205.
+
 ## [0.6.0] - 2026-07-06
 
 ### Added

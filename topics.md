@@ -34,6 +34,7 @@
 - ui-architecture - Shared rendering boundaries and anti-DOM-rewrite discipline.
 - opencode-backend - OpenCode provider capability and transcript-rendering parity.
 - provider-refresh - Provider upstream/source refresh triggers, probes, and due-refresh evidence.
+- provider-model-glyphs - Compact provider/model identity for narrow status surfaces.
 - graehl-ci-pre-kzahel-gate - Use graehl-push CI as a coverage/signal gate before pushing to kzahel.
 - claude - Claude provider control, restart/resume safety, interviews, and YA-owned process bridges.
 - edit-turn - Inline editing proposal for queued/sent user turns with a visible Esc/cancel escape hatch.

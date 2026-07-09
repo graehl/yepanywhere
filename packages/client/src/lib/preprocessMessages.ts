@@ -129,6 +129,9 @@ const SESSION_SETUP_PREFIXES = [
   "<environment_context>",
 ];
 
+const STARTUP_INSTRUCTIONS_SETUP_RE =
+  /^(?:<recommended_plugins>[\s\S]*?<\/recommended_plugins>\s*)?# AGENTS\.md instructions/u;
+
 const RESUME_ENVIRONMENT_CONTEXT_MAX_GAP_MS = 5_000;
 
 const INTERNAL_REASONING_PLACEHOLDER = "Reasoning [internal]";
@@ -418,7 +421,10 @@ function isDisplayableThinking(
 
 function isSessionSetupPrompt(item: UserPromptItem): boolean {
   const text = getPromptText(item.content).trimStart();
-  return SESSION_SETUP_PREFIXES.some((prefix) => text.startsWith(prefix));
+  return (
+    STARTUP_INSTRUCTIONS_SETUP_RE.test(text) ||
+    SESSION_SETUP_PREFIXES.some((prefix) => text.startsWith(prefix))
+  );
 }
 
 function isEnvironmentContextSetupPrompt(item: UserPromptItem): boolean {

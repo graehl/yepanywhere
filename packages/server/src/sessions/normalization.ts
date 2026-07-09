@@ -664,9 +664,17 @@ function isCodexStartupInstructionMessage(
     )
     .join("");
 
+  return isCodexStartupInstructionText(text);
+}
+
+const CODEX_STARTUP_INSTRUCTIONS_RE =
+  /^(?:<recommended_plugins>[\s\S]*?<\/recommended_plugins>\s*)?# AGENTS\.md instructions for /u;
+
+function isCodexStartupInstructionText(text: string): boolean {
+  const trimmed = text.trimStart();
   return (
-    text.startsWith("# AGENTS.md instructions for ") &&
-    text.includes("<INSTRUCTIONS>")
+    CODEX_STARTUP_INSTRUCTIONS_RE.test(trimmed) &&
+    trimmed.includes("<INSTRUCTIONS>")
   );
 }
 

@@ -101,6 +101,15 @@ user turn that wakes a TUI-created session. YA now suppresses that lone
 environment-context setup item when it is immediately followed by a normal user
 prompt, so the context row does not render as a fictitious user turn.
 
+### Codex startup instructions with plugin recommendations (landed 2026-07-09)
+
+Codex can now prefix its persisted startup instruction user-role row with a
+`<recommended_plugins>...</recommended_plugins>` block before
+`# AGENTS.md instructions for ...`. YA treats that shape as the same injected
+startup instruction row as the older plain `# AGENTS.md instructions for ...`
+form: the durable reader suppresses it, and the client setup fallback collapses
+it into `Session setup` rather than rendering it as a user-authored turn.
+
 Remaining Part 2 scope: broader resume-from-full init text can still render as
 normal turns. It predates the compaction work and needs its own classification,
 not a local CSS hide.

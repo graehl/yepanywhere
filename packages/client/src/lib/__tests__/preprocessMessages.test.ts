@@ -880,6 +880,47 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("collapses leading setup prompts with plugin recommendations", () => {
+    const setupPrompt = [
+      "<recommended_plugins>",
+      "Here is a list of plugins that are available but not installed.",
+      "",
+      "- GitHub (github@openai-curated-remote)",
+      "</recommended_plugins># AGENTS.md instructions for /repo",
+      "",
+      "<INSTRUCTIONS>",
+      "Follow the project instructions.",
+      "</INSTRUCTIONS>",
+    ].join("\n");
+    const messages: Message[] = [
+      {
+        id: "msg-setup-1",
+        role: "user",
+        content: setupPrompt,
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-user-1",
+        role: "user",
+        content: "Implement the requested change",
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      type: "session_setup",
+      title: "Session setup",
+      prompts: [setupPrompt],
+    });
+    expect(items[1]).toMatchObject({
+      type: "user_prompt",
+      content: "Implement the requested change",
+    });
+  });
+
   it("does not collapse a single setup-like prompt in the middle of a session", () => {
     const messages: Message[] = [
       {

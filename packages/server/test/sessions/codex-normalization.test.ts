@@ -1343,6 +1343,53 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("skips Codex startup instructions with plugin recommendations", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "<recommended_plugins>",
+                "Here is a list of plugins that are available but not installed.",
+                "",
+                "- GitHub (github@openai-curated-remote)",
+                "</recommended_plugins># AGENTS.md instructions for /repo",
+                "",
+                "<INSTRUCTIONS>",
+                "Follow the project instructions.",
+                "</INSTRUCTIONS>",
+              ].join("\n"),
+            },
+          ],
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "actual user turn" }],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.message?.role).toBe("user");
+    const content = result.messages[0]?.message?.content;
+    expect(Array.isArray(content) ? content[0] : content).toMatchObject({
+      type: "text",
+      text: "actual user turn",
+    });
+  });
+
   it("emits turn_aborted as a visible system entry", () => {
     const entries: CodexSessionEntry[] = [
       {

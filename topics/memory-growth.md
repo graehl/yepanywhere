@@ -47,6 +47,60 @@
   trade-offs are acceptable. Ad hoc transcript caching must not be enabled by
   default.
 
+## 2026-07-09: real cause of the "10 GB tab" — un-virtualized transcript re-rendered every second
+
+The `tailTurns=20` default (above) is a **mitigation, not the fix**. Measured
+root cause of the browser-tab RSS growth:
+
+- **It is not a JS/DOM leak.** On an idle session page, `usedJSHeapSize`, DOM
+  node count, and JS listener count are flat over minutes. Heap-snapshot leak
+  hunts correctly find nothing — the growth is native (Blink style/layout/paint
+  objects, allocator high-water), which `usedJSHeapSize` does not count. That is
+  why a tab reaches many GB while the V8 heap stays flat. Prior "there is no
+  leak" conclusions were right *about the heap* and stopped one step short.
+- **The transcript is not virtualized.** `MessageList` renders every message as
+  a live DOM subtree (`MessageList.tsx`, `timelineEntryRows.map`). Native memory
+  scales with total content (nodes, layout objects, raster), not viewport.
+- **The whole transcript re-renders ~once per second, even when idle.** Measured
+  headless (Playwright + CDP `Performance.getMetrics`/`Profiler`) against the
+  live dev server, session `858312bb-…` idle (WebSocket messages = 0, rAF ≈ 0):
+
+  | tail | rows | DOM nodes | JS heap | idle CPU-busy |
+  |------|------|-----------|---------|---------------|
+  | 20   | 244  | 12,985    | flat 65 MB  | 11% |
+  | 400  | 1145 | 58,509    | flat 117 MB | 22% |
+
+  Idle CPU scales with row count. The CPU profile shows `MessageAge` /
+  `RenderItemComponent` / `jsxDEV` / React reconciliation hot, scheduled from
+  microtask state flushes (not streaming). Two independent 5 s profiles (shorter
+  than the 30 s clock) still show row rendering ⇒ rows re-render ~every second.
+- **Trigger:** ~9 `setInterval(…, 1000)` timers on the session page (drafts,
+  file-activity, reload-notify, liveness, …) re-render SessionPage every second.
+  `MessageList` is `memo`-wrapped, but its memo is defeated by unstable
+  inline-callback props from SessionPage — `getComposerDraft`
+  (`SessionPage.tsx:4544`), `onCancelForkSummary` (`:4580`),
+  `onToggleForkSummaryAutoOpen` (`:4583`) — so it re-executes and re-creates /
+  reconciles all N row elements every second (the `jsxDEV` cost). Session-level
+  clocks broadcast as per-row props (`staleNowMs`, `latestVisibleTimestampMs`,
+  `isStreaming`) plus conditional inline arrows in the row map (`MessageList.tsx`
+  ~2341/2348/2353) additionally break row-level `memo`.
+
+So per-second O(N) style-recalc + layout + reconcile (recalcStyle counters climb
+continuously on an idle page) churns native memory with a flat JS heap.
+`tailTurns=20` only shrinks N; it does not stop the per-second O(N) churn or
+bound the DOM. Streaming compounds it: each new message re-renders all N rows
+while the transcript keeps growing.
+
+Fix is staged — see [`transcript-virtualization.md`](transcript-virtualization.md):
+(1) stabilize the memo-breaking props and decouple per-row clocks so an idle
+transcript does ~zero work; (2) virtualize/window the transcript so DOM size and
+per-tick work are bounded by viewport, not history.
+
+Open item for the implementer: after (1), re-measure idle CPU with the probe in
+that plan. If rows still re-render every second, a broadcast prop *value*
+(`isStreaming`, or a liveness-derived value) is still changing each tick — trace
+it before assuming (1) is complete.
+
 ## 2026-05-12: heartbeat session `019e1ac6-c836-7e33-891e-2ba878d27ca5`
 
 - Confirmed metadata persisted for `019e1ac6-c836-7e33-891e-2ba878d27ca5` includes:

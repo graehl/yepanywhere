@@ -1149,6 +1149,25 @@ function SessionPageContent({
       `${window.location.origin}${basePath}/projects/${projectId}/sessions/${targetSessionId}`,
     [basePath, projectId],
   );
+  // Stable identities for props passed into the memoized MessageList. Inline
+  // arrows here re-render the whole (un-virtualized) transcript on every
+  // per-second SessionPage tick; see topics/transcript-virtualization.md.
+  const handleCancelForkSummary = useCallback(
+    (objectId: string) => {
+      void cancelForkSummaryJob(objectId);
+    },
+    [cancelForkSummaryJob],
+  );
+  const handleToggleForkSummaryAutoOpen = useCallback(
+    (objectId: string, value: boolean) => {
+      void setForkSummaryAutoOpen(objectId, value);
+    },
+    [setForkSummaryAutoOpen],
+  );
+  const getComposerDraftForAnchors = useCallback(
+    () => draftControlsRef.current?.getDraft() ?? "",
+    [],
+  );
   useEffect(() => {
     for (const object of session?.transcriptDisplayObjects ?? []) {
       if (
@@ -4541,9 +4560,7 @@ function SessionPageContent({
                   onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                   onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
                   onQuoteSelection={insertQuotedSelection}
-                  getComposerDraft={() =>
-                    draftControlsRef.current?.getDraft() ?? ""
-                  }
+                  getComposerDraft={getComposerDraftForAnchors}
                   composerDraft={composerDraftForAnchors}
                   composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
@@ -4577,12 +4594,8 @@ function SessionPageContent({
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
                   scrollBehaviorMode={sessionScrollBehaviorMode}
                   getForkSummaryTargetHref={getForkSummaryTargetHref}
-                  onCancelForkSummary={(objectId) => {
-                    void cancelForkSummaryJob(objectId);
-                  }}
-                  onToggleForkSummaryAutoOpen={(objectId, value) => {
-                    void setForkSummaryAutoOpen(objectId, value);
-                  }}
+                  onCancelForkSummary={handleCancelForkSummary}
+                  onToggleForkSummaryAutoOpen={handleToggleForkSummaryAutoOpen}
                   onFollowForkSummary={followForkSummary}
                   onTranscriptPositionTimestampChange={
                     setTranscriptPositionTimestampMs

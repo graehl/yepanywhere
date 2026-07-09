@@ -902,6 +902,12 @@ export const api = {
       { method: "DELETE" },
     ),
 
+  cancelUnconfirmedSteerMessage: (sessionId: string, tempId: string) =>
+    fetchJSON<{ cancelled: boolean }>(
+      `/sessions/${sessionId}/steering/${encodeURIComponent(tempId)}`,
+      { method: "DELETE" },
+    ),
+
   steerDeferredMessagesThrough: (sessionId: string, tempId: string) =>
     fetchJSON<{
       steered: boolean;

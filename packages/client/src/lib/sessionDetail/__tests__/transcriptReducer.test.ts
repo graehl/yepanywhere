@@ -536,6 +536,42 @@ describe("transcriptReducer", () => {
     expect(state.messages).toEqual([durableMessage]);
   });
 
+  it("removes a cancelled unconfirmed self-send by temp id", () => {
+    const unconfirmed: Message = {
+      ...userMessage("steer-echo", "steer text", "2026-07-01T12:00:00.000Z"),
+      tempId: "temp-steer",
+      _source: "sdk",
+      messageMetadata: { deliveryIntent: "steer" },
+    };
+    const durableSameTempId: Message = {
+      ...userMessage(
+        "durable-user",
+        "durable text",
+        "2026-07-01T12:00:01.000Z",
+      ),
+      tempId: "temp-steer",
+      _source: "jsonl",
+    };
+    const assistant = assistantMessage(
+      "assistant-1",
+      "kept",
+      "2026-07-01T12:00:02.000Z",
+    );
+
+    const state = reduceSessionDetailState(
+      {
+        ...createInitialSessionDetailState(),
+        messages: [unconfirmed, durableSameTempId, assistant],
+      },
+      { type: "removeUnconfirmedSelfSend", tempId: "temp-steer" },
+    );
+
+    expect(state.messages.map((message) => message.uuid)).toEqual([
+      "durable-user",
+      "assistant-1",
+    ]);
+  });
+
   it("keeps distinct same-text user turns", () => {
     const state = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",

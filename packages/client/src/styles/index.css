@@ -4028,6 +4028,7 @@ a.sidebar-nav-item {
    their prior stacking behavior. */
 .message-user-prompt.user-prompt-unconfirmed {
   position: relative;
+  z-index: 2;
   opacity: 0.78;
   box-shadow: 0 0 0 1px var(--border-color);
 }
@@ -4045,6 +4046,7 @@ a.sidebar-nav-item {
   line-height: 1.4;
   color: var(--text-muted);
   white-space: nowrap;
+  z-index: 3;
   user-select: none;
   cursor: pointer;
 }
@@ -4126,6 +4128,20 @@ a.linkified-url:hover {
   );
 }
 
+.user-prompt-container.has-cancel-unconfirmed-action {
+  --user-prompt-actions-space: calc(
+    (var(--user-prompt-action-size) * 5) +
+    (var(--space-1) * 5)
+  );
+}
+
+.user-prompt-container.has-stacked-actions.has-cancel-unconfirmed-action {
+  --user-prompt-actions-space: calc(
+    var(--user-prompt-action-size) +
+    var(--space-1)
+  );
+}
+
 .user-prompt-correctable {
   border: 1px solid transparent;
 }
@@ -4139,6 +4155,7 @@ a.linkified-url:hover {
   gap: var(--space-1);
   opacity: 0;
   pointer-events: none;
+  z-index: 3;
   transition: opacity 0.12s ease;
 }
 
@@ -4184,6 +4201,11 @@ a.linkified-url:hover {
   color: var(--success-color, #4a4);
 }
 
+.user-prompt-action-cancel-sent:hover,
+.user-prompt-action-cancel-sent:focus-visible {
+  color: var(--error-color);
+}
+
 .user-prompt-correct-label {
   display: none;
   font-size: var(--font-size-sm);
@@ -4221,6 +4243,20 @@ a.linkified-url:hover {
     --user-prompt-actions-space: calc(
       (var(--user-prompt-action-size) * 4) +
       (var(--space-1) * 4)
+    );
+  }
+
+  .user-prompt-container.has-cancel-unconfirmed-action {
+    --user-prompt-actions-space: calc(
+      (var(--user-prompt-action-size) * 5) +
+      (var(--space-1) * 5)
+    );
+  }
+
+  .user-prompt-container.has-stacked-actions.has-cancel-unconfirmed-action {
+    --user-prompt-actions-space: calc(
+      var(--user-prompt-action-size) +
+      var(--space-1)
     );
   }
 
@@ -8038,6 +8074,8 @@ a.linkified-url:hover {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: fit-content;
+  max-width: 100%;
   min-height: 20px;
   padding-top: 2px; /* Match text-block padding */
   padding-left: 24px; /* Align with assistant turn padding */

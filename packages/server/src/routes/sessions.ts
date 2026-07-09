@@ -5339,6 +5339,28 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({ cancelled: true });
   });
 
+  // DELETE /api/sessions/:sessionId/steering/:tempId - Cancel a sent steering
+  // message that has not yet been consumed by the provider.
+  routes.delete("/sessions/:sessionId/steering/:tempId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const tempId = c.req.param("tempId");
+
+    const process = deps.supervisor.getProcessForSession(sessionId);
+    if (!process) {
+      return c.json({ error: "No active process for session" }, 404);
+    }
+
+    const cancelled = process.cancelUnconfirmedSteerMessage(tempId);
+    if (!cancelled) {
+      return c.json(
+        { error: "Steering message already acted on or not found" },
+        404,
+      );
+    }
+
+    return c.json({ cancelled: true });
+  });
+
   // POST /api/sessions/:sessionId/deferred/:tempId/steer - Steer a patient
   // queued message, and every patient entry ahead of it, into the session now.
   routes.post("/sessions/:sessionId/deferred/:tempId/steer", async (c) => {

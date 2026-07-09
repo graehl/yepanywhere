@@ -3,7 +3,10 @@ import {
   MESSAGE_STALE_THRESHOLD_MS,
   getLatestMessageTimestampMs,
 } from "../lib/messageAge";
-import { getUserPromptDeliveryState } from "../lib/deliveryState";
+import {
+  getCancellableUnconfirmedSteerTempId,
+  getUserPromptDeliveryState,
+} from "../lib/deliveryState";
 import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import type { CommentAnchor } from "../lib/commentAnchors";
 import type { ContentBlock } from "../types";
@@ -25,6 +28,7 @@ interface Props {
   toggleThinkingExpanded: () => void;
   sessionProvider?: string;
   onCorrectUserPrompt?: () => void;
+  onCancelUnconfirmedUserPrompt?: (tempId: string) => void;
   onTrimBeforeUserPrompt?: () => void;
   onForkBeforeUserPrompt?: () => void;
   onQuoteTextBlock?: (anchor: CommentAnchor) => void;
@@ -229,6 +233,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   toggleThinkingExpanded,
   sessionProvider,
   onCorrectUserPrompt,
+  onCancelUnconfirmedUserPrompt,
   onTrimBeforeUserPrompt,
   onForkBeforeUserPrompt,
   onQuoteTextBlock,
@@ -322,16 +327,26 @@ export const RenderItemComponent = memo(function RenderItemComponent({
           />
         );
 
-      case "user_prompt":
+      case "user_prompt": {
+        const deliveryState = getUserPromptDeliveryState(item.sourceMessages);
+        const cancellableTempId = getCancellableUnconfirmedSteerTempId(
+          item.sourceMessages,
+        );
         return (
           <UserPromptBlock
             content={item.content}
             onCorrect={onCorrectUserPrompt}
+            onCancelUnconfirmed={
+              cancellableTempId && onCancelUnconfirmedUserPrompt
+                ? () => onCancelUnconfirmedUserPrompt(cancellableTempId)
+                : undefined
+            }
             onTrimBefore={onTrimBeforeUserPrompt}
             onForkBefore={onForkBeforeUserPrompt}
-            deliveryState={getUserPromptDeliveryState(item.sourceMessages)}
+            deliveryState={deliveryState}
           />
         );
+      }
 
       case "session_setup":
         return <SessionSetupBlock title={item.title} prompts={item.prompts} />;

@@ -124,6 +124,8 @@ export interface UseSessionMessagesResult {
   clearAgentStreamingPlaceholders: (agentId: string) => void;
   /** Remove transient streaming placeholder rows from the main transcript */
   clearStreamingPlaceholders: () => void;
+  /** Remove a local optimistic self-send that the server accepted cancelling */
+  removeUnconfirmedSelfSend: (tempId: string) => void;
   /** Fetch new messages incrementally (for file change events) */
   fetchNewMessages: () => Promise<void>;
   /** Fetch session metadata only */
@@ -852,6 +854,16 @@ export function useSessionMessages(
     dispatchSessionDetailAction({ type: "clearStreamingPlaceholders" });
   }, [dispatchSessionDetailAction]);
 
+  const removeUnconfirmedSelfSend = useCallback(
+    (tempId: string) => {
+      dispatchSessionDetailAction({
+        type: "removeUnconfirmedSelfSend",
+        tempId,
+      });
+    },
+    [dispatchSessionDetailAction],
+  );
+
   // Fetch new messages incrementally (for file change events)
   const fetchNewMessages = useCallback(() => {
     return coordinator.runExclusiveFetchNewMessages(async () => {
@@ -993,6 +1005,7 @@ export function useSessionMessages(
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
     clearStreamingPlaceholders,
+    removeUnconfirmedSelfSend,
     fetchNewMessages,
     fetchSessionMetadata,
     pagination: storeBackedDetail?.pagination,

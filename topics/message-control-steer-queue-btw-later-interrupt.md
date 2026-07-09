@@ -233,6 +233,12 @@ rather than implying a firm `"sent"` or `"queued"` terminal state.
 Suggested reconciliation contract:
 
 - prefer `tempId` match to mark definitive delivery,
+- a self-sent steering turn that is still only an optimistic `sent` echo and
+  has not been consumed by the provider must expose Cancel. Cancel is
+  conditional: if the provider input queue still holds that `tempId`, remove the
+  provider-queue entry and the local echo; if the provider has already acted on
+  it, leave the row in place and report failure/refresh rather than pretending
+  the message was cancelled.
 - a bundled delivery is reconciled by identity, not text: when a queued batch is
   merged into one provider turn, the bundle records every chunk's `tempId`
   (`concatUserMessages` -> `UserMessage.tempIds`) and the delivered-turn echo

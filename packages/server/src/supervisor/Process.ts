@@ -2682,6 +2682,58 @@ export class Process {
   }
 
   /**
+   * Cancel a self-sent steering message that YA has accepted but the provider
+   * has not consumed yet.
+   */
+  cancelUnconfirmedSteerMessage(tempId: string): boolean {
+    const removedFromMessageQueue =
+      this.messageQueue?.removeByTempId(tempId).length ?? 0;
+    const legacyQueueLength = this.legacyQueue.length;
+    this.legacyQueue = this.legacyQueue.filter(
+      (message) => !this.userMessageMatchesTempId(message, tempId),
+    );
+    const removedFromLegacyQueue = legacyQueueLength - this.legacyQueue.length;
+    const removedCount = removedFromMessageQueue + removedFromLegacyQueue;
+
+    if (removedCount === 0) {
+      return false;
+    }
+
+    this.removeBufferedEchoByTempId(tempId);
+    return true;
+  }
+
+  private userMessageMatchesTempId(
+    message: UserMessage,
+    tempId: string,
+  ): boolean {
+    return (
+      message.tempId === tempId || message.tempIds?.includes(tempId) === true
+    );
+  }
+
+  private sdkMessageMatchesTempId(
+    message: SDKMessage,
+    tempId: string,
+  ): boolean {
+    const messageTempId = message.tempId;
+    if (messageTempId === tempId) {
+      return true;
+    }
+    const tempIds = message.tempIds;
+    return Array.isArray(tempIds) && tempIds.includes(tempId);
+  }
+
+  private removeBufferedEchoByTempId(tempId: string): void {
+    this.currentBucket = this.currentBucket.filter(
+      (message) => !this.sdkMessageMatchesTempId(message, tempId),
+    );
+    this.previousBucket = this.previousBucket.filter(
+      (message) => !this.sdkMessageMatchesTempId(message, tempId),
+    );
+  }
+
+  /**
    * Get a summary of the deferred queue for SSE events and client sync.
    */
   getDeferredQueueSummary(): {

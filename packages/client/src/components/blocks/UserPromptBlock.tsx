@@ -19,6 +19,7 @@ const STACK_ACTIONS_MIN_CHARS = 80;
 interface Props {
   content: string | ContentBlock[];
   onCorrect?: () => void;
+  onCancelUnconfirmed?: () => void;
   onTrimBefore?: () => void;
   /** Fork the session from just before this turn (real prefix fork only). */
   onForkBefore?: () => void;
@@ -334,12 +335,14 @@ function CollapsibleText({ text }: { text: string }) {
 
 function UserPromptActionButtons({
   onCorrect,
+  onCancelUnconfirmed,
   onTrimBefore,
   onForkBefore,
   copyText,
   extraActions,
 }: {
   onCorrect?: () => void;
+  onCancelUnconfirmed?: () => void;
   onTrimBefore?: () => void;
   onForkBefore?: () => void;
   copyText?: string;
@@ -349,6 +352,7 @@ function UserPromptActionButtons({
 
   if (
     !onCorrect &&
+    !onCancelUnconfirmed &&
     !onTrimBefore &&
     !onForkBefore &&
     !copyText &&
@@ -388,6 +392,30 @@ function UserPromptActionButtons({
             <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
           <span className="user-prompt-correct-label">Edit</span>
+        </button>
+      )}
+      {onCancelUnconfirmed && (
+        <button
+          type="button"
+          className="user-prompt-action user-prompt-action-cancel-sent"
+          onClick={onCancelUnconfirmed}
+          aria-label={t("userPromptCancelUnconfirmedAction")}
+          title={t("userPromptCancelUnconfirmedAction")}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
         </button>
       )}
       {onForkBefore && (
@@ -511,6 +539,7 @@ function UserPromptText({ text }: { text: string }) {
 export const UserPromptBlock = memo(function UserPromptBlock({
   content,
   onCorrect,
+  onCancelUnconfirmed,
   onTrimBefore,
   onForkBefore,
   extraActions,
@@ -518,6 +547,9 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 }: Props) {
   const unconfirmedClass =
     deliveryState === "sent" ? " user-prompt-unconfirmed" : "";
+  const actionClass = onCancelUnconfirmed
+    ? " has-cancel-unconfirmed-action"
+    : "";
   if (typeof content === "string") {
     const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
 
@@ -534,7 +566,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 
     return (
       <div
-        className={`user-prompt-container ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
+        className={`user-prompt-container${actionClass} ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
       >
         <div
           className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
@@ -547,6 +579,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
         </div>
         <UserPromptActionButtons
           onCorrect={onCorrect}
+          onCancelUnconfirmed={onCancelUnconfirmed}
           onTrimBefore={onTrimBefore}
           onForkBefore={onForkBefore}
           copyText={getUserPromptCopyText(text)}
@@ -590,7 +623,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 
   return (
     <div
-      className={`user-prompt-container ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
+      className={`user-prompt-container${actionClass} ${shouldStackUserPromptActions(text) ? "has-stacked-actions" : ""}`}
     >
       <div
         className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}${unconfirmedClass}`}
@@ -603,6 +636,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
       </div>
       <UserPromptActionButtons
         onCorrect={onCorrect}
+        onCancelUnconfirmed={onCancelUnconfirmed}
         onTrimBefore={onTrimBefore}
         onForkBefore={onForkBefore}
         copyText={getUserPromptCopyText(text)}

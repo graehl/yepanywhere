@@ -26,6 +26,21 @@ export function isUnconfirmedSelfSend(message: Message): boolean {
   return (message._source ?? "sdk") !== "jsonl" && isSelfSendEcho(message);
 }
 
+function getMessageTempId(message: Message): string | null {
+  const tempId = (message as { tempId?: unknown }).tempId;
+  return typeof tempId === "string" && tempId ? tempId : null;
+}
+
+function getMessageDeliveryIntent(message: Message): string | null {
+  const metadata = (message as { messageMetadata?: unknown }).messageMetadata;
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const deliveryIntent = (metadata as { deliveryIntent?: unknown })
+    .deliveryIntent;
+  return typeof deliveryIntent === "string" ? deliveryIntent : null;
+}
+
 export function getUserPromptDeliveryState(
   sourceMessages: readonly Message[],
 ): UserPromptDeliveryState {
@@ -33,6 +48,34 @@ export function getUserPromptDeliveryState(
     sourceMessages.length > 0 &&
     sourceMessages.every((message) => isUnconfirmedSelfSend(message));
   return unconfirmed ? "sent" : "confirmed";
+}
+
+export function getCancellableUnconfirmedSteerTempId(
+  sourceMessages: readonly Message[],
+): string | null {
+  if (
+    sourceMessages.length === 0 ||
+    !sourceMessages.every((message) => isUnconfirmedSelfSend(message))
+  ) {
+    return null;
+  }
+
+  let tempId: string | null = null;
+  for (const message of sourceMessages) {
+    if (getMessageDeliveryIntent(message) !== "steer") {
+      return null;
+    }
+    const messageTempId = getMessageTempId(message);
+    if (!messageTempId) {
+      return null;
+    }
+    tempId ??= messageTempId;
+    if (messageTempId !== tempId) {
+      return null;
+    }
+  }
+
+  return tempId;
 }
 
 const UNCONFIRMED_SCAN_LIMIT = 200;

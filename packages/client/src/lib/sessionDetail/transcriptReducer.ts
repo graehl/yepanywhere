@@ -4,6 +4,7 @@ import {
   reconcileClaudeQueueOperationEchoes,
   reconcileLinearMessages,
 } from "../linearMessageDedup";
+import { isUnconfirmedSelfSend } from "../deliveryState";
 import {
   findMessageIndexById,
   getMessageId,
@@ -107,6 +108,26 @@ export function clearStreamingPlaceholderMessages(
   messages: Message[],
 ): Message[] {
   const filtered = messages.filter((message) => !message._isStreaming);
+  return filtered.length === messages.length ? messages : filtered;
+}
+
+function messageMatchesTempId(message: Message, tempId: string): boolean {
+  const messageTempId = (message as { tempId?: unknown }).tempId;
+  if (messageTempId === tempId) {
+    return true;
+  }
+  const tempIds = (message as { tempIds?: unknown }).tempIds;
+  return Array.isArray(tempIds) && tempIds.includes(tempId);
+}
+
+function removeUnconfirmedSelfSend(
+  messages: Message[],
+  tempId: string,
+): Message[] {
+  const filtered = messages.filter(
+    (message) =>
+      !isUnconfirmedSelfSend(message) || !messageMatchesTempId(message, tempId),
+  );
   return filtered.length === messages.length ? messages : filtered;
 }
 
@@ -615,6 +636,11 @@ export function reduceSessionDetailState(
 
     case "clearStreamingPlaceholders": {
       const messages = clearStreamingPlaceholderMessages(state.messages);
+      return messages === state.messages ? state : { ...state, messages };
+    }
+
+    case "removeUnconfirmedSelfSend": {
+      const messages = removeUnconfirmedSelfSend(state.messages, action.tempId);
       return messages === state.messages ? state : { ...state, messages };
     }
 

@@ -58,6 +58,31 @@ describe("MessageList queue rows", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("sent text"));
   });
 
+  it("exposes a cancel control for unconfirmed steering sends", () => {
+    const onCancelUnconfirmedUserMessage = vi.fn();
+    const steeringEcho = {
+      ...userMessage("steer-echo", "steer text"),
+      tempId: "temp-steer",
+      _source: "sdk",
+      messageMetadata: { deliveryIntent: "steer" },
+    } as const;
+
+    render(
+      <MessageList
+        messages={[steeringEcho]}
+        onCancelUnconfirmedUserMessage={onCancelUnconfirmedUserMessage}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Cancel sent steering message",
+      }),
+    );
+
+    expect(onCancelUnconfirmedUserMessage).toHaveBeenCalledWith("temp-steer");
+  });
+
   it("copies queued message text", async () => {
     const writeText = stubClipboardWriteText();
 

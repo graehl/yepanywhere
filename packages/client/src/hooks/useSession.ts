@@ -890,6 +890,7 @@ export function useSession(
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
     clearStreamingPlaceholders,
+    removeUnconfirmedSelfSend,
     fetchNewMessages,
     pagination,
     loadingOlder,
@@ -2087,6 +2088,7 @@ export function useSession(
     updatePendingMessage, // Update pending message fields (e.g. status)
     deferredMessages, // Server-authoritative queued-message mirror
     setDeferredMessages, // Replace the mirror from a server queue/cancel response
+    removeUnconfirmedSelfSend, // Remove a cancelled optimistic steering echo
     slashCommands, // Available slash commands from init message
     sessionTools, // Available tools from init message
     mcpServers, // Available MCP servers from init message

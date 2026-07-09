@@ -484,6 +484,8 @@ interface Props {
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Callback to cancel an optimistic steering send before the provider acts. */
+  onCancelUnconfirmedUserMessage?: (tempId: string) => void;
   /** Steer a patient queued message, and earlier patient entries, into the session now */
   onSteerDeferred?: (tempId: string) => void;
   /** Callback to resume a restart-paused recovered queue entry */
@@ -697,6 +699,7 @@ export const MessageList = memo(function MessageList({
   composerDraftChange,
   quoteClearSignal = 0,
   onCancelDeferred,
+  onCancelUnconfirmedUserMessage,
   onSteerDeferred,
   onResumeRecoveredDeferred,
   onSteerRecoveredDeferred,
@@ -2297,6 +2300,7 @@ export const MessageList = memo(function MessageList({
                         )
                     : undefined
                 }
+                onCancelUnconfirmedUserPrompt={onCancelUnconfirmedUserMessage}
                 onTrimBeforeUserPrompt={
                   onTrimBeforeUserMessage && timelineRow.allowsPromptActions
                     ? () => onTrimBeforeUserMessage(item.id)

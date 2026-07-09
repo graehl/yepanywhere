@@ -91,6 +91,10 @@ export type SessionDetailAction =
       type: "clearStreamingPlaceholders";
     }
   | {
+      type: "removeUnconfirmedSelfSend";
+      tempId: string;
+    }
+  | {
       type: "applyCatchupMessages";
       messages: Message[];
       session?: SessionMetadata;

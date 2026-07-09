@@ -120,6 +120,87 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("cancels a steered message before the provider queue consumes it", async () => {
+      let resolveIterator!: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async (message) => {
+        queue.push(message);
+        return true;
+      });
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      process.queueMessage({
+        text: "cancel me",
+        tempId: "temp-steer",
+        metadata: { deliveryIntent: "steer" },
+      });
+
+      expect(process.queueDepth).toBe(1);
+      expect(
+        process.getMessageHistory().map((message) => message.tempId),
+      ).toEqual(["temp-steer"]);
+      expect(process.cancelUnconfirmedSteerMessage("temp-steer")).toBe(true);
+      expect(process.queueDepth).toBe(0);
+      expect(process.getMessageHistory()).toEqual([]);
+      expect(process.cancelUnconfirmedSteerMessage("temp-steer")).toBe(false);
+
+      resolveIterator?.();
+      await process.abort();
+    });
+
+    it("does not cancel steering after the provider queue consumes it", async () => {
+      let resolveIterator!: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async (message) => {
+        queue.push(message);
+        return true;
+      });
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      process.queueMessage({
+        text: "already consumed",
+        tempId: "temp-steer",
+        metadata: { deliveryIntent: "steer" },
+      });
+      await queue[Symbol.asyncIterator]().next();
+
+      expect(process.cancelUnconfirmedSteerMessage("temp-steer")).toBe(false);
+      expect(process.getMessageHistory()).toHaveLength(1);
+
+      resolveIterator?.();
+      await process.abort();
+    });
+
     it("marks Claude steer-now messages with now priority", async () => {
       let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {

@@ -47,6 +47,7 @@ vi.mock("../../i18n", () => ({
         projectQueueDelete: "Delete",
         userPromptCopyAction: "Copy message text",
         userPromptEditAction: "Edit latest message",
+        userPromptCancelUnconfirmedAction: "Cancel sent steering message",
       };
       const value = translations[key] ?? key;
       return value.replace(/\{(\w+)\}/g, (_, param: string) =>

@@ -163,6 +163,9 @@
 }
 
 .ran-tool-row .tool-row-header {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid
     color-mix(in srgb, var(--border-color, #333) 70%, transparent);
   background: color-mix(in srgb, var(--bg-code, #1f1f1f) 52%, transparent);

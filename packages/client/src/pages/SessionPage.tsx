@@ -508,6 +508,7 @@ function SessionPageContent({
     updatePendingMessage,
     deferredMessages,
     setDeferredMessages,
+    removeUnconfirmedSelfSend,
     slashCommands,
     setSessionModel,
     pagination,
@@ -2479,6 +2480,31 @@ function SessionPageContent({
       }
     },
     [deferredMessages, sessionId, showToast, t],
+  );
+
+  const handleCancelUnconfirmedUserMessage = useCallback(
+    async (tempId: string) => {
+      try {
+        await api.cancelUnconfirmedSteerMessage(sessionId, tempId);
+        removeUnconfirmedSelfSend(tempId);
+        if (
+          lastComposerSubmissionRef.current?.kind === "sent" &&
+          lastComposerSubmissionRef.current.id === tempId
+        ) {
+          lastComposerSubmissionRef.current = null;
+        }
+        if (lastSentComposerSubmissionRef.current?.id === tempId) {
+          lastSentComposerSubmissionRef.current = null;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("sessionUnconfirmedSteerCancelFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [removeUnconfirmedSelfSend, sessionId, showToast, t],
   );
 
   const handleSteerDeferred = useCallback(
@@ -4565,6 +4591,9 @@ function SessionPageContent({
                   composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
+                  onCancelUnconfirmedUserMessage={
+                    handleCancelUnconfirmedUserMessage
+                  }
                   onSteerDeferred={handleSteerDeferred}
                   onResumeRecoveredDeferred={handleResumeRecoveredDeferred}
                   onSteerRecoveredDeferred={handleSteerRecoveredDeferred}

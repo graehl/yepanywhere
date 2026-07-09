@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../../types";
 import {
+  getCancellableUnconfirmedSteerTempId,
   getUserPromptDeliveryState,
   hasUnconfirmedSelfSends,
   isUnconfirmedSelfSend,
@@ -42,6 +43,27 @@ describe("deliveryState", () => {
       messageMetadata: { deliveryIntent: "steer" },
     } as Partial<Message>);
     expect(isUnconfirmedSelfSend(metadataEcho)).toBe(true);
+  });
+
+  it("returns a cancel temp id only for unconfirmed steer echoes", () => {
+    expect(
+      getCancellableUnconfirmedSteerTempId([
+        sdkEcho({ messageMetadata: { deliveryIntent: "steer" } }),
+      ]),
+    ).toBe("temp-1");
+    expect(
+      getCancellableUnconfirmedSteerTempId([
+        sdkEcho({ messageMetadata: { deliveryIntent: "direct" } }),
+      ]),
+    ).toBeNull();
+    expect(
+      getCancellableUnconfirmedSteerTempId([
+        sdkEcho({
+          _source: "jsonl",
+          messageMetadata: { deliveryIntent: "steer" },
+        }),
+      ]),
+    ).toBeNull();
   });
 
   it("hasUnconfirmedSelfSends scans the tail", () => {

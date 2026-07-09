@@ -125,6 +125,11 @@ const MARKER_SPREAD_PX = 3;
 const PREVIEW_EDGE_MARGIN_PX = 1;
 const PREVIEW_VERTICAL_MARGIN_PX = 5;
 const PREVIEW_EDGE_ANCHOR_EPSILON_PX = 0.5;
+// Half the hover preview's max rendered height (CSS max-height: 4.4em on
+// .user-turn-nav-preview). A centered preview reaches this far above/below its
+// marker, so a marker within this distance of an edge must flip to an edge
+// anchor or the box is clipped by the banner before its center reaches the top.
+const PREVIEW_MAX_HALF_HEIGHT_PX = 32;
 const PREVIEW_FULL_MIN_GAP_PX = 62;
 const SEARCH_PREVIEW_COLLAPSED_LABEL_HEIGHT_PX = 15;
 const SEARCH_PREVIEW_COLLAPSED_VISUAL_GAP_PX = 1;
@@ -658,30 +663,27 @@ function spreadPreviewLabels(
   );
 }
 
-function anchorPreviewLabelToRailEdge(
-  label: UserTurnPreviewLabel,
+// A preview centered on a marker near the top/bottom of the rail extends half
+// its height past that edge, where a top banner (or the viewport) clips it.
+// Within `flipZonePx` of an edge, anchor the box to the edge instead so it
+// grows inward and stays fully visible: "start" pins the top and grows down,
+// "end" pins the bottom and grows up. The flip zone must cover the box's half
+// height, or a tall preview still overflows before its center reaches the edge.
+// Shared by the hover preview and the active search label.
+function resolvePreviewEdgeAnchor(
+  topPx: number,
   layoutHeight: number,
-): UserTurnPreviewLabel {
-  if (!label.active) {
-    return { ...label, verticalAnchor: "center" };
-  }
-  if (
-    label.topPx <=
-    PREVIEW_VERTICAL_MARGIN_PX + PREVIEW_EDGE_ANCHOR_EPSILON_PX
-  ) {
-    return {
-      ...label,
-      topPx: PREVIEW_EDGE_MARGIN_PX,
-      verticalAnchor: "start",
-    };
+  flipZonePx: number = PREVIEW_EDGE_ANCHOR_EPSILON_PX,
+): { topPx: number; verticalAnchor: UserTurnPreviewLabel["verticalAnchor"] } {
+  if (topPx <= PREVIEW_VERTICAL_MARGIN_PX + flipZonePx) {
+    return { topPx: PREVIEW_EDGE_MARGIN_PX, verticalAnchor: "start" };
   }
   const maxCenterTop = Math.max(
     PREVIEW_VERTICAL_MARGIN_PX,
     layoutHeight - PREVIEW_VERTICAL_MARGIN_PX,
   );
-  if (label.topPx >= maxCenterTop - PREVIEW_EDGE_ANCHOR_EPSILON_PX) {
+  if (topPx >= maxCenterTop - flipZonePx) {
     return {
-      ...label,
       topPx: Math.max(
         PREVIEW_EDGE_MARGIN_PX,
         layoutHeight - PREVIEW_EDGE_MARGIN_PX,
@@ -689,7 +691,17 @@ function anchorPreviewLabelToRailEdge(
       verticalAnchor: "end",
     };
   }
-  return { ...label, verticalAnchor: "center" };
+  return { topPx, verticalAnchor: "center" };
+}
+
+function anchorPreviewLabelToRailEdge(
+  label: UserTurnPreviewLabel,
+  layoutHeight: number,
+): UserTurnPreviewLabel {
+  if (!label.active) {
+    return { ...label, verticalAnchor: "center" };
+  }
+  return { ...label, ...resolvePreviewEdgeAnchor(label.topPx, layoutHeight) };
 }
 
 function getPreviewTranslateY(anchor: UserTurnPreviewLabel["verticalAnchor"]) {
@@ -1210,24 +1222,34 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
       return [];
     }
 
+    const clampedTopPx = clamp(
+      hoverPreviewMarker.renderTopPct * layout.height,
+      PREVIEW_VERTICAL_MARGIN_PX,
+      Math.max(
+        PREVIEW_VERTICAL_MARGIN_PX,
+        layout.height - PREVIEW_VERTICAL_MARGIN_PX,
+      ),
+    );
+    // Flip to an edge anchor near the top/bottom so the preview is never
+    // clipped by the banner above the rail; it moves inward to stay fully
+    // visible instead of overflowing the edge. The flip zone is the box's max
+    // half height so even a tall multi-line preview clears the banner.
+    const edgeAnchored = resolvePreviewEdgeAnchor(
+      clampedTopPx,
+      layout.height,
+      PREVIEW_MAX_HALF_HEIGHT_PX,
+    );
     return [
       {
         id: hoverPreviewMarker.id,
         targetId: hoverPreviewMarker.targetId ?? hoverPreviewMarker.id,
-        topPx: clamp(
-          hoverPreviewMarker.renderTopPct * layout.height,
-          PREVIEW_VERTICAL_MARGIN_PX,
-          Math.max(
-            PREVIEW_VERTICAL_MARGIN_PX,
-            layout.height - PREVIEW_VERTICAL_MARGIN_PX,
-          ),
-        ),
+        topPx: edgeAnchored.topPx,
         text: hoverPreviewMarker.preview,
         compact: false,
         short: isShortSingleLinePreview(hoverPreviewMarker.preview),
         active: false,
         expanded: false,
-        verticalAnchor: "center" as const,
+        verticalAnchor: edgeAnchored.verticalAnchor,
         pinned: false,
       },
     ];

@@ -18,14 +18,18 @@ See also:
 
 Topic: transcript-virtualization
 
-Status: 2026-07-09. Stage 1 item 1 (stabilize MessageList's callback props)
-landed — idle CPU on the full transcript dropped ~22% → ~9% and layout passes
-~7.3/s → ~0.5/s, so the transcript-scaling per-second churn is gone; the ~9%
-residual is small timer-driven widgets (roughly constant, not O(rows)). Stage 1
-items 2–3 (row-map inline arrows, per-row clock decoupling) remain but are lower
-priority now. Stage 2 (windowed rendering) still bounds the *static* DOM size and
-is the larger change touching scroll anchoring, the turn rail, search, and
-selection.
+Status: 2026-07-09. Stage 1 item 1 landed (stabilize MessageList's callback
+props): idle CPU ~22% → ~9%, per-second O(rows) re-render gone. Stage 2 landed
+via `content-visibility: auto` on `.message-render-row`: laid-out render tree
+bounded to the viewport — **layout objects ~70,100 → ~2,750 at 1532 rows (25×)**,
+RSS lower, with no functional regressions (turn-rail markers, click-to-jump,
+scroll-to-bottom, and hover affordances all verified; no paint-containment
+clipping). Tradeoff: idle *style-recalc* roughly doubled (~217 → ~710 per 12 s),
+because the still-present per-second widget layouts now also re-evaluate
+content-visibility state, pushing idle CPU ~9% → ~16% on the full transcript.
+That amplification **re-prioritizes Stage 1 items 2–3** (stop the per-second
+layouts). Stage 1 items 2–3 and the JS-windowing fallback remain not-done — see
+below for why.
 
 ## Problem (one line)
 
@@ -115,18 +119,30 @@ selection/comment anchors, and native find-in-page keep working unchanged. It is
 placeholder height and remembers the real size after first render, keeping the
 scrollbar stable.
 
-Residual risk to watch (measure, don't assume): (a) scroll-position stability as
-off-screen estimates correct to real heights while scrolling; (b) the turn rail
-(`UserTurnNavigator`) reads `getBoundingClientRect` of rows to place markers —
-never-rendered off-screen rows report their *intrinsic* estimate, so far-down
-marker positions may be estimate-based until scrolled into view and refine on the
-next layout pass. If either janks unacceptably, keep `content-visibility` for
-memory and add height-model marker placement (below) rather than reaching for
-full unmounting.
+Landed 2026-07-09 (`.message-render-row` in `index.css`). Measured at 1532 rows:
+layout objects ~70,100 → ~2,750, RSS ~970 → ~820 MB, DOM node count unchanged.
+Verified couplings held: turn-rail markers stay distributed and click-to-jump
+scrolls correctly (rail reads still work because the DOM is intact), initial
+scroll-to-bottom works, and paint containment did **not** clip the age chip or
+hover quote circles.
+
+Measured tradeoff: idle style-recalc roughly doubled (content-visibility state is
+re-evaluated on each of the ~7.5 per-second widget-driven layouts), so idle CPU
+on the full transcript rose ~9% → ~16%. This is amplification of the residual
+per-second widget churn, not new work of its own — Stage 1 items 2–3 (stop those
+per-second layouts) remove both the residual and this amplification, so they are
+the natural next step. `contain-intrinsic-size: auto 120px` (auto remembers real
+heights) measured the same idle cost as a fixed size but gives better scroll
+stability, so it is the shipped form.
+
+Residual risk still to watch in real use (not a headless-provable): scroll-
+position drift as far-off-screen intrinsic estimates correct to real heights on
+first scroll-through; `auto` minimizes it. If it janks in practice, add height-
+model marker placement (below) rather than reaching for full unmounting.
 
 Fall back to JS row unmounting (the design below) only if `content-visibility`
 proves insufficient (memory still unbounded) or its scroll/turn-rail behavior
-can't be made acceptable.
+can't be made acceptable. Not needed as of this landing.
 
 ### Fallback design: JS windowed rendering
 

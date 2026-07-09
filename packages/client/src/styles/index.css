@@ -4427,6 +4427,14 @@ a.linkified-url:hover {
 
 .message-render-row {
   position: relative;
+  /* Stage 2 (topics/transcript-virtualization.md): let the browser skip
+     rendering (style/layout/paint) and discard rendered state for off-screen
+     rows, bounding a long transcript's native cost to the viewport. The DOM
+     stays intact, so the turn rail, search, and selection keep working.
+     `auto` remembers each row's real height after first render; the fallback
+     only sizes never-yet-rendered rows below the fold. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
 }
 
 .queued-context-return {

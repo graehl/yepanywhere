@@ -4,11 +4,19 @@ import {
   type LocalResourceRef,
   parseLocalResourceLink,
 } from "@yep-anywhere/shared";
-import { type MouseEvent, type RefObject, useEffect, useState } from "react";
+import {
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useState,
+} from "react";
+import { api } from "../api/client";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
 import { useI18n } from "../i18n";
+import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { toSourceTransportApiPath } from "../lib/sourceTransportPaths";
 import {
@@ -17,6 +25,10 @@ import {
   makeDisplayPath,
 } from "../lib/text";
 import type { SourceTransport } from "../lib/transport";
+import {
+  FilePathContextMenu,
+  useStartNewSessionFromFileAction,
+} from "./FileResourceActions";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -66,7 +78,9 @@ interface UseLocalResourceClickResult {
   closeModal: () => void;
   closeLocalFileModal: () => void;
   closeProjectFileModal: () => void;
+  contextMenuElement: ReactNode;
   handleClick: (e: MouseEvent) => void;
+  handleContextMenu: (e: MouseEvent) => void;
 }
 
 type LocalFileViewState =
@@ -597,6 +611,78 @@ function getLocalMediaType(
   return "image";
 }
 
+function LocalResourceContextMenu({
+  contextMenu,
+  projectContext,
+  sameOriginUrls,
+  transport,
+  onClose,
+  onOpenResource,
+}: {
+  contextMenu: {
+    x: number;
+    y: number;
+    resource: LocalResourceRef;
+    projectFileTarget: ProjectFileModalTarget | null;
+  };
+  projectContext: ProjectContext | null | undefined;
+  sameOriginUrls: boolean;
+  transport: SourceTransport;
+  onClose: () => void;
+  onOpenResource: (
+    resource: LocalResourceRef,
+    target: HTMLAnchorElement,
+  ) => void;
+}) {
+  const startNewSessionFromFile = useStartNewSessionFromFileAction();
+
+  return (
+    <FilePathContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      canStartNewSession={Boolean(projectContext?.projectId)}
+      onClose={onClose}
+      onView={() => {
+        const anchor = document.createElement("a");
+        anchor.href = "#";
+        onOpenResource(contextMenu.resource, anchor);
+      }}
+      onStartNewSession={
+        projectContext?.projectId
+          ? () =>
+              startNewSessionFromFile(
+                projectContext.projectId,
+                contextMenu.projectFileTarget?.filePath ??
+                  contextMenu.resource.path,
+              )
+          : undefined
+      }
+      onCopyPath={() =>
+        void writeClipboardText(
+          contextMenu.projectFileTarget?.filePath ?? contextMenu.resource.path,
+        )
+      }
+      onCopyContents={() => {
+        const { projectFileTarget, resource } = contextMenu;
+        if (projectFileTarget) {
+          void writeClipboardTextLater(
+            api
+              .getFile(projectFileTarget.projectId, projectFileTarget.filePath)
+              .then((file) => file.content ?? ""),
+          );
+          return;
+        }
+        void writeClipboardTextLater(
+          fetchLocalResourceBlob(
+            localResourceApiPath(resource, sameOriginUrls),
+            transport,
+          ).then(readBlobText),
+        );
+      }}
+    />
+  );
+}
+
 /**
  * Hook that provides a delegated click handler for rendered HTML containing
  * local-resource links. Local media opens the existing modal. Local file paths
@@ -606,8 +692,8 @@ export function useLocalResourceClick(
   options: UseLocalResourceClickOptions = {},
 ): UseLocalResourceClickResult {
   const sessionMetadata = useOptionalSessionMetadata();
-  const sameOriginUrls =
-    useCurrentSourceRuntime().transport.capabilities.sameOriginUrls;
+  const transport = useCurrentSourceRuntime().transport;
+  const sameOriginUrls = transport.capabilities.sameOriginUrls;
   const projectContext = options.projectContext ?? sessionMetadata;
   const [modal, setModal] = useState<{
     path: string;
@@ -618,6 +704,47 @@ export function useLocalResourceClick(
   );
   const [projectFileModal, setProjectFileModal] =
     useState<ProjectFileModalTarget | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    resource: LocalResourceRef;
+    projectFileTarget: ProjectFileModalTarget | null;
+  } | null>(null);
+
+  const openResource = (
+    resource: LocalResourceRef,
+    target: HTMLAnchorElement,
+  ) => {
+    const projectFileTarget = normalizeResourceForProjectContext(
+      resource,
+      projectContext,
+    );
+    if (projectFileTarget) {
+      setProjectFileModal(projectFileTarget);
+      setLocalFileModal(null);
+      setModal(null);
+      return true;
+    }
+
+    if (resource.kind === "local-media") {
+      setModal({
+        path: resource.path,
+        mediaType: getLocalMediaType(resource, target),
+      });
+      setLocalFileModal(null);
+      setProjectFileModal(null);
+      return true;
+    }
+
+    if (isLocalFileResource(resource)) {
+      setLocalFileModal(resource);
+      setModal(null);
+      setProjectFileModal(null);
+      return true;
+    }
+
+    return false;
+  };
 
   const handleClick = (e: MouseEvent) => {
     if (!(e.target instanceof Element)) {
@@ -684,21 +811,14 @@ export function useLocalResourceClick(
       }
       e.preventDefault();
       e.stopPropagation();
-      setProjectFileModal(projectFileTarget);
-      setLocalFileModal(null);
-      setModal(null);
+      openResource(resource, target);
       return;
     }
 
     if (resource.kind === "local-media") {
       e.preventDefault();
       e.stopPropagation();
-      setModal({
-        path: resource.path,
-        mediaType: getLocalMediaType(resource, target),
-      });
-      setLocalFileModal(null);
-      setProjectFileModal(null);
+      openResource(resource, target);
       return;
     }
 
@@ -708,24 +828,62 @@ export function useLocalResourceClick(
       }
       e.preventDefault();
       e.stopPropagation();
-      setLocalFileModal(resource);
-      setModal(null);
-      setProjectFileModal(null);
+      openResource(resource, target);
     }
+  };
+
+  const handleContextMenu = (e: MouseEvent) => {
+    const target = getClickedAnchor(e.target);
+    if (!target) return;
+
+    const href = target.getAttribute("href");
+    const resource = parseLocalResourceLink(
+      {
+        attributes: getLocalResourceAttributes(target),
+        href,
+      },
+      { currentHref: getCurrentHref() },
+    );
+    if (!resource || resource.kind === "local-media") return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      resource,
+      projectFileTarget: normalizeResourceForProjectContext(
+        resource,
+        projectContext,
+      ),
+    });
   };
 
   const closeModal = () => setModal(null);
   const closeLocalFileModal = () => setLocalFileModal(null);
   const closeProjectFileModal = () => setProjectFileModal(null);
+  const closeContextMenu = () => setContextMenu(null);
+  const contextMenuElement = contextMenu ? (
+    <LocalResourceContextMenu
+      contextMenu={contextMenu}
+      projectContext={projectContext}
+      sameOriginUrls={sameOriginUrls}
+      transport={transport}
+      onClose={closeContextMenu}
+      onOpenResource={openResource}
+    />
+  ) : null;
 
   return {
     modal,
     localFileModal,
     projectFileModal,
     handleClick,
+    handleContextMenu,
     closeModal,
     closeLocalFileModal,
     closeProjectFileModal,
+    contextMenuElement,
   };
 }
 

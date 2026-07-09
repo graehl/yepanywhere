@@ -136,12 +136,13 @@ interface MarkdownPreviewProps {
   density?: MarkdownPreviewDensityOffsets;
   html: string;
   onClick?: MouseEventHandler<HTMLDivElement>;
+  onContextMenu?: MouseEventHandler<HTMLDivElement>;
   onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
 }
 
 export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
   function MarkdownPreview(
-    { ariaLabel, className, density, html, onClick, onKeyDown },
+    { ariaLabel, className, density, html, onClick, onContextMenu, onKeyDown },
     ref,
   ) {
     const classes = ["markdown-preview", className].filter(Boolean).join(" ");
@@ -151,6 +152,7 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
         role="region"
         aria-label={ariaLabel ?? "Markdown preview"}
         onClick={onClick}
+        onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
         ref={ref}
         style={getMarkdownPreviewStyle(density)}

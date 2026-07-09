@@ -1,12 +1,14 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { api } from "../api/client";
 import {
   buildPublicShareFileHref,
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { toBrowserAppHref } from "../lib/appHref";
+import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import {
   getPathBasename,
   getProjectRelativePath,
@@ -18,6 +20,10 @@ import {
   type FileViewerMode,
   type FileViewerSource,
 } from "./FileViewer";
+import {
+  FilePathContextMenu,
+  useStartNewSessionFromFile,
+} from "./FileResourceActions";
 import { createPublicShareFileViewerSource } from "./publicShareFileViewerSource";
 import { CopyTextButton } from "./ui/CopyTextButton";
 
@@ -140,10 +146,15 @@ export const FilePathLink = memo(function FilePathLink({
   const publicShareContext = usePublicShareContext();
   const basePath = useRemoteBasePath();
   const [showModal, setShowModal] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const viewerFilePath = useMemo(
     () => getProjectViewerFilePath(projectId, filePath),
     [projectId, filePath],
   );
+  const startNewSession = useStartNewSessionFromFile(projectId, viewerFilePath);
   const publicShareFileViewUrl = publicShareContext
     ? buildPublicShareFileHref(publicShareContext, {
         columnNumber,
@@ -193,6 +204,22 @@ export const FilePathLink = memo(function FilePathLink({
   const handleClose = useCallback(() => {
     setShowModal(false);
   }, []);
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const handleViewFromMenu = useCallback(() => setShowModal(true), []);
+  const handleCopyPathFromMenu = useCallback(() => {
+    void writeClipboardText(viewerFilePath);
+  }, [viewerFilePath]);
+  const handleCopyContentsFromMenu = useCallback(() => {
+    const loadFile = publicShareFileViewerSource
+      ? publicShareFileViewerSource.loadFile(projectId, viewerFilePath, false)
+      : api.getFile(projectId, viewerFilePath);
+    void writeClipboardTextLater(loadFile.then((file) => file.content ?? ""));
+  }, [projectId, publicShareFileViewerSource, viewerFilePath]);
 
   // Format the display text
   const fileName = showFullPath ? filePath : getPathBasename(filePath);
@@ -212,6 +239,7 @@ export const FilePathLink = memo(function FilePathLink({
         href={fileViewUrl ?? "#"}
         className="file-path-link"
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         title={`${filePath}${suffix}\nClick to view, or use a browser link gesture to open this file`}
       >
         <span className="file-path-link-name">{text}</span>
@@ -220,6 +248,18 @@ export const FilePathLink = memo(function FilePathLink({
         )}
       </a>
       {showCopyButton && <FilePathCopyButton filePath={viewerFilePath} />}
+      {contextMenu && (
+        <FilePathContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          canStartNewSession={publicShareContext === null}
+          onClose={closeContextMenu}
+          onView={handleViewFromMenu}
+          onStartNewSession={startNewSession}
+          onCopyPath={handleCopyPathFromMenu}
+          onCopyContents={handleCopyContentsFromMenu}
+        />
+      )}
       {showModal && (
         <FileViewerModal
           projectId={projectId}

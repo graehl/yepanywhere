@@ -1,12 +1,24 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublicShareProvider } from "../../contexts/PublicShareContext";
+import { I18nProvider } from "../../i18n";
+import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
+import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
 import { FilePathLink } from "../FilePathLink";
 
 describe("FilePathLink", () => {
   afterEach(() => {
     cleanup();
+    sessionStorage.clear();
+    window.history.replaceState({}, "", "/");
+    vi.unstubAllGlobals();
   });
 
   it("renders a native link to the standalone file viewer", () => {
@@ -196,6 +208,73 @@ describe("FilePathLink", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+  });
+
+  it("opens a context menu that can prefill a new session from the path", () => {
+    render(
+      <I18nProvider>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: "guide.md" }), {
+      clientX: 20,
+      clientY: 30,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "New session" }));
+
+    expect(getNewSessionPrefill(LOCAL_CLIENT_SUMMARY_SOURCE_KEY)).toBe(
+      "docs/guide.md",
+    );
+    expect(window.location.pathname).toBe("/new-session");
+    expect(window.location.search).toBe("?projectId=project-id");
+  });
+
+  it("copies file contents from the context menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            metadata: {
+              path: "docs/guide.md",
+              size: 9,
+              mimeType: "text/markdown",
+              isText: true,
+            },
+            rawUrl: "",
+            content: "# Guide\n",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }),
+    );
+
+    render(
+      <I18nProvider>
+        <FilePathLink
+          projectId="project-id"
+          filePath="docs/guide.md"
+          displayText="guide.md"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: "guide.md" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy contents" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("# Guide\n");
+    });
   });
 
   it("uses share-scoped file routes when rendered in a public share", () => {

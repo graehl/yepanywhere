@@ -22,9 +22,11 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
     localFileModal,
     projectFileModal,
     handleClick,
+    handleContextMenu,
     closeModal,
     closeLocalFileModal,
     closeProjectFileModal,
+    contextMenuElement,
   } = useLocalResourceClick();
 
   // Prefer server-rendered HTML if available
@@ -32,7 +34,11 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
     return (
       // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to local resource links inside rendered markdown
       // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links/controls
-      <div className="text-block" onClick={handleClick}>
+      <div
+        className="text-block"
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+      >
         <div
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered markdown
           dangerouslySetInnerHTML={{ __html: block._renderedHtml }}
@@ -59,6 +65,7 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
             onClose={closeProjectFileModal}
           />
         )}
+        {contextMenuElement}
       </div>
     );
   }

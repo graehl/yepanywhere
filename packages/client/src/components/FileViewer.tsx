@@ -6,6 +6,7 @@ import {
 import {
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -13,10 +14,12 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { usePublicShareContext } from "../contexts/PublicShareContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
+import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
@@ -33,6 +36,10 @@ import {
   useLocalMediaInlinePreviews,
   useLocalResourceClick,
 } from "./LocalMediaModal";
+import {
+  FilePathContextMenu,
+  useStartNewSessionFromFile,
+} from "./FileResourceActions";
 import {
   combineDensityOffsets,
   FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
@@ -314,6 +321,7 @@ export const FileViewer = memo(function FileViewer({
 }: FileViewerProps) {
   const { t } = useI18n();
   const transport = useCurrentSourceRuntime().transport;
+  const publicShareContext = usePublicShareContext();
   const sameOriginUrls = transport.capabilities.sameOriginUrls;
   const basePath = useRemoteBasePath();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
@@ -322,6 +330,10 @@ export const FileViewer = memo(function FileViewer({
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [imageObjectUrl, setImageObjectUrl] = useState<string | null>(null);
   const [highlightedLineRef, setHighlightedLineRef] =
     useState<HTMLElement | null>(null);
@@ -342,9 +354,11 @@ export const FileViewer = memo(function FileViewer({
     localFileModal,
     projectFileModal,
     handleClick: handleLocalResourceClick,
+    handleContextMenu: handleLocalResourceContextMenu,
     closeModal: closeLocalMediaModal,
     closeLocalFileModal,
     closeProjectFileModal,
+    contextMenuElement: localResourceContextMenu,
   } = useLocalResourceClick();
   const handleLocalResourceKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -493,13 +507,23 @@ export const FileViewer = memo(function FileViewer({
   const handleCopy = useCallback(async () => {
     if (fileData?.content === undefined) return;
     try {
-      await navigator.clipboard.writeText(fileData.content);
+      const success = await writeClipboardText(fileData.content);
+      if (!success) {
+        throw new Error("Clipboard write failed");
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch (err) {
       console.error("Failed to copy:", err);
     }
   }, [fileData?.content]);
+  const handleCopyContentsFromMenu = useCallback(() => {
+    void writeClipboardTextLater(
+      source
+        .loadFile(projectId, filePath, false)
+        .then((file) => file.content ?? ""),
+    );
+  }, [filePath, projectId, source]);
 
   const projectPath = useMemo(() => getProjectPath(projectId), [projectId]);
   const displayPath = useMemo(
@@ -520,6 +544,7 @@ export const FileViewer = memo(function FileViewer({
       : (imageObjectUrl ?? (!source.fetchRawFileBlob ? rawFileUrl : null))
     : null;
   const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
+  const startNewSession = useStartNewSessionFromFile(projectId, filePath);
 
   const handleDownload = useCallback(() => {
     if (!fileData) return;
@@ -577,6 +602,12 @@ export const FileViewer = memo(function FileViewer({
     openInNewTabUrl,
     viewMode,
   ]);
+  const handlePathContextMenu = useCallback((event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   // Render loading state
   if (loading) {
@@ -646,6 +677,7 @@ export const FileViewer = memo(function FileViewer({
             density={markdownDensity}
             ariaLabel={t("fileViewerPreview" as never)}
             onClick={handleLocalResourceClick}
+            onContextMenu={handleLocalResourceContextMenu}
             onKeyDown={handleLocalResourceKeyDown}
             ref={markdownPreviewRef}
           />
@@ -771,7 +803,12 @@ export const FileViewer = memo(function FileViewer({
   const header = (
     <div className="file-viewer-header">
       <div className="file-viewer-info">
-        <span className="file-viewer-path" title={filePath}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: right-click opens the file action menu; left-click behavior stays on explicit toolbar buttons */}
+        <span
+          className="file-viewer-path"
+          title={filePath}
+          onContextMenu={handlePathContextMenu}
+        >
           {displayPath}
         </span>
         <span className="file-viewer-meta">
@@ -823,6 +860,16 @@ export const FileViewer = memo(function FileViewer({
             }
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
+          </button>
+        )}
+        {publicShareContext === null && (
+          <button
+            type="button"
+            className="file-viewer-action file-viewer-new-session"
+            onClick={startNewSession}
+            title={t("fileViewerNewSession" as never)}
+          >
+            <PlusCircleIcon />
           </button>
         )}
         {!standalone && (
@@ -887,6 +934,19 @@ export const FileViewer = memo(function FileViewer({
   return (
     <div className={viewerClass}>
       {header}
+      {contextMenu && (
+        <FilePathContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          canStartNewSession={publicShareContext === null}
+          onClose={closeContextMenu}
+          onView={handleOpenInNewTab}
+          onStartNewSession={startNewSession}
+          onCopyPath={() => void writeClipboardText(filePath)}
+          onCopyContents={handleCopyContentsFromMenu}
+        />
+      )}
+      {localResourceContextMenu}
       <div className="file-viewer-body" ref={fileViewerBodyRef}>
         {renderContent()}
       </div>
@@ -956,6 +1016,25 @@ function CheckIcon() {
       aria-hidden="true"
     >
       <path d="M3 8.5L6.5 12L13 4" />
+    </svg>
+  );
+}
+
+function PlusCircleIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v6M5 8h6" />
     </svg>
   );
 }

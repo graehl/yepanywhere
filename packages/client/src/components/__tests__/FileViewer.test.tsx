@@ -8,6 +8,8 @@ import {
 import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
+import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
+import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
 import { FileViewer, type FileViewerSource } from "../FileViewer";
 
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -75,6 +77,8 @@ describe("FileViewer", () => {
 
   afterEach(() => {
     cleanup();
+    sessionStorage.clear();
+    window.history.replaceState({}, "", "/");
     vi.unstubAllGlobals();
     if (originalScrollIntoView) {
       Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
@@ -145,6 +149,41 @@ describe("FileViewer", () => {
       undefined,
       "full",
     );
+  });
+
+  it("prefills a new session from the file viewer path", async () => {
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: "src/App.ts",
+        size: 20,
+        mimeType: "text/typescript",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "export {};\n",
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+    };
+
+    render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="src/App.ts"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    const button = await screen.findByTitle("New session from path");
+    fireEvent.click(button);
+
+    expect(getNewSessionPrefill(LOCAL_CLIENT_SUMMARY_SOURCE_KEY)).toBe(
+      "src/App.ts",
+    );
+    expect(window.location.pathname).toBe("/new-session");
+    expect(window.location.search).toBe("?projectId=project-id");
   });
 
   it("marks and scrolls a line range 10% below the viewer top", async () => {

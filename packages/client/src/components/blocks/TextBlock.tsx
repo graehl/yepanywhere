@@ -202,9 +202,11 @@ export const TextBlock = memo(function TextBlock({
     localFileModal,
     projectFileModal,
     handleClick,
+    handleContextMenu,
     closeModal,
     closeLocalFileModal,
     closeProjectFileModal,
+    contextMenuElement,
   } = useLocalResourceClick();
   useLocalMediaInlinePreviews(copySourceRef);
 
@@ -225,11 +227,7 @@ export const TextBlock = memo(function TextBlock({
   // Always render streaming container when isStreaming so refs are attached
   // before first augment arrives. Hidden until useStreamingContent becomes true.
   const renderStreamingContainer = isStreaming;
-  const paragraphLayoutKey = [
-    showRendered,
-    text,
-    augmentHtml ?? "",
-  ].join("\0");
+  const paragraphLayoutKey = [showRendered, text, augmentHtml ?? ""].join("\0");
 
   // Measure each rendered top-level block so a per-paragraph quote circle can
   // sit at its end. Skipped while streaming (paragraph boundaries are still
@@ -342,6 +340,7 @@ export const TextBlock = memo(function TextBlock({
         ref={copySourceRef}
         className="text-block-content"
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
       >
         {/* Always render streaming elements when streaming so refs are ready for augments */}
         {renderStreamingContainer && (
@@ -403,6 +402,7 @@ export const TextBlock = memo(function TextBlock({
           onClose={closeProjectFileModal}
         />
       )}
+      {contextMenuElement}
     </div>
   );
 });

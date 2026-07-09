@@ -67,23 +67,68 @@ Cheap, behavior-preserving. Do these, then re-measure:
    stable; `getComposerDraft` reads a ref, deps `[]`). Audit the remaining
    `MessageList` props for any other per-render-fresh value; the memo only holds
    if *all* props are stable.
-2. **Stabilize the row-map inline arrows** in `MessageList` (~lines 2341, 2348,
-   2353): the conditional `() => onTrimBeforeUserMessage(item.id)` etc. Prefer
-   passing the stable handler plus `item.id` and letting the row bind, or a
-   per-item memoized callback map, so historical rows keep referential prop
-   stability.
-3. **Decouple per-row clocks.** `staleNowMs` and `latestVisibleTimestampMs` are
-   broadcast to every `RenderItemComponent`; only the latest-visible row needs a
-   live clock. Give just that row the clock (or a tiny dedicated subscriber
-   component) so a `nowMs` tick re-renders one row, not N.
+2. **[DEFERRED 2026-07-09] Stabilize the row-map inline arrows** in `MessageList`
+   (~lines 2341, 2348, 2353): the conditional `() => onTrimBeforeUserMessage(
+   item.id)` etc. Prefer passing the stable handler plus `item.id` and letting
+   the row bind, or a per-item memoized callback map, so historical rows keep
+   referential prop stability.
+3. **[DEFERRED 2026-07-09] Decouple per-row clocks.** `staleNowMs` and
+   `latestVisibleTimestampMs` are broadcast to every `RenderItemComponent`; only
+   the latest-visible row needs a live clock. Give just that row the clock (or a
+   tiny dedicated subscriber component) so a `nowMs` tick re-renders one row, not
+   N.
 4. Re-measure. If idle rows still re-render, a broadcast prop *value* is still
    changing each second (suspect `isStreaming` or a liveness-derived value from
    `useSession`); trace and gate it.
 
+**Why 2–3 are deferred, not dropped:** after item 1, measured idle layout
+passes fell to ~0.5/s and idle CPU to ~9% at 1480 rows — i.e. the *per-second,
+O(rows)* transcript churn (the growth engine) is already gone. The residual ~9%
+is small timer-driven widgets (processing indicator, connection bar, age chips)
+doing style-only invalidation that does **not** scale with transcript length, so
+2–3 are diminishing returns for the memory goal. They remain worth doing for
+overall idle-CPU hygiene (target ≪1%) and to make row memoization robust before
+Stage 2 leans on it; do them opportunistically or if profiling still shows row
+renders after Stage 2. Not doing them does not block Stage 2.
+
 Stage 1 does not bound the DOM — a very long session is still a large static
 DOM — but it removes the per-second O(N) churn, which is the growth engine.
 
-## Stage 2 — windowed rendering (the real bound)
+## Stage 2 — bound rendered cost to the viewport
+
+Goal: a very long transcript should cost the browser (Blink style/layout/paint/
+raster memory, and any per-tick layout) only for what's near the viewport, not
+for the whole history.
+
+### Chosen mechanism: `content-visibility: auto` first (2026-07-09)
+
+Decision: realize Stage 2 first with CSS `content-visibility: auto` on transcript
+rows (plus `contain-intrinsic-size: auto <estimate>`), **not** JS row unmounting.
+Rationale — the hard part of JS windowing is that every coupling below assumes
+rows stay in the DOM; `content-visibility: auto` keeps the DOM intact and only
+tells the browser to skip rendering work (and discard rendered state) for
+off-screen subtrees. So it bounds the native-memory / layout cost — the actual
+defect — while the turn rail's rect reads, in-transcript search `scrollIntoView`,
+selection/comment anchors, and native find-in-page keep working unchanged. It is
+~a few lines of CSS versus a large, risky refactor, and it is behavior-preserving
+(so it can default on). `contain-intrinsic-size: auto Xpx` gives off-screen rows a
+placeholder height and remembers the real size after first render, keeping the
+scrollbar stable.
+
+Residual risk to watch (measure, don't assume): (a) scroll-position stability as
+off-screen estimates correct to real heights while scrolling; (b) the turn rail
+(`UserTurnNavigator`) reads `getBoundingClientRect` of rows to place markers —
+never-rendered off-screen rows report their *intrinsic* estimate, so far-down
+marker positions may be estimate-based until scrolled into view and refine on the
+next layout pass. If either janks unacceptably, keep `content-visibility` for
+memory and add height-model marker placement (below) rather than reaching for
+full unmounting.
+
+Fall back to JS row unmounting (the design below) only if `content-visibility`
+proves insufficient (memory still unbounded) or its scroll/turn-rail behavior
+can't be made acceptable.
+
+### Fallback design: JS windowed rendering
 
 Render only rows near the viewport (plus a small overscan); replace off-screen
 runs with spacer elements sized from measured/estimated row heights. Bounds both

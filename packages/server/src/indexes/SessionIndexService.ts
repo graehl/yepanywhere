@@ -63,12 +63,12 @@ export interface CachedSessionSummary {
 }
 
 export interface SessionIndexState {
-  version: 2;
+  version: 3;
   projectId: string;
   sessions: Record<string, CachedSessionSummary>;
 }
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 
 interface SessionIndexLargestCacheMiss {
   sessionId: string;

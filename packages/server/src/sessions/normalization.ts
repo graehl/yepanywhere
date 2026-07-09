@@ -670,7 +670,7 @@ function isCodexStartupInstructionMessage(
 const CODEX_STARTUP_INSTRUCTIONS_RE =
   /^(?:<recommended_plugins>[\s\S]*?<\/recommended_plugins>\s*)?# AGENTS\.md instructions for /u;
 
-function isCodexStartupInstructionText(text: string): boolean {
+export function isCodexStartupInstructionText(text: string): boolean {
   const trimmed = text.trimStart();
   return (
     CODEX_STARTUP_INSTRUCTIONS_RE.test(trimmed) &&

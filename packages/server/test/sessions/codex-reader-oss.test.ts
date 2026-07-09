@@ -365,6 +365,73 @@ describe("CodexSessionReader - OSS Support", () => {
     });
   });
 
+  it("skips plugin-prefixed startup instructions when deriving titles", async () => {
+    const sessionId = "plugin-prefixed-startup-title";
+    const now = new Date().toISOString();
+    const startupInstructions = [
+      "<recommended_plugins>",
+      "- GitHub (github@openai-curated-remote)",
+      "</recommended_plugins>",
+      "# AGENTS.md instructions for /test/project",
+      "<INSTRUCTIONS>",
+      "Follow the project instructions.",
+      "</INSTRUCTIONS>",
+    ].join("\n");
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: startupInstructions }],
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "actual first turn" }],
+        },
+      }),
+    ];
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    const headSummary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+      { readMode: "head" },
+    );
+    expect(headSummary).toMatchObject({
+      title: "actual first turn",
+      fullTitle: "actual first turn",
+    });
+
+    const session = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(session?.summary).toMatchObject({
+      title: "actual first turn",
+      fullTitle: "actual first turn",
+    });
+  });
+
   it("can read a cheap head summary without scanning trailing transcript", async () => {
     const sessionId = "cheap-summary-session";
     const now = new Date().toISOString();

@@ -108,7 +108,10 @@ Codex can now prefix its persisted startup instruction user-role row with a
 `# AGENTS.md instructions for ...`. YA treats that shape as the same injected
 startup instruction row as the older plain `# AGENTS.md instructions for ...`
 form: the durable reader suppresses it, and the client setup fallback collapses
-it into `Session setup` rather than rendering it as a user-authored turn.
+it into `Session setup` rather than rendering it as a user-authored turn. The
+Codex summary reader also skips the row when deriving the first-turn session
+title; the session-summary index version advances with that interpretation so
+already-cached plugin-prefixed titles are rebuilt after restart.
 
 Remaining Part 2 scope: broader resume-from-full init text can still render as
 normal turns. It predates the compaction work and needs its own classification,

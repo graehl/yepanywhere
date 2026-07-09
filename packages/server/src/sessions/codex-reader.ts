@@ -46,7 +46,10 @@ import {
   createCodexRolloutDiscoveryStats,
   readCodexRolloutMetadata,
 } from "./codex-discovery.js";
-import { normalizeSession } from "./normalization.js";
+import {
+  isCodexStartupInstructionText,
+  normalizeSession,
+} from "./normalization.js";
 import { SummaryParserClient } from "./summary-parser-worker-client.js";
 import type {
   SummaryParserWorkerMode,
@@ -1836,7 +1839,7 @@ export class CodexSessionReader implements ISessionReader {
   private isSystemPromptUserMessage(text: string): boolean {
     const trimmed = text.trimStart();
     return (
-      trimmed.startsWith("# AGENTS.md instructions") ||
+      isCodexStartupInstructionText(trimmed) ||
       trimmed.startsWith("<environment_context>")
     );
   }

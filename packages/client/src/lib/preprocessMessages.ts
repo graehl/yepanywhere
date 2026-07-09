@@ -167,6 +167,36 @@ function isCompactCommand(command: string): boolean {
   return normalized === "compact" || normalized === "compress";
 }
 
+function systemLocalCommandContent(content: unknown): string | null {
+  if (typeof content !== "string") {
+    return null;
+  }
+
+  if (isLocalCommandCaveatOnly(content)) {
+    return null;
+  }
+
+  const commandTurn = parseCommandTurn(content);
+  if (commandTurn) {
+    return isCompactCommand(commandTurn.command)
+      ? null
+      : formatCommandTurn(commandTurn);
+  }
+
+  const localCommandStdout = parseLocalCommandStdout(content);
+  if (localCommandStdout !== null) {
+    if (!localCommandStdout) {
+      return null;
+    }
+    return isCompactionLocalCommandOutput(localCommandStdout)
+      ? null
+      : localCommandStdout;
+  }
+
+  const trimmedContent = content.trim();
+  return trimmedContent ? trimmedContent : null;
+}
+
 function compactMetadataDetail(msg: Message): string | null {
   const metadata = (msg as { compactMetadata?: unknown }).compactMetadata;
   if (!isRecord(metadata)) {
@@ -562,6 +592,21 @@ function processMessage(
   // Handle system entries (compact_boundary, status, etc.)
   if (msg.type === "system") {
     const subtype = (msg as { subtype?: string }).subtype ?? "unknown";
+    if (subtype === "local_command") {
+      const content = systemLocalCommandContent(msg.content);
+      if (content !== null) {
+        items.push({
+          type: "system",
+          id: msgId,
+          subtype,
+          content,
+          sourceMessages: [msg],
+          isSubagent: msg.isSubagent,
+        });
+      }
+      return;
+    }
+
     // Render compact_boundary as a visible system message
     if (
       subtype === "compact_boundary" ||

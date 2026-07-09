@@ -645,6 +645,45 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("renders durable Claude local-command stdout system rows", () => {
+    const messages: Message[] = [
+      {
+        uuid: "local-command-error",
+        type: "system",
+        subtype: "local_command",
+        content:
+          "<local-command-stdout>Unknown command: /tend</local-command-stdout>",
+        timestamp: "2026-07-09T18:11:26.044Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      id: "local-command-error",
+      subtype: "local_command",
+      content: "Unknown command: /tend",
+    });
+  });
+
+  it("suppresses durable Claude compact local-command stdout rows", () => {
+    const messages: Message[] = [
+      {
+        uuid: "local-command-compact",
+        type: "system",
+        subtype: "local_command",
+        content: "<local-command-stdout>Compacted</local-command-stdout>",
+        timestamp: "2026-07-09T18:11:26.044Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(0);
+  });
+
   it("collapses Claude slash-command skill bodies into command details", () => {
     const skillBody = [
       {

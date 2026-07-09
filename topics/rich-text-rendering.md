@@ -31,7 +31,9 @@ a standalone `**heading**`. Subsequent standalone `**heading**` lines become
 collapsible outline sections; a blank line immediately after a heading is
 suppressed so the visual grouping follows the heading/body structure. Inline
 backtick spans and fenced or indented fixed-font blocks get monospace treatment.
-Other thinking text remains plain pre-wrapped text.
+Non-code lines that are only an HTML comment are treated as display placeholders
+and suppressed; comment-like lines inside fenced or indented code remain source
+text. Other thinking text remains plain pre-wrapped text.
 
 Provider formats observed so far:
 

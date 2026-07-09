@@ -27,11 +27,43 @@ type ThinkingContentBlock =
   | { type: "code"; text: string };
 
 const thinkingHeadingPattern = /^\s*\*\*(.+?)\*\*\s*$/;
+const htmlCommentOnlyLinePattern = /^\s*<!--[\s\S]*-->\s*$/;
 
 function getThinkingHeading(line: string): string | null {
   const match = thinkingHeadingPattern.exec(line);
   const heading = match?.[1]?.trim();
   return heading ? heading : null;
+}
+
+function isDisplayOnlyPlaceholderLine(line: string): boolean {
+  return htmlCommentOnlyLinePattern.test(line);
+}
+
+function stripDisplayOnlyPlaceholderLines(text: string): string {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const keptLines: string[] = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isFence = trimmed.startsWith("```");
+    const isIndentedCode = line.startsWith("    ") || line.startsWith("\t");
+    if (
+      !inFence &&
+      !isFence &&
+      !isIndentedCode &&
+      isDisplayOnlyPlaceholderLine(line)
+    ) {
+      continue;
+    }
+
+    keptLines.push(line);
+    if (isFence) {
+      inFence = !inFence;
+    }
+  }
+
+  return keptLines.join("\n");
 }
 
 function splitThinkingBlocks(lines: string[]): ThinkingContentBlock[] {
@@ -73,6 +105,11 @@ function splitThinkingBlocks(lines: string[]): ThinkingContentBlock[] {
         index += 1;
       }
       blocks.push({ type: "code", text: codeLines.join("\n") });
+      continue;
+    }
+
+    if (isDisplayOnlyPlaceholderLine(line)) {
+      flushParagraph();
       continue;
     }
 
@@ -148,7 +185,12 @@ function parseThinkingOutlineFragment(
     }
 
     if (!current) continue;
-    if (current.bodyLines.length === 0 && line.text.trim() === "") continue;
+    if (
+      current.bodyLines.length === 0 &&
+      (line.text.trim() === "" || isDisplayOnlyPlaceholderLine(line.text))
+    ) {
+      continue;
+    }
     current.bodyLines.push(line.text);
   }
   flush();
@@ -299,9 +341,13 @@ export const ThinkingText = memo(function ThinkingText({
   text,
   isStreaming = false,
 }: ThinkingTextProps) {
-  const outline = useThinkingOutline(text, isStreaming);
-  const plainRef = useQuoteableTextSource<HTMLSpanElement>(text);
-  const outlineRef = useQuoteableTextSource<HTMLDivElement>(text);
+  const displayText = useMemo(
+    () => stripDisplayOnlyPlaceholderLines(text),
+    [text],
+  );
+  const outline = useThinkingOutline(displayText, isStreaming);
+  const plainRef = useQuoteableTextSource<HTMLSpanElement>(displayText);
+  const outlineRef = useQuoteableTextSource<HTMLDivElement>(displayText);
   const [closedSections, setClosedSections] = useState<Set<string>>(
     () => new Set(),
   );
@@ -323,7 +369,7 @@ export const ThinkingText = memo(function ThinkingText({
   if (!outline) {
     return (
       <span ref={plainRef} className="thinking-text thinking-text-plain">
-        <LinkifiedText text={text} />
+        <LinkifiedText text={displayText} />
       </span>
     );
   }

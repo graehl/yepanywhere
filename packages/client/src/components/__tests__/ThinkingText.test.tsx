@@ -35,4 +35,49 @@ describe("ThinkingText", () => {
       firstSection,
     );
   });
+
+  it("omits comment-only placeholder lines from outline bodies", () => {
+    const text = [
+      "**Planning full-corpus review**",
+      "",
+      "<!-- -->",
+      "**Evaluating chunking strategy**",
+      "",
+      "<!-- -->",
+    ].join("\n");
+
+    const { container } = render(<ThinkingText text={text} />);
+
+    expect(screen.getByText("Planning full-corpus review")).toBeDefined();
+    expect(screen.getByText("Evaluating chunking strategy")).toBeDefined();
+    expect(container.querySelectorAll(".thinking-outline-section")).toHaveLength(
+      2,
+    );
+    expect(container.querySelector(".thinking-outline-body")).toBeNull();
+    expect(container.textContent).not.toContain("<!-- -->");
+  });
+
+  it("omits comment-only placeholder lines from plain thinking text", () => {
+    const { container } = render(
+      <ThinkingText text={["Checking policy", "<!-- -->", "Done"].join("\n")} />,
+    );
+
+    expect(container.textContent).toBe("Checking policy\nDone");
+  });
+
+  it("preserves comment-like lines inside thinking code blocks", () => {
+    const text = [
+      "**Inspecting markup**",
+      "",
+      "```html",
+      "<!-- real comment -->",
+      "```",
+    ].join("\n");
+
+    const { container } = render(<ThinkingText text={text} />);
+
+    expect(container.querySelector(".thinking-code-block")?.textContent).toBe(
+      "<!-- real comment -->",
+    );
+  });
 });

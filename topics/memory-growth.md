@@ -101,6 +101,41 @@ that plan. If rows still re-render every second, a broadcast prop *value*
 (`isStreaming`, or a liveness-derived value) is still changing each tick — trace
 it before assuming (1) is complete.
 
+### 2026-07-09 follow-up: the residual idle re-render was context, not clocks
+
+Answering the open item above with direct measurement (temporary
+`window.__mlRender` / `window.__riRender` render counters + CDP profile +
+DOM-mutation observer, on the same full-transcript idle page):
+
+- **`MessageList` re-renders ~0.1/s** on idle — item 1's `memo` holds. It is
+  *not* re-rendering every second.
+- **`RenderItemComponent` re-renders are a one-shot settling burst**, not steady
+  churn: the same count over a 10 s and a 30 s idle window.
+- The re-render that *did* persist was **context-driven**: `AgentContentContext`
+  built a fresh `value` object every provider render. The provider re-renders on
+  each SessionPage status-timer tick (~1/s), so the context value changed every
+  second and re-rendered every subagent consumer (`TaskRenderer`,
+  `SpawnAgentRenderer`, nested rows) — context propagation goes *through* `memo`,
+  which is why item 1's prop stabilization did not stop it. The CPU-profile
+  hotspots (`propagateParentContextChanges`, `formatAbsoluteTimestamp`,
+  `jsxDEV`) drop after wrapping that value in `useMemo`.
+- After the fix, the idle transcript DOM is essentially static (~1 mutation/s,
+  only the processing indicator). No steady DOM growth, no leak — confirming the
+  original "flat heap" reading was right; the cost was wasted render-phase work,
+  now removed at its source.
+
+Consequence for the plan: `transcript-virtualization.md` Stage 1 items 2–3
+(row-map inline arrows; per-row clock decoupling) are **moot**, not merely
+deferred — the churn they target does not occur once the context value is
+memoized. The per-row clock was already gated in code
+(`getRenderItemStaleNowMs` returns `undefined` for non-latest rows).
+
+Measurement caveat: the shared dev server's load/highlight timing is noisy. A
+fixed post-load settle sometimes catches load-time shiki re-highlight (bursts of
+`fixed-font-rendered__content` / `shiki-container` child-list mutations that
+*do* settle). Trust only quiescence-gated samples — poll the transcript
+DOM-mutation rate and measure only once it falls below a small threshold.
+
 ## 2026-05-12: heartbeat session `019e1ac6-c836-7e33-891e-2ba878d27ca5`
 
 - Confirmed metadata persisted for `019e1ac6-c836-7e33-891e-2ba878d27ca5` includes:

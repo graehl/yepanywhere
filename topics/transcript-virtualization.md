@@ -24,12 +24,37 @@ via `content-visibility: auto` on `.message-render-row`: laid-out render tree
 bounded to the viewport — **layout objects ~70,100 → ~2,750 at 1532 rows (25×)**,
 RSS lower, with no functional regressions (turn-rail markers, click-to-jump,
 scroll-to-bottom, and hover affordances all verified; no paint-containment
-clipping). Tradeoff: idle *style-recalc* roughly doubled (~217 → ~710 per 12 s),
-because the still-present per-second widget layouts now also re-evaluate
-content-visibility state, pushing idle CPU ~9% → ~16% on the full transcript.
-That amplification **re-prioritizes Stage 1 items 2–3** (stop the per-second
-layouts). Stage 1 items 2–3 and the JS-windowing fallback remain not-done — see
-below for why.
+clipping). Tradeoff: idle *style-recalc* roughly doubled, because the per-second widget
+layouts now also re-evaluate content-visibility state (native, high count but
+~1% CPU duration).
+
+2026-07-09 (follow-up, measured): **Stage 1 items 2–3 are moot, not
+"re-prioritized."** Direct render-count instrumentation on the full-transcript
+idle page (temporary `window.__mlRender`/`__riRender` counters + CDP profile)
+showed `MessageList` re-renders **0.1/s** (item 1's memo holds) and
+`RenderItemComponent` re-renders are a **one-shot settling burst** (identical
+count over a 10 s and a 30 s window), not steady churn. So the row-map inline
+arrows (item 2) are never recreated on idle, and `staleNowMs` is already gated
+to the single latest-visible row (item 3). Items 2–3 target re-render churn
+that measurement shows does not occur; they are at most defensive hardening for
+a future where `MessageList` re-renders often again.
+
+The **actual** residual per-second re-render was elsewhere: the
+`AgentContentContext` provider built a fresh `value` object every render, so
+each SessionPage status-timer tick (~1/s) changed the context value and
+re-rendered every subagent (`TaskRenderer`/`SpawnAgentRenderer`) consumer and
+its nested rows *through* their `memo` boundaries (context bypasses `memo`).
+Fixed 2026-07-09 by wrapping that value in `useMemo`
+(`contexts/AgentContentContext.tsx`); the CPU profile's
+`propagateParentContextChanges` / `formatAbsoluteTimestamp` idle hotspots
+disappear after the fix. See `memory-growth.md` § *2026-07-09 follow-up*.
+
+After that fix, idle transcript DOM is static (~1 mutation/s: only the
+processing indicator), and the remaining steady idle cost is content-
+visibility's cheap recalc-style re-evaluation. Measurement caveat: the shared
+dev server's load/highlight timing is noisy; only quiescence-gated samples
+(DOM-mutation rate below threshold before measuring) are trustworthy — a fixed
+settle sometimes catches load-time shiki highlighting.
 
 ## Problem (one line)
 
@@ -71,29 +96,41 @@ Cheap, behavior-preserving. Do these, then re-measure:
    stable; `getComposerDraft` reads a ref, deps `[]`). Audit the remaining
    `MessageList` props for any other per-render-fresh value; the memo only holds
    if *all* props are stable.
-2. **[DEFERRED 2026-07-09] Stabilize the row-map inline arrows** in `MessageList`
-   (~lines 2341, 2348, 2353): the conditional `() => onTrimBeforeUserMessage(
-   item.id)` etc. Prefer passing the stable handler plus `item.id` and letting
-   the row bind, or a per-item memoized callback map, so historical rows keep
-   referential prop stability.
-3. **[DEFERRED 2026-07-09] Decouple per-row clocks.** `staleNowMs` and
-   `latestVisibleTimestampMs` are broadcast to every `RenderItemComponent`; only
-   the latest-visible row needs a live clock. Give just that row the clock (or a
-   tiny dedicated subscriber component) so a `nowMs` tick re-renders one row, not
-   N.
-4. Re-measure. If idle rows still re-render, a broadcast prop *value* is still
-   changing each second (suspect `isStreaming` or a liveness-derived value from
-   `useSession`); trace and gate it.
+2. **[MEASURED MOOT 2026-07-09] Stabilize the row-map inline arrows** in
+   `MessageList` (~lines 2341, 2348, 2353): the conditional
+   `() => onTrimBeforeUserMessage(item.id)` etc. These are only recreated when
+   `MessageList`'s body re-runs, and item 1 makes that ~0.1/s on idle, so the
+   arrows are stable-in-practice and cost nothing on an idle page. Worth doing
+   only as defensive hardening (so a future change that re-renders `MessageList`
+   often does not resurrect the churn) — not a current win.
+3. **[MEASURED MOOT 2026-07-09] Decouple per-row clocks.** Already effectively
+   done in code: `getRenderItemStaleNowMs` (`lib/sessionDetail/timeline.ts`)
+   returns `undefined` for every row except the one whose timestamp equals
+   `latestVisibleTimestampMs`, so only that single row receives the live
+   `nowMs`; the broadcast this item worried about does not exist. The only
+   residue is that `buildTimelineEntryDisplayRows` rebuilds on the 30 s
+   `useRelativeNow` tick — a 30 s cadence, not per-second.
+4. Re-measure with the render-count probe (below). **Done 2026-07-09:**
+   `MessageList` 0.1/s, `RenderItemComponent` one-shot settling — no steady row
+   re-renders. The residual re-render was the `AgentContentContext` value (item
+   5), not any broadcast prop value.
+5. **[LANDED 2026-07-09] Memoize the `AgentContentContext` value.** This was the
+   real per-second re-render source. The provider (`contexts/
+   AgentContentContext.tsx`) rebuilt its `value` object every render; it
+   re-renders on every SessionPage status-timer tick (~1/s), and context
+   propagation re-renders all subagent consumers (`TaskRenderer`,
+   `SpawnAgentRenderer`, and their nested rows) *through* `memo`. Wrapped in
+   `useMemo` keyed on its contents (all deps already stable on idle:
+   `agentContent`/`toolUseToAgent` are memoized upstream in
+   `useSessionMessages`, `loadAgentContent`/`isLoading` are `useCallback`).
+   Behavior-preserving.
 
-**Why 2–3 are deferred, not dropped:** after item 1, measured idle layout
-passes fell to ~0.5/s and idle CPU to ~9% at 1480 rows — i.e. the *per-second,
-O(rows)* transcript churn (the growth engine) is already gone. The residual ~9%
-is small timer-driven widgets (processing indicator, connection bar, age chips)
-doing style-only invalidation that does **not** scale with transcript length, so
-2–3 are diminishing returns for the memory goal. They remain worth doing for
-overall idle-CPU hygiene (target ≪1%) and to make row memoization robust before
-Stage 2 leans on it; do them opportunistically or if profiling still shows row
-renders after Stage 2. Not doing them does not block Stage 2.
+**Why 2–3 turned out moot (not merely deferred):** the earlier note assumed a
+per-second, O(rows) transcript re-render survived item 1. Direct measurement
+falsified that — item 1's memo holds and the per-row clock is already gated. The
+residual idle re-render was context-driven (item 5), which prop/clock
+memoization cannot touch. Items 2–3 stay open only as optional hardening; they
+do not block Stage 2 and do not reduce measured idle cost today.
 
 Stage 1 does not bound the DOM — a very long session is still a large static
 DOM — but it removes the per-second O(N) churn, which is the growth engine.

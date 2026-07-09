@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -121,13 +122,21 @@ export function AgentContentProvider({
     [loadingAgents],
   );
 
-  const value: AgentContentContextValue = {
-    agentContent,
-    toolUseToAgent,
-    loadAgentContent,
-    isLoading,
-    projectId,
-  };
+  // Memoize so the context value only changes when its contents actually
+  // change. Without this, every SessionPage re-render (≈1/s from status
+  // timers) produced a fresh value object, and context propagation re-renders
+  // every consumer (subagent Task/SpawnAgent rows and their nested rows)
+  // through their `memo` boundaries — a per-second O(subagent-rows) idle churn.
+  const value = useMemo<AgentContentContextValue>(
+    () => ({
+      agentContent,
+      toolUseToAgent,
+      loadAgentContent,
+      isLoading,
+      projectId,
+    }),
+    [agentContent, toolUseToAgent, loadAgentContent, isLoading, projectId],
+  );
 
   return (
     <AgentContentContext.Provider value={value}>

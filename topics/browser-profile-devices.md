@@ -7,16 +7,16 @@
 
 Topic: browser-profile-devices
 
-Status: implemented in YA (2026-07-01). The external claw-starter harness pin
-from the original plan is not landed here because that harness lives outside
-this repo; YA no longer depends on harness cooperation for bounded behavior.
+Status: implemented in YA (2026-07-01). The external browser-harness pin from
+the original plan is not landed here because that harness lives outside this
+repo; YA no longer depends on harness cooperation for bounded behavior.
 
 See also:
 [settings-ui-placement](settings-ui-placement.md) (Devices has its own settings
 category, while Notifications has a related push-subscription device surface),
 [vanilla-defaults](vanilla-defaults.md) (the fix must not change behavior for
-real devices — default-preserving), and the browser-control skill in
-`CLAUDE.md` (claw-starter Playwright, the contamination source).
+real devices — default-preserving), and the browser-control guidance in
+`CLAUDE.md` (headless Playwright was the contamination source).
 
 ## What the Devices UI shows
 
@@ -74,7 +74,7 @@ bound.
 
 Playwright launches a **fresh browser context per run -> empty `localStorage` ->
 a brand-new UUID every session** unless YA detects automation first. So the
-claw-starter browser skill, and any headless Chromium pointed at the live dev
+persistent browser harnesses, and any headless Chromium pointed at the live dev
 server, previously deposited one permanent "Chrome ... Linux · localhost"
 profile per testing session.
 
@@ -116,11 +116,11 @@ from headless browsers hitting the real server on `:3400` / `:4000`.
    non-subscribed profiles at 20 by evicting the oldest excess profiles. Pruning
    runs during service initialization and after each `recordConnection`.
 
-3. **Harness: optional pin in claw-starter.** A Playwright `addInitScript` that
-   writes `yep-anywhere-device-id = "automation"` would still be a useful
+3. **Harness: optional external pin.** A Playwright `addInitScript` that writes
+   `yep-anywhere-device-id = "automation"` would still be a useful
    belt-and-suspenders guard for old YA servers, but it is no longer required
-   for current YA. It is not implemented here because claw-starter is a
-   separate checkout outside this repo.
+   for current YA. It is not implemented here because external browser
+   harnesses live outside this repo.
 
 4. **Immediate cleanup.** Use "Forget" in Settings → Devices, or delete the
    offending entries from `~/.yep-anywhere/browser-profiles.json` and the `-dev`

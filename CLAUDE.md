@@ -102,32 +102,28 @@ Use the Android emulator only when testing the device-control/device-bridge feat
 
 ## Browser Control (UI Testing)
 
-Use the claw-starter browser skill at `~/code/claw-starter` to automate browser-based testing of the web UI. This uses Playwright with headless Chromium.
+Use an available browser-control capability for interactive web UI testing. If
+browser setup or discovery reports that no browser is available, or the browser
+inventory is empty, do not stop or keep retrying a desktop-only backend.
+Immediately fall back to YA's installed Playwright dependency.
 
-**Start the browser server** (if not already running):
-
-```bash
-cd ~/code/claw-starter && npx tsx lib/browser/server.ts &
-```
-
-**CLI commands** (run from `~/code/claw-starter`):
+For a one-shot screenshot of the live local server:
 
 ```bash
-npx tsx lib/browser-cli.ts status              # Check if server is running
-npx tsx lib/browser-cli.ts open <url>           # Open URL in new tab
-npx tsx lib/browser-cli.ts navigate <url>       # Navigate current tab
-npx tsx lib/browser-cli.ts snapshot --efficient  # Read page (accessibility tree)
-npx tsx lib/browser-cli.ts screenshot           # Take screenshot (returns path)
-npx tsx lib/browser-cli.ts click e5             # Click element by ref
-npx tsx lib/browser-cli.ts type e5 "text"       # Type into element
-npx tsx lib/browser-cli.ts evaluate "JS expr"   # Run JS and return result
-npx tsx lib/browser-cli.ts tabs                 # List open tabs
-npx tsx lib/browser-cli.ts close                # Close tab
+mkdir -p .artifacts/ui-testing
+pnpm --filter @yep-anywhere/client exec playwright screenshot \
+  --ignore-https-errors \
+  --block-service-workers \
+  --wait-for-timeout 500 \
+  --viewport-size "1440,900" \
+  https://localhost:3400/ \
+  .artifacts/ui-testing/ya-desktop.png
 ```
 
-**Workflow**: snapshot → act (click/type) using element refs → snapshot again to verify.
-
-See `~/code/claw-starter/README.md` for the full CLI reference.
+Use `--viewport-size "375,812"` for a mobile-width capture. For multi-step
+interaction testing, add or run a focused `@playwright/test` case under
+`packages/client/e2e/`. A missing in-app browser backend is not a blocker while
+the repository Playwright command is available.
 
 ## ChromeOS Debugging
 

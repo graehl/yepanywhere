@@ -25,19 +25,32 @@ When a UI control change affects spacing, grouping, or interaction semantics, th
 
 ## Recommended automation
 
-Preferred: use the browser control tool listed in `CLAUDE.md`:
+Use the browser control tool listed in `CLAUDE.md` when it has an available
+backend. If setup or discovery reports no browser, or the browser inventory is
+empty, immediately fall back to the repository's installed Playwright command:
 
 ```bash
-cd ~/code/claw-starter
-npx tsx lib/browser/server.ts &
-npx tsx lib/browser-cli.ts open http://localhost:3400/
-npx tsx lib/browser-cli.ts snapshot --efficient
-npx tsx lib/browser-cli.ts screenshot
+ARTIFACT_DIR=".artifacts/ui-testing/$(date +%F)-topic"
+mkdir -p "$ARTIFACT_DIR"
+pnpm --filter @yep-anywhere/client exec playwright screenshot \
+  --ignore-https-errors \
+  --block-service-workers \
+  --wait-for-timeout 500 \
+  --viewport-size "1440,900" \
+  https://localhost:3400/ \
+  "$ARTIFACT_DIR/desktop.png"
+pnpm --filter @yep-anywhere/client exec playwright screenshot \
+  --ignore-https-errors \
+  --block-service-workers \
+  --wait-for-timeout 500 \
+  --viewport-size "375,812" \
+  https://localhost:3400/ \
+  "$ARTIFACT_DIR/mobile.png"
 ```
 
-### If `claw-starter` is not available yet
-
-Use any available browser automation path (Playwright/Selenium) or a manual browser session:
+For multi-step flows, add or run a focused `@playwright/test` case under
+`packages/client/e2e/`. If Playwright itself is unavailable, use another
+browser automation path or a manual browser session:
 
 1. Open the target page directly in a browser.
 2. Resize viewport to desktop + mobile dimensions.

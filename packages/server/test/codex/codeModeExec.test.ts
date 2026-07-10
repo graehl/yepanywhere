@@ -51,7 +51,7 @@ describe("extractCodexCodeModeCalls", () => {
   it("ignores calls in strings and comments", () => {
     const calls = extractCodexCodeModeCalls(`
       // tools.exec_command({"cmd":"comment"})
-      const example = "tools.exec_command({\\\"cmd\\\":\\\"string\\\"})";
+      const example = "tools.exec_command({\\"cmd\\":\\"string\\"})";
       text(example);
     `);
 

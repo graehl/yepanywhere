@@ -78,7 +78,8 @@ describe("normalizeCodexToolInvocation", () => {
 
   it("handles inline Select-Object -Skip:N -First:M flags", () => {
     const normalized = normalizeCodexToolInvocation("Bash", {
-      command: "Get-Content -Path CLAUDE.md | Select-Object -Skip:295 -First:130",
+      command:
+        "Get-Content -Path CLAUDE.md | Select-Object -Skip:295 -First:130",
     });
 
     expect(normalized).toMatchObject({
@@ -131,6 +132,31 @@ describe("normalizeCodexToolInvocation", () => {
         endLine: 20,
       },
     });
+  });
+
+  it("keeps a compound exploration sequence as one Bash invocation", () => {
+    const normalized = normalizeCodexToolInvocation("Bash", {
+      cmd: "sed -n '1,20p' CLAUDE.md && sed -n '1,20p' DEVELOPMENT.md",
+      workdir: "/repo",
+    });
+
+    expect(normalized).toEqual({
+      toolName: "Bash",
+      input: {
+        cmd: "sed -n '1,20p' CLAUDE.md && sed -n '1,20p' DEVELOPMENT.md",
+        command: "sed -n '1,20p' CLAUDE.md && sed -n '1,20p' DEVELOPMENT.md",
+        workdir: "/repo",
+      },
+    });
+  });
+
+  it("does not flatten multiple live commandActions into one tool", () => {
+    expect(
+      normalizeCodexCommandActionInvocation("cat A.md && cat B.md", [
+        { type: "read", command: "cat A.md", name: "A.md", path: "/repo/A.md" },
+        { type: "read", command: "cat B.md", name: "B.md", path: "/repo/B.md" },
+      ]),
+    ).toBeNull();
   });
 });
 

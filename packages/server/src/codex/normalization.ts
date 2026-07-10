@@ -3,6 +3,15 @@ import {
   extractCodexCodeModeCalls,
   extractCodexCodeModeTextOutput,
 } from "./codeModeExec.js";
+import {
+  analyzeCodexCommand,
+  type CodexReadShellInfo,
+  parseCodexCommandActionsOracle,
+  stripOuterQuotes,
+  unwrapCodexShellLauncherCommand,
+} from "./displayActions.js";
+
+export type { CodexReadShellInfo } from "./displayActions.js";
 
 export const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
@@ -13,13 +22,6 @@ export const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   web_search_call: "WebSearch",
   search_query: "WebSearch",
 };
-
-export interface CodexReadShellInfo {
-  filePath: string;
-  startLine?: number;
-  endLine?: number;
-  stripLineNumbers: boolean;
-}
 
 export interface CodexWriteShellInfo {
   filePath: string;
@@ -56,13 +58,6 @@ interface NormalizedCodexToolOutputWithExitCode
   exitCode?: number;
 }
 
-const SHELL_EXECUTABLES = new Set(["bash", "sh", "zsh", "dash"]);
-const POWERSHELL_EXECUTABLES = new Set([
-  "pwsh",
-  "pwsh.exe",
-  "powershell",
-  "powershell.exe",
-]);
 const INLINE_IMAGE_DATA_URL_PREFIX_RE =
   /^data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?,/i;
 const INLINE_IMAGE_DATA_URL_GLOBAL_RE =
@@ -113,23 +108,39 @@ export function normalizeCodexToolInvocation(
   if (!command) {
     return { toolName: "Bash", input: normalizedInput };
   }
-  const normalizedCommand = unwrapShellLauncherCommand(command);
-
-  const readShellInfo = parseReadShellCommand(normalizedCommand);
-  if (readShellInfo) {
-    return {
-      toolName: "Read",
-      input: createReadToolInput(readShellInfo),
-      readShellInfo,
-    };
-  }
-
-  const grepInput = parseRipgrepCommand(normalizedCommand);
-  if (grepInput) {
-    return {
-      toolName: "Grep",
-      input: grepInput,
-    };
+  const normalizedCommand = unwrapCodexShellLauncherCommand(command);
+  const workingDirectory = isRecord(normalizedInput)
+    ? (getStringField(normalizedInput, "workdir") ??
+      getStringField(normalizedInput, "cwd"))
+    : undefined;
+  const commandAnalysis = analyzeCodexCommand(command, workingDirectory);
+  if (commandAnalysis?.actions.length === 1) {
+    const action = commandAnalysis.actions[0];
+    if (action?.kind === "read") {
+      const readShellInfo: CodexReadShellInfo = {
+        filePath: action.filePath,
+        ...(action.startLine !== undefined
+          ? { startLine: action.startLine }
+          : {}),
+        ...(action.endLine !== undefined ? { endLine: action.endLine } : {}),
+        stripLineNumbers: action.stripLineNumbers,
+      };
+      return {
+        toolName: "Read",
+        input: createReadToolInput(readShellInfo),
+        readShellInfo,
+      };
+    }
+    if (action?.kind === "search") {
+      return {
+        toolName: "Grep",
+        input: {
+          pattern: action.query,
+          output_mode: "content",
+          ...(action.path ? { path: action.path } : {}),
+        },
+      };
+    }
   }
 
   const writeShellInfo = parseHeredocWriteShellCommand(normalizedCommand);
@@ -178,28 +189,27 @@ export function normalizeCodexCommandActionInvocation(
   command: string,
   commandActions: unknown,
 ): NormalizedCodexToolInvocation | null {
-  if (!Array.isArray(commandActions) || commandActions.length !== 1) {
+  const actions = parseCodexCommandActionsOracle(commandActions);
+  if (actions?.length !== 1) {
     return null;
   }
 
-  const action = commandActions[0];
-  if (!isRecord(action)) {
-    return null;
-  }
-
-  const actionType = getStringField(action, "type");
-  if (actionType === "read") {
-    const path = getStringField(action, "path");
-    if (!path) {
-      return null;
-    }
-
-    const commandReadInfo = parseReadShellCommand(
-      unwrapShellLauncherCommand(command),
-    );
+  const action = actions[0];
+  if (action?.kind === "read") {
+    const commandAction = analyzeCodexCommand(command)?.actions[0];
     const readShellInfo: CodexReadShellInfo = {
-      ...(commandReadInfo ?? { stripLineNumbers: false }),
-      filePath: path,
+      ...(commandAction?.kind === "read"
+        ? {
+            ...(commandAction.startLine !== undefined
+              ? { startLine: commandAction.startLine }
+              : {}),
+            ...(commandAction.endLine !== undefined
+              ? { endLine: commandAction.endLine }
+              : {}),
+            stripLineNumbers: commandAction.stripLineNumbers,
+          }
+        : { stripLineNumbers: action.stripLineNumbers }),
+      filePath: action.filePath,
     };
     return {
       toolName: "Read",
@@ -208,19 +218,13 @@ export function normalizeCodexCommandActionInvocation(
     };
   }
 
-  if (actionType === "search") {
-    const query = getStringField(action, "query");
-    if (!query) {
-      return null;
-    }
-
+  if (action?.kind === "search") {
     const input: Record<string, unknown> = {
-      pattern: query,
+      pattern: action.query,
       output_mode: "content",
     };
-    const path = getStringField(action, "path");
-    if (path) {
-      input.path = path;
+    if (action.path) {
+      input.path = action.path;
     }
     return { toolName: "Grep", input };
   }
@@ -384,413 +388,6 @@ function extractBashCommand(input: unknown): string {
   return "";
 }
 
-function tokenizeShellCommand(command: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | null = null;
-  let escaping = false;
-
-  for (let i = 0; i < command.length; i++) {
-    const char = command[i];
-    if (!char) continue;
-
-    if (escaping) {
-      current += char;
-      escaping = false;
-      continue;
-    }
-
-    if (quote) {
-      if (char === quote) {
-        quote = null;
-      } else if (
-        quote === '"' &&
-        char === "\\" &&
-        shouldEscapeShellChar(command[i + 1])
-      ) {
-        escaping = true;
-      } else {
-        current += char;
-      }
-      continue;
-    }
-
-    if (char === "\\" && shouldEscapeShellChar(command[i + 1])) {
-      escaping = true;
-      continue;
-    }
-
-    if (char === "'" || char === '"') {
-      quote = char;
-      continue;
-    }
-
-    if (/\s/.test(char)) {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0) {
-    tokens.push(current);
-  }
-
-  return tokens;
-}
-
-function getExecutableName(token: string): string {
-  const normalized = token.replace(/\\/g, "/");
-  return (normalized.split("/").pop() || token).toLowerCase();
-}
-
-function isShellExecutable(token: string): boolean {
-  return SHELL_EXECUTABLES.has(getExecutableName(token));
-}
-
-function isPowerShellExecutable(token: string): boolean {
-  const executableName = getExecutableName(token);
-  return (
-    POWERSHELL_EXECUTABLES.has(executableName) ||
-    executableName.endsWith("pwsh.exe") ||
-    executableName.endsWith("powershell.exe")
-  );
-}
-
-function shouldEscapeShellChar(next: string | undefined): boolean {
-  return (
-    next !== undefined &&
-    (/\s/.test(next) || next === "\\" || next === "'" || next === '"')
-  );
-}
-
-function getShellLauncherPrefixLength(tokens: string[]): number {
-  if (tokens.length < 3) {
-    return 0;
-  }
-
-  const first = tokens[0] || "";
-  const second = tokens[1] || "";
-  const third = tokens[2] || "";
-
-  // /usr/bin/env bash -lc "command"
-  if (
-    getExecutableName(first) === "env" &&
-    isShellExecutable(second) &&
-    third === "-lc" &&
-    tokens.length >= 4
-  ) {
-    return 3;
-  }
-
-  // /bin/bash -lc "command"
-  if (isShellExecutable(first) && second === "-lc" && tokens.length >= 3) {
-    return 2;
-  }
-
-  if (isPowerShellExecutable(first)) {
-    for (let i = 1; i < tokens.length - 1; i++) {
-      const token = tokens[i]?.toLowerCase();
-      if (token === "-command" || token === "-c") {
-        return i + 1;
-      }
-    }
-  }
-
-  return 0;
-}
-
-function unwrapShellLauncherCommand(command: string): string {
-  let normalized = command.trim();
-
-  // Allow nested wrappers, e.g. `bash -lc "env bash -lc \"...\""`
-  for (let i = 0; i < 3; i++) {
-    const tokens = tokenizeShellCommand(normalized);
-    const launcherPrefixLength = getShellLauncherPrefixLength(tokens);
-    if (launcherPrefixLength === 0 || tokens.length <= launcherPrefixLength) {
-      break;
-    }
-    normalized = tokens.slice(launcherPrefixLength).join(" ").trim();
-  }
-
-  return normalized;
-}
-
-function parseLineRangeToken(
-  token: string,
-): { startLine: number; endLine: number } | null {
-  const match = token.match(/^(\d+)(?:,(\d+))?p$/);
-  if (!match?.[1]) return null;
-
-  const startLine = Number.parseInt(match[1], 10);
-  const endLine = match[2] ? Number.parseInt(match[2], 10) : startLine;
-  if (!Number.isFinite(startLine) || !Number.isFinite(endLine)) {
-    return null;
-  }
-
-  return {
-    startLine,
-    endLine: Math.max(startLine, endLine),
-  };
-}
-
-function parseReadShellCommand(command: string): CodexReadShellInfo | null {
-  const tokens = tokenizeShellCommand(command);
-  if (tokens.length === 0) return null;
-
-  if (tokens[0] === "cat" && tokens.length === 2) {
-    const filePath = tokens[1];
-    if (!filePath || filePath.startsWith("-")) {
-      return null;
-    }
-    return {
-      filePath,
-      stripLineNumbers: false,
-    };
-  }
-
-  if (tokens[0] === "sed" && tokens[1] === "-n" && tokens.length === 4) {
-    const range = parseLineRangeToken(tokens[2] ?? "");
-    const filePath = tokens[3];
-    if (!range || !filePath || filePath.startsWith("-")) {
-      return null;
-    }
-    return {
-      filePath,
-      startLine: range.startLine,
-      endLine: range.endLine,
-      stripLineNumbers: false,
-    };
-  }
-
-  const isNlSedCommand =
-    tokens[0] === "nl" &&
-    tokens[1] === "-ba" &&
-    tokens[3] === "|" &&
-    tokens[4] === "sed" &&
-    tokens[5] === "-n" &&
-    tokens.length === 7;
-  if (isNlSedCommand) {
-    const filePath = tokens[2];
-    const range = parseLineRangeToken(tokens[6] ?? "");
-    if (!filePath || !range) return null;
-    return {
-      filePath,
-      startLine: range.startLine,
-      endLine: range.endLine,
-      stripLineNumbers: true,
-    };
-  }
-
-  const powershellRead = parsePowerShellGetContentCommand(tokens);
-  if (powershellRead) {
-    return powershellRead;
-  }
-
-  return null;
-}
-
-function parsePowerShellGetContentCommand(
-  tokens: string[],
-): CodexReadShellInfo | null {
-  const command = tokens[0]?.toLowerCase();
-  if (command !== "get-content") {
-    return null;
-  }
-
-  // Compound commands aren't simple reads. A single pipe into Select-Object is
-  // handled below (Codex emits `Get-Content … | Select-Object -Skip -First` for
-  // partial reads, the PowerShell analogue of `sed -n`).
-  if (tokens.some((token) => token === "&&" || token === ";")) {
-    return null;
-  }
-
-  const pipeIndex = tokens.indexOf("|");
-  const getContentTokens =
-    pipeIndex === -1 ? tokens : tokens.slice(0, pipeIndex);
-  let selectWindow: { skip: number; first?: number } | null = null;
-  if (pipeIndex !== -1) {
-    selectWindow = parseSelectObjectWindow(tokens.slice(pipeIndex + 1));
-    if (!selectWindow) {
-      return null;
-    }
-  }
-
-  const flagsWithValue = new Set([
-    "-credential",
-    "-delimiter",
-    "-encoding",
-    "-erroraction",
-    "-exclude",
-    "-filter",
-    "-include",
-    "-readcount",
-    "-stream",
-  ]);
-  let filePath = "";
-  let totalCount: number | undefined;
-
-  for (let i = 1; i < getContentTokens.length; i++) {
-    const token = getContentTokens[i];
-    if (!token) continue;
-    const normalized = token.toLowerCase();
-
-    if (normalized === "-path" || normalized === "-literalpath") {
-      const next = getContentTokens[i + 1];
-      if (!next || next.startsWith("-")) {
-        return null;
-      }
-      filePath = next;
-      i += 1;
-      continue;
-    }
-
-    if (normalized.startsWith("-path:")) {
-      filePath = token.slice("-path:".length);
-      continue;
-    }
-
-    if (normalized.startsWith("-literalpath:")) {
-      filePath = token.slice("-literalpath:".length);
-      continue;
-    }
-
-    if (normalized === "-totalcount" || normalized === "-head") {
-      const next = getContentTokens[i + 1];
-      const parsed = next ? Number.parseInt(next, 10) : Number.NaN;
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return null;
-      }
-      totalCount = parsed;
-      i += 1;
-      continue;
-    }
-
-    if (normalized.startsWith("-totalcount:")) {
-      const parsed = Number.parseInt(token.slice("-totalcount:".length), 10);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return null;
-      }
-      totalCount = parsed;
-      continue;
-    }
-
-    if (normalized.startsWith("-head:")) {
-      const parsed = Number.parseInt(token.slice("-head:".length), 10);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return null;
-      }
-      totalCount = parsed;
-      continue;
-    }
-
-    if (flagsWithValue.has(normalized)) {
-      i += 1;
-      continue;
-    }
-
-    if (token.startsWith("-")) {
-      continue;
-    }
-
-    if (!filePath) {
-      filePath = token;
-    }
-  }
-
-  filePath = stripOuterQuotes(filePath);
-  if (!filePath || filePath.startsWith("-")) {
-    return null;
-  }
-
-  if (selectWindow) {
-    const startLine = selectWindow.skip + 1;
-    return {
-      filePath,
-      startLine,
-      ...(selectWindow.first !== undefined && selectWindow.first > 0
-        ? { endLine: selectWindow.skip + selectWindow.first }
-        : {}),
-      stripLineNumbers: false,
-    };
-  }
-
-  return {
-    filePath,
-    ...(totalCount !== undefined && totalCount > 0
-      ? { startLine: 1, endLine: totalCount }
-      : {}),
-    stripLineNumbers: false,
-  };
-}
-
-// Parses the tail of a `Get-Content … | Select-Object …` pipeline. Only the
-// line-window flags `-Skip`/`-First` (and their inline `-Skip:N` forms) are
-// recognized; any other token disqualifies the pipeline so we don't mislabel a
-// real transform as a read.
-function parseSelectObjectWindow(
-  tokens: string[],
-): { skip: number; first?: number } | null {
-  if (tokens[0]?.toLowerCase() !== "select-object") {
-    return null;
-  }
-
-  let skip: number | undefined;
-  let first: number | undefined;
-
-  for (let i = 1; i < tokens.length; i++) {
-    const token = tokens[i];
-    if (!token) continue;
-    const normalized = token.toLowerCase();
-
-    if (normalized === "-skip" || normalized === "-first") {
-      const next = tokens[i + 1];
-      const parsed = next ? Number.parseInt(next, 10) : Number.NaN;
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return null;
-      }
-      if (normalized === "-skip") {
-        skip = parsed;
-      } else {
-        first = parsed;
-      }
-      i += 1;
-      continue;
-    }
-
-    if (normalized.startsWith("-skip:") || normalized.startsWith("-first:")) {
-      const prefixLength = normalized.startsWith("-skip:")
-        ? "-skip:".length
-        : "-first:".length;
-      const parsed = Number.parseInt(token.slice(prefixLength), 10);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        return null;
-      }
-      if (normalized.startsWith("-skip:")) {
-        skip = parsed;
-      } else {
-        first = parsed;
-      }
-      continue;
-    }
-
-    return null;
-  }
-
-  if (skip === undefined && first === undefined) {
-    return null;
-  }
-
-  return {
-    skip: skip ?? 0,
-    ...(first !== undefined ? { first } : {}),
-  };
-}
-
 function parseHeredocWriteShellCommand(
   command: string,
 ): CodexWriteShellInfo | null {
@@ -874,103 +471,6 @@ function createWriteToolInput(
     file_path: writeInfo.filePath,
     content: writeInfo.content,
   };
-}
-
-function parseRipgrepCommand(command: string): Record<string, unknown> | null {
-  const tokens = tokenizeShellCommand(command);
-  if (tokens[0] !== "rg" || tokens.length < 2) {
-    return null;
-  }
-
-  if (
-    tokens.some((token) => token === "|" || token === "&&" || token === ";")
-  ) {
-    return null;
-  }
-
-  const flagsWithValue = new Set([
-    "-g",
-    "--glob",
-    "-e",
-    "--regexp",
-    "-f",
-    "--file",
-    "-m",
-    "--max-count",
-    "-A",
-    "--after-context",
-    "-B",
-    "--before-context",
-    "-C",
-    "--context",
-    "-t",
-    "--type",
-    "-T",
-    "--type-not",
-  ]);
-
-  let pattern = "";
-  const searchPaths: string[] = [];
-
-  for (let i = 1; i < tokens.length; i++) {
-    const token = tokens[i];
-    if (!token) continue;
-
-    if (token === "--") {
-      const rest = tokens.slice(i + 1).filter(Boolean);
-      if (!pattern && rest[0]) {
-        pattern = rest[0];
-      }
-      if (pattern) {
-        searchPaths.push(...rest.slice(1));
-      }
-      break;
-    }
-
-    if (token === "-e" || token === "--regexp") {
-      const next = tokens[i + 1];
-      if (next && !pattern) {
-        pattern = next;
-      }
-      i += 1;
-      continue;
-    }
-
-    if (flagsWithValue.has(token)) {
-      i += 1;
-      continue;
-    }
-
-    if (token.startsWith("--glob=") || token.startsWith("--regexp=")) {
-      if (token.startsWith("--regexp=") && !pattern) {
-        pattern = token.slice("--regexp=".length);
-      }
-      continue;
-    }
-
-    if (token.startsWith("-")) {
-      continue;
-    }
-
-    if (!pattern) {
-      pattern = token;
-    } else {
-      searchPaths.push(token);
-    }
-  }
-
-  if (!pattern) {
-    return null;
-  }
-
-  const input: Record<string, unknown> = {
-    pattern,
-    output_mode: "content",
-  };
-  if (searchPaths.length > 0) {
-    input.path = searchPaths.join(" ");
-  }
-  return input;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1517,18 +1017,4 @@ function countContentLines(content: string): number {
     lines.pop();
   }
   return lines.length;
-}
-
-function stripOuterQuotes(value: string): string {
-  if (value.length < 2) {
-    return value;
-  }
-
-  const first = value[0];
-  const last = value[value.length - 1];
-  if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
-    return value.slice(1, -1);
-  }
-
-  return value;
 }

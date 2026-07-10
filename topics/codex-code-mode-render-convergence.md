@@ -6,7 +6,22 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: planned; documentation and evidence only as of 2026-07-10.
+Status: in progress. The first server-only extraction slice is implemented as
+of 2026-07-10; derived multi-action metadata is not exposed to the client yet.
+
+Implementation progress:
+
+- [x] Pin the local upstream reference to Codex `0.144.1` and verify the
+  checked-in protocol artifacts.
+- [x] Extract the existing read/search shell recognizers into standalone
+  `codex/displayActions.ts` semantic analysis.
+- [x] Derive ordered, fail-closed action vectors for the observed compound
+  read sequence and compare them with sanitized live `commandActions` oracles.
+- [x] Route existing single-action normalization through the new analyzer while
+  keeping compound execution as one `Bash` call.
+- [ ] Carry rollout-derived multi-action analysis through the normalized
+  in-memory tool-call shape with live/reload parity.
+- [ ] Render one-to-many actions within `Exploring` / `Explored` groups.
 
 See also:
 [stream-persisted-render-parity](stream-persisted-render-parity.md) (the graded

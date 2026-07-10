@@ -144,12 +144,11 @@ Remaining Part 2 scope: broader resume-from-full init text can still render as
 normal turns. It predates the compaction work and needs its own classification,
 not a local CSS hide.
 
-## "Show hidden" — future exploration (no implementation yet)
+## "Show hidden" — not planned
 
-Hidden turns are currently fully suppressed. The intended direction is to make
-them **hyper-collapsed** (outline/modal, like the collapsed-system style, or
-more) rather than fully gone, so the user keeps visibility into the effective
-context — e.g. the system prompt / initial AGENTS-load result, recalled as once
-showing as an expandable turn. The single hide chokepoint exists precisely so
-this can be added in one place: flip "suppress" to "emit with a hidden marker"
-and give the client one render path for hidden items.
+Hidden turns are currently fully suppressed. YA previously exposed some setup
+context through an auto-collapsed `Session setup` item, and the legacy client
+fallback still recognizes old unprovenanced rows. There is no current product
+requirement to restore that surface for server-classified context. Reconsider
+only if a concrete debugging or transparency need emerges; it is not
+outstanding work for the Codex authorship fix.

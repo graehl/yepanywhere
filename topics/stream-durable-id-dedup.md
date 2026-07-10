@@ -242,8 +242,11 @@ response item remains the rich rendering payload. Normalized messages expose
 that result as `codexUserTurnProvenance`, but still use the response item's
 positional uuid because YA's checked-in event schema does not yet retain the
 paired `client_id`. Adopting that id and re-measuring the approximate backstop
-remain the deliberately separate Slice 3 in
-`topics/codex-user-turn-provenance.md`.
+are deferred indefinitely: the existing backstop covers the known symptom,
+while an id migration would cross schema, pagination, and reconciliation
+boundaries. Reopen only for a reproducible duplicate that survives current
+dedup and after auditing the end-to-end provider id contract. See the closed
+disposition in `topics/codex-user-turn-provenance.md`.
 
 The first user turn has one additional startup wrinkle: YA may render the
 optimistic opening turn before the Codex thread has finished startup and before

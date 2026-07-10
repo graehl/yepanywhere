@@ -5,7 +5,7 @@
 > Codex's persisted turn lifecycle and retain the paired response item only as
 > the richer rendering payload.
 
-Status: Slices 1-2 landed 2026-07-10; Slices 3-4 remain planned.
+Status: closed 2026-07-10. Slices 1-2 landed; no further work is planned.
 
 Topic: codex-user-turn-provenance
 
@@ -406,34 +406,36 @@ This preserves old materialized transcripts while ensuring a paired human
 prompt that literally resembles `<environment_context>` remains an ordinary
 user turn on every current surface.
 
-### Slice 3 — Use the pair for durable user ids and rich event metadata
+### Slice 3 — Durable user ids and rich event metadata (deferred)
 
 The event side can carry `client_id`, local-image details, and UI text
-elements. YA's current event schema does not preserve all of those fields.
+elements. Codex provides a real round-trip: YA can send
+`clientUserMessageId`, and Codex persists it as `user_message.client_id`.
+However, adopting it as YA's durable uuid would cross the checked-in event
+schema, response/event reconciliation, pagination, and live/durable dedup.
 
-1. Extend the checked-in Codex schema for the audited event fields.
-2. Attach paired event provenance to the durable response-derived message.
-3. Evaluate adopting `client_id` as the durable user-message uuid so the live
-   echo and durable row align deterministically.
-4. Re-measure whether the special first-user-turn approximate-dedup window in
-   `stream-durable-id-dedup.md` can be narrowed or removed.
+The current approximate dedup already covers the known symptom, so that
+cross-layer identity change is not justified by the remaining benefit. This is
+deferred indefinitely and is not outstanding work. Reopen it only if a
+reproducible duplicate-turn defect survives the existing dedup path and an
+audited end-to-end migration proves the provider id is stable across every YA
+consumer.
 
-Keep this separate from Slice 1: visibility/title correctness must not depend
-on changing client reconciliation identity.
+Visibility and title correctness do not depend on changing reconciliation
+identity.
 
-### Slice 4 — Typed provider-context visibility
+### Slice 4 — Typed provider-context visibility (not planned)
 
 Codex distinguishes hidden contextual fragments from visible hook prompts and
-may add more typed context surfaces. After provenance is stable:
+may add more typed context surfaces. YA previously presented setup context in
+an auto-collapsed `Session setup` section; current server-classified context is
+hidden instead. The collapsed path remains only as compatibility handling for
+old, unprovenanced transcripts.
 
-1. Decide which provider context remains hidden and which becomes collapsed
-   `Session setup` or another first-party-shaped item.
-2. Preserve exact content-block boundaries for any expandable debug/setup
-   view.
-3. Add diagnostics for unknown unpaired current-version response items so a
-   provider refresh catches new contextual types before they leak as prompts.
-
-This is a visibility/product decision, not required to fix authorship.
+There is no current product requirement to restore a setup/debug surface, so
+this slice is not planned. Reconsider it only in response to a concrete need
+for inspecting effective provider context; it is not part of the completed
+authorship fix.
 
 ## Slice 1 Implementation Result
 
@@ -443,8 +445,8 @@ local-corpus audit**.
 
 It is the smallest slice that fixes both symptoms in the reported session
 without leaving the header and transcript on different definitions of “first
-user prompt.” It also produces evidence before behavior is generalized.
-User-id alignment remains intentionally deferred to Slice 3.
+user prompt.” It also produces evidence before behavior is generalized. No
+additional implementation slice is required to complete this workstream.
 
 ## Acceptance Criteria
 
@@ -480,8 +482,8 @@ User-id alignment remains intentionally deferred to Slice 3.
 
 ## Slice 1 Decisions
 
-- Current-format unpaired provider context is hidden. Typed/collapsed setup
-  presentation remains the Slice 4 product decision.
+- Current-format unpaired provider context is hidden. Restoring a
+  typed/collapsed setup presentation is not planned.
 - The presence of any persisted user-message event enables strict pair
   authority for that rollout. A rollout with none retains exact-marker
   filtering plus a compatibility-preserving legacy/unknown path.

@@ -2289,7 +2289,7 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
-  it("prefers Codex read commandActions for command execution", () => {
+  it("derives command display actions from command and cwd", () => {
     const provider = createTestProvider() as unknown as {
       convertItemToSDKMessages: (
         item: unknown,
@@ -2300,10 +2300,12 @@ describe("CodexProvider Event Normalization", () => {
     };
 
     const absolutePath = String.raw`C:\Users\sox\Documents\code\yepanywhere\CLAUDE.md`;
+    const cwd = String.raw`C:\Users\sox\Documents\code\yepanywhere`;
     const messages = provider.convertItemToSDKMessages(
       {
         id: "call-read-action",
         type: "command_execution",
+        cwd,
         command: String.raw`"C:\Users\sox\AppData\Local\Microsoft\WindowsApps\pwsh.exe" -Command 'Get-Content -Path CLAUDE.md -TotalCount 20'`,
         commandActions: [
           {
@@ -2330,14 +2332,24 @@ describe("CodexProvider Event Normalization", () => {
           type: "tool_use",
           id: "call-read-action",
           name: "Read",
-          input: { file_path: absolutePath, offset: 1, limit: 20 },
+          input: { file_path: "CLAUDE.md", offset: 1, limit: 20 },
+          _displayActions: [
+            {
+              kind: "read",
+              path: "CLAUDE.md",
+              absolutePath,
+              name: "CLAUDE.md",
+              startLine: 1,
+              endLine: 20,
+            },
+          ],
         },
       ],
     });
     expect(messages[1]?.toolUseResult).toMatchObject({
       type: "text",
       file: {
-        filePath: absolutePath,
+        filePath: "CLAUDE.md",
         startLine: 1,
       },
     });

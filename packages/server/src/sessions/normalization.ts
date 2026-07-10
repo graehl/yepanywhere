@@ -877,6 +877,9 @@ function convertCodexFunctionCallPayload(
       id: payload.call_id,
       name: normalizedInvocation.toolName,
       input: normalizedInvocation.input,
+      ...(normalizedInvocation.displayActions
+        ? { _displayActions: normalizedInvocation.displayActions }
+        : {}),
     },
   ];
 
@@ -925,6 +928,9 @@ function convertCodexCustomToolCallPayload(
       id: callId,
       name: normalizedInvocation.toolName,
       input: normalizedInvocation.input,
+      ...(normalizedInvocation.displayActions
+        ? { _displayActions: normalizedInvocation.displayActions }
+        : {}),
     },
   ];
 

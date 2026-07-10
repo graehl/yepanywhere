@@ -19,7 +19,6 @@ import {
   isCodexBackgroundProcessOutput,
   isCodexInterruptedToolOutput,
   type CodexToolCallContext,
-  normalizeCodexCommandActionInvocation,
   normalizeCodexCommandExecutionOutput,
   normalizeCodexCustomToolInvocation,
   normalizeCodexToolInvocation,
@@ -364,6 +363,7 @@ type NormalizedThreadItem =
       aggregated_output: string;
       exit_code?: number;
       status: string;
+      cwd?: string;
       commandActions?: unknown[];
     }
   | {
@@ -3572,6 +3572,7 @@ export class CodexProvider implements AgentProvider {
             : Array.isArray(itemRecord.command_actions)
               ? itemRecord.command_actions
               : undefined) ?? undefined;
+        const cwd = this.getOptionalString(itemRecord.cwd);
         return {
           id,
           type: "command_execution",
@@ -3585,6 +3586,7 @@ export class CodexProvider implements AgentProvider {
             this.getOptionalNumber(itemRecord.exitCode) ??
             undefined,
           status: this.normalizeStatus(itemRecord.status),
+          ...(cwd ? { cwd } : {}),
           ...(commandActions ? { commandActions } : {}),
         };
       }
@@ -4091,6 +4093,9 @@ export class CodexProvider implements AgentProvider {
                   id: callId,
                   name: normalizedInvocation.toolName,
                   input: normalizedInvocation.input,
+                  ...(normalizedInvocation.displayActions
+                    ? { _displayActions: normalizedInvocation.displayActions }
+                    : {}),
                 },
               ],
             },
@@ -4202,6 +4207,9 @@ export class CodexProvider implements AgentProvider {
                   id: callId,
                   name: normalizedInvocation.toolName,
                   input: normalizedInvocation.input,
+                  ...(normalizedInvocation.displayActions
+                    ? { _displayActions: normalizedInvocation.displayActions }
+                    : {}),
                 },
               ],
             },
@@ -4376,14 +4384,10 @@ export class CodexProvider implements AgentProvider {
 
       case "command_execution": {
         const messages: SDKMessage[] = [];
-        const normalizedInvocation =
-          normalizeCodexCommandActionInvocation(
-            item.command,
-            item.commandActions,
-          ) ??
-          normalizeCodexToolInvocation("Bash", {
-            command: item.command,
-          });
+        const normalizedInvocation = normalizeCodexToolInvocation("Bash", {
+          command: item.command,
+          ...(item.cwd ? { cwd: item.cwd } : {}),
+        });
         const toolContext: CodexToolCallContext = {
           toolName: normalizedInvocation.toolName,
           input: normalizedInvocation.input,
@@ -4405,6 +4409,9 @@ export class CodexProvider implements AgentProvider {
                   id: item.id,
                   name: normalizedInvocation.toolName,
                   input: normalizedInvocation.input,
+                  ...(normalizedInvocation.displayActions
+                    ? { _displayActions: normalizedInvocation.displayActions }
+                    : {}),
                 },
               ],
             },

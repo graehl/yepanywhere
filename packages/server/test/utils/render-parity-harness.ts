@@ -107,6 +107,7 @@ export function normalizeRenderItemsForComparison(
         status: item.status,
         toolName: item.toolName,
         toolInput: normalizeUnknown(item.toolInput),
+        displayActions: normalizeUnknown(item.displayActions),
         toolResult: item.toolResult
           ? {
               content: item.toolResult.content,

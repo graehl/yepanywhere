@@ -23,6 +23,7 @@ import type {
   RecapMode,
   SlashCommand,
 } from "./types.js";
+import type { ToolDisplayAction } from "./tool-display-actions.js";
 import type { UploadedFile } from "./upload.js";
 import type { UserMessageMetadata } from "./user-message-metadata.js";
 import type { WorkstreamId } from "./workstreams.js";
@@ -46,6 +47,8 @@ export interface AppContentBlock {
   id?: string;
   name?: string;
   input?: unknown;
+  /** YA-derived presentation semantics; recomputed rather than persisted. */
+  _displayActions?: ToolDisplayAction[];
   // tool_result block
   tool_use_id?: string;
   content?: string | AppContentBlock[];

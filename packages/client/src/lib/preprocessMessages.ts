@@ -870,6 +870,7 @@ function processMessage(
               existingItem,
               msg,
               block.input,
+              block._displayActions,
             );
             if (existingItem.status === "pending") {
               pendingToolCalls.set(block.id, existingIndex);
@@ -888,6 +889,9 @@ function processMessage(
           id: block.id,
           toolName: block.name,
           toolInput: block.input,
+          ...(block._displayActions
+            ? { displayActions: block._displayActions }
+            : {}),
           toolResult: undefined,
           status: isOrphaned ? "incomplete" : "pending",
           sourceMessages: [msg],
@@ -933,11 +937,13 @@ function updateToolCallSnapshot(
   item: ToolCallItem,
   message: Message,
   toolInput: unknown,
+  displayActions: ToolCallItem["displayActions"],
 ): ToolCallItem {
   const withSource = appendSourceMessage(item, message);
   return {
     ...withSource,
     toolInput,
+    displayActions,
   };
 }
 
@@ -1095,6 +1101,7 @@ function attachToolResult(
     id: item.id,
     toolName: item.toolName,
     toolInput: item.toolInput,
+    ...(item.displayActions ? { displayActions: item.displayActions } : {}),
     toolResult: resultData,
     status,
     sourceMessages: appendSourceMessage(item, resultMessage).sourceMessages,

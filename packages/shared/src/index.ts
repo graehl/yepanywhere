@@ -369,6 +369,13 @@ export type {
   BrowserProfileInfo,
   BrowserProfilesResponse,
 } from "./app-types.js";
+
+export type {
+  ToolDisplayAction,
+  ToolDisplayListAction,
+  ToolDisplayReadAction,
+  ToolDisplaySearchAction,
+} from "./tool-display-actions.js";
 export {
   isUserMessage,
   isAssistantMessage,

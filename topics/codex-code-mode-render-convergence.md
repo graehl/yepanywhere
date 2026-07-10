@@ -6,8 +6,9 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: in progress. The first server-only extraction slice is implemented as
-of 2026-07-10; derived multi-action metadata is not exposed to the client yet.
+Status: in progress. The extraction and parity-only propagation slices are
+implemented as of 2026-07-10; the client carries derived multi-action metadata
+but does not render it yet.
 
 Implementation progress:
 
@@ -19,9 +20,17 @@ Implementation progress:
   read sequence and compare them with sanitized live `commandActions` oracles.
 - [x] Route existing single-action normalization through the new analyzer while
   keeping compound execution as one `Bash` call.
-- [ ] Carry rollout-derived multi-action analysis through the normalized
+- [x] Carry rollout-derived multi-action analysis through the normalized
   in-memory tool-call shape with live/reload parity.
 - [ ] Render one-to-many actions within `Exploring` / `Explored` groups.
+
+The in-memory boundary is the provider-neutral `ToolDisplayAction` contract in
+`packages/shared/src/tool-display-actions.ts`. Codex normalization attaches its
+rollout-recoverable vector as `_displayActions` on a `tool_use` block, and
+client preprocessing carries it to `ToolCallItem.displayActions`. Neither field
+is written back to the rollout or to another YA-owned durable record. Live
+`commandActions` remain test/diagnostic oracle data and do not populate this
+field.
 
 See also:
 [stream-persisted-render-parity](stream-persisted-render-parity.md) (the graded
@@ -328,9 +337,6 @@ parent so action summaries do not masquerade as separate executions.
 
 ## Open implementation decisions
 
-- The exact in-memory field name and shared type boundary for derived display
-  actions. It should be available to render preprocessing without polluting the
-  provider's original tool input.
 - Whether a single parent containing several actions participates in the same
   component as a run of several parent calls or uses a small adapter around the
   existing group component.

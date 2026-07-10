@@ -1,3 +1,4 @@
+import type { ToolDisplayAction } from "@yep-anywhere/shared";
 import {
   createCodexCodeModeGroupInput,
   extractCodexCodeModeCalls,
@@ -6,8 +7,8 @@ import {
 import {
   analyzeCodexCommand,
   type CodexReadShellInfo,
-  parseCodexCommandActionsOracle,
   stripOuterQuotes,
+  toToolDisplayActions,
   unwrapCodexShellLauncherCommand,
 } from "./displayActions.js";
 
@@ -43,6 +44,7 @@ export interface CodexToolCallContext {
 export interface NormalizedCodexToolInvocation {
   toolName: string;
   input: unknown;
+  displayActions?: ToolDisplayAction[];
   readShellInfo?: CodexReadShellInfo;
   writeShellInfo?: CodexWriteShellInfo;
 }
@@ -114,6 +116,9 @@ export function normalizeCodexToolInvocation(
       getStringField(normalizedInput, "cwd"))
     : undefined;
   const commandAnalysis = analyzeCodexCommand(command, workingDirectory);
+  const displayActions = commandAnalysis
+    ? toToolDisplayActions(commandAnalysis.actions)
+    : undefined;
   if (commandAnalysis?.actions.length === 1) {
     const action = commandAnalysis.actions[0];
     if (action?.kind === "read") {
@@ -128,6 +133,7 @@ export function normalizeCodexToolInvocation(
       return {
         toolName: "Read",
         input: createReadToolInput(readShellInfo),
+        displayActions,
         readShellInfo,
       };
     }
@@ -139,6 +145,7 @@ export function normalizeCodexToolInvocation(
           output_mode: "content",
           ...(action.path ? { path: action.path } : {}),
         },
+        displayActions,
       };
     }
   }
@@ -152,7 +159,11 @@ export function normalizeCodexToolInvocation(
     };
   }
 
-  return { toolName: "Bash", input: normalizedInput };
+  return {
+    toolName: "Bash",
+    input: normalizedInput,
+    ...(displayActions ? { displayActions } : {}),
+  };
 }
 
 export function normalizeCodexCustomToolInvocation(
@@ -171,9 +182,21 @@ export function normalizeCodexCustomToolInvocation(
     }
   }
   if (codeModeCalls.length > 1 && typeof rawInput === "string") {
+    const normalizedCalls = codeModeCalls.map((call) =>
+      normalizeCodexToolInvocation(
+        canonicalizeCodexToolName(call.toolName),
+        call.input,
+      ),
+    );
+    const displayActions = normalizedCalls.every(
+      (call) => call.displayActions && call.displayActions.length > 0,
+    )
+      ? normalizedCalls.flatMap((call) => call.displayActions ?? [])
+      : undefined;
     return {
       toolName: "Exec",
       input: createCodexCodeModeGroupInput(rawInput, codeModeCalls),
+      ...(displayActions ? { displayActions } : {}),
     };
   }
 
@@ -183,53 +206,6 @@ export function normalizeCodexCustomToolInvocation(
       ? { _rawPatch: rawInput }
       : rawInput;
   return normalizeCodexToolInvocation(canonicalToolName, normalizedInput);
-}
-
-export function normalizeCodexCommandActionInvocation(
-  command: string,
-  commandActions: unknown,
-): NormalizedCodexToolInvocation | null {
-  const actions = parseCodexCommandActionsOracle(commandActions);
-  if (actions?.length !== 1) {
-    return null;
-  }
-
-  const action = actions[0];
-  if (action?.kind === "read") {
-    const commandAction = analyzeCodexCommand(command)?.actions[0];
-    const readShellInfo: CodexReadShellInfo = {
-      ...(commandAction?.kind === "read"
-        ? {
-            ...(commandAction.startLine !== undefined
-              ? { startLine: commandAction.startLine }
-              : {}),
-            ...(commandAction.endLine !== undefined
-              ? { endLine: commandAction.endLine }
-              : {}),
-            stripLineNumbers: commandAction.stripLineNumbers,
-          }
-        : { stripLineNumbers: action.stripLineNumbers }),
-      filePath: action.filePath,
-    };
-    return {
-      toolName: "Read",
-      input: createReadToolInput(readShellInfo),
-      readShellInfo,
-    };
-  }
-
-  if (action?.kind === "search") {
-    const input: Record<string, unknown> = {
-      pattern: action.query,
-      output_mode: "content",
-    };
-    if (action.path) {
-      input.path = action.path;
-    }
-    return { toolName: "Grep", input };
-  }
-
-  return null;
 }
 
 export function normalizeCodexToolOutputWithContext(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  normalizeCodexCommandActionInvocation,
+  normalizeCodexCustomToolInvocation,
   normalizeCodexToolInvocation,
   normalizeCodexToolOutputWithContext,
 } from "../../src/codex/normalization.js";
@@ -106,34 +106,6 @@ describe("normalizeCodexToolInvocation", () => {
     expect(normalized.toolName).toBe("Bash");
   });
 
-  it("uses Codex read commandActions while preserving parsed line limits", () => {
-    const normalized = normalizeCodexCommandActionInvocation(
-      WINDOWS_PWSH_GET_CONTENT,
-      [
-        {
-          type: "read",
-          command: "Get-Content -Path CLAUDE.md -TotalCount 20",
-          name: "CLAUDE.md",
-          path: String.raw`C:\Users\sox\Documents\code\yepanywhere\CLAUDE.md`,
-        },
-      ],
-    );
-
-    expect(normalized).toMatchObject({
-      toolName: "Read",
-      input: {
-        file_path: String.raw`C:\Users\sox\Documents\code\yepanywhere\CLAUDE.md`,
-        offset: 1,
-        limit: 20,
-      },
-      readShellInfo: {
-        filePath: String.raw`C:\Users\sox\Documents\code\yepanywhere\CLAUDE.md`,
-        startLine: 1,
-        endLine: 20,
-      },
-    });
-  });
-
   it("keeps a compound exploration sequence as one Bash invocation", () => {
     const normalized = normalizeCodexToolInvocation("Bash", {
       cmd: "sed -n '1,20p' CLAUDE.md && sed -n '1,20p' DEVELOPMENT.md",
@@ -147,16 +119,43 @@ describe("normalizeCodexToolInvocation", () => {
         command: "sed -n '1,20p' CLAUDE.md && sed -n '1,20p' DEVELOPMENT.md",
         workdir: "/repo",
       },
+      displayActions: [
+        {
+          kind: "read",
+          path: "CLAUDE.md",
+          absolutePath: "/repo/CLAUDE.md",
+          name: "CLAUDE.md",
+          startLine: 1,
+          endLine: 20,
+        },
+        {
+          kind: "read",
+          path: "DEVELOPMENT.md",
+          absolutePath: "/repo/DEVELOPMENT.md",
+          name: "DEVELOPMENT.md",
+          startLine: 1,
+          endLine: 20,
+        },
+      ],
     });
   });
 
-  it("does not flatten multiple live commandActions into one tool", () => {
-    expect(
-      normalizeCodexCommandActionInvocation("cat A.md && cat B.md", [
-        { type: "read", command: "cat A.md", name: "A.md", path: "/repo/A.md" },
-        { type: "read", command: "cat B.md", name: "B.md", path: "/repo/B.md" },
-      ]),
-    ).toBeNull();
+  it("combines actions from multiple exploration-only code-mode calls", () => {
+    const normalized = normalizeCodexCustomToolInvocation(
+      "exec",
+      'const a = await tools.exec_command({"cmd":"cat A.md","workdir":"/repo"}); const b = await tools.exec_command({"cmd":"rg needle src","workdir":"/repo"}); text(a.output + b.output);',
+    );
+
+    expect(normalized.toolName).toBe("Exec");
+    expect(normalized.displayActions).toEqual([
+      {
+        kind: "read",
+        path: "A.md",
+        absolutePath: "/repo/A.md",
+        name: "A.md",
+      },
+      { kind: "search", query: "needle", path: "src" },
+    ]);
   });
 });
 

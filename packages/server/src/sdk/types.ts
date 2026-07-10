@@ -6,6 +6,7 @@ import type {
   PermissionMode,
   SlashCommand,
   SessionLivenessProbeStatus,
+  ToolDisplayAction,
   UploadedFile,
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
@@ -18,6 +19,8 @@ export interface ContentBlock {
   id?: string;
   name?: string;
   input?: unknown;
+  /** YA-derived presentation semantics; recomputed rather than persisted. */
+  _displayActions?: ToolDisplayAction[];
   /** For tool_result blocks - references the tool_use id */
   tool_use_id?: string;
   /** For tool_result blocks - the result content */

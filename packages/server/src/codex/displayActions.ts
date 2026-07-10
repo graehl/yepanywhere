@@ -1,4 +1,5 @@
 import { posix, win32 } from "node:path";
+import type { ToolDisplayAction } from "@yep-anywhere/shared";
 
 /**
  * Rollout-recoverable semantic actions for Codex command presentation.
@@ -694,6 +695,40 @@ export function analyzeCodexCommand(
     command: normalizedCommand,
     explorationOnly: true,
   };
+}
+
+/** Strip parser evidence that should not participate in render identity. */
+export function toToolDisplayActions(
+  actions: CodexDisplayAction[],
+): ToolDisplayAction[] {
+  return actions.map((action) => {
+    switch (action.kind) {
+      case "read":
+        return {
+          kind: action.kind,
+          path: action.filePath,
+          name: action.name,
+          ...(action.absolutePath ? { absolutePath: action.absolutePath } : {}),
+          ...(action.startLine !== undefined
+            ? { startLine: action.startLine }
+            : {}),
+          ...(action.endLine !== undefined ? { endLine: action.endLine } : {}),
+        };
+      case "search":
+        return {
+          kind: action.kind,
+          query: action.query,
+          ...(action.path ? { path: action.path } : {}),
+        };
+      case "list":
+        return {
+          kind: action.kind,
+          ...(action.path ? { path: action.path } : {}),
+        };
+      default:
+        throw new Error("Unsupported Codex display action");
+    }
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

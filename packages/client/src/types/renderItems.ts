@@ -1,4 +1,7 @@
-import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
+import type {
+  ToolDisplayAction,
+  TranscriptDisplayObject,
+} from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 
 /**
@@ -49,6 +52,8 @@ export interface ToolCallItem extends RenderItemBase {
   id: string; // tool_use.id
   toolName: string; // tool_use.name
   toolInput: unknown; // tool_use.input
+  /** Derived semantics carried for grouping; renderers ignore them for now. */
+  displayActions?: ToolDisplayAction[];
   toolResult?: ToolResultData; // undefined while pending
   /** "incomplete" means the turn ended without YA observing a result. */
   status: "pending" | "complete" | "error" | "aborted" | "incomplete";

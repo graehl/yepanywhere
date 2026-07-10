@@ -1,4 +1,6 @@
+import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api/client";
 import { ContextUsageIndicator } from "../components/ContextUsageIndicator";
 import { PageHeader } from "../components/PageHeader";
 import { ThinkingIndicator } from "../components/ThinkingIndicator";
@@ -119,12 +121,16 @@ interface ProcessCardProps {
   process: ProcessInfo;
   basePath?: string;
   isTerminated?: boolean;
+  onKill?: (process: ProcessInfo) => void;
+  killing?: boolean;
 }
 
 function ProcessCard({
   process,
   basePath = "",
   isTerminated = false,
+  onKill,
+  killing = false,
 }: ProcessCardProps) {
   const { t } = useI18n();
   return (
@@ -153,6 +159,22 @@ function ProcessCard({
             >
               {getStateLabel(process.state, t)}
             </span>
+          )}
+          {!isTerminated && onKill && (
+            <button
+              type="button"
+              className="agent-kill-button"
+              disabled={killing}
+              onClick={(e) => {
+                // The whole card is a Link; keep a kill tap from navigating.
+                e.preventDefault();
+                e.stopPropagation();
+                onKill(process);
+              }}
+              title={t("agentsKillTitle" as never)}
+            >
+              {killing ? t("agentsKilling" as never) : t("agentsKill" as never)}
+            </button>
           )}
         </div>
         <div className="agent-card-meta">
@@ -208,10 +230,43 @@ function ProcessCard({
 
 export function AgentsPage() {
   const { t } = useI18n();
-  const { processes, terminatedProcesses, loading, error } = useProcesses();
+  const { processes, terminatedProcesses, loading, error, refetch } =
+    useProcesses();
   const basePath = useRemoteBasePath();
 
   const { openSidebar, isWideScreen } = useNavigationLayout();
+
+  const [killingIds, setKillingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  // Forcibly abort a live (hung or otherwise) process. This is the manual
+  // escape hatch for orphans the automatic stale sweep can't confirm dead
+  // (e.g. a Codex hang with no liveness signal), which otherwise sit on the
+  // Active list with no UI recourse.
+  const handleKill = useCallback(
+    async (process: ProcessInfo) => {
+      const label = process.sessionTitle || t("agentsUntitled" as never);
+      if (!window.confirm(t("agentsKillConfirm" as never, { title: label }))) {
+        return;
+      }
+      setKillingIds((prev) => new Set(prev).add(process.id));
+      try {
+        await api.abortProcess(process.id);
+      } catch {
+        // Ignore: the refetch below reflects the real post-abort state, and a
+        // failed abort (e.g. already gone) needs no separate error surface.
+      } finally {
+        await refetch();
+        setKillingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(process.id);
+          return next;
+        });
+      }
+    },
+    [refetch, t],
+  );
 
   // Split processes into active (in-turn/waiting-input) and idle
   const activeProcesses = processes.filter(
@@ -251,6 +306,8 @@ export function AgentsPage() {
                         key={process.id}
                         process={process}
                         basePath={basePath}
+                        onKill={handleKill}
+                        killing={killingIds.has(process.id)}
                       />
                     ))}
                   </div>
@@ -270,6 +327,8 @@ export function AgentsPage() {
                         key={process.id}
                         process={process}
                         basePath={basePath}
+                        onKill={handleKill}
+                        killing={killingIds.has(process.id)}
                       />
                     ))}
                   </div>

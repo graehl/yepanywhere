@@ -14782,6 +14782,29 @@ a.linkified-url:hover {
   color: white;
 }
 
+.agent-kill-button {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.agent-kill-button:hover:not(:disabled) {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+.agent-kill-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .agent-card-meta {
   display: flex;
   align-items: center;

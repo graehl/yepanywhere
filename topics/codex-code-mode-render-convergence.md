@@ -7,9 +7,9 @@
 Topic: codex-code-mode-render-convergence
 
 Status: in progress. Extraction, parity propagation, bounded identity
-reconciliation, and the provider-neutral exploration projection are
-implemented as of 2026-07-10; the client does not visibly render multi-action
-parents yet.
+reconciliation, the provider-neutral exploration projection, and compact
+multi-action rendering are implemented as of 2026-07-10. Interaction/layout
+hardening and closeout verification remain.
 
 Canonical slice status, landed commit history, verification evidence, and
 deferred follow-ups are tracked in
@@ -32,7 +32,10 @@ Implementation progress:
   durable `custom_tool_call` identity using exact same-turn semantics.
 - [x] Project canonical and multi-action exploration into ordered entries
   owned by their original result-bearing parents.
-- [ ] Render one-to-many actions within `Exploring` / `Explored` groups.
+- [x] Render one-to-many actions within `Exploring` / `Explored` groups while
+  retaining one raw parent and one combined result.
+- [ ] Harden search, navigation, collapse identity, predictive height, and
+  live/reload layout stability.
 
 The in-memory boundary is the provider-neutral `ToolDisplayAction` contract in
 `packages/shared/src/tool-display-actions.ts`. Codex normalization attaches its

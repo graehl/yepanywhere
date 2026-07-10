@@ -1,5 +1,6 @@
 import { memo, useRef, useState } from "react";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
+import { useI18n } from "../../i18n";
 import { MESSAGE_STALE_THRESHOLD_MS } from "../../lib/messageAge";
 import {
   getExplorationKind,
@@ -7,15 +8,22 @@ import {
   getExploredEntryFallbackSummary,
   getLatestRenderItemsTimestampMs,
 } from "../../lib/sessionDetail/renderSelectors";
+import type {
+  ExplorationEntry,
+  ExplorationParent,
+  ExplorationProjection,
+} from "../../lib/sessionDetail/explorationProjection";
+import { getPathBasename, makeDisplayPath } from "../../lib/text";
 import type { ToolCallItem } from "../../types/renderItems";
 import { MessageAge } from "../MessageAge";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
+import { ToolCallRow } from "./ToolCallRow";
 
 interface Props {
   id: string;
-  items: ToolCallItem[];
+  projection: ExplorationProjection;
   sessionProvider?: string;
   staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
@@ -83,17 +91,56 @@ function renderEntrySummary(
   return getExploredEntryFallbackSummary(item, projectPath);
 }
 
+function projectedEntryLabel(
+  parent: ExplorationParent,
+  entry: ExplorationEntry,
+): string {
+  if (
+    parent.entries.length === 1 &&
+    getExplorationKind(parent.item.toolName) === entry.kind
+  ) {
+    return getExploredEntryDisplayLabel(parent.item.toolName);
+  }
+  switch (entry.kind) {
+    case "read":
+      return "Read";
+    case "search":
+      return "Search";
+    case "list":
+      return "List";
+  }
+}
+
+function projectedEntryRenderId(
+  parent: ExplorationParent,
+  entry: ExplorationEntry,
+): string {
+  return parent.entries.length === 1 ? parent.item.id : entry.id;
+}
+
+function parentNeedsRawDetails(parent: ExplorationParent): boolean {
+  return (
+    parent.entries.length > 1 ||
+    getExplorationKind(parent.item.toolName) === null
+  );
+}
+
 export const ExploredToolGroup = memo(function ExploredToolGroup({
   id,
-  items,
+  projection,
   sessionProvider,
   staleNowMs,
   latestVisibleTimestampMs,
 }: Props) {
   const [expanded, setExpanded] = useState(true);
+  const [expandedParentIds, setExpandedParentIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const { t } = useI18n();
   const sessionMetadata = useOptionalSessionMetadata();
   const projectPath = sessionMetadata?.projectPath ?? null;
   const staticAgeNowMsRef = useRef(Date.now());
+  const items = projection.parents.map((parent) => parent.item);
   const timestampMs = getLatestRenderItemsTimestampMs(items);
   const hasTimestamp = timestampMs !== null;
   const isLatestVisibleTimestamp =
@@ -106,9 +153,31 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
     ageNowMs !== null &&
     timestampMs !== null &&
     ageNowMs - timestampMs >= MESSAGE_STALE_THRESHOLD_MS;
+  const isPending = projection.parents.some(
+    (parent) => parent.item.status === "pending",
+  );
+  const title = isPending
+    ? t("explorationTitlePending")
+    : t("explorationTitleComplete");
+  const entryCount = projection.entries.length;
+  const countLabel = t(
+    entryCount === 1 ? "explorationItemCountOne" : "explorationItemCountMany",
+    { count: entryCount },
+  );
   const toggleLabel = expanded
-    ? "Collapse explored tools"
-    : "Expand explored tools";
+    ? t("explorationCollapse")
+    : t("explorationExpand");
+  const toggleParentDetails = (parentId: string) => {
+    setExpandedParentIds((current) => {
+      const next = new Set(current);
+      if (next.has(parentId)) {
+        next.delete(parentId);
+      } else {
+        next.add(parentId);
+      }
+      return next;
+    });
+  };
 
   return (
     <div
@@ -138,35 +207,82 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
             onClick={() => setExpanded((value) => !value)}
             aria-expanded={expanded}
           >
-            <span className="explored-group-title">Explored</span>
-            <span className="explored-group-count">
-              {items.length} {items.length === 1 ? "item" : "items"}
-            </span>
+            <span className="explored-group-title">{title}</span>
+            <span className="explored-group-count">{countLabel}</span>
             <span className="expand-chevron" aria-hidden="true">
               {expanded ? "▾" : "▸"}
             </span>
           </button>
           {expanded && (
             <div className="explored-group-body" role="list">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`explored-entry status-${item.status}`}
-                  data-render-id={item.id}
-                  data-render-type={item.type}
-                  role="listitem"
-                >
-                  <span className="explored-entry-status" aria-hidden="true">
-                    {statusGlyph(item.status)}
-                  </span>
-                  <span className="explored-entry-tool">
-                    {getExploredEntryDisplayLabel(item.toolName)}
-                  </span>
-                  <span className="explored-entry-summary">
-                    {renderEntrySummary(item, sessionProvider, projectPath)}
-                  </span>
-                </div>
-              ))}
+              {projection.parents.flatMap((parent) =>
+                parent.entries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className={`explored-entry status-${parent.item.status}`}
+                    data-render-id={projectedEntryRenderId(parent, entry)}
+                    data-exploration-entry-id={entry.id}
+                    data-exploration-parent-id={entry.parentId}
+                    data-render-type={parent.item.type}
+                    role="listitem"
+                  >
+                    <span className="explored-entry-status" aria-hidden="true">
+                      {statusGlyph(parent.item.status)}
+                    </span>
+                    <span className="explored-entry-tool">
+                      {projectedEntryLabel(parent, entry)}
+                    </span>
+                    <span className="explored-entry-summary">
+                      {parent.entries.length === 1 &&
+                      getExplorationKind(parent.item.toolName) !== null
+                        ? renderEntrySummary(
+                            parent.item,
+                            sessionProvider,
+                            projectPath,
+                          )
+                        : renderProjectedEntrySummary(entry, projectPath, t)}
+                    </span>
+                  </div>
+                )),
+              )}
+              {projection.parents
+                .filter(parentNeedsRawDetails)
+                .map((parent) => {
+                  const parentExpanded = expandedParentIds.has(parent.item.id);
+                  const detailsLabel = parentExpanded
+                    ? t("explorationHideCommandDetails")
+                    : t("explorationShowCommandDetails");
+                  return (
+                    <div
+                      key={`details-${parent.item.id}`}
+                      className="explored-parent-details"
+                    >
+                      <button
+                        type="button"
+                        className="explored-parent-details-toggle"
+                        onClick={() => toggleParentDetails(parent.item.id)}
+                        aria-expanded={parentExpanded}
+                      >
+                        <span className="expand-chevron" aria-hidden="true">
+                          {parentExpanded ? "▾" : "▸"}
+                        </span>
+                        {detailsLabel}
+                      </button>
+                      {parentExpanded && (
+                        <div className="explored-parent-raw">
+                          <ToolCallRow
+                            id={parent.item.id}
+                            toolName={parent.item.toolName}
+                            toolInput={parent.item.toolInput}
+                            toolResult={parent.item.toolResult}
+                            status={parent.item.status}
+                            sessionProvider={sessionProvider}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </div>
@@ -175,3 +291,57 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
     </div>
   );
 });
+
+type Translate = ReturnType<typeof useI18n>["t"];
+
+function renderProjectedEntrySummary(
+  entry: ExplorationEntry,
+  projectPath: string | null | undefined,
+  t: Translate,
+) {
+  if (entry.kind === "read") {
+    const sourcePath = entry.absolutePath ?? entry.path ?? entry.name ?? "";
+    const displayPath = sourcePath
+      ? makeDisplayPath(sourcePath, projectPath)
+      : "";
+    const name = entry.name || getPathBasename(displayPath);
+    const range =
+      entry.startLine !== undefined && entry.endLine !== undefined
+        ? t("explorationLineRange", {
+            start: entry.startLine,
+            end: entry.endLine,
+          })
+        : entry.startLine !== undefined
+          ? t("explorationLine", { line: entry.startLine })
+          : "";
+    return (
+      <span
+        className="explored-entry-semantic-summary"
+        title={[displayPath, range].filter(Boolean).join(" · ")}
+      >
+        <span className="explored-entry-path">{name || displayPath}</span>
+        {range && <span className="explored-entry-range">{range}</span>}
+      </span>
+    );
+  }
+
+  if (entry.kind === "search") {
+    const scope = entry.path ? makeDisplayPath(entry.path, projectPath) : "";
+    return (
+      <span
+        className="explored-entry-semantic-summary"
+        title={[entry.query, scope].filter(Boolean).join(" · ")}
+      >
+        <span className="explored-entry-query">{entry.query}</span>
+        {scope && <span className="explored-entry-scope">{scope}</span>}
+      </span>
+    );
+  }
+
+  const path = entry.path ? makeDisplayPath(entry.path, projectPath) : ".";
+  return (
+    <span className="explored-entry-semantic-summary" title={path}>
+      <span className="explored-entry-path">{path}</span>
+    </span>
+  );
+}

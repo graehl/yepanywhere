@@ -3,12 +3,10 @@ import {
   toolRegistry,
 } from "../../components/renderers/tools";
 import { getToolSummary } from "../../components/tools/summaries";
-import { getLatestMessageTimestampMs } from "../messageAge";
 import { getPathBasename, makeDisplayPath } from "../text";
 import type { RenderItem, ToolCallItem } from "../../types/renderItems";
 import {
-  createExplorationProjection,
-  EXPLORATION_GROUP_MAX_GAP_MS,
+  buildExplorationProjectionSegments,
   type ExplorationProjection,
   projectExplorationParent,
 } from "./explorationProjection";
@@ -25,73 +23,21 @@ export type AssistantRenderSegment =
     };
 
 export function isExplorationToolCall(item: RenderItem): item is ToolCallItem {
-  return (
-    item.type === "tool_call" && getExplorationKind(item.toolName) !== null
-  );
-}
-
-function renderItemTimestampsAreTooFarApart(
-  previous: ToolCallItem,
-  next: ToolCallItem,
-): boolean {
-  const previousTimestampMs = getLatestMessageTimestampMs(
-    previous.sourceMessages,
-  );
-  const nextTimestampMs = getLatestMessageTimestampMs(next.sourceMessages);
-  if (previousTimestampMs === null || nextTimestampMs === null) {
-    return false;
-  }
-  return (
-    Math.abs(nextTimestampMs - previousTimestampMs) >
-    EXPLORATION_GROUP_MAX_GAP_MS
-  );
-}
-
-function makeExploredSegment(items: ToolCallItem[]): AssistantRenderSegment {
-  const parents = items.flatMap((item) => {
-    const parent = projectExplorationParent(item);
-    return parent ? [parent] : [];
-  });
-  const projection = createExplorationProjection(parents);
-  return {
-    kind: "explored",
-    id: projection.id,
-    items,
-    projection,
-  };
+  return item.type === "tool_call" && projectExplorationParent(item) !== null;
 }
 
 export function buildAssistantRenderSegments(
   items: readonly RenderItem[],
 ): AssistantRenderSegment[] {
-  const segments: AssistantRenderSegment[] = [];
-  let run: ToolCallItem[] = [];
-
-  const flushRun = () => {
-    if (run.length >= 2) {
-      segments.push(makeExploredSegment(run));
-    } else if (run[0]) {
-      segments.push({ kind: "item", item: run[0] });
-    }
-    run = [];
-  };
-
-  for (const item of items) {
-    if (!isExplorationToolCall(item)) {
-      flushRun();
-      segments.push({ kind: "item", item });
-      continue;
-    }
-
-    const previous = run[run.length - 1];
-    if (previous && renderItemTimestampsAreTooFarApart(previous, item)) {
-      flushRun();
-    }
-    run.push(item);
-  }
-
-  flushRun();
-  return segments;
+  return buildExplorationProjectionSegments(items).map((segment) => {
+    if (segment.kind === "item") return segment;
+    return {
+      kind: "explored",
+      id: segment.projection.id,
+      items: segment.projection.parents.map((parent) => parent.item),
+      projection: segment.projection,
+    };
+  });
 }
 
 export function getExploredEntryDisplayLabel(toolName: string): string {

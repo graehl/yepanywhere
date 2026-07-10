@@ -176,6 +176,9 @@ original `ToolCallItem` as the sole status/result/raw-detail owner. Entries use
 parent id plus source-order index and never become synthetic transcript tools
 or result owners. This is what lets several canonical parents with one action
 and one code-mode parent with several actions share the same explored model.
+`buildAssistantRenderSegments` and `ExploredToolGroup` consume that projection;
+the component shows semantic rows by default and nests the unchanged parent
+tool renderer only when raw command details are requested.
 
 ### The uniform diff augment
 

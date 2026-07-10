@@ -46,6 +46,16 @@ function toolCall(
   };
 }
 
+function projectionFor(items: ToolCallItem[]) {
+  const segment = buildAssistantRenderSegments(items).find(
+    (candidate) => candidate.kind === "explored",
+  );
+  if (segment?.kind !== "explored") {
+    throw new Error("Expected explored projection");
+  }
+  return segment.projection;
+}
+
 describe("ExploredToolGroup", () => {
   afterEach(() => {
     cleanup();
@@ -137,16 +147,21 @@ describe("ExploredToolGroup", () => {
     });
 
     const { container } = render(
-      <SessionMetadataProvider
-        projectId={projectId}
-        projectPath={projectRoot}
-        sessionId="session-1"
-      >
-        <ExploredToolGroup id="explored-test" items={[read, search, list]} />
-      </SessionMetadataProvider>,
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={projectId}
+          projectPath={projectRoot}
+          sessionId="session-1"
+        >
+          <ExploredToolGroup
+            id="explored-test"
+            projection={projectionFor([read, search, list])}
+          />
+        </SessionMetadataProvider>
+      </I18nProvider>,
     );
 
-    expect(screen.getByText("Explored")).toBeDefined();
+    expect(screen.getByText("Exploring")).toBeDefined();
     expect(screen.getByText("Read")).toBeDefined();
     expect(screen.getByText("Grep")).toBeDefined();
     expect(screen.getByText("List")).toBeDefined();
@@ -200,13 +215,18 @@ describe("ExploredToolGroup", () => {
     });
 
     render(
-      <SessionMetadataProvider
-        projectId={windowsProjectId}
-        projectPath={windowsProjectRoot}
-        sessionId="session-1"
-      >
-        <ExploredToolGroup id="explored-test" items={[read, search, list]} />
-      </SessionMetadataProvider>,
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={windowsProjectId}
+          projectPath={windowsProjectRoot}
+          sessionId="session-1"
+        >
+          <ExploredToolGroup
+            id="explored-test"
+            projection={projectionFor([read, search, list])}
+          />
+        </SessionMetadataProvider>
+      </I18nProvider>,
     );
 
     expect(screen.getByText("note.md")).toBeDefined();
@@ -274,7 +294,10 @@ describe("ExploredToolGroup", () => {
           projectPath={projectRoot}
           sessionId="session-1"
         >
-          <ExploredToolGroup id="explored-test" items={[read, search]} />
+          <ExploredToolGroup
+            id="explored-test"
+            projection={projectionFor([read, search])}
+          />
         </SessionMetadataProvider>
       </I18nProvider>,
     );
@@ -299,5 +322,92 @@ describe("ExploredToolGroup", () => {
     expect(screen.getByText("src/a.ts")).toBeDefined();
     expect(screen.getByText("12")).toBeDefined();
     expect(document.querySelectorAll(".grep-match-highlight")).toHaveLength(2);
+  });
+
+  it("renders one multi-action parent compactly and reveals one raw result owner", () => {
+    const command = [
+      "sed -n '1,100p' src/session.ts",
+      "sed -n '101,200p' src/session.ts",
+      "sed -n '1,80p' src/driver.ts",
+    ].join(" && ");
+    const compound = {
+      ...toolCall(
+        "call-three-reads",
+        "Bash",
+        { command, cwd: projectRoot },
+        "2026-05-28T00:00:00.000Z",
+        {
+          content: "combined output once",
+          isError: false,
+          structured: {
+            stdout: "combined output once",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+        },
+      ),
+      displayActions: [
+        {
+          kind: "read" as const,
+          path: "src/session.ts",
+          absolutePath: `${projectRoot}/src/session.ts`,
+          name: "session.ts",
+          startLine: 1,
+          endLine: 100,
+        },
+        {
+          kind: "read" as const,
+          path: "src/session.ts",
+          absolutePath: `${projectRoot}/src/session.ts`,
+          name: "session.ts",
+          startLine: 101,
+          endLine: 200,
+        },
+        {
+          kind: "read" as const,
+          path: "src/driver.ts",
+          absolutePath: `${projectRoot}/src/driver.ts`,
+          name: "driver.ts",
+          startLine: 1,
+          endLine: 80,
+        },
+      ],
+    } satisfies ToolCallItem;
+    const projection = projectionFor([compound]);
+
+    const { container } = render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={projectId}
+          projectPath={projectRoot}
+          sessionId="session-1"
+        >
+          <ExploredToolGroup
+            id={projection.id}
+            projection={projection}
+            sessionProvider="codex"
+          />
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("Explored")).toBeDefined();
+    expect(screen.getByText("3 items")).toBeDefined();
+    expect(screen.getAllByText("Read")).toHaveLength(3);
+    expect(screen.getByText("lines 1-100")).toBeDefined();
+    expect(screen.getByText("lines 101-200")).toBeDefined();
+    expect(screen.getByText("lines 1-80")).toBeDefined();
+    expect(screen.queryByText(command)).toBeNull();
+    expect(screen.queryByText("combined output once")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show command details" }),
+    );
+
+    expect(screen.getByText("Ran")).toBeDefined();
+    expect(screen.getAllByText(command)).toHaveLength(1);
+    expect(screen.getAllByText("combined output once")).toHaveLength(1);
+    expect(container.querySelectorAll(".explored-parent-raw")).toHaveLength(1);
   });
 });

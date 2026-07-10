@@ -566,6 +566,67 @@ button.tool-summary {
   vertical-align: bottom;
 }
 
+.explored-entry-semantic-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.explored-entry-path,
+.explored-entry-query,
+.explored-entry-scope {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explored-entry-range,
+.explored-entry-scope {
+  flex-shrink: 0;
+  color: var(--text-dimmed, #666);
+  font-size: var(--font-size-sm);
+}
+
+.explored-parent-details {
+  margin: 2px 4px 0 1.3rem;
+}
+
+.explored-parent-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.35rem;
+  padding: 1px 4px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-dimmed, #666);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.explored-parent-details-toggle:hover,
+.explored-parent-details-toggle:focus-visible {
+  background: color-mix(in srgb, var(--bg-hover, #2a2a2a) 60%, transparent);
+  color: var(--text-muted, #888);
+}
+
+.explored-parent-raw {
+  margin: 2px 0 4px 0.25rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--border-color, #333);
+}
+
+.explored-parent-raw .tool-row.timeline-item::before,
+.explored-parent-raw .tool-row.timeline-item::after,
+.explored-parent-raw .tool-row > .timeline-dot-btn {
+  display: none;
+}
+
 .explored-entry-status {
   flex-shrink: 0;
   width: 0.8rem;
@@ -579,6 +640,29 @@ button.tool-summary {
 
 .explored-entry.status-error .explored-entry-status {
   color: var(--timeline-dot-error, var(--error-color));
+}
+
+@media (max-width: 600px) {
+  .explored-group-body {
+    margin-left: 6px;
+    padding-left: 5px;
+  }
+
+  .explored-entry {
+    gap: 0.35rem;
+  }
+
+  .explored-entry-tool {
+    width: 2.85rem;
+  }
+
+  .explored-entry-semantic-summary {
+    gap: 0.35rem;
+  }
+
+  .explored-parent-details {
+    margin-left: 1rem;
+  }
 }
 
 @keyframes slideDown {

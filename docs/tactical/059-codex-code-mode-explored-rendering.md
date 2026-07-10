@@ -2,10 +2,10 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: In progress. Foundation through the exploration projection landed on
-2026-07-10. The derived actions now have a tested parent/entry projection but
-the visible component still consumes its legacy canonical-item adapter, so
-compound reads still appear as raw `Ran sed ...` rows.
+Status: In progress. Foundation through visible semantic exploration rendering
+landed on 2026-07-10. Classified compound reads now use the same compact
+`Exploring` / `Explored` surface as canonical exploration calls; interaction,
+search, layout hardening, and closeout verification remain.
 
 ## Contract And Document Ownership
 
@@ -75,8 +75,8 @@ gate.
 
 ## Current Checkpoint
 
-As of `8ec08674`, the data reaches the client but the renderer intentionally
-ignores it:
+After S5, one rollout-recoverable analysis drives both the canonical and
+compound exploration presentation:
 
 | Layer | Current state |
 |---|---|
@@ -86,11 +86,11 @@ ignores it:
 | Shared in-memory contract | `ToolDisplayAction` is defined in `packages/shared/src/tool-display-actions.ts`. |
 | Message boundary | Server normalization attaches `_displayActions` to the in-memory `tool_use` block. |
 | Client preprocessing | `ToolCallItem.displayActions` survives reconnect snapshots and result attachment. |
-| Client segmentation | Still classifies only by parent `toolName`; `Bash` with several actions is not exploration. |
-| Visible renderer | `RenderItemComponent` does not pass `displayActions` to `ToolCallRow`; the ordinary Bash renderer shows `Ran` plus raw command/output previews. |
+| Client segmentation | `buildAssistantRenderSegments` consumes the provider-neutral exploration projection, including one parent with several ordered entries. |
+| Visible renderer | `ExploredToolGroup` renders compact semantic rows by default and exposes the unchanged result-owning Bash/Exec parent through one raw-details affordance. |
 
-This boundary explains the present screenshot. It is expected after the landed
-propagation slice and is not evidence that the analyzer failed.
+Unsafe, mixed, mutating, or ambiguous commands still fail closed to the
+ordinary `Ran` / `Exec` renderer.
 
 ## Landed Commit Ledger
 
@@ -102,7 +102,8 @@ propagation slice and is not evidence that the analyzer failed.
 | S1 | Landed 2026-07-10 | `457be41e` | Extracted `codex/displayActions.ts`; moved existing read/search parsing into it; added safe ordered compound read/search/list analysis; retained existing one-action rendering; kept compound calls visually raw. |
 | S2 | Landed 2026-07-10 | `8ec08674` | Added provider-neutral `ToolDisplayAction`; independently derived actions from live command/cwd and persisted GPT-5.5/GPT-5.6 calls; propagated them through tool blocks, reconnect replacement, results, and client preprocessing; made no visible rendering change. |
 | S3 | Landed 2026-07-10 | `78c92691` | Captured the real code-mode identity mismatch; added ephemeral turn/origin correlation metadata and a standalone exact client reconciler; adopted the rollout `call_*` identity for one-to-one matches while leaving ambiguous multi-call orchestration untouched. |
-| S4 | Landed 2026-07-10 | This commit | Added the standalone provider-neutral exploration projection; modeled ordered entries under result-owning parents; retained canonical group IDs and the existing visible adapter; covered one-to-many, many-to-one, mutation/time boundaries, duplicates, and lifecycle stability. |
+| S4 | Landed 2026-07-10 | `3ce47d02` | Added the standalone provider-neutral exploration projection; modeled ordered entries under result-owning parents; retained canonical group IDs and the existing visible adapter; covered one-to-many, many-to-one, mutation/time boundaries, duplicates, and lifecycle stability. |
+| S5 | Landed 2026-07-10 | This commit | Routed client segmentation and `ExploredToolGroup` through the projection; rendered pending/settled semantic rows; retained one expandable raw parent and one combined result; added narrow-width layout and i18n-ready copy. |
 
 ### Recorded Verification For Landed Slices
 
@@ -124,13 +125,17 @@ propagation slice and is not evidence that the analyzer failed.
   timeline, search, navigation, and component tests passed without runtime
   warnings; full lint and typecheck passed; `pnpm console:scan` remained at
   its existing budget with `+0`.
+- S5: 52 focused projection, selector, explored-component, and
+  transcript-search tests passed without runtime warnings; the full client
+  suite passed; typecheck and lint passed; `pnpm console:scan` stayed at its
+  existing budget with `+0`. Interactive browser inspection remained a manual
+  gate because no preview browser was attached to the implementation session.
 
 ## Remaining Slice Ledger
 
 | Slice | Status | Target outcome | Visible change |
 |---|---|---|---|
-| S5 | Next / not started | Render multi-action parents through the existing `Exploring` / `Explored` vocabulary while retaining parent-owned raw details. | Yes: removes the raw `Ran sed ...` default presentation for classified exploration-only commands. |
-| S6 | Not started | Stabilize search, navigation, collapse identity, predictive height, mobile layout, and live/reload reconciliation. | Polish and jank prevention. |
+| S6 | Next / not started | Stabilize search, navigation, collapse identity, predictive height, mobile layout, and live/reload reconciliation. | Polish and jank prevention. |
 | S7 | Not started | Run corpus/schema/manual verification, update docs, and close or explicitly defer follow-ups. | No new behavior beyond fixes found by verification. |
 
 ## Slice S3: Parent Identity And Reconciliation Preflight
@@ -251,12 +256,10 @@ The projection supports both one parent with many ordered actions and adjacent
 parents with one action each, and it fails closed at unknown/mutating items or
 the existing five-minute gap.
 
-Canonical explored runs now carry this projection through the assistant
-timeline while preserving their prior `items`, group ids, search anchors, and
-component props. The broader projection builder recognizes multi-action
-parents, but the visible timeline deliberately continues using the canonical
-grouping adapter until S5 teaches `ExploredToolGroup` to consume entries and
-parent-owned details safely.
+Canonical explored runs carry this projection through the assistant timeline
+while preserving their prior group ids and parent ownership. S5 now consumes
+the same projection for both canonical runs and multi-action parents; the
+projection remains the only layer that creates semantic entry identities.
 
 ### Acceptance
 
@@ -394,3 +397,18 @@ provider-neutral in-memory propagation. They intentionally did not change
 visible grouping. The raw `Ran sed ...` screenshot after `8ec08674` therefore
 matches the documented checkpoint and identifies S3-S5—not a server parsing
 regression—as the remaining path to the requested UX.
+
+### 2026-07-10 — Exploration Projection And Visible Rendering
+
+S4 introduced the parent/entry projection without changing the existing
+screen. S5 made that projection the segmentation and component boundary. A
+classified compound parent now renders ordered read/search/list summaries,
+uses `Exploring` while pending and `Explored` when settled, and keeps its raw
+command plus combined output under one parent-owned details toggle. Canonical
+GPT-5.5-style explored runs keep their existing renderer-specific summaries.
+
+This is first-party-compatible Codex behavior rather than a new YA-visible
+concept, so it uses the existing default explored surface instead of adding a
+configuration option. S6 remains responsible for search-entry indexing,
+navigation/collapse stability, predictive height, link behavior, and manual
+desktop/mobile reload inspection.

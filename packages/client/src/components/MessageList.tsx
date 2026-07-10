@@ -2334,7 +2334,7 @@ export const MessageList = memo(function MessageList({
                     <ExploredToolGroup
                       key={assistantRow.id}
                       id={assistantRow.id}
-                      items={assistantRow.items}
+                      projection={assistantRow.projection}
                       sessionProvider={provider}
                       staleNowMs={assistantRow.staleNowMs}
                       latestVisibleTimestampMs={latestVisibleTimestampMs}

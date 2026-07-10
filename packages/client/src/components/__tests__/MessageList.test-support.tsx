@@ -48,6 +48,16 @@ vi.mock("../../i18n", () => ({
         userPromptCopyAction: "Copy message text",
         userPromptEditAction: "Edit latest message",
         userPromptCancelUnconfirmedAction: "Cancel sent steering message",
+        explorationTitlePending: "Exploring",
+        explorationTitleComplete: "Explored",
+        explorationItemCountOne: "{count} item",
+        explorationItemCountMany: "{count} items",
+        explorationCollapse: "Collapse explored tools",
+        explorationExpand: "Expand explored tools",
+        explorationShowCommandDetails: "Show command details",
+        explorationHideCommandDetails: "Hide command details",
+        explorationLine: "line {line}",
+        explorationLineRange: "lines {start}-{end}",
       };
       const value = translations[key] ?? key;
       return value.replace(/\{(\w+)\}/g, (_, param: string) =>

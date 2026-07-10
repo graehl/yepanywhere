@@ -46,3 +46,10 @@ unbounded default now get a bounded window and must opt in to full history.
 The audit-log flip favors privacy/explicit operator intent over implicit
 security logging; older clients cannot enable it without the capability-gated
 settings surface.
+
+2026-07-10 session-detail turn selectors — `tailTurns` and `tailFrom` narrow
+the default or explicitly requested compact-tail scope; they do not replace it.
+Only `fullHistory=1` authorizes those selectors to reach across older compact
+boundaries. This closes a regression where the client's implicit
+`tailTurns=20` safety cap disabled the two-compaction REST default and could
+return a full Codex transcript with fewer than twenty user turns.

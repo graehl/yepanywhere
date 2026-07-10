@@ -30,6 +30,40 @@ For `tailCompactions=2`, the intended shapes are:
 | 3 | `C2`, middle, `C3`, tail |
 | 100 | `C99`, middle, `C100`, tail |
 
+### Compact scope and turn selectors
+
+An uncursored session-detail read is authorized to inspect only the last two
+compaction windows by default. `tailTurns` and `tailFrom` select a smaller
+suffix inside that compact scope; they do not authorize reading across its
+older boundary. This distinction matters because one provider turn can contain
+multiple compactions and thousands of normalized rows, so a turn count is not
+itself a safe response-size bound.
+
+The effective start is the later of the compact-boundary start and the
+turn-selector start. Consequently, `tailTurns=20` means "up to twenty turns
+within the authorized compact scope," not "return twenty turns even if that
+crosses older compactions."
+
+`fullHistory=1` is the explicit authorization to remove the default compact
+scope. It may be combined with `tailTurns` or `tailFrom` so the server selects
+a bounded suffix from the full transcript without sending the full transcript
+to the client first. Without `fullHistory=1`, those selectors can only narrow
+the default or explicitly requested compact window.
+
+| Query | Effective scope |
+| --- | --- |
+| no query | last two compaction windows |
+| `tailTurns=20` | up to 20 turns within the last two compaction windows |
+| `tailFrom=<id>` | from the id only when that is later than the compact start; otherwise clamp to the compact start |
+| `tailCompactions=5` | last five compaction windows |
+| `fullHistory=1` | full transcript |
+| `fullHistory=1&tailTurns=20` | last 20 turns across the full transcript |
+
+`afterMessageId` remains an incremental cursor rather than an initial history
+scope. If that cursor cannot be found, the route falls back to the default
+two-compaction tail. `beforeMessageId` remains the explicit older-page cursor
+and returns another compact-boundary-shaped page.
+
 ## Why This Matters
 
 The previous boundary condition used `totalCompactions <= tailCompactions` as

@@ -15,10 +15,11 @@
   diagnostic/debug surfaces rather than the default browser transcript load.
 - Compact-boundary tails are not by themselves a sufficient browser bound for
   Claude sessions with sparse compaction. Normal client session loads also send
-  a conservative recent-turn cap, currently `tailTurns=20`, unless the URL
-  explicitly chooses `tailTurns` or `tailFrom`. This keeps a session with one
-  old compaction from rendering nearly the whole transcript by default while
-  preserving explicit URL opt-in for stronger or different transcript windows.
+  a conservative recent-turn cap, currently `tailTurns=20`. The turn cap
+  narrows the default two-compaction scope; it never expands that scope unless
+  `fullHistory=1` explicitly authorizes access across older compactions. This
+  keeps both sparse-compaction Claude sessions and many-compaction Codex turns
+  from rendering nearly the whole transcript by default.
 - Custom aggressive transcript truncation remains URL opt-in, not a hidden
   recut on every refresh. `tailTurns=<n>` and `tailFrom=<message-id>` bound
   only the initial non-incremental session detail response; streaming and

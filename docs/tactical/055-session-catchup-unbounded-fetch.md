@@ -384,10 +384,12 @@ the session page now route through the source API with `fullHistory: true` and
 a caller reason.
 
 The second server-side invariant is: uncursored session-detail reads default to
-`tailCompactions=2` unless the request includes `fullHistory=1`. The client
-source API maps explicit full-history calls to that query and passes the
-reason for logging. Route coverage checks default compact-tail behavior,
-explicit full-history behavior, and explicit compact-tail bounds.
+`tailCompactions=2` unless the request includes `fullHistory=1`. Turn selectors
+refine that scope instead of replacing it; a named caller may combine one with
+`fullHistory=1` to select across the full transcript on the server. The client
+source API maps explicit full-history calls to that query and passes the reason
+for logging. Route coverage checks default compact-tail behavior, composed turn
+selectors, explicit full-history behavior, and explicit compact-tail bounds.
 
 Remaining follow-up work is to decide whether full-history export/debug flows
 should move to a separate endpoint and whether the live endpoint needs byte or

@@ -494,6 +494,52 @@ describe("Sessions API", () => {
         truncatedBeforeMessageId: "cb3",
       });
     });
+
+    it("applies turn tails inside the default compact scope", async () => {
+      await writeCompactedSession("sess-compact-turn-tail");
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-compact-turn-tail?tailTurns=20`,
+        { headers: { "X-Yep-Anywhere": "true" } },
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
+        .toEqual(["cb2", "u3", "a3", "cb3", "u4"]);
+      expect(json.pagination).toMatchObject({
+        hasOlderMessages: true,
+        returnedMessageCount: 5,
+        totalCompactions: 3,
+        totalUserTurns: 4,
+        truncatedBeforeMessageId: "cb2",
+        truncatedBy: "compact_boundary",
+      });
+    });
+
+    it("allows full-history scope to be narrowed by user turns", async () => {
+      await writeCompactedSession("sess-full-turn-tail");
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-full-turn-tail?fullHistory=1&fullHistoryReason=test&tailTurns=2`,
+        { headers: { "X-Yep-Anywhere": "true" } },
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.messages.map((message: { uuid?: string }) => message.uuid))
+        .toEqual(["u3", "a3", "cb3", "u4"]);
+      expect(json.pagination).toMatchObject({
+        hasOlderMessages: true,
+        returnedMessageCount: 4,
+        totalCompactions: 3,
+        totalUserTurns: 4,
+        truncatedBeforeMessageId: "u3",
+        truncatedBy: "user_turn",
+      });
+    });
   });
 
   describe("POST /api/sessions/:sessionId/input", () => {

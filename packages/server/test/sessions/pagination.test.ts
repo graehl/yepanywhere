@@ -3,6 +3,7 @@ import {
   type PaginationInfo,
   sliceAfterMessageId,
   sliceAfterMessageIdWithMatch,
+  sliceAtCompactAndUserTurnBoundaries,
   sliceAtCompactBoundaries,
   sliceAtUserTurnBoundary,
 } from "../../src/sessions/pagination.js";
@@ -527,5 +528,98 @@ describe("sliceAtUserTurnBoundary", () => {
     expect(result.messages).toEqual([]);
     expect(result.pagination.hasOlderMessages).toBe(false);
     expect(result.pagination.returnedMessageCount).toBe(0);
+  });
+});
+
+describe("sliceAtCompactAndUserTurnBoundaries", () => {
+  it("keeps the compact scope when twenty turns would return older history", () => {
+    const messages = [
+      msg("user", "u1"),
+      compactBoundary("cb1"),
+      compactBoundary("cb2"),
+      msg("assistant", "a1"),
+      compactBoundary("cb3"),
+      msg("assistant", "a2"),
+      compactBoundary("cb4"),
+      msg("assistant", "a3"),
+    ];
+
+    const result = sliceAtCompactAndUserTurnBoundaries(messages, 2, 20);
+
+    expect(result.messages.map((message) => message.uuid)).toEqual([
+      "cb3",
+      "a2",
+      "cb4",
+      "a3",
+    ]);
+    expect(result.pagination).toMatchObject({
+      hasOlderMessages: true,
+      returnedMessageCount: 4,
+      totalCompactions: 4,
+      totalUserTurns: 1,
+      truncatedBeforeMessageId: "cb3",
+      truncatedBy: "compact_boundary",
+    });
+  });
+
+  it("uses a smaller recent-turn suffix inside the compact scope", () => {
+    const messages = [
+      msg("user", "u1"),
+      compactBoundary("cb1"),
+      msg("user", "u2"),
+      compactBoundary("cb2"),
+      msg("user", "u3"),
+      msg("assistant", "a3"),
+      compactBoundary("cb3"),
+      msg("user", "u4"),
+      msg("assistant", "a4"),
+      msg("user", "u5"),
+      msg("assistant", "a5"),
+    ];
+
+    const result = sliceAtCompactAndUserTurnBoundaries(messages, 2, 2);
+
+    expect(result.messages.map((message) => message.uuid)).toEqual([
+      "u4",
+      "a4",
+      "u5",
+      "a5",
+    ]);
+    expect(result.pagination).toMatchObject({
+      hasOlderMessages: true,
+      returnedMessageCount: 4,
+      totalCompactions: 3,
+      totalUserTurns: 5,
+      truncatedBeforeMessageId: "u4",
+      truncatedBy: "user_turn",
+    });
+  });
+
+  it("does not let an older tailFrom selector cross compact scope", () => {
+    const messages = [
+      msg("user", "u1"),
+      compactBoundary("cb1"),
+      msg("user", "u2"),
+      compactBoundary("cb2"),
+      msg("user", "u3"),
+      compactBoundary("cb3"),
+      msg("user", "u4"),
+    ];
+
+    const result = sliceAtCompactAndUserTurnBoundaries(
+      messages,
+      2,
+      20,
+      "u1",
+    );
+
+    expect(result.messages.map((message) => message.uuid)).toEqual([
+      "cb2",
+      "u3",
+      "cb3",
+      "u4",
+    ]);
+    expect(result.pagination.truncatedBeforeMessageId).toBe("cb2");
+    expect(result.pagination.truncatedBy).toBe("compact_boundary");
   });
 });

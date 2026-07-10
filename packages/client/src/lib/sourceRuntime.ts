@@ -78,8 +78,10 @@ type GetSessionFullHistoryInput = GetSessionBaseInput & {
   afterMessageId?: never;
   tailCompactions?: never;
   beforeMessageId?: never;
-  tailTurns?: never;
-  tailFrom?: never;
+  /** Optional server-side selector within the explicitly authorized full scope. */
+  tailTurns?: number;
+  /** Optional server-side start selector within the authorized full scope. */
+  tailFrom?: string;
 };
 
 export type GetSessionInput =
@@ -246,6 +248,10 @@ const currentSourceApiClient: SourceApiClient = {
       return api.getSession(projectId, sessionId, undefined, {
         fullHistory: true,
         fullHistoryReason: input.fullHistoryReason,
+        ...(input.tailTurns !== undefined
+          ? { tailTurns: input.tailTurns }
+          : {}),
+        ...(input.tailFrom ? { tailFrom: input.tailFrom } : {}),
       });
     }
 

@@ -64,6 +64,7 @@ import {
 import {
   type PaginationInfo,
   sliceAfterMessageIdWithMatch,
+  sliceAtCompactAndUserTurnBoundaries,
   sliceAtCompactBoundaries,
   sliceAtUserTurnBoundary,
 } from "../sessions/pagination.js";
@@ -2424,9 +2425,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   //   ?afterMessageId=<id> - incremental forward-fetch (append new messages)
   //   ?tailCompactions=<n> - return only last N compact boundaries worth of messages
   //   ?beforeMessageId=<id> - cursor for loading older chunks (used with tailCompactions)
-  //   ?tailTurns=<n> - aggressive opt-in client memory cap by recent user turns
-  //   ?tailFrom=<id> - aggressive opt-in client memory cap from a user message id
-  //   ?fullHistory=1 - explicit opt-in to the full transcript
+  //   ?tailTurns=<n> - recent-turn selector within the authorized history scope
+  //   ?tailFrom=<id> - start selector within the authorized history scope
+  //   ?fullHistory=1 - explicitly authorize selectors to inspect full history
   routes.get("/projects/:projectId/sessions/:sessionId", async (c) => {
     const requestStartMs = performance.now();
     const projectId = c.req.param("projectId");
@@ -2460,9 +2461,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const defaultedToCompactTail =
       !fullHistory &&
       !afterMessageId &&
-      !tailFrom &&
-      requestedTailTurns === undefined &&
       requestedTailCompactions === undefined;
+    const unboundedRequestDefaultedToCompactTail =
+      defaultedToCompactTail &&
+      !tailFrom &&
+      requestedTailTurns === undefined;
     const effectiveTailCompactions =
       requestedTailCompactions ??
       (defaultedToCompactTail
@@ -2690,13 +2693,28 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
     const lastSeenAt = lastSeenEntry?.timestamp;
 
-    // Apply pagination if requested (BEFORE expensive augmentation). tailTurns
-    // is an opt-in stronger client memory cap, so it wins over compact tails.
-    // Skip both when afterMessageId is present since that's an incremental
-    // forward-fetch use case.
+    // Apply pagination BEFORE expensive augmentation. Compact boundaries set
+    // the authorized history scope by default; turn selectors may narrow that
+    // scope but cannot broaden it unless fullHistory=1 removed the default.
+    // Skip initial-window slicing for incremental forward fetches.
     let paginationInfo: PaginationInfo | undefined;
     if (
       !afterMessageId &&
+      effectiveTailCompactions !== undefined &&
+      !beforeMessageId &&
+      (tailFrom || requestedTailTurns !== undefined)
+    ) {
+      const sliced = sliceAtCompactAndUserTurnBoundaries(
+        session.messages,
+        effectiveTailCompactions,
+        requestedTailTurns ?? 20,
+        tailFrom,
+      );
+      session = { ...session, messages: sliced.messages };
+      paginationInfo = sliced.pagination;
+    } else if (
+      !afterMessageId &&
+      effectiveTailCompactions === undefined &&
       (tailFrom || requestedTailTurns !== undefined)
     ) {
       const sliced = sliceAtUserTurnBoundary(
@@ -2786,7 +2804,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const { messages: _messages, ...sessionMetadata } = session;
     const totalMs = performance.now() - requestStartMs;
     if (
-      defaultedToCompactTail &&
+      unboundedRequestDefaultedToCompactTail &&
       normalizedMessageCount >= LARGE_FULL_HISTORY_MESSAGE_THRESHOLD
     ) {
       getLogger().warn(

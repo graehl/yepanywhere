@@ -167,6 +167,32 @@ describe("source runtime session detail API", () => {
     );
   });
 
+  it("allows explicit full-history scope to be narrowed server-side", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({ ok: true });
+    const runtime = getOrCreateCurrentSourceRuntime(
+      LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+    );
+
+    await runtime.api.getSession({
+      projectId: "proj-1",
+      sessionId: "sess-1",
+      fullHistory: true,
+      fullHistoryReason: "test explicit full-history turn window",
+      tailTurns: 20,
+    });
+
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        fullHistory: true,
+        fullHistoryReason: "test explicit full-history turn window",
+        tailTurns: 20,
+      },
+    );
+  });
+
   it("rejects unbounded session-detail requests without explicit full history", () => {
     const runtime = getOrCreateCurrentSourceRuntime(
       LOCAL_CLIENT_SUMMARY_SOURCE_KEY,

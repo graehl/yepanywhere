@@ -273,14 +273,18 @@ routine callers should not need a full-file Codex summary scan at all.
 ### `2026-07-04`: SPC-007 Session Detail Full-History Guard
 
 Implemented in `packages/server/src/routes/sessions.ts` and the client source
-runtime. Session-detail requests now default to a compact tail when they do not
-include `afterMessageId`, `tailCompactions`, `tailTurns`, `tailFrom`, or
-explicit `fullHistory=1`. Client full-history calls still exist, but the source
-API now sends `fullHistory=1` and a caller reason.
+runtime. Session-detail requests now default to a compact tail whenever they
+are uncursored and do not explicitly authorize `fullHistory=1`. `tailTurns`
+and `tailFrom` may narrow that compact scope but do not replace it; the source
+API can combine them with `fullHistory=1` when a named caller intentionally
+needs a selector that reaches across older compactions. Client full-history
+calls still exist, but the source API sends `fullHistory=1` and a caller
+reason.
 
 Regression coverage in `packages/server/test/api/sessions.test.ts` checks that
-no-query detail reads are compact-tail bounded, `fullHistory=1` returns the
-whole synthetic transcript, and explicit compact-tail bounds still win.
+no-query detail reads are compact-tail bounded, turn selectors cannot broaden
+that scope, `fullHistory=1` returns the whole synthetic transcript, and
+explicit compact-tail bounds still win.
 
 This does not remove full-history capability. It makes full history explicit
 and auditable. Remaining follow-up is to decide whether exports/debug flows

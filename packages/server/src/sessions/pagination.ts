@@ -384,3 +384,52 @@ export function sliceAtUserTurnBoundary(
     },
   };
 }
+
+/**
+ * Apply a user-turn selector without allowing it to broaden the authorized
+ * compact-tail scope. Both selectors produce suffixes of the same transcript,
+ * so the smaller suffix is their intersection.
+ */
+export function sliceAtCompactAndUserTurnBoundaries(
+  messages: Message[],
+  tailCompactions: number,
+  tailTurns: number,
+  fromMessageId?: string,
+): SliceResult {
+  const compactSlice = sliceAtCompactBoundaries(messages, tailCompactions);
+  const turnSlice = sliceAtUserTurnBoundary(
+    messages,
+    tailTurns,
+    fromMessageId,
+  );
+  const turnSelectorMissing =
+    fromMessageId !== undefined && turnSlice.messages.length === 0;
+  const turnWins =
+    turnSelectorMissing ||
+    turnSlice.messages.length < compactSlice.messages.length;
+  const selected = turnWins ? turnSlice : compactSlice;
+  const hasOlderMessages = selected.pagination.hasOlderMessages;
+  const firstId = selected.messages[0]
+    ? getMessageId(selected.messages[0])
+    : undefined;
+
+  return {
+    messages: selected.messages,
+    pagination: {
+      hasOlderMessages,
+      totalMessageCount: messages.length,
+      returnedMessageCount: selected.messages.length,
+      truncatedBeforeMessageId:
+        hasOlderMessages && firstId ? firstId : undefined,
+      totalCompactions: compactSlice.pagination.totalCompactions,
+      totalUserTurns: turnSlice.pagination.totalUserTurns,
+      ...(turnSelectorMissing || hasOlderMessages
+        ? {
+            truncatedBy: turnWins
+              ? ("user_turn" as const)
+              : ("compact_boundary" as const),
+          }
+        : {}),
+    },
+  };
+}

@@ -7,6 +7,31 @@ around one hour later.
 **Project:** `/Users/kgraehl/code/mclone`
 **Reported URL:** `https://latest.yepanywhere.com/macbook/projects/L1VzZXJzL2tncmFlaGwvY29kZS9tY2xvbmU/sessions/964c7574-cce3-4e63-a8dc-8b75a5b6a3a2`
 
+## Decision (2026-07-10)
+
+Use content-derived freshness for Claude session summaries:
+
+- keep file mtime and size as internal session-index invalidation keys;
+- derive Claude `SessionSummary.updatedAt` from the latest meaningful
+  `user` or `assistant` row on the selected active branch;
+- therefore use that content-derived `updatedAt` for list recency, Inbox
+  tiering, sorting, and unread comparison;
+- do not add idle-reap-specific suppression or mutate last-seen state during
+  process teardown;
+- do not proactively invalidate already-cached Claude summaries when this
+  change ships. Existing cached summaries may retain their old mtime-derived
+  `updatedAt` until the corresponding session file next changes and is parsed
+  again. That gradual correction is acceptable; exact preservation of
+  read/unread state across the YA upgrade is not required.
+
+This is deliberately source-agnostic. A later mtime-only touch by YA, Claude
+CLI, Claude Desktop, or another filesystem actor should cause index validation
+without advancing content `updatedAt`. We are not investigating the precise
+CLI/Desktop write behavior as a prerequisite. If those applications append a
+row that the first content classification treats as meaningful, any remaining
+false unread behavior can be investigated separately with evidence from that
+case.
+
 ## Problem Statement
 
 YA computes unread state by comparing the session summary `updatedAt` timestamp
@@ -232,16 +257,67 @@ provider lifecycle event.
 
 ## Suggested Direction
 
-Prefer a split between "storage freshness" and "content freshness":
+The chosen direction is a split between "storage freshness" and "content
+freshness":
 
 - keep mtime/size as the index invalidation key;
-- add a provider-content freshness value derived from parsed transcript content;
-- use provider-content freshness or a provider cursor for unread;
-- leave list recency as a separate product decision, because mtime-only
-  lifecycle touches may still be useful for diagnostics but should not create
-  unread attention.
+- for Claude, make the existing summary `updatedAt` represent the latest
+  meaningful active-branch content timestamp rather than adding a second
+  public freshness field;
+- continue using `updatedAt` for unread, list recency, Inbox age windows, and
+  sorting, so an mtime-only lifecycle touch creates neither unread attention
+  nor false recent activity;
+- keep a provider content cursor/revision as a possible later strengthening if
+  timestamp ordering proves insufficient; it is not part of this fix;
+- accept gradual correction of persisted cached summaries instead of adding a
+  cache migration or forced rebuild for this change.
 
 Any fix should include a regression fixture where a Claude JSONL file's mtime
 advances after the last visible message timestamp without appending a visible
 row. The expected result is that `hasUnread` remains false when the last-seen
 marker is after the last visible content but before the mtime-only touch.
+
+## First Implementation Slice
+
+Keep the first slice Claude-only and confined to summary freshness:
+
+1. In `packages/server/src/sessions/claude-summary.ts`, derive `updatedAt` from
+   the latest timestamped `user` or `assistant` node on the selected active
+   branch. Fall back to file mtime only when the non-empty parsed session has no
+   usable content timestamp.
+2. Leave `CachedSessionSummary.fileMtime` and `indexedBytes` unchanged. They
+   continue to decide whether the file must be reparsed; no index schema bump,
+   cache-version marker, or notification-state migration is included.
+3. Add focused Claude summary coverage proving that:
+   - mtime later than the last meaningful row does not advance `updatedAt`;
+   - appending a later meaningful row does advance `updatedAt`;
+   - internal/non-conversation tail rows do not advance `updatedAt`.
+4. Add one route- or notification-level regression showing that a last-seen
+   timestamp between content time and a later file touch leaves the session
+   read. Prefer Inbox coverage if it can also cheaply prove the session does
+   not enter `recentActivity` because of the touch.
+
+Do not change other providers, the idle-reap lifecycle, `NotificationService`
+persistence, client mark-seen payloads, or Claude CLI/Desktop integration in
+this slice.
+
+### Implementation Result (2026-07-10)
+
+The first slice is complete:
+
+- `packages/server/src/sessions/claude-summary.ts` now scans the selected active
+  branch backward and uses the latest valid `user` or `assistant` timestamp as
+  summary `updatedAt`;
+- non-conversation tail rows and mtime-only touches no longer advance Claude
+  summary freshness;
+- sessions without any usable content timestamp retain the existing mtime
+  fallback;
+- index mtime/size validation, persisted notification state, Inbox tiering,
+  client mark-seen behavior, idle reaping, and other providers were left
+  unchanged;
+- no proactive persisted-index invalidation was added, per the decision above.
+
+Focused regressions cover a file whose mtime postdates its content, an internal
+system tail row, a newly appended meaningful row, and Inbox classification when
+the storage touch is later than last-seen but content is older. The targeted
+Claude reader and Inbox route suites pass with 77 tests and no warnings.

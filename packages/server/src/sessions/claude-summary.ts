@@ -539,6 +539,21 @@ function findLastAgentExcerpt(
   return trailingTool ? `⚙ ${trailingTool}` : undefined;
 }
 
+function findContentUpdatedAt(
+  activeBranch: CompactClaudeSummaryNode[],
+  fallback: Date,
+): string {
+  for (let i = activeBranch.length - 1; i >= 0; i -= 1) {
+    const node = activeBranch[i];
+    if (!node || !CONVERSATION_TYPES.has(node.type)) continue;
+    const timestampMs = Date.parse(node.timestamp);
+    if (Number.isFinite(timestampMs)) {
+      return new Date(timestampMs).toISOString();
+    }
+  }
+  return fallback.toISOString();
+}
+
 function buildSummaryFromState(
   state: ClaudeSummaryParseState,
   options: ReadClaudeSessionSummaryOptions,
@@ -572,7 +587,7 @@ function buildSummaryFromState(
     title,
     fullTitle,
     createdAt,
-    updatedAt: options.stats.mtime.toISOString(),
+    updatedAt: findContentUpdatedAt(activeBranch, options.stats.mtime),
     messageCount,
     ownership: { owner: "none" },
     contextUsage: extractContextUsage(

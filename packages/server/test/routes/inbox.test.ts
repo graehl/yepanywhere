@@ -451,6 +451,37 @@ describe("Inbox Routes", () => {
       expect(result.unread8h).toHaveLength(0);
       expect(result.unread24h).toHaveLength(0);
     });
+
+    it("does not treat a later storage touch as recent or unread", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      const contentUpdatedAt = hoursAgo(2);
+      const lastSeenAt = hoursAgo(1);
+      const storageTouchedAt = minutesAgo(5);
+      const session = createSession("sess1", "proj1", contentUpdatedAt);
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      vi.mocked(mockNotificationService.hasUnread).mockImplementation(
+        (_sessionId: string, updatedAt: string) => updatedAt > lastSeenAt,
+      );
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+      });
+
+      expect(storageTouchedAt > lastSeenAt).toBe(true);
+      expect(mockNotificationService.hasUnread).toHaveBeenCalledWith(
+        "sess1",
+        contentUpdatedAt,
+      );
+      expect(result.recentActivity).toHaveLength(0);
+      expect(result.unread8h).toHaveLength(0);
+      expect(result.unread24h).toHaveLength(0);
+    });
   });
 
   describe("priority", () => {

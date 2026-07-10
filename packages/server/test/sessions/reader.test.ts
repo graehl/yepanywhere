@@ -296,6 +296,7 @@ describe("SessionReader", () => {
       expect(summary?.provider).toBe("claude-ollama");
       expect(summary?.model).toBe("qwen3-coder-128k:latest");
       expect(summary?.lastAgentText).toBe("Active branch answer");
+      expect(summary?.updatedAt).toBe("2026-01-01T00:10:00.000Z");
       expect(summary?.contextUsage).toMatchObject({
         inputTokens: 2100,
         outputTokens: 20,
@@ -304,6 +305,96 @@ describe("SessionReader", () => {
         contextWindow: 10000,
         percentage: 21,
       });
+    });
+
+    it("ignores non-conversation tail timestamps for summary freshness", async () => {
+      const sessionId = "summary-internal-tail";
+      const jsonl = [
+        JSON.stringify({
+          type: "user",
+          uuid: "u1",
+          parentUuid: null,
+          timestamp: "2026-01-01T00:00:00.000Z",
+          message: { content: "Start", role: "user" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a1",
+          parentUuid: "u1",
+          timestamp: "2026-01-01T00:01:00.000Z",
+          message: {
+            content: [{ type: "text", text: "Done" }],
+            model: "claude-opus-4-5-20251101",
+          },
+        }),
+        JSON.stringify({
+          type: "system",
+          subtype: "api_error",
+          uuid: "s1",
+          parentUuid: "a1",
+          timestamp: "2026-01-01T00:30:00.000Z",
+        }),
+      ].join("\n");
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+
+      expect(summary?.updatedAt).toBe("2026-01-01T00:01:00.000Z");
+    });
+
+    it("advances summary freshness when meaningful content is appended", async () => {
+      const sessionId = "summary-content-append";
+      const filePath = join(testDir, `${sessionId}.jsonl`);
+      const entries = [
+        {
+          type: "user",
+          uuid: "u1",
+          parentUuid: null,
+          timestamp: "2026-01-01T00:00:00.000Z",
+          message: { content: "Start", role: "user" },
+        },
+        {
+          type: "assistant",
+          uuid: "a1",
+          parentUuid: "u1",
+          timestamp: "2026-01-01T00:01:00.000Z",
+          message: {
+            content: [{ type: "text", text: "First answer" }],
+            model: "claude-opus-4-5-20251101",
+          },
+        },
+      ];
+      await writeFile(
+        filePath,
+        `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      );
+
+      const before = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+      expect(before?.updatedAt).toBe("2026-01-01T00:01:00.000Z");
+
+      entries.push({
+        type: "user",
+        uuid: "u2",
+        parentUuid: "a1",
+        timestamp: "2026-01-01T00:02:00.000Z",
+        message: { content: "Follow-up", role: "user" },
+      });
+      await writeFile(
+        filePath,
+        `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+      );
+
+      const after = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+      expect(after?.updatedAt).toBe("2026-01-01T00:02:00.000Z");
     });
 
     it("bridges progress-parented continuation in summaries", async () => {

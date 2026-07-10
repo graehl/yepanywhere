@@ -388,6 +388,16 @@ Store-backed return path:
 
 ## Later Work
 
+### Bounded Active Transcript Window
+
+Use the reducer/store ownership established by this migration to discard an old
+loaded prefix while a long-running session follows the live tail. The approved
+policy, cheap-check requirement, pagination/auxiliary-state cleanup, and
+mount-scoped Load older suppression are specified in
+[`060-bounded-active-transcript-window.md`](060-bounded-active-transcript-window.md).
+Keep that work separate from the remaining adapter cutdown and from row
+virtualization.
+
 ### Hook Adapter Migration
 
 Make `useSessionMessages` mostly a compatibility adapter over the store while

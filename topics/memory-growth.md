@@ -20,11 +20,13 @@
   `fullHistory=1` explicitly authorizes access across older compactions. This
   keeps both sparse-compaction Claude sessions and many-compaction Codex turns
   from rendering nearly the whole transcript by default.
-- Custom aggressive transcript truncation remains URL opt-in, not a hidden
-  recut on every refresh. `tailTurns=<n>` and `tailFrom=<message-id>` bound
-  only the initial non-incremental session detail response; streaming and
-  `afterMessageId` refreshes must append normally so the loaded tail can grow
-  without repeated recutting.
+- The current implementation applies `tailTurns=<n>` and
+  `tailFrom=<message-id>` only to the initial non-incremental session detail
+  response; streaming and `afterMessageId` refreshes append normally. The
+  agreed follow-up is a cheap client-store auto-trim that periodically restores
+  approximately the same semantic bounds as a fresh load while the reader is
+  following the bottom. See
+  [`docs/tactical/060-bounded-active-transcript-window.md`](../docs/tactical/060-bounded-active-transcript-window.md).
 - CSS `content-visibility: auto` is not a safe default bound for transcript
   rows. A hosted mobile client confirmed repeated scroll-position corrections
   as variable-height rows replaced their intrinsic fallback sizes on first
@@ -32,8 +34,8 @@
   [`transcript-virtualization.md`](transcript-virtualization.md). A future bound
   should instead be explicit in the session-detail data model: keep the server
   transcript canonical, retain a contiguous recent semantic window on the
-  client, and recover omitted history through pagination. That design remains
-  unimplemented pending review.
+  client, and recover omitted history through pagination. That direction is now
+  approved for implementation; the tactical contract is linked above.
 - The old in-tab session-load cache was a developer convenience only:
   `VITE_SESSION_LOAD_CACHE=true` retained every visited transcript without
   production eviction or source/query invalidation. It proved the warm-return
@@ -56,6 +58,42 @@
   low-memory mobile behavior, invalidation and staleness rules, and why those
   trade-offs are acceptable. Ad hoc transcript caching must not be enabled by
   default.
+
+## 2026-07-10: bounded active transcript window decision
+
+The active mounted session should not retain every message received since the
+page opened. Implement a client-local prefix trim that makes the retained
+window approximate a fresh default page load without forcing provider
+compaction or re-fetching the tail from the server.
+
+Contract:
+
+- Auto-trim is browser-local, default-on, and disableable in Performance
+  settings. An explicitly stored disabled preference remains authoritative.
+- Trim only while the reader is following the bottom. The operation should be
+  silent and preserve bottom-follow across the atomic store update.
+- Keep the last two compact windows and approximately the default recent-turn
+  tail. Turn trimming uses hysteresis rather than trimming after every new turn;
+  the initial target is 20 turns with a 30-turn trigger.
+- The proposed retained-window start must be more than 60 seconds old. A
+  missing or invalid boundary timestamp means do not trim. There is no timer:
+  reconsider on later transcript growth.
+- Loading older history suppresses auto-trim for the rest of that mounted
+  session. Unmount resets the suppression; a later mount starts from the normal
+  server-bounded tail again.
+- The trim is an explicit session-detail reducer transition. It updates loaded-
+  window pagination and prunes message-owned augments, tool/agent mappings, and
+  completed agent content that is no longer reachable from retained rows.
+- This policy intentionally does not impose a byte bound. It follows roughly
+  the same semantic limits as reload; one unusually large retained turn may
+  still be large.
+
+The hot-path predicate must be cheap. Streaming tokens, placeholder updates,
+metadata, augments, subagent updates, and scroll snapshots should exit through
+constant-time gates without scanning the transcript. Only a new relevant user
+turn/compact boundary, a persisted batch that can contain one, or a cached
+age-delayed candidate becoming eligible should invoke the bounded planning
+walk. Do not add a polling timer for this feature.
 
 ## 2026-07-09: real cause of the "10 GB tab" — un-virtualized transcript re-rendered every second
 

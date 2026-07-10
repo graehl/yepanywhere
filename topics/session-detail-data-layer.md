@@ -192,6 +192,10 @@ The data layer should make the following substantially easier:
   polling UI side-channel;
 - better performance instrumentation because data transitions and DOM work are
   separated.
+- bounded active transcript windows that can atomically trim messages,
+  pagination, augments, and tool/agent mappings without turning DOM state into
+  transcript truth; see
+  [`docs/tactical/060-bounded-active-transcript-window.md`](../docs/tactical/060-bounded-active-transcript-window.md).
 
 ## Non-Goals
 

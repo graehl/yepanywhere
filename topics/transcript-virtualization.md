@@ -202,17 +202,25 @@ count, capped at the group's existing scrollable-body height. The override is
 consumed only when this default-off experiment is explicitly enabled; it does
 not change the default or weaken the decision above.
 
-### Preferred direction to evaluate: bounded semantic client window
+### Approved direction: bounded semantic client window
 
 Do not hide an unbounded transcript behind estimated-height spacers. Keep the
 full transcript canonical on the server and model the active client transcript
 as a contiguous, recent semantic window. Drop an older prefix only at safe turn
 boundaries, retain pagination metadata, and expose omitted history through the
-existing Load older path. Any bound should include estimated bytes/render cost,
-not only turns, because a single Codex turn can contain hundreds of tool rows.
-Trimming must also prune message-associated augment and tool/agent maps.
+existing Load older path. The approved first implementation deliberately uses
+semantic compaction/turn limits rather than a byte bound; one unusually large
+retained turn may therefore remain large. Trimming must also prune
+message-associated augment and tool/agent maps.
 
-This direction is not implemented or approved in detail. Design it against:
+This direction is approved for implementation but has not landed. The tactical
+contract is
+[`060-bounded-active-transcript-window.md`](../docs/tactical/060-bounded-active-transcript-window.md):
+default-on with a Performance setting to disable it, only while following the
+bottom, a greater-than-60-second boundary-age guard, two-compaction retention,
+30-to-20 turn hysteresis, and mount-scoped suppression after Load older.
+
+Implement it against:
 
 - [`memory-growth.md`](memory-growth.md), which distinguishes bounded initial
   loading from growth of the active client tail;

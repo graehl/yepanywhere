@@ -237,26 +237,39 @@ state; server-side coalescing of activity events changes a current invariant
 — see proposal #2 in `server-message-routing.md`) show the main loop is being
 pinned by emit.
 
-### Client transcript virtualization
+### Client transcript bounding and virtualization
 
 **Problem today.** `MessageList` renders the full message array. Typical
-sessions are <50 messages; long-running sessions can grow into the hundreds or
-low thousands.
+sessions are <50 messages; a mounted long-running session can keep appending
+past the bounded tail that a fresh page load would receive and grow into the
+hundreds or low thousands.
 
-**Proposal.** Introduce row virtualization for the message list, preserving
-the existing `stabilizeRenderItems` identity contract. Library vs.
-hand-rolled is a separate question for the Contribution Ethos at the time
-(e.g. `react-virtuoso` or `react-window` are the standard reference shapes,
-but a small purpose-built virtualizer using their concepts may fit YA better).
+**Proposal.** First bound the mounted session-detail store to approximately the
+same semantic tail as a fresh page load. While the reader follows the bottom,
+silently drop an old prefix at compact/user-turn boundaries, preserve the older
+page cursor, and prune associated retained state. A mount that explicitly loads
+older history is pinned until unmount. See
+[`docs/tactical/060-bounded-active-transcript-window.md`](docs/tactical/060-bounded-active-transcript-window.md).
 
-**Cost.** Medium. Virtualization interacts with auto-scroll, find-on-page,
-search anchors, and the augment-on-DOM streaming path; each needs verification.
+Row virtualization remains a separate fallback if profiles later show that the
+bounded semantic window is still too expensive. It must preserve the existing
+`stabilizeRenderItems` identity contract and solve variable-height scroll,
+find/search, selection, and turn-rail behavior.
 
-**Benefit.** Bounded render cost as transcripts grow.
+**Cost.** Medium for semantic window trimming because pagination, scroll
+following, and message-associated maps must change atomically. Higher for row
+virtualization because it interacts with auto-scroll, find-on-page, search
+anchors, and the augment-on-DOM streaming path.
 
-**Trigger.** Defer until a real long-session profile shows row count is the
-dominant cost, not formatter work. The `RenderProfile` markers documented in
-`RENDERING_PERFORMANCE.md` are the right tool to confirm.
+**Benefit.** A session that stays mounted for days does not retain every message
+since mount, while full provider history remains recoverable through Load older.
+
+**Trigger.** The semantic-window trigger has been met: a real long-session tab
+reached multi-gigabyte native browser memory, and the initial-load tail alone
+does not bound subsequent live growth. The auto-trim policy is approved for
+implementation, default-on with a browser-local Performance setting to disable
+it. Defer row virtualization until the bounded-window implementation is measured
+and a remaining viewport-scaling problem is demonstrated.
 
 ### Disk-pressure degraded mode
 

@@ -127,8 +127,9 @@ Unpaired current-format response items are provider context and do not render,
 title the session, or count as user turns. Rollouts with no user-message events
 retain an exact-marker legacy fallback so unknown older or foreign prompts are
 not silently erased. The same classifier now owns durable normalization, title
-extraction, and message counting, and session-summary index version 4 rebuilds
-previous cached interpretations. See
+extraction, and message counting. New or modified sessions use that corrected
+summary interpretation immediately; unchanged cached summaries correct
+gradually without a proactive global cache rebuild. See
 [`codex-user-turn-provenance.md`](codex-user-turn-provenance.md) for upstream
 source receipts and the local-corpus audit.
 

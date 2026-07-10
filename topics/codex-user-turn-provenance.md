@@ -300,8 +300,9 @@ classifier without broad client or id-reconciliation work.
    user-role response item.
 5. Preserve known special provider items such as hook prompts behind an
    explicit classification result rather than letting them look user-authored.
-6. Advance the session-summary index version so cached plugin/context titles
-   are rebuilt.
+6. Keep the session-summary index version unchanged. New or modified sessions
+   use the corrected interpretation immediately; unchanged cached titles and
+   counts correct gradually rather than forcing a costly global cache rebuild.
 7. Add exact regression fixtures for:
    - plugins + environment with no `AGENTS.md`;
    - plugins + AGENTS + environment;
@@ -368,7 +369,7 @@ subagent notifications, and legacy warnings.
 
 ### Slice 2 — Remove duplicated downstream heuristics
 
-Once the server classifier and index invalidation are deployed:
+Once the server classifier is deployed:
 
 1. Route public-share prompt selection, fork/source user-turn slicing, and
    other server consumers through the same provenance result.
@@ -412,7 +413,7 @@ This is a visibility/product decision, not required to fix authorship.
 
 Slice 1 implemented **server-side durable provenance classification for
 transcript normalization, title extraction, and message counting, plus the
-local-corpus audit and summary-index bump**.
+local-corpus audit**.
 
 It is the smallest slice that fixes both symptoms in the reported session
 without leaving the header and transcript on different definitions of “first
@@ -430,7 +431,8 @@ fallback cleanup and user-id alignment are intentionally later slices.
 - Rich response content, including images, is retained for real user turns.
 - Session `messageCount` no longer includes hidden contextual user-role
   response items.
-- Existing cached bad titles are invalidated predictably.
+- New and modified sessions use corrected titles and counts without
+  proactively invalidating unchanged persisted summaries.
 - Focused tests pass without warnings.
 - The local audit reports corpus totals, compressed-rollout coverage, and zero
   unexplained loss of paired user turns; any exceptions are documented before

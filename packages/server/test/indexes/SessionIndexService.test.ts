@@ -343,6 +343,42 @@ describe("SessionIndexService", () => {
       );
       expect(sessions).toHaveLength(1);
     });
+
+    it("reuses the structurally compatible unshipped version 4 index", async () => {
+      await createSession("session-1", "Content that should not be reparsed");
+      const fileStats = await stat(join(sessionDir, "session-1.jsonl"));
+      const getSessionSummary = vi.spyOn(reader, "getSessionSummary");
+
+      const indexPath = service.getIndexPath(sessionDir);
+      await writeFile(
+        indexPath,
+        JSON.stringify({
+          version: 4,
+          projectId,
+          sessions: {
+            "session-1": {
+              title: "Pre-release cached title",
+              fullTitle: "Pre-release cached title",
+              createdAt: new Date(fileStats.mtimeMs).toISOString(),
+              updatedAt: new Date(fileStats.mtimeMs).toISOString(),
+              messageCount: 1,
+              indexedBytes: fileStats.size,
+              fileMtime: fileStats.mtimeMs,
+              provider: "claude",
+            },
+          },
+        }),
+      );
+
+      const sessions = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+
+      expect(sessions[0]?.title).toBe("Pre-release cached title");
+      expect(getSessionSummary).not.toHaveBeenCalled();
+    });
   });
 
   describe("index file location", () => {

@@ -63,12 +63,23 @@ export interface CachedSessionSummary {
 }
 
 export interface SessionIndexState {
-  version: 4;
+  version: 3;
   projectId: string;
   sessions: Record<string, CachedSessionSummary>;
 }
 
-const CURRENT_VERSION = 4;
+// This version gates every provider's persisted summary index. Bump it only
+// for an incompatible on-disk shape, not for provider-specific interpretation
+// changes that can correct gradually as sessions are modified.
+const CURRENT_VERSION = 3;
+// Version 4 was an unshipped semantic cachebuster with the same on-disk
+// shape. Accept it so development installs that briefly wrote v4 do not pay
+// another full rebuild when rolling back to version 3.
+const PRE_RELEASE_COMPATIBLE_VERSION = 4;
+
+type PersistedSessionIndexState = Omit<SessionIndexState, "version"> & {
+  version: number;
+};
 
 interface SessionIndexLargestCacheMiss {
   sessionId: string;
@@ -366,17 +377,22 @@ export class SessionIndexService implements ISessionIndexService {
 
     try {
       const content = await fs.readFile(indexPath, "utf-8");
-      const parsed = JSON.parse(content) as SessionIndexState;
+      const parsed = JSON.parse(content) as PersistedSessionIndexState;
 
       // Validate version and projectId
       if (
-        parsed.version === CURRENT_VERSION &&
+        (parsed.version === CURRENT_VERSION ||
+          parsed.version === PRE_RELEASE_COMPATIBLE_VERSION) &&
         parsed.projectId === projectId
       ) {
-        this.indexCache.set(cacheKey, parsed);
+        const compatible: SessionIndexState = {
+          ...parsed,
+          version: CURRENT_VERSION,
+        };
+        this.indexCache.set(cacheKey, compatible);
         this.persistedIndexScopes.add(cacheKey);
         this.evictIfNeeded();
-        return parsed;
+        return compatible;
       }
 
       // Version mismatch or different project - start fresh

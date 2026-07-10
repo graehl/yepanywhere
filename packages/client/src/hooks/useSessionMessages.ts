@@ -29,6 +29,7 @@ import {
 } from "../lib/sessionDetail/sessionDetailCoordinator";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
+  getSessionActiveWindowTrimEnabled,
   getSessionScrollBehaviorMode,
   getSessionTranscriptCacheEnabled,
   recordLastSessionTranscriptBytes,
@@ -215,9 +216,7 @@ export function useSessionMessages(
       createSessionDetailCoordinator({
         entryKey: snapshotKey,
         runtime,
-        // Slice 3 wires the lifecycle without activating it before the
-        // required browser-local Performance preference exists.
-        activeWindowTrim: { enabled: false },
+        activeWindowTrim: { enabled: getSessionActiveWindowTrimEnabled },
       }),
     [runtime, snapshotKey],
   );

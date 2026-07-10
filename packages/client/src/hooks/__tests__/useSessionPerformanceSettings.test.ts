@@ -12,6 +12,7 @@ import type { SessionRouteSnapshot } from "../../lib/sessionRouteSnapshots";
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   getLastSessionTranscriptBytes,
+  getSessionActiveWindowTrimEnabled,
   getSessionOffscreenTranscriptRenderingEnabled,
   getSessionScrollBehaviorMode,
   getSessionDomLingerEnabled,
@@ -89,12 +90,49 @@ describe("useSessionPerformanceSettings", () => {
     expect(result.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
       false,
     );
+    expect(result.current.sessionActiveWindowTrimEnabled).toBe(true);
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheTtlHours()).toBe(1);
     expect(getSessionScrollBehaviorMode()).toBe("live-tail");
     expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(false);
+    expect(getSessionActiveWindowTrimEnabled()).toBe(true);
+  });
+
+  it("persists and publishes an explicit active-window trim opt-out", () => {
+    const { result: first } = renderHook(() => useSessionPerformanceSettings());
+    const { result: second } = renderHook(() =>
+      useSessionPerformanceSettings(),
+    );
+
+    act(() => {
+      first.current.setSessionActiveWindowTrimEnabled(false);
+    });
+
+    expect(first.current.sessionActiveWindowTrimEnabled).toBe(false);
+    expect(second.current.sessionActiveWindowTrimEnabled).toBe(false);
+    expect(getSessionActiveWindowTrimEnabled()).toBe(false);
+    expect(localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe(
+      "false",
+    );
+  });
+
+  it("updates active-window trim from another tab's storage event", () => {
+    const { result } = renderHook(() => useSessionPerformanceSettings());
+    expect(result.current.sessionActiveWindowTrimEnabled).toBe(true);
+
+    localStorage.setItem(UI_KEYS.sessionActiveWindowTrim, "false");
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: UI_KEYS.sessionActiveWindowTrim,
+          newValue: "false",
+        }),
+      );
+    });
+
+    expect(result.current.sessionActiveWindowTrimEnabled).toBe(false);
   });
 
   it("persists and publishes off-screen transcript rendering updates", () => {

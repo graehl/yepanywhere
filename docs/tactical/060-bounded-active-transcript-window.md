@@ -1,6 +1,6 @@
 # Bounded Active Transcript Window
 
-Status: implementation in progress; slices 1-4 complete.
+Status: implementation in progress; slices 1-5 complete and runtime active.
 
 Topic: memory-growth
 Topic: session-detail-data-layer
@@ -90,7 +90,28 @@ long-press work, and open notch menus. Reverse-search selection and committed
 target ids are also reconciled before paint. Component coverage verifies the
 rail markers and thumb geometry, stale preview/menu/search cleanup, live-tail
 bottom preservation, and the last-moment reader-intent guard. Automatic
-trimming remains explicitly disabled pending Slice 5.
+trimming remained explicitly disabled until the preference integration below.
+
+### 2026-07-10: Slice 5 complete — Performance preference and activation
+
+Added the browser-local `sessionActiveWindowTrim` preference, defaulting to
+enabled when no value is stored while preserving an explicit stored `false`.
+The existing performance-settings external store publishes same-tab writes and
+responds to cross-tab `storage` events. The Performance pane now exposes an
+i18n-ready **Unload Older Transcript Messages** toggle, and its open-time value
+participates in the pane-level Undo baseline.
+
+`useSessionMessages` now passes the non-reactive preference getter to the
+coordinator instead of the temporary disabled gate. A mounted coordinator reads
+the current value on each constant-time eligibility check, so disabling blocks
+future automatic trims without a remount; enabling permits a later relevant
+transcript event to evaluate the existing window.
+
+Hook coverage verifies default-on trimming from 31 to 20 user turns while
+following the tail, an explicit opt-out, and re-enabling the same mounted view.
+Settings coverage verifies persistence, same-tab publication, cross-tab
+updates, accessible UI state, and Undo restoration. Automatic active-window
+trimming is now active; Slice 6 remains for telemetry assessment and closeout.
 
 ## Goal
 
@@ -351,8 +372,9 @@ it need not synchronously scan or trim inside the settings event handler.
 4. **Scroll integration — complete 2026-07-10.** Preserved bottom-follow,
    cleared removed route anchors, reconciled the right-side turn rail and its
    thumb/local ids, and covered live-tail and reader-intent behavior.
-5. **Performance setting.** Add default-on preference, UI/i18n copy, undo,
-   storage-event behavior, and setting tests.
+5. **Performance setting — complete 2026-07-10.** Added the default-on
+   preference, UI/i18n copy, Undo, storage-event behavior, activation, and
+   focused settings/runtime tests.
 6. **Telemetry and closeout.** Add low-volume aggregate trim diagnostics only
    if existing memory/row telemetry cannot show the effect. Do not log message
    text or emit per-check console chatter.

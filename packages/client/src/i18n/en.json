@@ -208,6 +208,8 @@
   "performanceSectionDescription": "Tune client-side rendering and route retention for large sessions. These settings are local to this browser.",
   "performanceKeepRecentSessionMountedTitle": "Keep Recent Session Mounted",
   "performanceKeepRecentSessionMountedDescription": "Keep the most recently viewed session mounted briefly after leaving it so returning can be instant. Disable to reduce memory use.",
+  "performanceActiveWindowTrimTitle": "Unload Older Transcript Messages",
+  "performanceActiveWindowTrimDescription": "Automatically unload older transcript messages while following the live tail to limit memory growth. Full history remains available with Load older.",
   "performanceOffscreenTranscriptRenderingTitle": "Off-Screen Transcript Rendering",
   "performanceOffscreenTranscriptRenderingDescription": "Experimentally skip rendering transcript rows outside the viewport to reduce memory use. This is off by default because rows can jump as they come into view.",
   "performanceTranscriptCacheTitle": "Session Transcript Cache",

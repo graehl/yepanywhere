@@ -115,6 +115,28 @@ function sessionResponse(messageId: string): GetSessionResult {
   };
 }
 
+function activeWindowSessionResponse(turnCount: number): GetSessionResult {
+  const response = sessionResponse("seed");
+  const messages = Array.from({ length: turnCount }, (_, index): Message => ({
+    uuid: `user-${index}`,
+    type: "user",
+    timestamp: "2020-01-01T00:00:00.000Z",
+    message: { role: "user", content: `request ${index}` },
+  }));
+  return {
+    ...response,
+    session: { ...response.session, messageCount: turnCount },
+    messages,
+    pagination: {
+      hasOlderMessages: false,
+      totalMessageCount: turnCount,
+      returnedMessageCount: turnCount,
+      totalCompactions: 0,
+      totalUserTurns: turnCount,
+    },
+  };
+}
+
 function fakeSummaryRuntime(
   sourceKey: ClientSummarySourceKey,
 ): SourceSummaryRuntime {
@@ -266,6 +288,64 @@ describe("useSessionMessages cache", () => {
     configureSessionDetailRetention(DEFAULT_SESSION_DETAIL_RETENTION);
     __resetSessionLoadCacheForTest();
     resetClientSummaryStoreForTests();
+  });
+
+  it("enables active-window trimming by default while following the tail", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(activeWindowSessionResponse(31));
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    expect(rendered.result.current.messages).toHaveLength(31);
+
+    act(() => {
+      rendered.result.current.updateActiveWindowFollowingBottom(true);
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.messages).toHaveLength(20),
+    );
+    expect(rendered.result.current.messages[0]?.uuid).toBe("user-11");
+    expect(rendered.result.current.activeWindowTrimRevision).toBe(1);
+  });
+
+  it("honors an explicit active-window trim opt-out", async () => {
+    apiMocks.getSession.mockResolvedValueOnce(activeWindowSessionResponse(31));
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+    window.localStorage.setItem(UI_KEYS.sessionActiveWindowTrim, "false");
+    act(() => {
+      rendered.result.current.updateActiveWindowFollowingBottom(true);
+    });
+
+    expect(rendered.result.current.messages).toHaveLength(31);
+    expect(rendered.result.current.activeWindowTrimRevision).toBe(0);
+
+    window.localStorage.setItem(UI_KEYS.sessionActiveWindowTrim, "true");
+    act(() => {
+      rendered.result.current.handleStreamMessageEvent({
+        uuid: "user-31",
+        type: "user",
+        timestamp: "2020-01-01T00:00:00.000Z",
+        message: { role: "user", content: "request 31" },
+      });
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.messages).toHaveLength(20),
+    );
+    expect(rendered.result.current.messages[0]?.uuid).toBe("user-12");
+    expect(rendered.result.current.activeWindowTrimRevision).toBe(1);
   });
 
   it("hydrates retained session snapshots after an initial loading state", async () => {

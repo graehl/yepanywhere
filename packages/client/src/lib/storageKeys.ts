@@ -60,6 +60,8 @@ export const UI_KEYS = {
   sessionDomLinger: "yep-anywhere-session-dom-linger-enabled",
   sessionOffscreenTranscriptRendering:
     "yep-anywhere-session-offscreen-transcript-rendering-enabled",
+  sessionActiveWindowTrim:
+    "yep-anywhere-session-active-window-trim-enabled",
   // Legacy boolean toggle; seeds the budget preference until the slider
   // is first used, and stays coherent for older bundles.
   sessionTranscriptCache: "yep-anywhere-session-transcript-cache-enabled",

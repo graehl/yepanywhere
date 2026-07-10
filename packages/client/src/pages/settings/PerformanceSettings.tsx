@@ -41,10 +41,12 @@ export function PerformanceSettings() {
     useSessionLoadingProgress();
   const {
     sessionDomLingerEnabled,
+    sessionActiveWindowTrimEnabled,
     sessionOffscreenTranscriptRenderingEnabled,
     sessionTranscriptCacheBudgetMb,
     sessionTranscriptCacheTtlHours,
     setSessionDomLingerEnabled,
+    setSessionActiveWindowTrimEnabled,
     setSessionOffscreenTranscriptRenderingEnabled,
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
@@ -134,6 +136,7 @@ export function PerformanceSettings() {
       streamingEnabled,
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
+      sessionActiveWindowTrimEnabled,
       sessionOffscreenTranscriptRenderingEnabled,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
@@ -143,6 +146,7 @@ export function PerformanceSettings() {
       streamingEnabled,
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
+      sessionActiveWindowTrimEnabled,
       sessionOffscreenTranscriptRenderingEnabled,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
@@ -154,6 +158,9 @@ export function PerformanceSettings() {
       setStreamingEnabled(snapshot.streamingEnabled);
       setSessionLoadingProgressEnabled(snapshot.sessionLoadingProgressEnabled);
       setSessionDomLingerEnabled(snapshot.sessionDomLingerEnabled);
+      setSessionActiveWindowTrimEnabled(
+        snapshot.sessionActiveWindowTrimEnabled,
+      );
       setSessionOffscreenTranscriptRenderingEnabled(
         snapshot.sessionOffscreenTranscriptRenderingEnabled,
       );
@@ -169,6 +176,7 @@ export function PerformanceSettings() {
       setStreamingEnabled,
       setSessionLoadingProgressEnabled,
       setSessionDomLingerEnabled,
+      setSessionActiveWindowTrimEnabled,
       setSessionOffscreenTranscriptRenderingEnabled,
       setSessionTranscriptCacheBudgetMb,
       setSessionTranscriptCacheTtlHours,
@@ -228,6 +236,23 @@ export function PerformanceSettings() {
                 setSessionDomLingerEnabled(event.target.checked)
               }
               aria-label={t("performanceKeepRecentSessionMountedTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("performanceActiveWindowTrimTitle")}</strong>
+            <p>{t("performanceActiveWindowTrimDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sessionActiveWindowTrimEnabled}
+              onChange={(event) =>
+                setSessionActiveWindowTrimEnabled(event.target.checked)
+              }
+              aria-label={t("performanceActiveWindowTrimTitle")}
             />
             <span className="toggle-slider" />
           </label>

@@ -206,6 +206,10 @@ export type ProviderRuntimeStatus =
       maxRetries?: number | "unbounded";
       eventCount: number;
       source: string;
+      message?: string;
+      details?: string;
+      turnId?: string;
+      requestId?: string;
     }
   | {
       kind: "terminal";
@@ -216,6 +220,8 @@ export type ProviderRuntimeStatus =
       source: string;
       turnId?: string;
       requestId?: string;
+      scope?: "turn" | "provider_process";
+      details?: string;
     }
   | null;
 

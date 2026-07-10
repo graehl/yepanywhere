@@ -542,6 +542,10 @@ class CodexAppServerClient {
     ) => boolean,
   ) {}
 
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
   setServerRequestHandler(handler: AppServerRequestHandler): void {
     this.onServerRequest = handler;
   }
@@ -788,6 +792,7 @@ class CodexAppServerClient {
       params: {
         error: { message: error.message },
         willRetry: false,
+        codexProcessExit: true,
       },
     });
     this.notifications.close(error);
@@ -1764,8 +1769,16 @@ export class CodexProvider implements AgentProvider {
         "Error in codex app-server session",
       );
       if (!signal.aborted) {
+        const isProcessFailure = appServer.isClosed;
         yield {
           type: "error",
+          ...(isProcessFailure
+            ? {
+                uuid: `codex-error-${sessionId || "unknown"}-process-exit`,
+                codexWillRetry: false,
+                codexErrorScope: "app_server_process",
+              }
+            : {}),
           session_id: sessionId,
           error: error instanceof Error ? error.message : String(error),
           codexFailureTrace,
@@ -1822,7 +1835,16 @@ export class CodexProvider implements AgentProvider {
 
     if (notification.method === "error") {
       const params = asCodexErrorNotification(notification.params);
-      return params?.turnId === turnId && !params.willRetry;
+      if (params) {
+        return params.turnId === turnId && !params.willRetry;
+      }
+      const rawParams =
+        notification.params && typeof notification.params === "object"
+          ? (notification.params as Record<string, unknown>)
+          : null;
+      return (
+        rawParams?.codexProcessExit === true && rawParams.willRetry === false
+      );
     }
 
     return false;
@@ -2713,6 +2735,15 @@ export class CodexProvider implements AgentProvider {
       case "error": {
         const params = asCodexErrorNotification(notification.params);
         const fallbackError = this.extractErrorRecord(notification.params);
+        const rawParams =
+          notification.params && typeof notification.params === "object"
+            ? (notification.params as Record<string, unknown>)
+            : null;
+        const willRetry =
+          params?.willRetry ??
+          (typeof rawParams?.willRetry === "boolean"
+            ? rawParams.willRetry
+            : false);
         const errorMessage =
           params?.error.message ??
           this.getOptionalString(fallbackError?.message) ??
@@ -2720,7 +2751,7 @@ export class CodexProvider implements AgentProvider {
         return base({
           sourceEvent: notification.method,
           turnId: params?.turnId,
-          phase: params?.willRetry ? "retrying" : "terminal",
+          phase: willRetry ? "retrying" : "terminal",
           errorMessage,
           codexErrorInfo:
             params?.error.codexErrorInfo ??
@@ -3382,12 +3413,24 @@ export class CodexProvider implements AgentProvider {
 
       case "error": {
         const params = asCodexErrorNotification(notification.params);
-        const errorMessage = params?.error.message;
+        const rawParams =
+          notification.params && typeof notification.params === "object"
+            ? (notification.params as Record<string, unknown>)
+            : null;
+        const fallbackError = this.extractErrorRecord(notification.params);
+        const errorMessage =
+          params?.error.message ??
+          this.getOptionalString(fallbackError?.message);
+        const willRetry =
+          params?.willRetry ??
+          (typeof rawParams?.willRetry === "boolean"
+            ? rawParams.willRetry
+            : false);
+        const isProcessExit = rawParams?.codexProcessExit === true;
         const message =
           (typeof errorMessage === "string" && errorMessage) ||
-          (typeof (notification.params as { message?: unknown })?.message ===
-          "string"
-            ? (notification.params as { message: string }).message
+          (typeof rawParams?.message === "string"
+            ? rawParams.message
             : "Codex turn failed");
 
         const errorEvent = {
@@ -3397,9 +3440,16 @@ export class CodexProvider implements AgentProvider {
             : `codex-error-${sessionId}-${Date.now()}`,
           session_id: sessionId,
           error: message,
-          codexErrorInfo: params?.error.codexErrorInfo ?? null,
-          codexAdditionalDetails: params?.error.additionalDetails ?? null,
-          codexWillRetry: params?.willRetry ?? false,
+          codexErrorInfo:
+            params?.error.codexErrorInfo ??
+            fallbackError?.codexErrorInfo ??
+            null,
+          codexAdditionalDetails:
+            params?.error.additionalDetails ??
+            this.getOptionalString(fallbackError?.additionalDetails) ??
+            null,
+          codexWillRetry: willRetry,
+          codexErrorScope: isProcessExit ? "app_server_process" : "turn",
           codexThreadId: params?.threadId,
           codexTurnId: params?.turnId,
           codexRequestId: this.extractOpenAIRequestId(

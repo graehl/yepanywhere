@@ -4338,7 +4338,10 @@ function SessionPageContent({
                       ? t("toolbarProviderRuntimeAria", {
                           summary:
                             providerRuntimeStatus.kind === "terminal"
-                              ? t("processInfoRuntimeTerminal")
+                              ? providerRuntimeStatus.scope ===
+                                "provider_process"
+                                ? t("processInfoRuntimeProcessTerminal")
+                                : t("processInfoRuntimeTerminal")
                               : t("processInfoRuntimeRetrying"),
                         })
                     : undefined

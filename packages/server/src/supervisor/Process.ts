@@ -287,6 +287,31 @@ function readPositiveInteger(value: unknown): number | undefined {
   return Math.trunc(number);
 }
 
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : undefined;
+}
+
+function readCodexHttpStatus(codexErrorInfo: unknown): number | undefined {
+  if (!codexErrorInfo || typeof codexErrorInfo !== "object") {
+    return undefined;
+  }
+  for (const value of Object.values(
+    codexErrorInfo as Record<string, unknown>,
+  )) {
+    if (value && typeof value === "object") {
+      const status = readPositiveInteger(
+        (value as Record<string, unknown>).httpStatusCode,
+      );
+      if (status !== undefined) {
+        return status;
+      }
+    }
+  }
+  return undefined;
+}
+
 function normalizeProviderRuntimeReason(error: unknown): ProviderRuntimeReason {
   switch (error) {
     case "rate_limit":
@@ -383,6 +408,43 @@ function normalizeCodexTerminalReason(
   return "unknown";
 }
 
+function buildCodexRetryStatus(
+  provider: ProviderName,
+  previous: ProviderRuntimeStatus,
+  message: SDKMessage,
+  receivedAt: Date,
+): ProviderRuntimeRetryStatus | null {
+  if (
+    provider !== "codex" ||
+    message.type !== "error" ||
+    message.codexWillRetry !== true
+  ) {
+    return null;
+  }
+
+  const lastSeenAt = receivedAt.toISOString();
+  const httpStatus = readCodexHttpStatus(message.codexErrorInfo);
+  const providerMessage = readNonEmptyString(message.error);
+  const details = readNonEmptyString(message.codexAdditionalDetails);
+  const turnId = readNonEmptyString(message.codexTurnId);
+  const requestId = readNonEmptyString(message.codexRequestId);
+
+  return {
+    kind: "retrying",
+    provider,
+    reason: normalizeCodexTerminalReason(message.codexErrorInfo),
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+    startedAt: previous?.kind === "retrying" ? previous.startedAt : lastSeenAt,
+    lastSeenAt,
+    eventCount: previous?.kind === "retrying" ? previous.eventCount + 1 : 1,
+    source: "codex.error",
+    ...(providerMessage ? { message: providerMessage } : {}),
+    ...(details ? { details } : {}),
+    ...(turnId ? { turnId } : {}),
+    ...(requestId ? { requestId } : {}),
+  };
+}
+
 function buildCodexTerminalStatus(
   provider: ProviderName,
   message: SDKMessage,
@@ -397,27 +459,25 @@ function buildCodexTerminalStatus(
   }
 
   const errorMessage =
-    typeof message.error === "string" && message.error.trim()
-      ? message.error.trim()
-      : "Codex turn failed";
-  const turnId =
-    typeof message.codexTurnId === "string" && message.codexTurnId
-      ? message.codexTurnId
-      : undefined;
-  const requestId =
-    typeof message.codexRequestId === "string" && message.codexRequestId
-      ? message.codexRequestId
-      : undefined;
+    readNonEmptyString(message.error) ?? "Codex turn failed";
+  const turnId = readNonEmptyString(message.codexTurnId);
+  const requestId = readNonEmptyString(message.codexRequestId);
+  const details = readNonEmptyString(message.codexAdditionalDetails);
+  const isProcessExit = message.codexErrorScope === "app_server_process";
 
   return {
     kind: "terminal",
     provider,
-    reason: normalizeCodexTerminalReason(message.codexErrorInfo),
+    reason: isProcessExit
+      ? "server_error"
+      : normalizeCodexTerminalReason(message.codexErrorInfo),
     message: errorMessage,
     occurredAt: receivedAt.toISOString(),
-    source: "codex.error",
+    source: isProcessExit ? "codex.app_server_process" : "codex.error",
     ...(turnId ? { turnId } : {}),
     ...(requestId ? { requestId } : {}),
+    ...(details ? { details } : {}),
+    ...(isProcessExit ? { scope: "provider_process" as const } : {}),
   };
 }
 
@@ -1296,6 +1356,17 @@ export class Process {
           receivedAt,
         ),
       );
+      return;
+    }
+
+    const codexRetryStatus = buildCodexRetryStatus(
+      this.provider,
+      this.providerRuntimeStatus,
+      message,
+      receivedAt,
+    );
+    if (codexRetryStatus) {
+      this.setProviderRuntimeStatus(codexRetryStatus);
       return;
     }
 

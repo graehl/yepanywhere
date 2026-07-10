@@ -27,7 +27,8 @@ pnpm lint             # Biome linter
 pnpm typecheck        # TypeScript type checking
 pnpm test             # Unit tests
 pnpm test:e2e         # E2E tests
-pnpm clone-references # Clone upstream source into ./references for local reading
+pnpm references:sync  # Clone/sync upstream source to pinned provider versions
+pnpm references:check # Verify local references match pinned provider versions
 ```
 
 Commits should be warning-free: `pnpm lint` reports zero warnings, and test
@@ -37,12 +38,14 @@ warning that must stand needs an inline justification.
 
 ## Reference Source
 
-`pnpm clone-references` shallow-clones upstream source into `references/` for
+`pnpm references:sync` shallow-clones upstream source into `references/` for
 local reading (currently the Codex Rust source, `codex-rs`, under
-`references/codex`). The directory is gitignored and optional — clone it when
-you want to grep upstream source while working on a related YA surface (e.g. the
-Codex provider/schema/protocol). It is idempotent; delete a subdir and re-run to
-refresh. The Claude SDK is not open source and is not included.
+`references/codex`). The directory is gitignored and optional. The Codex
+checkout is aligned with the official `rust-v<expectedVersion>` tag derived
+from root `package.json`; the command refuses to move a checkout with local
+changes. Use `pnpm references:check` for a read-only alignment check.
+`pnpm clone-references` remains an alias for the sync command. The Claude SDK
+is not open source and is not included.
 
 ## Client I18n
 

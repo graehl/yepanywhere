@@ -8419,6 +8419,25 @@ a.linkified-url:hover {
   font-weight: 700;
 }
 
+.system-message-warning {
+  border-left-color: var(--warning-color, #f59e0b);
+  background: color-mix(
+    in srgb,
+    var(--warning-color, #f59e0b) 10%,
+    var(--bg-tertiary, #2a2a2a)
+  );
+  color: var(--text-primary);
+}
+
+.system-message-warning .system-message-text {
+  font-style: normal;
+}
+
+.system-message-warning .system-message-icon {
+  opacity: 1;
+  font-weight: 700;
+}
+
 .system-message-config-ack {
   border-left-color: var(--success-color, #10b981);
   background: color-mix(

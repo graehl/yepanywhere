@@ -254,6 +254,91 @@ describe("Process", () => {
       controller.finish();
     });
 
+    it("records automatic Codex retries until provider progress resumes", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "error",
+        uuid: "codex-error-turn-1",
+        session_id: "sess-1",
+        error: "Reconnecting... 2/5",
+        codexErrorInfo: {
+          responseStreamDisconnected: { httpStatusCode: 502 },
+        },
+        codexAdditionalDetails: "stream disconnected before completion",
+        codexWillRetry: true,
+        codexTurnId: "turn-1",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "retrying",
+        provider: "codex",
+        reason: "network",
+        httpStatus: 502,
+        message: "Reconnecting... 2/5",
+        details: "stream disconnected before completion",
+        turnId: "turn-1",
+        eventCount: 1,
+        source: "codex.error",
+      });
+
+      controller.push({
+        type: "assistant",
+        uuid: "assistant-1",
+        session_id: "sess-1",
+        message: { role: "assistant", content: "Recovered" },
+      });
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus).toBe(null);
+      });
+
+      controller.finish();
+    });
+
+    it("distinguishes Codex app-server process exits from failed turns", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "error",
+        uuid: "codex-error-process-exit",
+        session_id: "sess-1",
+        error: "Codex app-server exited (code=1, signal=null)",
+        codexWillRetry: false,
+        codexErrorScope: "app_server_process",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "terminal",
+        provider: "codex",
+        reason: "server_error",
+        message: "Codex app-server exited (code=1, signal=null)",
+        scope: "provider_process",
+        source: "codex.app_server_process",
+      });
+
+      controller.finish();
+    });
+
     it("restores a retained terminal status into a reactivated process", async () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {

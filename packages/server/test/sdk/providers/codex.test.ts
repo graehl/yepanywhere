@@ -294,14 +294,20 @@ describe("CodexProvider", () => {
         if (msg.type === "result" || msg.type === "error") break;
       }
 
-      // Should get an error message about CLI not found
-      expect(
-        messages.some(
-          (m: unknown) =>
-            (m as { type?: string; error?: string }).type === "error" ||
-            (m as { type?: string }).type === "result",
-        ),
-      ).toBe(true);
+      const error = messages.find(
+        (message): message is Record<string, unknown> =>
+          Boolean(
+            message &&
+              typeof message === "object" &&
+              (message as { type?: unknown }).type === "error",
+          ),
+      );
+      expect(error).toMatchObject({
+        type: "error",
+        codexWillRetry: false,
+        codexErrorScope: "app_server_process",
+      });
+      expect(error?.error).toContain("/nonexistent/codex");
     });
   });
 });
@@ -3498,7 +3504,110 @@ describe("CodexProvider Event Normalization", () => {
         "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again later.",
       codexWillRetry: false,
       codexTurnId: "turn-1",
+      codexErrorScope: "turn",
     });
+  });
+
+  it("preserves automatic retry details from codex error notifications", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertNotificationToSDKMessages(
+      {
+        method: "error",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          willRetry: true,
+          error: {
+            message: "Reconnecting... 2/5",
+            additionalDetails: "stream disconnected before completion",
+            codexErrorInfo: {
+              responseStreamDisconnected: { httpStatusCode: 502 },
+            },
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      createLiveEventState(),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "error",
+      uuid: "codex-error-turn-1",
+      error: "Reconnecting... 2/5",
+      codexAdditionalDetails: "stream disconnected before completion",
+      codexWillRetry: true,
+      codexErrorScope: "turn",
+    });
+  });
+
+  it("preserves synthetic app-server process exit errors without turn ids", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertNotificationToSDKMessages(
+      {
+        method: "error",
+        params: {
+          error: {
+            message: "Codex app-server exited (code=1, signal=null)",
+          },
+          willRetry: false,
+          codexProcessExit: true,
+        },
+      },
+      "session-1",
+      new Map(),
+      createLiveEventState(),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "error",
+      error: "Codex app-server exited (code=1, signal=null)",
+      codexWillRetry: false,
+      codexErrorScope: "app_server_process",
+    });
+  });
+
+  it("treats a synthetic app-server exit as terminal without a turn id", () => {
+    const provider = createTestProvider() as unknown as {
+      isTurnTerminalNotification: (
+        notification: { method: string; params?: unknown },
+        turnId: string,
+      ) => boolean;
+    };
+
+    expect(
+      provider.isTurnTerminalNotification(
+        {
+          method: "error",
+          params: {
+            error: {
+              message: "Codex app-server exited (code=1, signal=null)",
+            },
+            willRetry: false,
+            codexProcessExit: true,
+          },
+        },
+        "turn-1",
+      ),
+    ).toBe(true);
   });
 
   it("grants requested permission profiles automatically in bypass mode", async () => {

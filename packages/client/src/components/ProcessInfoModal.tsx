@@ -366,7 +366,9 @@ export function ProcessInfoBody({
             label={t("processInfoLabelRuntimeStatus")}
             value={
               providerRuntimeStatus.kind === "terminal"
-                ? t("processInfoRuntimeTerminal")
+                ? providerRuntimeStatus.scope === "provider_process"
+                  ? t("processInfoRuntimeProcessTerminal")
+                  : t("processInfoRuntimeTerminal")
                 : t("processInfoRuntimeRetrying")
             }
           />
@@ -427,10 +429,12 @@ export function ProcessInfoBody({
           <InfoRow
             label={t("processInfoLabelRuntimeMessage")}
             value={
-              providerRuntimeStatus.kind === "terminal"
-                ? providerRuntimeStatus.message
-                : null
+              providerRuntimeStatus.message ?? null
             }
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeDetails")}
+            value={providerRuntimeStatus.details ?? null}
           />
           <InfoRow
             label={t("processInfoLabelRuntimeAttempt")}

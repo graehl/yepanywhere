@@ -115,11 +115,15 @@ not need to change.
 and absent on a fresh checkout, so never assume a given repo is present. When
 working on the Codex provider — schema, scanner, normalization, app-server
 protocol (`packages/server/src/sdk/providers/codex*`,
-`packages/shared/src/codex-schema/`, generated protocol files) — the Codex Rust
-source is invaluable; much of that work is effectively reverse-engineered from
-Codex behavior. If `references/codex` is not present, run `pnpm
-clone-references` (shallow, idempotent), then grep it directly. The Claude SDK
-is not open source, so it is not included.
+`packages/shared/src/codex-schema/`, generated protocol files) — inspect the
+Codex Rust source rather than guessing from YA behavior. Run `pnpm
+references:sync` to shallow-clone or align `references/codex` with the official
+`rust-v<expectedVersion>` tag derived from `package.json`, then grep it
+directly. `pnpm references:check` verifies alignment without changing the
+checkout. The sync command refuses to overwrite local changes. When
+deliberately comparing a newer Codex version, state that mismatch explicitly
+and do not treat it as evidence for the pinned runtime without checking the
+matching tag. The Claude SDK is not open source, so it is not included.
 
 ## Zero-Warning Commits
 

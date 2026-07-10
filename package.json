@@ -5,7 +5,9 @@
   "scripts": {
     "setup:core": "pnpm --filter yep-anywhere --filter @yep-anywhere/server... --filter @yep-anywhere/client... install",
     "setup-vapid": "tsx scripts/setup-vapid.ts",
-    "clone-references": "node scripts/clone-references.mjs",
+    "clone-references": "node scripts/clone-references.mjs --sync",
+    "references:sync": "node scripts/clone-references.mjs --sync",
+    "references:check": "node scripts/clone-references.mjs --check",
     "codex:protocol:update": "node scripts/update-codex-protocol.mjs",
     "codex:protocol:check": "node scripts/update-codex-protocol.mjs --check",
     "codex:user-turns:audit": "tsx scripts/audit-codex-user-turn-provenance.ts",

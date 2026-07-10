@@ -1379,7 +1379,7 @@ describe("preprocessMessages", () => {
     });
   });
 
-  it("renders provider error messages", () => {
+  it("keeps errors terminal-looking when an older server omits retry metadata", () => {
     const messages: Message[] = [
       {
         id: "msg-err-1",
@@ -1395,6 +1395,26 @@ describe("preprocessMessages", () => {
       type: "system",
       subtype: "error",
       content: "Your refresh token was already used. Please sign in again.",
+    });
+  });
+
+  it("renders retrying Codex errors as warnings", () => {
+    const messages: Message[] = [
+      {
+        id: "codex-error-turn-1",
+        type: "error",
+        error: "Reconnecting... 2/5",
+        codexWillRetry: true,
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      subtype: "warning",
+      content: "Reconnecting... 2/5",
     });
   });
 

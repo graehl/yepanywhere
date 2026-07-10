@@ -70,12 +70,15 @@ export function describeProviderRuntimeStatus(
   const title = [
     summary,
     status.kind === "terminal"
-      ? t("providerRuntimeTerminalTitle")
+      ? status.scope === "provider_process"
+        ? t("providerRuntimeProcessTerminalTitle")
+        : t("providerRuntimeTerminalTitle")
       : t("providerRuntimeRetryingTitle"),
     t("providerRuntimeReasonTitle", {
       reason,
     }),
-    status.kind === "terminal" ? status.message : null,
+    status.message ?? null,
+    status.details ?? null,
     status.kind === "retrying" && status.httpStatus !== undefined
       ? t("providerRuntimeHttpStatusTitle", { status: status.httpStatus })
       : null,

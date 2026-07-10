@@ -575,7 +575,7 @@ function processMessage(
     const systemItem: SystemItem = {
       type: "system",
       id: msgId || `error-${msg.timestamp ?? Date.now()}`,
-      subtype: "error",
+      subtype: msg.codexWillRetry === true ? "warning" : "error",
       content: errorText,
       sourceMessages: [msg],
     };

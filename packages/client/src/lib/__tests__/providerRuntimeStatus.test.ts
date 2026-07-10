@@ -12,6 +12,8 @@ const t = ((key: string, vars?: Record<string, string | number>) => {
     providerRuntimeRetryingTitle: "The provider will retry automatically.",
     providerRuntimeTerminalTitle:
       "This turn ended and will not retry automatically.",
+    providerRuntimeProcessTerminalTitle:
+      "The provider process stopped and will not retry automatically.",
     providerRuntimeReasonRateLimit: "Rate limit",
     providerRuntimeReasonOverloaded: "Overloaded",
     providerRuntimeReasonServerError: "Server error",
@@ -27,7 +29,7 @@ const t = ((key: string, vars?: Record<string, string | number>) => {
 }) as ReturnType<typeof useI18n>["t"];
 
 describe("describeProviderRuntimeStatus", () => {
-  it("uses warning tone when the provider will retry automatically", () => {
+  it("accepts older retry status payloads without optional diagnostics", () => {
     const display = describeProviderRuntimeStatus(
       {
         kind: "retrying",
@@ -69,5 +71,47 @@ describe("describeProviderRuntimeStatus", () => {
     });
     expect(display?.title).toContain("will not retry automatically");
     expect(display?.title).toContain("Selected model is at capacity.");
+  });
+
+  it("includes optional Codex retry details when a new server provides them", () => {
+    const display = describeProviderRuntimeStatus(
+      {
+        kind: "retrying",
+        provider: "codex",
+        reason: "network",
+        startedAt: "2026-07-10T18:00:00.000Z",
+        lastSeenAt: "2026-07-10T18:00:01.000Z",
+        eventCount: 2,
+        source: "codex.error",
+        message: "Reconnecting... 2/5",
+        details: "stream disconnected before completion",
+      },
+      t,
+    );
+
+    expect(display).toMatchObject({
+      summary: "Codex retrying",
+      tone: "warn",
+    });
+    expect(display?.title).toContain("Reconnecting... 2/5");
+    expect(display?.title).toContain("stream disconnected before completion");
+  });
+
+  it("uses process-specific copy for an app-server exit", () => {
+    const display = describeProviderRuntimeStatus(
+      {
+        kind: "terminal",
+        provider: "codex",
+        reason: "server_error",
+        message: "Codex app-server exited (code=1, signal=null)",
+        occurredAt: "2026-07-10T18:14:32.213Z",
+        source: "codex.app_server_process",
+        scope: "provider_process",
+      },
+      t,
+    );
+
+    expect(display?.title).toContain("provider process stopped");
+    expect(display?.title).toContain("code=1");
   });
 });

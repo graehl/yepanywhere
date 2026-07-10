@@ -39,13 +39,155 @@ turn ended; it must not imply that the session or provider process crashed.
 Hover/title detail should say explicitly whether retry is automatic and include
 the provider's error text when available.
 
-Codex `CodexErrorInfo` classifications map to the shared reasons as follows:
+YA's initial Codex `CodexErrorInfo` normalization maps as follows:
 
 - `serverOverloaded` -> `overloaded`
 - `usageLimitExceeded` and `sessionBudgetExceeded` -> `rate_limit`
 - `internalServerError` -> `server_error`
 - HTTP/response-stream connection and disconnect variants -> `network`
 - all other terminal errors -> `unknown`
+
+The `sessionBudgetExceeded` mapping is a known semantic mismatch: Codex uses it
+for its configured shared rollout token budget, not subscription credits. A
+future taxonomy should distinguish at least context/session budget, auth,
+policy, request, and sandbox failures from billing rate limits.
+
+## Codex 0.144.1 source audit
+
+The findings in this section were checked against the official Codex source at
+tag `rust-v0.144.1`, matching root `package.json`
+`yepAnywhere.codexCli.expectedVersion`. Run `pnpm references:sync` to put the
+gitignored `references/codex` checkout at that tag, or `pnpm references:check`
+to verify an existing checkout without changing it.
+
+The most useful upstream coordinates are:
+
+- `codex-rs/protocol/src/error.rs`: `CodexErr`, `CodexErr::is_retryable`, and
+  `CodexErr::to_codex_protocol_error` define retry policy and public error
+  classification.
+- `codex-rs/protocol/src/protocol.rs`: `CodexErrorInfo::affects_turn_status`
+  separates failed turns from command/control errors.
+- `codex-rs/core/src/responses_retry.rs`:
+  `handle_retryable_response_stream_error` controls retry count, backoff,
+  WebSocket-to-HTTPS fallback, and visible reconnect notifications.
+- `codex-rs/core/src/session/mod.rs`: `Session::notify_stream_error` constructs
+  the intermediate retry event.
+- `codex-rs/app-server/src/bespoke_event_handling.rs`: the `EventMsg::Error`
+  and `EventMsg::StreamError` branches translate core events into app-server
+  notifications; `handle_error_notification` records terminal turn state.
+- `codex-rs/app-server-protocol/src/protocol/v2/notification.rs`:
+  `ErrorNotification` documents `willRetry` as the authoritative recovery
+  signal.
+- `codex-rs/app-server-protocol/src/protocol/v2/shared.rs`: the camel-case
+  app-server `CodexErrorInfo` wire variants consumed by YA.
+- `codex-rs/app-server-protocol/src/protocol/thread_history.rs`:
+  `ThreadHistoryBuilder::handle_error` reconstructs failed turns when a durable
+  core `ErrorEvent` is available.
+- `codex-rs/tui/src/chatwidget/streaming.rs`: `ChatWidget::on_stream_error`
+  shows automatic retries in the status area.
+- `codex-rs/tui/src/chatwidget/turn_runtime.rs`:
+  `ChatWidget::handle_non_retry_error` and its helpers show first-party
+  terminal presentation choices.
+
+Paths above are relative to `references/codex`. Do not use a floating `main`
+checkout as evidence for the pinned runtime without first comparing its tag.
+
+### Automatic retry pipeline
+
+Automatic retry is not inferred from an error name. The app-server's
+`ErrorNotification.willRetry` boolean is authoritative:
+
+1. A retryable `CodexErr` reaches
+   `handle_retryable_response_stream_error`.
+2. Codex retries with backoff and may fall back from WebSockets to HTTPS.
+3. For a visible retry, `Session::notify_stream_error` emits
+   `EventMsg::StreamError` with message `Reconnecting... n/max`, the original
+   error text in `additionalDetails`, and `responseStreamDisconnected` as the
+   public error info.
+4. App-server converts that to `error` with `willRetry: true` without marking
+   the turn failed.
+5. The first-party TUI routes it to `on_stream_error`, which updates the status
+   pane rather than adding an error history row.
+
+Release Codex may intentionally hide the first WebSocket retry notification to
+avoid noisy transient reconnect messages. This helps explain why retries can
+appear inconsistently in raw observations. Older/raw JSONL or event consumers
+may expose `StreamError` as an event, but it is provider runtime status, not a
+provider-authored conversation message or a completed failed turn.
+
+YA converts `willRetry: true` into yellow Codex runtime status and renders its
+live transcript row as a warning rather than a terminal error. It retains the
+provider message and `additionalDetails` for diagnostics and clears retry state
+when provider progress resumes. No retry countdown is invented: app-server
+does not send the actual backoff delay.
+
+### Terminal error pipeline and classification
+
+Core `EventMsg::Error` values that affect turn status become app-server
+`error` notifications with `willRetry: false`. App-server also repeats the
+error in the following failed `turn/completed` payload. YA should use the
+boolean for red/yellow recovery semantics and the error info only for reason,
+copy, and suggested action.
+
+| App-server `CodexErrorInfo` | Codex meaning | Suggested YA reason/action |
+| --- | --- | --- |
+| `contextWindowExceeded` | Model context is full. | `context`; suggest clearing earlier history or starting a new thread. |
+| `sessionBudgetExceeded` | Configured shared rollout token budget is exhausted. | `budget`; do not describe it as subscription credits. |
+| `usageLimitExceeded` | Usage, quota, or plan inclusion limit. | `rate_limit`; retain provider/account guidance. |
+| `serverOverloaded` | Selected model is at capacity. Codex does not retry it automatically. | `overloaded`; changing model or retrying later is appropriate. |
+| `cyberPolicy` | Cyber-safety policy ended the turn. | `policy`; mirror the first-party dedicated safety notice. |
+| `httpConnectionFailed` | HTTP connection failed after retries. | `network`; retain `httpStatusCode`. |
+| `responseStreamConnectionFailed` | Response stream could not be established after retries. | `network`; retain `httpStatusCode`. |
+| `responseStreamDisconnected` | Response stream disconnected before completion. | `network`; normally intermediate when `willRetry` is true, terminal if false. |
+| `responseTooManyFailedAttempts` | Codex exhausted response attempts. | `rate_limit` for HTTP 429; otherwise retry-exhausted/network/server copy. |
+| `internalServerError` | Upstream internal failure or internal agent death. | `server_error`; retry requires a new user turn after Codex exhausts its own retry loop. |
+| `unauthorized` | Auth refresh failed. | `auth`; offer authentication diagnostics or reauthentication. |
+| `badRequest` | Unsupported operation, missing thread, agent limit, or another rejected request. | `request`; raw provider text is important because the category is broad. |
+| `sandboxError` | Codex sandbox execution/setup failed. | `sandbox`; point toward permissions or environment details. |
+| `other` or absent | No stable public classification. | `unknown`; always preserve the provider message and request id. |
+
+`threadRollbackFailed` and `activeTurnNotSteerable` explicitly return false
+from `affects_turn_status`. App-server normally resolves or suppresses them as
+request/control failures rather than failed-turn notifications. YA should
+defensively avoid retaining either as a terminal turn incident if protocol
+drift ever exposes one through the generic error path.
+
+### Process failures and non-error notifications
+
+YA's Codex app-server client synthesizes `error` with `willRetry: false` when
+the child process exits. That notification intentionally has no thread or turn
+id. The loose fallback conversion preserves its nested message, such as `Codex
+app-server exited (code=..., signal=...)`, and marks its optional scope as a
+provider-process failure. New clients can explain that the process stopped;
+older clients safely render the same ordinary error envelope.
+
+Codex also sends `warning`, `guardianWarning`, `configWarning`, and
+`deprecationNotice`. YA's Codex SDK adapter currently drops these in the
+default notification branch. They are not terminal incidents; a later
+notification-surface pass should decide which belong in transient yellow/info
+UI, diagnostics, or transcript display objects.
+
+### Hosted-client compatibility
+
+Provider runtime status crosses REST, session SSE, the activity bus, and remote
+relay transports without a separately negotiated schema version. Evolve it
+additively:
+
+- keep `retrying` and `terminal` as the stable discriminants;
+- add diagnostic fields such as retry message/details and terminal scope only
+  as optional properties;
+- keep normalized provider errors in the existing loose `SDKMessage`
+  envelope, where older clients ignore new Codex metadata;
+- make new clients treat absent optional fields as the older behavior (`error`
+  remains terminal-looking when `codexWillRetry` is absent, and terminal scope
+  defaults to the current turn);
+- never require an older server to send the new scope/details fields for the
+  composer or transcript to render safely.
+
+This permits a newer hosted frontend to connect to an older YA server and an
+older frontend to consume a newer server. Mixed versions may have less precise
+copy or color, but must not crash, hide the provider message, or misread a new
+wire discriminant.
 
 ## Surfaces
 
@@ -77,10 +219,13 @@ not be the only place the user can learn that a turn ended.
 
 ## Persistence and resource ownership
 
-Codex rollout `task_complete` currently stores a turn id and nullable last
-agent message, but not the app-server error or failed status. Therefore YA
-cannot reconstruct `serverOverloaded` from the provider transcript after the
-fact.
+The observed `serverOverloaded` rollout contained `task_complete` with a turn
+id and nullable last agent message, but no durable error event. Codex source
+does support reconstructing a failed `Turn.error` when a core `ErrorEvent` is
+present in app-server thread history. These are conditional facts, not a
+guarantee that every rollout or YA JSONL reader can recover the error. YA must
+not manufacture a pseudo-turn to bridge the gap; prefer native `thread/read`
+data if it becomes reliably available, otherwise use bounded runtime status.
 
 Terminal runtime status is retained in a bounded, in-memory Supervisor map
 keyed by YA session id. It survives provider process reaping and client
@@ -103,3 +248,13 @@ Coverage should prove:
 - a new user message clears the retained incident;
 - a following id-less/result message does not replace the live error row;
 - subscriptions and REST snapshots carry both status kinds.
+
+Codex coverage should additionally prove:
+
+- `willRetry: true` becomes yellow retry status and is not styled as terminal;
+- terminal classification covers the source table above without string
+  matching the recovery decision;
+- `sessionBudgetExceeded` is not called a subscription rate limit;
+- app-server exit notifications preserve their real process error;
+- non-turn control errors do not leave retained terminal status;
+- warning/config/deprecation notifications follow an explicit surface policy.

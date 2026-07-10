@@ -3,7 +3,14 @@ import type {
   ModelInfo,
   ProviderName,
 } from "@yep-anywhere/shared";
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { api } from "../api/client";
 import {
   getEffortLevel,
@@ -119,6 +126,7 @@ export function ModelSwitchModal({
   const [activeTab, setActiveTab] = useState<"model" | "info">(
     initialTab ?? "model",
   );
+  const contentRef = useRef<HTMLDivElement>(null);
   const [activating, setActivating] = useState(false);
   const [activateError, setActivateError] = useState<string | null>(null);
 
@@ -269,6 +277,11 @@ export function ModelSwitchModal({
     onClose();
   };
 
+  const handleTabChange = (tab: "model" | "info") => {
+    setActiveTab(tab);
+    contentRef.current?.closest(".modal-content")?.scrollTo({ top: 0 });
+  };
+
   const handleActivate = async () => {
     if (!onActivate || activating) return;
     setActivating(true);
@@ -334,7 +347,7 @@ export function ModelSwitchModal({
 
   return (
     <Modal title={t("modelSwitchTitle")} onClose={handleDismiss}>
-      <div className="model-switch-content">
+      <div ref={contentRef} className="model-switch-content">
         {infoPane && (
           <div className="model-switch-tabs" role="tablist">
             <button
@@ -342,7 +355,7 @@ export function ModelSwitchModal({
               role="tab"
               aria-selected={activeTab === "model"}
               className={`model-switch-tab ${activeTab === "model" ? "active" : ""}`}
-              onClick={() => setActiveTab("model")}
+              onClick={() => handleTabChange("model")}
             >
               {t("newSessionModelTitle")}
             </button>
@@ -351,7 +364,7 @@ export function ModelSwitchModal({
               role="tab"
               aria-selected={activeTab === "info"}
               className={`model-switch-tab ${activeTab === "info" ? "active" : ""}`}
-              onClick={() => setActiveTab("info")}
+              onClick={() => handleTabChange("info")}
             >
               {t("processInfoTitle")}
             </button>

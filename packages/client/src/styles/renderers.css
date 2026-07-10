@@ -2448,10 +2448,14 @@ details[open] .collapsible__icon {
 }
 
 .model-switch-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   gap: 0.25rem;
   margin-bottom: 0.6rem;
   border-bottom: 1px solid var(--border-color);
+  background: var(--bg-surface);
 }
 
 .model-switch-tab {
@@ -2472,11 +2476,6 @@ details[open] .collapsible__icon {
 .model-switch-tab.active {
   color: var(--text-primary);
   border-bottom-color: var(--accent-color);
-}
-
-.model-switch-info-pane {
-  max-height: min(60vh, 32rem);
-  overflow-y: auto;
 }
 
 .model-switch-activate {

@@ -10,6 +10,11 @@ Status: in progress. The extraction and parity-only propagation slices are
 implemented as of 2026-07-10; the client carries derived multi-action metadata
 but does not render it yet.
 
+Canonical slice status, landed commit history, verification evidence, and
+deferred follow-ups are tracked in
+[`docs/tactical/059-codex-code-mode-explored-rendering.md`](../docs/tactical/059-codex-code-mode-explored-rendering.md).
+This topic remains the product/architecture contract and evidence record.
+
 Implementation progress:
 
 - [x] Pin the local upstream reference to Codex `0.144.1` and verify the
@@ -80,11 +85,12 @@ Its input is JavaScript orchestration containing nested calls such as
 array of text blocks. The rollout does not contain the app-server
 `commandActions` array for that nested execution.
 
-`codex/codeModeExec.ts` now extracts literal nested calls without evaluating
-JavaScript. When exactly one nested `exec_command` is found, it enters the old
-one-invocation normalizer. A command containing several reads joined by `&&`
-still becomes one `Bash` call because `NormalizedCodexToolInvocation` can
-represent only one canonical action.
+`codex/codeModeExec.ts` extracts literal nested calls without evaluating
+JavaScript. When exactly one nested `exec_command` is found, it enters the
+normalizer. The standalone display-action analyzer now derives every safe
+read/search/list action from a compound command. The parent remains one `Bash`
+call with an ordered `displayActions` vector because it still owns only one
+combined execution result.
 
 ### Live app-server shape
 
@@ -101,10 +107,12 @@ the completed `commandExecution` item contained three structured `read`
 actions with names and absolute paths. This confirms that upstream already
 performs the desired one-command-to-many-actions analysis.
 
-YA currently discards that information for rendering:
-`normalizeCodexCommandActionInvocation` accepts only an array of exactly one
-action. More importantly, consuming the richer array only on the live path
-would violate convergence because the rollout record lacks it.
+At investigation time YA discarded that information for rendering. The landed
+extractor and propagation slices now independently derive rollout-recoverable
+actions from command text plus workdir/cwd and carry them to the client. Live
+`commandActions` remain an oracle rather than a rendering source. The remaining
+gap is client segmentation and presentation: it still classifies only the
+parent tool name, so a multi-action `Bash` parent renders as raw `Ran` output.
 
 ### First-party Codex behavior
 
@@ -120,9 +128,9 @@ semantics.
 
 ## Desired normalized model
 
-Introduce a standalone Codex semantic-action module rather than expanding the
-already large provider or session-normalization files. Working name:
-`packages/server/src/codex/displayActions.ts`.
+The standalone Codex semantic-action module is implemented in
+`packages/server/src/codex/displayActions.ts`, avoiding further growth of the
+already large provider and session-normalization files.
 
 The conceptual output is:
 
@@ -138,8 +146,9 @@ interface CodexCommandAnalysis {
 }
 ```
 
-Exact names may change during implementation. Provider-confirmation source or
-confidence may be useful in diagnostics, but it must not leak into render
+The provider-neutral in-memory boundary is implemented as `ToolDisplayAction`
+in `packages/shared/src/tool-display-actions.ts`. Provider-confirmation source
+or confidence may be useful in diagnostics, but it must not leak into render
 identity or make live and rollout render items differ.
 
 The analysis describes display semantics; it does not split execution or

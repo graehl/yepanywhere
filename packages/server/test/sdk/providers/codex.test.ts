@@ -2678,6 +2678,53 @@ describe("CodexProvider Event Normalization", () => {
     expect(resume.persistExtendedHistory).toBeUndefined();
   });
 
+  it("suppresses the unavailable desktop browser skill for every thread path", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadStartParams: (
+        options: { cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadResumeParams: (
+        options: { resumeSessionId: string; cwd: string },
+        sessionId: string,
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadForkParams: (
+        options: { sessionId: string; cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+    };
+    const policy = {
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    };
+    const expectedConfig = {
+      skills: {
+        config: [
+          {
+            name: "browser:control-in-app-browser",
+            enabled: false,
+          },
+        ],
+      },
+    };
+
+    const start = provider.createThreadStartParams({ cwd: "/tmp" }, policy);
+    const resume = provider.createThreadResumeParams(
+      { resumeSessionId: "thread-1", cwd: "/tmp" },
+      "thread-1",
+      policy,
+    );
+    const fork = provider.createThreadForkParams(
+      { sessionId: "thread-1", cwd: "/tmp" },
+      policy,
+    );
+
+    expect(start).toMatchObject({ config: expectedConfig });
+    expect(resume).toMatchObject({ config: expectedConfig });
+    expect(fork).toMatchObject({ config: expectedConfig });
+  });
+
   it("pins thread-scope reasoning effort via config when effort is requested", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (
@@ -2772,7 +2819,18 @@ describe("CodexProvider Event Normalization", () => {
     expect(resume).toMatchObject({
       config: { model_reasoning_effort: "high" },
     });
-    expect(omitted.config ?? null).toBeNull();
+    expect(omitted).toMatchObject({
+      config: {
+        skills: {
+          config: [
+            {
+              name: "browser:control-in-app-browser",
+              enabled: false,
+            },
+          ],
+        },
+      },
+    });
     expect(disabled).toMatchObject({
       config: { model_reasoning_effort: "none" },
     });

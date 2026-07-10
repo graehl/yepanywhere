@@ -121,6 +121,8 @@ import type {
 
 const log = getLogger().child({ component: "codex-provider" });
 const execFileAsync = promisify(execFile);
+const CODEX_DESKTOP_BROWSER_SKILL_NAME =
+  "browser:control-in-app-browser";
 
 function logSdkCorrelationDebug(
   sessionId: string,
@@ -1983,7 +1985,7 @@ export class CodexProvider implements AgentProvider {
       threadId: options.sessionId,
       cwd: options.cwd,
       ...this.buildThreadPermissionParams(policy),
-      config: null,
+      config: this.buildThreadConfigOverrides({}),
     };
     if (experimentalApiEnabled) {
       params.excludeTurns = true;
@@ -2090,17 +2092,31 @@ export class CodexProvider implements AgentProvider {
   }
 
   private buildThreadConfigOverrides(
-    options: StartSessionOptions,
-  ): Record<string, string> | null {
+    options: Pick<StartSessionOptions, "effort" | "thinking" | "model">,
+  ): NonNullable<ThreadStartParams["config"]> {
+    // The OpenAI browser plugin controls a desktop-owned browser backend that
+    // YA's Codex app-server host does not provide. Suppress the unavailable
+    // skill at thread scope so Codex follows YA's Playwright fallback instead
+    // of advertising a browser that fails during backend discovery.
+    const config: NonNullable<ThreadStartParams["config"]> = {
+      skills: {
+        config: [
+          {
+            name: CODEX_DESKTOP_BROWSER_SKILL_NAME,
+            enabled: false,
+          },
+        ],
+      },
+    };
     const reasoningEffort = this.mapEffortToReasoningEffort(
       options.effort,
       options.thinking,
       options.model,
     );
-    if (!reasoningEffort) {
-      return null;
+    if (reasoningEffort) {
+      config.model_reasoning_effort = reasoningEffort;
     }
-    return { model_reasoning_effort: reasoningEffort };
+    return config;
   }
 
   private createTurnStartParams(

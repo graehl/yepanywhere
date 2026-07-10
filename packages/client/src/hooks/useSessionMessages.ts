@@ -207,7 +207,14 @@ export function useSessionMessages(
     [effectiveTailTurns, projectId, sessionId, sourceKey, tailFrom],
   );
   const coordinator = useMemo(
-    () => createSessionDetailCoordinator({ entryKey: snapshotKey, runtime }),
+    () =>
+      createSessionDetailCoordinator({
+        entryKey: snapshotKey,
+        runtime,
+        // Slice 3 wires the lifecycle without activating it before the
+        // required browser-local Performance preference exists.
+        activeWindowTrim: { enabled: false },
+      }),
     [runtime, snapshotKey],
   );
   const sourceApi = coordinator.api;
@@ -421,14 +428,12 @@ export function useSessionMessages(
     (incoming: Message, fromBufferedReplay = false) => {
       const streamingEnabled = getStreamingEnabled();
 
-      dispatchSessionDetailAction({
-        type: "applyStreamMessage",
-        message: incoming,
+      coordinator.applyStreamMessage(incoming, {
         fromBufferedReplay,
         streamingEnabled,
       });
     },
-    [dispatchSessionDetailAction],
+    [coordinator],
   );
 
   // Process a buffered stream subagent message
@@ -923,6 +928,7 @@ export function useSessionMessages(
     if (!request.requested) {
       return;
     }
+    coordinator.suppressActiveWindowTrimForHistoryExpansion();
     setLoadingOlder(true);
     try {
       const data = await sourceApi.getSession(request.input);
@@ -945,6 +951,7 @@ export function useSessionMessages(
 
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
+      coordinator.setActiveWindowFollowingBottom(snapshot.atBottom);
       if (
         !shouldRetainSessionScrollMemory(getSessionScrollBehaviorMode())
       ) {

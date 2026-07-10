@@ -1,6 +1,6 @@
 # Bounded Active Transcript Window
 
-Status: approved implementation plan; runtime work not started.
+Status: implementation in progress; slices 1-3 complete.
 
 Topic: memory-growth
 Topic: session-detail-data-layer
@@ -43,7 +43,30 @@ invalid-time, and 60-seconds-or-newer boundaries, then atomically:
 Reducer/store coverage verifies the bounded route snapshot, monotonic
 pagination totals, auxiliary cleanup, nested-agent reachability, active-agent
 preservation, and referential no-op guards. The action is not dispatched by
-runtime lifecycle code yet. Slices 3–6 remain pending.
+unrelated store paths; only the Slice 3 coordinator lifecycle owns its
+automatic dispatch. Slices 4–6 remain pending.
+
+### 2026-07-10: Slice 3 complete — coordinator lifecycle
+
+The session-detail coordinator now owns mount-scoped active-window lifecycle
+state: bottom-follow intent, structural and evaluated revisions, one cached
+age-deferred candidate, and irreversible Load older suppression for that
+coordinator lifetime. Initial/catch-up/tail/stream transcript paths notify the
+lifecycle, while ordinary messages use constant-time gates and do not enter the
+planner unless a cached candidate has crossed its strict age boundary.
+
+The first valid Load older request pins the mount before starting its network
+request; applying an older page also pins defensively. Live scroll snapshots
+feed `atBottom` to the coordinator even when durable scroll-memory retention is
+disabled. No timer, byte accounting, server request, or durable suppression
+state was added.
+
+Coordinator fixtures cover the disabled fast path, following-bottom trim,
+strict-age deferred dispatch without a second scan, and mount-lifetime history
+suppression. The hook currently passes an explicit `enabled: false` runtime
+gate, so Slice 3 cannot activate automatic trimming before Slice 5 provides the
+required default-on Performance preference and explicit off switch. Slice 4
+will reconcile the rendered scroll/turn-navigation state before activation.
 
 ## Goal
 
@@ -298,8 +321,9 @@ it need not synchronously scan or trim inside the settings event handler.
 2. **Atomic reducer trim — complete 2026-07-10.** Added the action, pagination
    update, transitive reachability-based auxiliary pruning, and reducer/store
    fixtures.
-3. **Coordinator lifecycle.** Wire bottom-follow input, structural revisions,
-   pending age candidates, and mount-scoped Load older suppression.
+3. **Coordinator lifecycle — complete 2026-07-10.** Wired bottom-follow input,
+   structural revisions, cached age candidates, and mount-scoped Load older
+   suppression behind an explicit disabled runtime gate.
 4. **Scroll integration.** Preserve bottom-follow and clear removed anchors;
    trim/recompute the right-side turn rail and its thumb/local ids; verify
    streaming and ordinary completed-turn behavior in the browser.

@@ -11,12 +11,20 @@ import type {
 } from "../sourceRuntime";
 import type { ProviderRuntimeStatusSnapshot } from "../clientSummaryCollections";
 import {
+  getActiveWindowStructuralKind,
+  planActiveWindowTrim,
+  shouldConsiderActiveWindowTrim,
+  type ActiveWindowTrimCandidate,
+  type ActiveWindowTrimPlanner,
+} from "./activeWindowTrimPolicy";
+import {
   createSessionLoadProgress,
   createSessionLoadProgressForWindow,
   type SessionLoadProgress,
   type SessionLoadProgressStage,
 } from "./loadProgress";
 import {
+  selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
 } from "./selectors";
@@ -46,6 +54,18 @@ type SessionDetailReadSelector<T> = (state: SessionDetailState) => T;
 export interface SessionDetailCoordinatorInput {
   entryKey: SessionDetailEntryKeyInput;
   runtime: YaSourceRuntime;
+  activeWindowTrim?: SessionDetailActiveWindowTrimRuntime;
+}
+
+export interface SessionDetailActiveWindowTrimRuntime {
+  enabled: boolean | (() => boolean);
+  nowMs?: () => number;
+  planner?: ActiveWindowTrimPlanner;
+}
+
+export interface SessionDetailApplyStreamMessageOptions {
+  fromBufferedReplay?: boolean;
+  streamingEnabled?: boolean;
 }
 
 export interface SessionDetailStreamProcessors {
@@ -166,10 +186,29 @@ export class SessionDetailCoordinator {
   private initialLoadComplete = false;
   private initialLoadEpoch = 0;
   private fetchNewMessagesInFlight: Promise<void> | null = null;
+  private readonly activeWindowTrimEnabled: () => boolean;
+  private readonly activeWindowTrimNowMs: () => number;
+  private readonly activeWindowTrimPlanner: ActiveWindowTrimPlanner;
+  private activeWindowFollowingBottom = false;
+  private activeWindowHistoryExpanded = false;
+  private activeWindowStructuralRevision = 0;
+  private activeWindowLastEvaluatedStructuralRevision = 0;
+  private activeWindowPendingCandidate: ActiveWindowTrimCandidate | undefined;
 
-  constructor({ entryKey, runtime }: SessionDetailCoordinatorInput) {
+  constructor({
+    entryKey,
+    runtime,
+    activeWindowTrim,
+  }: SessionDetailCoordinatorInput) {
     this.entryKey = entryKey;
     this.runtime = runtime;
+    this.activeWindowTrimEnabled =
+      typeof activeWindowTrim?.enabled === "function"
+        ? activeWindowTrim.enabled
+        : () => activeWindowTrim?.enabled === true;
+    this.activeWindowTrimNowMs = activeWindowTrim?.nowMs ?? Date.now;
+    this.activeWindowTrimPlanner =
+      activeWindowTrim?.planner ?? planActiveWindowTrim;
   }
 
   get sourceKey() {
@@ -208,6 +247,36 @@ export class SessionDetailCoordinator {
 
   dispatch(action: SessionDetailAction): SessionDetailState | undefined {
     return this.cache.dispatch(this.entryKey, action);
+  }
+
+  applyStreamMessage(
+    message: Message,
+    options: SessionDetailApplyStreamMessageOptions = {},
+  ): SessionDetailState | undefined {
+    return this.dispatchTranscriptAction(
+      {
+        type: "applyStreamMessage",
+        message,
+        fromBufferedReplay: options.fromBufferedReplay,
+        streamingEnabled: options.streamingEnabled,
+      },
+      { structuralMessages: [message] },
+    );
+  }
+
+  setActiveWindowFollowingBottom(followingBottom: boolean): void {
+    if (this.activeWindowFollowingBottom === followingBottom) {
+      return;
+    }
+    this.activeWindowFollowingBottom = followingBottom;
+    if (followingBottom) {
+      this.maybeTrimActiveWindow(false);
+    }
+  }
+
+  suppressActiveWindowTrimForHistoryExpansion(): void {
+    this.activeWindowHistoryExpanded = true;
+    this.activeWindowPendingCandidate = undefined;
   }
 
   readSelected<T>(selector: SessionDetailReadSelector<T>): T | undefined {
@@ -277,11 +346,17 @@ export class SessionDetailCoordinator {
   }
 
   replaceRouteSnapshot(snapshot: SessionRouteSnapshot): boolean {
-    return this.cache.replaceRouteSnapshot(this.entryKey, snapshot);
+    const replaced = this.cache.replaceRouteSnapshot(this.entryKey, snapshot);
+    if (replaced) {
+      this.invalidateActiveWindowStructure();
+      this.maybeTrimActiveWindow(false);
+    }
+    return replaced;
   }
 
   resetEntryState(): void {
     this.cache.resetEntryState(this.entryKey);
+    this.invalidateActiveWindowStructure();
   }
 
   retain(): () => void {
@@ -436,12 +511,15 @@ export class SessionDetailCoordinator {
 
   applyInitialLoad(data: GetSessionResult): SessionDetailAppliedInitialLoad {
     const sourceMessageCount = data.messages.length;
-    this.dispatch({
-      type: "loadPersistedTranscript",
-      messages: data.messages,
-      session: data.session,
-      pagination: data.pagination,
-    });
+    this.dispatchTranscriptAction(
+      {
+        type: "loadPersistedTranscript",
+        messages: data.messages,
+        session: data.session,
+        pagination: data.pagination,
+      },
+      { invalidateStructure: true },
+    );
     return {
       messageCount: sourceMessageCount,
       pagination: data.pagination,
@@ -463,12 +541,15 @@ export class SessionDetailCoordinator {
     }
 
     if (options.initialAfterMessageId === undefined) {
-      this.dispatch({
-        type: "loadPersistedTranscript",
-        messages: data.messages,
-        session: data.session,
-        pagination: data.pagination,
-      });
+      this.dispatchTranscriptAction(
+        {
+          type: "loadPersistedTranscript",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        },
+        { invalidateStructure: true },
+      );
       return {
         messageCount: sourceMessageCount,
         pagination: data.pagination,
@@ -477,12 +558,15 @@ export class SessionDetailCoordinator {
     }
 
     if (data.pagination) {
-      this.dispatch({
-        type: "replaceTailWindow",
-        messages: data.messages,
-        session: data.session,
-        pagination: data.pagination,
-      });
+      this.dispatchTranscriptAction(
+        {
+          type: "replaceTailWindow",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        },
+        { invalidateStructure: true },
+      );
       return {
         messageCount: sourceMessageCount,
         pagination: data.pagination,
@@ -490,11 +574,14 @@ export class SessionDetailCoordinator {
       };
     }
 
-    this.dispatch({
-      type: "applyCatchupMessages",
-      session: data.session,
-      messages: data.messages,
-    });
+    this.dispatchTranscriptAction(
+      {
+        type: "applyCatchupMessages",
+        session: data.session,
+        messages: data.messages,
+      },
+      { structuralMessages: data.messages },
+    );
     const merged = this.readSelected(selectSessionDetailRuntimeSnapshot);
     return {
       messageCount: merged?.messages.length ?? sourceMessageCount,
@@ -519,12 +606,15 @@ export class SessionDetailCoordinator {
     }
 
     if (options.afterMessageId !== undefined && data.pagination) {
-      this.dispatch({
-        type: "replaceTailWindow",
-        messages: data.messages,
-        session: data.session,
-        pagination: data.pagination,
-      });
+      this.dispatchTranscriptAction(
+        {
+          type: "replaceTailWindow",
+          messages: data.messages,
+          session: data.session,
+          pagination: data.pagination,
+        },
+        { invalidateStructure: true },
+      );
       return {
         applied: true,
         messageCount: sourceMessageCount,
@@ -533,12 +623,15 @@ export class SessionDetailCoordinator {
       };
     }
 
-    this.dispatch({
-      type: "applyCatchupMessages",
-      messages: data.messages,
-      session: data.session,
-      pagination: data.pagination,
-    });
+    this.dispatchTranscriptAction(
+      {
+        type: "applyCatchupMessages",
+        messages: data.messages,
+        session: data.session,
+        pagination: data.pagination,
+      },
+      { structuralMessages: data.messages },
+    );
     const merged = this.readSelected(selectSessionDetailRuntimeSnapshot);
     return {
       applied: true,
@@ -569,6 +662,7 @@ export class SessionDetailCoordinator {
 
   applyOlderPage(data: GetSessionResult): SessionDetailAppliedOlderPage {
     const sourceMessageCount = data.messages.length;
+    this.suppressActiveWindowTrimForHistoryExpansion();
     this.dispatch({
       type: "prependOlderMessages",
       messages: data.messages,
@@ -708,6 +802,102 @@ export class SessionDetailCoordinator {
         processors.processSubagentMessage(item.message, item.agentId);
       }
     }
+  }
+
+  private dispatchTranscriptAction(
+    action: SessionDetailAction,
+    change: {
+      invalidateStructure?: boolean;
+      structuralMessages?: readonly Message[];
+    },
+  ): SessionDetailState | undefined {
+    const previousMessages = this.readSelected(selectSessionDetailMessages);
+    const next = this.dispatch(action);
+    if (!next || next.messages === previousMessages) {
+      return next;
+    }
+
+    const completedTranscriptGrowth =
+      next.messages.length > (previousMessages?.length ?? 0);
+    if (change.invalidateStructure) {
+      this.invalidateActiveWindowStructure();
+    } else if (
+      change.structuralMessages?.some(
+        (message) => getActiveWindowStructuralKind(message) !== null,
+      )
+    ) {
+      this.activeWindowStructuralRevision += 1;
+      this.activeWindowPendingCandidate = undefined;
+    }
+    this.maybeTrimActiveWindow(completedTranscriptGrowth);
+    return next;
+  }
+
+  private invalidateActiveWindowStructure(): void {
+    this.activeWindowStructuralRevision += 1;
+    this.activeWindowPendingCandidate = undefined;
+  }
+
+  private maybeTrimActiveWindow(completedTranscriptGrowth: boolean): void {
+    const nowMs = this.activeWindowTrimNowMs();
+    if (
+      !shouldConsiderActiveWindowTrim({
+        enabled: this.activeWindowTrimEnabled(),
+        followingBottom: this.activeWindowFollowingBottom,
+        historyExpanded: this.activeWindowHistoryExpanded,
+        tailFrom: this.entryKey.tailFrom,
+        structuralRevision: this.activeWindowStructuralRevision,
+        lastEvaluatedStructuralRevision:
+          this.activeWindowLastEvaluatedStructuralRevision,
+        completedTranscriptGrowth,
+        pendingCandidateEligibleAfterMs:
+          this.activeWindowPendingCandidate?.eligibleAfterMs,
+        nowMs,
+      })
+    ) {
+      return;
+    }
+
+    const pendingCandidate = this.activeWindowPendingCandidate;
+    if (
+      this.activeWindowStructuralRevision ===
+        this.activeWindowLastEvaluatedStructuralRevision &&
+      pendingCandidate &&
+      nowMs > pendingCandidate.eligibleAfterMs
+    ) {
+      this.activeWindowPendingCandidate = undefined;
+      this.dispatchActiveWindowTrim(pendingCandidate, nowMs);
+      return;
+    }
+
+    const messages = this.readSelected(selectSessionDetailMessages);
+    if (!messages) {
+      return;
+    }
+    const result = this.activeWindowTrimPlanner({
+      messages,
+      nowMs,
+      tailTurns: this.entryKey.tailTurns,
+    });
+    this.activeWindowLastEvaluatedStructuralRevision =
+      this.activeWindowStructuralRevision;
+    this.activeWindowPendingCandidate =
+      result.kind === "deferred" ? result.candidate : undefined;
+    if (result.kind === "ready") {
+      this.dispatchActiveWindowTrim(result.candidate, nowMs);
+    }
+  }
+
+  private dispatchActiveWindowTrim(
+    candidate: ActiveWindowTrimCandidate,
+    nowMs: number,
+  ): void {
+    this.dispatch({
+      type: "trimLoadedWindow",
+      startMessageId: candidate.startMessageId,
+      reason: candidate.reason,
+      nowMs,
+    });
   }
 }
 

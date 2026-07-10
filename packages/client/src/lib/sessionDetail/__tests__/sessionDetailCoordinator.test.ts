@@ -11,10 +11,15 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../../sessionRouteSnapshots";
-import { selectSessionDetailMessages } from "../selectors";
+import {
+  selectSessionDetailMessages,
+  selectSessionDetailRuntimeSnapshot,
+} from "../selectors";
+import { planActiveWindowTrim } from "../activeWindowTrimPolicy";
 import { createSessionDetailMemoryCache } from "../sessionDetailStore";
 import {
   createSessionDetailCoordinator,
+  type SessionDetailActiveWindowTrimRuntime,
   type SessionDetailStreamProcessors,
 } from "../sessionDetailCoordinator";
 import type { Message } from "../../../types";
@@ -34,6 +39,18 @@ function message(
     type: "assistant",
     timestamp,
     message: { role: "assistant", content: uuid },
+  };
+}
+
+function userMessage(
+  uuid: string,
+  timestamp = "2026-07-04T00:00:00.000Z",
+): Message {
+  return {
+    uuid,
+    type: "user",
+    timestamp,
+    message: { role: "user", content: uuid },
   };
 }
 
@@ -155,7 +172,9 @@ function runtime(): YaSourceRuntime {
   };
 }
 
-function coordinator() {
+function coordinator(
+  activeWindowTrim?: SessionDetailActiveWindowTrimRuntime,
+) {
   const sourceRuntime = runtime();
   return createSessionDetailCoordinator({
     runtime: sourceRuntime,
@@ -164,6 +183,7 @@ function coordinator() {
       projectId: "proj-1",
       sessionId: "sess-1",
     },
+    activeWindowTrim,
   });
 }
 
@@ -792,6 +812,113 @@ describe("SessionDetailCoordinator", () => {
     expect(
       detail.readSelected(selectSessionDetailMessages)?.map(({ uuid }) => uuid),
     ).toEqual(["older", "current"]);
+  });
+
+  it("keeps active-window planning inert when the runtime gate is disabled", () => {
+    const planner = vi.fn(planActiveWindowTrim);
+    const detail = coordinator({ enabled: false, planner });
+    const messages = Array.from({ length: 31 }, (_, index) =>
+      userMessage(`user-${index}`),
+    );
+
+    detail.applyInitialLoad(sessionResponse(messages, pagination(31)));
+    detail.setActiveWindowFollowingBottom(true);
+    detail.applyStreamMessage(userMessage("user-31"));
+
+    expect(planner).not.toHaveBeenCalled();
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.length,
+    ).toBe(32);
+  });
+
+  it("trims an old prefix after following the bottom", () => {
+    const detail = coordinator({
+      enabled: true,
+      nowMs: () => Date.parse("2026-07-04T00:10:00.000Z"),
+    });
+    const messages = Array.from({ length: 31 }, (_, index) =>
+      userMessage(`user-${index}`),
+    );
+
+    detail.applyInitialLoad(sessionResponse(messages, pagination(31)));
+
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.length,
+    ).toBe(31);
+
+    detail.setActiveWindowFollowingBottom(true);
+
+    expect(
+      detail
+        .readSelected(selectSessionDetailMessages)
+        ?.map(({ uuid }) => uuid),
+    ).toEqual(Array.from({ length: 20 }, (_, index) => `user-${index + 11}`));
+    expect(
+      detail.readSelected(selectSessionDetailRuntimeSnapshot)?.pagination,
+    ).toMatchObject({
+      hasOlderMessages: true,
+      returnedMessageCount: 20,
+      truncatedBeforeMessageId: "user-11",
+      truncatedBy: "user_turn",
+    });
+  });
+
+  it("dispatches an age-deferred candidate without rescanning", () => {
+    let nowMs = Date.parse("2026-07-04T00:01:00.000Z");
+    const planner = vi.fn(planActiveWindowTrim);
+    const detail = coordinator({
+      enabled: true,
+      nowMs: () => nowMs,
+      planner,
+    });
+    const messages = Array.from({ length: 31 }, (_, index) =>
+      userMessage(`user-${index}`),
+    );
+
+    detail.applyInitialLoad(sessionResponse(messages, pagination(31)));
+    detail.setActiveWindowFollowingBottom(true);
+
+    expect(planner).toHaveBeenCalledTimes(1);
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.length,
+    ).toBe(31);
+
+    nowMs += 1;
+    detail.applyStreamMessage(
+      message("assistant-growth", "2026-07-04T00:01:00.001Z"),
+    );
+
+    expect(planner).toHaveBeenCalledTimes(1);
+    expect(
+      detail
+        .readSelected(selectSessionDetailMessages)
+        ?.map(({ uuid }) => uuid),
+    ).toEqual([
+      ...Array.from({ length: 20 }, (_, index) => `user-${index + 11}`),
+      "assistant-growth",
+    ]);
+  });
+
+  it("suppresses automatic trimming for the rest of an expanded mount", () => {
+    const planner = vi.fn(planActiveWindowTrim);
+    const detail = coordinator({
+      enabled: true,
+      nowMs: () => Date.parse("2026-07-04T00:10:00.000Z"),
+      planner,
+    });
+    const messages = Array.from({ length: 31 }, (_, index) =>
+      userMessage(`user-${index}`),
+    );
+
+    detail.applyInitialLoad(sessionResponse(messages, pagination(31)));
+    detail.suppressActiveWindowTrimForHistoryExpansion();
+    detail.setActiveWindowFollowingBottom(true);
+    detail.applyStreamMessage(userMessage("user-31"));
+
+    expect(planner).not.toHaveBeenCalled();
+    expect(
+      detail.readSelected(selectSessionDetailMessages)?.length,
+    ).toBe(32);
   });
 
   it("builds reveal snapshots from store-backed runtime state", () => {

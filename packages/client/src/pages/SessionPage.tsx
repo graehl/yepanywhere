@@ -515,10 +515,12 @@ function SessionPageContent({
     slashCommands,
     setSessionModel,
     pagination,
+    activeWindowTrimRevision,
     loadingOlder,
     loadOlderMessages,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
+    updateActiveWindowFollowingBottom,
     reconnectStream,
     promptSuggestion,
     dismissPromptSuggestion,
@@ -4614,6 +4616,7 @@ function SessionPageContent({
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
                   hasOlderMessages={pagination?.hasOlderMessages}
+                  activeWindowTrimRevision={activeWindowTrimRevision}
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
@@ -4624,6 +4627,9 @@ function SessionPageContent({
                   progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
                   initialScrollSnapshot={initialScrollSnapshot}
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
+                  onFollowingBottomChange={
+                    updateActiveWindowFollowingBottom
+                  }
                   scrollBehaviorMode={sessionScrollBehaviorMode}
                   offscreenTranscriptRenderingEnabled={
                     sessionOffscreenTranscriptRenderingEnabled

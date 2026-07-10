@@ -32,6 +32,12 @@ export function selectSessionDetailRuntimeSnapshot(
   };
 }
 
+export function selectSessionDetailActiveWindowTrimRevision(
+  state: SessionDetailState,
+): number {
+  return state.activeWindowTrimRevision;
+}
+
 export function selectSessionDetailMessages(
   state: SessionDetailState,
 ): Message[] {

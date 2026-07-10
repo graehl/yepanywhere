@@ -132,6 +132,8 @@ export interface UseSessionMessagesResult {
   fetchSessionMetadata: () => Promise<void>;
   /** Pagination info from compact-boundary-based loading */
   pagination: PaginationInfo | undefined;
+  /** Ephemeral render signal incremented after each accepted active-window trim. */
+  activeWindowTrimRevision: number;
   /** Whether older messages are being loaded */
   loadingOlder: boolean;
   /** Load the next chunk of older messages */
@@ -140,6 +142,8 @@ export interface UseSessionMessagesResult {
   initialScrollSnapshot: SessionRouteScrollSnapshot | null;
   /** Update the retained scroll anchor without re-rendering this hook */
   updateRouteScrollSnapshot: (snapshot: SessionRouteScrollSnapshot) => void;
+  /** Update active-window follow intent immediately, without snapshot debounce. */
+  updateActiveWindowFollowingBottom: (followingBottom: boolean) => void;
   /** True when the initial render was hydrated from a retained route snapshot */
   restoredFromSnapshot: boolean;
 }
@@ -963,6 +967,12 @@ export function useSessionMessages(
     },
     [coordinator],
   );
+  const updateActiveWindowFollowingBottom = useCallback(
+    (followingBottom: boolean) => {
+      coordinator.setActiveWindowFollowingBottom(followingBottom);
+    },
+    [coordinator],
+  );
 
   // Fetch session metadata only
   const fetchSessionMetadata = useCallback(async () => {
@@ -1018,10 +1028,13 @@ export function useSessionMessages(
     fetchNewMessages,
     fetchSessionMetadata,
     pagination: storeBackedDetail?.pagination,
+    activeWindowTrimRevision:
+      storeBackedDetail?.revealed?.activeWindowTrimRevision ?? 0,
     loadingOlder,
     loadOlderMessages,
     initialScrollSnapshot: selectedInitialScrollSnapshot,
     updateRouteScrollSnapshot,
+    updateActiveWindowFollowingBottom,
     restoredFromSnapshot: Boolean(cachedLoad),
   };
 }

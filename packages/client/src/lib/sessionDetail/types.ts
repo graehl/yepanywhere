@@ -30,6 +30,8 @@ export interface SessionDetailState {
   lastMessageId?: string;
   maxPersistedTimestampMs: number;
   deferredMessages: DeferredQueueMessage[];
+  /** Ephemeral mount/store signal incremented only by an accepted auto-trim. */
+  activeWindowTrimRevision: number;
 }
 
 export type SessionDetailAction =

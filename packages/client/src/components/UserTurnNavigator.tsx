@@ -8,6 +8,7 @@ import {
   type TouchEvent as ReactTouchEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1132,6 +1133,41 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     setPreviewWindowAnchorId(null);
     onPreviewTimestampChange?.(null);
   }, [onPreviewTimestampChange]);
+
+  useLayoutEffect(() => {
+    const retainedIds = new Set(
+      layout?.markers.map((marker) => marker.id) ?? [],
+    );
+    clearLongPress();
+    if (previewId && !retainedIds.has(previewId)) {
+      clearPreview();
+    } else if (
+      previewWindowAnchorId &&
+      !retainedIds.has(previewWindowAnchorId)
+    ) {
+      setPreviewWindowAnchorId(null);
+    }
+    if (
+      markerHoverBandRef.current &&
+      !retainedIds.has(markerHoverBandRef.current.id)
+    ) {
+      markerHoverBandRef.current = null;
+    }
+    if (notchMenu && !retainedIds.has(notchMenu.id)) {
+      closeNotchMenu();
+    }
+    visiblePreviewIdsRef.current = visiblePreviewIdsRef.current.filter((id) =>
+      retainedIds.has(id),
+    );
+  }, [
+    clearLongPress,
+    clearPreview,
+    closeNotchMenu,
+    layout,
+    notchMenu,
+    previewId,
+    previewWindowAnchorId,
+  ]);
 
   const searchActiveId = searchState?.activeId ?? null;
   useEffect(() => {

@@ -24,6 +24,103 @@ import { MessageList } from "../MessageList";
 installMessageListTestEnvironment();
 
 describe("MessageList scroll and follow", () => {
+  it("preserves live-tail follow across an active-window prefix trim", () => {
+    const onFollowingBottomChange = vi.fn();
+    const onScrollSnapshotChange = vi.fn();
+    const initialMessages = [
+      userMessage("user-1", "old request"),
+      assistantMessage("assistant-1", "old response"),
+      userMessage("user-2", "retained request"),
+      assistantMessage("assistant-2", "retained response"),
+    ];
+    const { container, rerender } = render(
+      <MessageList
+        messages={initialMessages}
+        activeWindowTrimRevision={0}
+        onFollowingBottomChange={onFollowingBottomChange}
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+    let scrollHeight = 1000;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 500,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+
+    fireEvent.scroll(container);
+    expect(onFollowingBottomChange).toHaveBeenLastCalledWith(true);
+
+    scrollHeight = 600;
+    rerender(
+      <MessageList
+        messages={initialMessages.slice(2)}
+        activeWindowTrimRevision={1}
+        onFollowingBottomChange={onFollowingBottomChange}
+        onScrollSnapshotChange={onScrollSnapshotChange}
+      />,
+    );
+
+    expect(container.scrollTop).toBe(100);
+    expect(onFollowingBottomChange).toHaveBeenLastCalledWith(true);
+    expect(onScrollSnapshotChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ atBottom: true, scrollTop: 100 }),
+    );
+  });
+
+  it("does not force a trim revision back to bottom after reader intent changes", () => {
+    const onFollowingBottomChange = vi.fn();
+    const initialMessages = [
+      userMessage("user-1", "old request"),
+      assistantMessage("assistant-1", "old response"),
+      userMessage("user-2", "retained request"),
+    ];
+    const { container, rerender } = render(
+      <MessageList
+        messages={initialMessages}
+        activeWindowTrimRevision={0}
+        onFollowingBottomChange={onFollowingBottomChange}
+      />,
+    );
+    let scrollHeight = 1000;
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 100,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    expect(onFollowingBottomChange).toHaveBeenLastCalledWith(false);
+
+    scrollHeight = 600;
+    rerender(
+      <MessageList
+        messages={initialMessages.slice(2)}
+        activeWindowTrimRevision={1}
+        onFollowingBottomChange={onFollowingBottomChange}
+      />,
+    );
+
+    expect(container.scrollTop).toBe(100);
+    expect(onFollowingBottomChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("disables off-screen transcript rendering by default and allows opt-in", () => {
     const messages = [userMessage("user-1", "completed request")];
     const { container, rerender } = render(<MessageList messages={messages} />);

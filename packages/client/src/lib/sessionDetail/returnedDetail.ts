@@ -9,6 +9,7 @@ export interface ReturnedDetailStoreState {
   messages: Message[];
   agentContent: AgentContentMap;
   toolUseToAgentEntries: Array<[string, string]>;
+  activeWindowTrimRevision: number;
 }
 
 export interface StoreBackedSessionDetail {
@@ -53,12 +54,15 @@ export function createStoreBackedSessionDetailSelector(
         previousRevealed &&
         previousRevealed.messages === state.messages &&
         previousRevealed.agentContent === state.agentContent &&
-        previousRevealed.toolUseToAgentEntries === state.toolUseToAgentEntries
+        previousRevealed.toolUseToAgentEntries === state.toolUseToAgentEntries &&
+        previousRevealed.activeWindowTrimRevision ===
+          state.activeWindowTrimRevision
           ? previousRevealed
           : {
               messages: state.messages,
               agentContent: state.agentContent,
               toolUseToAgentEntries: state.toolUseToAgentEntries,
+              activeWindowTrimRevision: state.activeWindowTrimRevision,
             };
       previousRevealed = revealed;
     }

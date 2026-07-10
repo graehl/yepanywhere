@@ -841,6 +841,14 @@ describe("SessionDetailCoordinator", () => {
     );
 
     detail.applyInitialLoad(sessionResponse(messages, pagination(31)));
+    detail.patchScrollSnapshot({
+      atBottom: true,
+      scrollTop: 800,
+      scrollHeight: 1000,
+      clientHeight: 200,
+      anchor: { id: "user-0", topOffset: 12 },
+      updatedAtMs: 1,
+    });
 
     expect(
       detail.readSelected(selectSessionDetailMessages)?.length,
@@ -860,6 +868,13 @@ describe("SessionDetailCoordinator", () => {
       returnedMessageCount: 20,
       truncatedBeforeMessageId: "user-11",
       truncatedBy: "user_turn",
+    });
+    expect(detail.readScrollSnapshot()).toEqual({
+      atBottom: true,
+      scrollTop: 800,
+      scrollHeight: 1000,
+      clientHeight: 200,
+      updatedAtMs: Date.parse("2026-07-04T00:10:00.000Z"),
     });
   });
 

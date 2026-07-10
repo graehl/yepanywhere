@@ -286,6 +286,7 @@ export function trimSessionDetailLoadedWindow(
   return {
     ...state,
     messages,
+    activeWindowTrimRevision: state.activeWindowTrimRevision + 1,
     pagination: buildTrimmedPagination(state, messages, action),
     markdownAugments: pruneMarkdownAugments(
       state.markdownAugments,

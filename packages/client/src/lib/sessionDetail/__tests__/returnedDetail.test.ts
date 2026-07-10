@@ -113,6 +113,7 @@ describe("returned session detail helpers", () => {
     expect(selected?.revealed?.toolUseToAgentEntries).toBe(
       state.toolUseToAgentEntries,
     );
+    expect(selected?.revealed?.activeWindowTrimRevision).toBe(0);
   });
 
   it("reuses selected objects while returned references stay unchanged", () => {
@@ -124,9 +125,15 @@ describe("returned session detail helpers", () => {
       ...state,
       maxPersistedTimestampMs: 123,
     });
+    const trimUpdate = selector({
+      ...state,
+      activeWindowTrimRevision: 1,
+    });
 
     expect(second).toBe(first);
     expect(metadataOnlyUpdate).toBe(first);
+    expect(trimUpdate).not.toBe(first);
+    expect(trimUpdate?.revealed?.activeWindowTrimRevision).toBe(1);
   });
 
   it("returns stable empty surfaces when detail is unrevealed or missing", () => {

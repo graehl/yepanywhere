@@ -152,6 +152,39 @@ describe("MessageList reverse search", () => {
     composerTarget.remove();
   });
 
+  it("clears a selected search id when its trimmed turn disappears", async () => {
+    const retained = userMessage("user-2", "retained searchable request");
+    const rendered = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "unique removed needle"),
+          retained,
+        ]}
+        activeWindowTrimRevision={0}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    fireEvent.change(input, { target: { value: "needle" } });
+    expect(await screen.findByText("1/1")).toBeTruthy();
+
+    rendered.rerender(
+      <MessageList
+        messages={[retained]}
+        activeWindowTrimRevision={1}
+      />,
+    );
+
+    expect(await screen.findByText("0/0")).toBeTruthy();
+    expect(screen.queryByText("unique removed needle")).toBeNull();
+    expect(
+      screen.getByRole("textbox", { name: "Reverse search user turns" }),
+    ).toBe(input);
+  });
+
   it("opens user-turn search with Ctrl+Alt+R fallback for one turn", async () => {
     render(
       <MessageList

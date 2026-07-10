@@ -24,6 +24,7 @@ import {
   type SessionLoadProgressStage,
 } from "./loadProgress";
 import {
+  selectSessionDetailActiveWindowTrimRevision,
   selectSessionDetailMessages,
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
@@ -892,12 +893,28 @@ export class SessionDetailCoordinator {
     candidate: ActiveWindowTrimCandidate,
     nowMs: number,
   ): void {
-    this.dispatch({
+    const previousRevision =
+      this.readSelected(selectSessionDetailActiveWindowTrimRevision) ?? 0;
+    const next = this.dispatch({
       type: "trimLoadedWindow",
       startMessageId: candidate.startMessageId,
       reason: candidate.reason,
       nowMs,
     });
+    if (!next || next.activeWindowTrimRevision === previousRevision) {
+      return;
+    }
+
+    const scrollSnapshot = this.readScrollSnapshot();
+    if (scrollSnapshot) {
+      const { anchor: _removedAnchor, ...retainedScrollSnapshot } =
+        scrollSnapshot;
+      this.patchScrollSnapshot({
+        ...retainedScrollSnapshot,
+        atBottom: true,
+        updatedAtMs: nowMs,
+      });
+    }
   }
 }
 

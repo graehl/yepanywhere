@@ -512,6 +512,8 @@ interface Props {
   activeToolApproval?: ActiveToolApproval;
   /** Whether there are older messages not yet loaded */
   hasOlderMessages?: boolean;
+  /** Ephemeral signal incremented after an accepted active-window prefix trim. */
+  activeWindowTrimRevision?: number;
   /** Whether older messages are currently being loaded */
   loadingOlder?: boolean;
   /** Callback to load the next chunk of older messages */
@@ -526,6 +528,8 @@ interface Props {
   progressiveRenderKey?: string;
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
+  /** Immediate live-tail intent; unlike route snapshots, this is not debounced. */
+  onFollowingBottomChange?: (followingBottom: boolean) => void;
   scrollBehaviorMode?: SessionScrollBehaviorMode;
   /** Allow CSS to skip rendering transcript rows outside the viewport. */
   offscreenTranscriptRenderingEnabled?: boolean;
@@ -715,6 +719,7 @@ export const MessageList = memo(function MessageList({
   markdownAugments,
   activeToolApproval,
   hasOlderMessages = false,
+  activeWindowTrimRevision = 0,
   loadingOlder = false,
   onLoadOlderMessages,
   clientTailActive = false,
@@ -723,6 +728,7 @@ export const MessageList = memo(function MessageList({
   progressiveRenderKey,
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
+  onFollowingBottomChange,
   scrollBehaviorMode = DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
   offscreenTranscriptRenderingEnabled = false,
   inert = false,
@@ -762,6 +768,11 @@ export const MessageList = memo(function MessageList({
   const previousProgressiveRevealActiveRef = useRef(false);
   const scrollSnapshotWritesSuppressedRef = useRef(false);
   const previousScrollSnapshotWritesSuppressedRef = useRef(false);
+  const previousActiveWindowTrimRevisionRef = useRef(
+    activeWindowTrimRevision,
+  );
+  const onFollowingBottomChangeRef = useRef(onFollowingBottomChange);
+  onFollowingBottomChangeRef.current = onFollowingBottomChange;
   const [thinkingItemsVisible, setThinkingItemsVisible] = useState(() => {
     // "Show thinking" preference seeds the render gate's default; "default"
     // falls back to the live eye-toggle value. The eye icon still overrides
@@ -792,6 +803,9 @@ export const MessageList = memo(function MessageList({
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const { t } = useI18n();
   const nowMs = useRelativeNow();
+  const reportFollowingBottom = useCallback((followingBottom: boolean) => {
+    onFollowingBottomChangeRef.current?.(followingBottom);
+  }, []);
 
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
   const scrollToBottom = useCallback(
@@ -809,6 +823,7 @@ export const MessageList = memo(function MessageList({
       }
       lastHeightRef.current = container.scrollHeight;
       setIsScrolledToBottom(true);
+      reportFollowingBottom(true);
       setScrollPositionTimestampMs(null);
       setNewOutputBelowVisible(false);
 
@@ -857,7 +872,7 @@ export const MessageList = memo(function MessageList({
         }
       }, 50);
     },
-    [],
+    [reportFollowingBottom],
   );
 
   const clearForcedCurrentScrollTimers = useCallback(() => {
@@ -889,8 +904,13 @@ export const MessageList = memo(function MessageList({
         lastHeightRef.current = container.scrollHeight;
       }
       setIsScrolledToBottom(false);
+      reportFollowingBottom(false);
     },
-    [clearFollowUpScrollTimer, clearForcedCurrentScrollTimers],
+    [
+      clearFollowUpScrollTimer,
+      clearForcedCurrentScrollTimers,
+      reportFollowingBottom,
+    ],
   );
 
   const forceScrollToCurrent = useCallback(
@@ -1428,6 +1448,26 @@ export const MessageList = memo(function MessageList({
     publishScrollSnapshot();
   }, [inert, publishScrollSnapshot, scrollSnapshotWritesSuppressed]);
 
+  useLayoutEffect(() => {
+    const previousRevision = previousActiveWindowTrimRevisionRef.current;
+    previousActiveWindowTrimRevisionRef.current = activeWindowTrimRevision;
+    if (activeWindowTrimRevision <= previousRevision) {
+      return;
+    }
+
+    const container = containerRef.current?.parentElement;
+    if (container && shouldAutoScrollRef.current) {
+      scrollToBottom(container);
+    }
+    // Replace any route-memory anchor that referenced a removed prefix row,
+    // including when a user-scroll race correctly prevents a forced jump.
+    publishScrollSnapshot();
+  }, [
+    activeWindowTrimRevision,
+    publishScrollSnapshot,
+    scrollToBottom,
+  ]);
+
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
       item.type === "thinking" && resolveThinkingItemExpanded(item.id),
@@ -1770,9 +1810,14 @@ export const MessageList = memo(function MessageList({
       clearForcedCurrentScrollTimers();
     }
     setIsScrolledToBottom(atBottom);
+    reportFollowingBottom(atBottom);
     updateScrollPositionTimestampRef.current({ atBottom });
     schedulePublishScrollSnapshot();
-  }, [clearForcedCurrentScrollTimers, schedulePublishScrollSnapshot]);
+  }, [
+    clearForcedCurrentScrollTimers,
+    reportFollowingBottom,
+    schedulePublishScrollSnapshot,
+  ]);
 
   // Attach scroll listener to parent container
   useEffect(() => {
@@ -1984,6 +2029,7 @@ export const MessageList = memo(function MessageList({
         lastHeightRef.current = resizeContainer.scrollHeight;
         shouldAutoScrollRef.current = false;
         setIsScrolledToBottom(false);
+        reportFollowingBottom(false);
 
         requestAnimationFrame(() => {
           isProgrammaticScrollRef.current = false;
@@ -1998,7 +2044,7 @@ export const MessageList = memo(function MessageList({
         cancelAnimationFrame(pendingFrame);
       }
     };
-  }, [scrollToBottom]);
+  }, [reportFollowingBottom, scrollToBottom]);
 
   // Force scroll to bottom when scrollTrigger changes (user sent a message)
   useEffect(() => {
@@ -2083,6 +2129,7 @@ export const MessageList = memo(function MessageList({
       }
       shouldAutoScrollRef.current = false;
       setIsScrolledToBottom(false);
+      reportFollowingBottom(false);
       updateScrollPositionTimestamp({ atBottom: false });
       setNewOutputBelowVisible(
         initialScrollSnapshot.atBottom &&
@@ -2106,6 +2153,7 @@ export const MessageList = memo(function MessageList({
     progressiveRevealActive,
     scrollToBottom,
     updateScrollPositionTimestamp,
+    reportFollowingBottom,
   ]);
 
   // Initial scroll to bottom on first render
@@ -2172,6 +2220,7 @@ export const MessageList = memo(function MessageList({
         onNavigateStart={() => {
           shouldAutoScrollRef.current = false;
           setIsScrolledToBottom(false);
+          reportFollowingBottom(false);
           updateScrollPositionTimestamp({ atBottom: false });
         }}
         onSearchMatchSelect={selectSearchMatch}

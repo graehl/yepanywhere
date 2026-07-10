@@ -167,6 +167,7 @@ describe("trimLoadedWindow reducer action", () => {
     expect(trimmed.maxPersistedTimestampMs).toBe(
       Date.parse(OLD_TIMESTAMP),
     );
+    expect(trimmed.activeWindowTrimRevision).toBe(1);
   });
 
   it("creates loaded-window pagination when none existed", () => {
@@ -220,5 +221,6 @@ describe("trimLoadedWindow reducer action", () => {
         nowMs: NOW_MS,
       }),
     ).toBe(state);
+    expect(state.activeWindowTrimRevision).toBe(0);
   });
 });

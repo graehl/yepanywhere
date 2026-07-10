@@ -3,6 +3,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -483,7 +484,7 @@ export function useMessageListIsearch({
     [],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!userTurnSearch.active) {
       stopSearchArrowRepeat();
       return;
@@ -512,6 +513,18 @@ export function useMessageListIsearch({
     userTurnSearchMatches,
     userTurnSearchMatchIds,
   ]);
+
+  useLayoutEffect(() => {
+    if (!userTurnSearch.active || !committedSearchTargetIdRef.current) {
+      return;
+    }
+    const retainedTargetIds = new Set(
+      userTurnSearchMatches.map((anchor) => anchor.targetId ?? anchor.id),
+    );
+    if (!retainedTargetIds.has(committedSearchTargetIdRef.current)) {
+      committedSearchTargetIdRef.current = null;
+    }
+  }, [userTurnSearch.active, userTurnSearchMatches]);
 
   useEffect(() => {
     if (inert) {

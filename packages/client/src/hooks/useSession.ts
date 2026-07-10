@@ -893,10 +893,12 @@ export function useSession(
     removeUnconfirmedSelfSend,
     fetchNewMessages,
     pagination,
+    activeWindowTrimRevision,
     loadingOlder,
     loadOlderMessages,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
+    updateActiveWindowFollowingBottom,
     restoredFromSnapshot,
   } = useSessionMessages({
     projectId,
@@ -2095,10 +2097,12 @@ export function useSession(
     promptSuggestion, // Predicted next user prompt from prompt_suggestion SDK message
     dismissPromptSuggestion: () => setPromptSuggestion(null),
     pagination, // Compact-boundary pagination metadata
+    activeWindowTrimRevision, // Ephemeral accepted auto-trim render signal
     loadingOlder, // Whether older messages are being loaded
     loadOlderMessages, // Load next chunk of older messages
     initialScrollSnapshot, // Retained same-tab route scroll anchor
     updateRouteScrollSnapshot, // Update retained same-tab route scroll anchor
+    updateActiveWindowFollowingBottom, // Immediate active-window follow intent
     restoredFromSnapshot, // Initial render came from retained same-tab data
     reconnectStream, // Force session stream reconnection (e.g., after process restart)
   };

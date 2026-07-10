@@ -267,6 +267,121 @@ describe("UserTurnNavigator", () => {
     expect(onTrimAnchor).not.toHaveBeenCalled();
   });
 
+  it("reconciles removed bookmarks, previews, menus, and rail geometry", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const rows = ["user-1", "user-2", "user-3"].map((id) => {
+      const row = document.createElement("div");
+      row.dataset.renderId = id;
+      return row;
+    });
+    const onPreviewTimestampChange = vi.fn();
+    let scrollHeight = 1000;
+    let anchors = [
+      { id: "user-1", preview: "Removed request", timestampMs: 1000 },
+      { id: "user-2", preview: "Middle request", timestampMs: 2000 },
+      { id: "user-3", preview: "Latest request", timestampMs: 3000 },
+    ];
+
+    messageList.append(...rows);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    setReadonlyNumber(scrollContainer, "clientHeight", 200);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 200 });
+    rows.forEach((row, index) => {
+      row.getBoundingClientRect = () =>
+        rect({ top: 120 + index * 300, height: 30 });
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const rendered = render(
+      <UserTurnNavigator
+        anchors={anchors}
+        messageListRef={{ current: messageList }}
+        onForkBeforeAnchor={vi.fn()}
+        onPreviewTimestampChange={onPreviewTimestampChange}
+      />,
+    );
+
+    act(() => {
+      dispatchPointerMove(scrollContainer, 492, 150);
+    });
+    const removedMarker = await screen.findByRole("button", {
+      name: "Jump to turn: Removed request",
+    });
+    fireEvent.pointerEnter(removedMarker);
+    expect(screen.getByText("Removed request")).toBeTruthy();
+    expect(onPreviewTimestampChange).toHaveBeenLastCalledWith(1000);
+    expect(
+      document.querySelector<HTMLElement>(".user-turn-nav-thumb")?.style
+        .height,
+    ).toBe("20%");
+
+    rows[0]?.remove();
+    scrollHeight = 500;
+    anchors = anchors.slice(1);
+    rendered.rerender(
+      <UserTurnNavigator
+        anchors={anchors}
+        messageListRef={{ current: messageList }}
+        onForkBeforeAnchor={vi.fn()}
+        onPreviewTimestampChange={onPreviewTimestampChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", {
+          name: "Jump to turn: Removed request",
+        }),
+      ).toBeNull();
+      expect(screen.queryByText("Removed request")).toBeNull();
+      expect(onPreviewTimestampChange).toHaveBeenLastCalledWith(null);
+      expect(
+        document.querySelector<HTMLElement>(".user-turn-nav-thumb")?.style
+          .height,
+      ).toBe("40%");
+    });
+
+    const middleMarker = screen.getByRole("button", {
+      name: "Jump to turn: Middle request",
+    });
+    fireEvent.contextMenu(middleMarker, { clientX: 492, clientY: 150 });
+    expect(screen.getByRole("menuitem", { name: "Jump" })).toBeTruthy();
+
+    rows[1]?.remove();
+    anchors = anchors.slice(1);
+    rendered.rerender(
+      <UserTurnNavigator
+        anchors={anchors}
+        messageListRef={{ current: messageList }}
+        onForkBeforeAnchor={vi.fn()}
+        onPreviewTimestampChange={onPreviewTimestampChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menuitem", { name: "Jump" })).toBeNull();
+      expect(
+        screen.queryByRole("button", {
+          name: "Jump to turn: Middle request",
+        }),
+      ).toBeNull();
+    });
+  });
+
   it("does not jump after a long press opens turn actions", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");

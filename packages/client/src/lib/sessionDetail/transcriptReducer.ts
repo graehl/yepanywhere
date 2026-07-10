@@ -33,6 +33,7 @@ export function createInitialSessionDetailState(): SessionDetailState {
     toolUseToAgentEntries: [],
     maxPersistedTimestampMs: Number.NEGATIVE_INFINITY,
     deferredMessages: [],
+    activeWindowTrimRevision: 0,
   };
 }
 

@@ -1,6 +1,6 @@
 # Bounded Active Transcript Window
 
-Status: implementation in progress; slices 1-3 complete.
+Status: implementation in progress; slices 1-4 complete.
 
 Topic: memory-growth
 Topic: session-detail-data-layer
@@ -66,7 +66,31 @@ strict-age deferred dispatch without a second scan, and mount-lifetime history
 suppression. The hook currently passes an explicit `enabled: false` runtime
 gate, so Slice 3 cannot activate automatic trimming before Slice 5 provides the
 required default-on Performance preference and explicit off switch. Slice 4
-will reconcile the rendered scroll/turn-navigation state before activation.
+adds the required rendered scroll/turn-navigation reconciliation below.
+
+### 2026-07-10: Slice 4 complete — scroll and turn-rail integration
+
+An accepted reducer trim now increments an ephemeral store revision that is
+projected through the session hooks to `MessageList`; it is deliberately absent
+from durable route snapshots. On that revision, a view still following the
+tail scrolls to the new bottom and immediately replaces any route-memory anchor
+that referenced a removed row. If reader intent changed immediately before the
+render, the view does not force a jump.
+
+`MessageList` also reports bottom-follow changes to the coordinator
+synchronously, independently of the intentionally debounced route snapshot.
+Wheel/touch departures, scroll events, turn navigation, remembered-position
+restore, resize preservation, and programmatic tail follow all update that
+immediate signal. The coordinator defensively strips a cached anchor after an
+accepted trim as well.
+
+The right-side `UserTurnNavigator` now remeasures from retained anchors and
+reconciles removed bookmark ids across hover bands, preview/window state,
+long-press work, and open notch menus. Reverse-search selection and committed
+target ids are also reconciled before paint. Component coverage verifies the
+rail markers and thumb geometry, stale preview/menu/search cleanup, live-tail
+bottom preservation, and the last-moment reader-intent guard. Automatic
+trimming remains explicitly disabled pending Slice 5.
 
 ## Goal
 
@@ -324,9 +348,9 @@ it need not synchronously scan or trim inside the settings event handler.
 3. **Coordinator lifecycle — complete 2026-07-10.** Wired bottom-follow input,
    structural revisions, cached age candidates, and mount-scoped Load older
    suppression behind an explicit disabled runtime gate.
-4. **Scroll integration.** Preserve bottom-follow and clear removed anchors;
-   trim/recompute the right-side turn rail and its thumb/local ids; verify
-   streaming and ordinary completed-turn behavior in the browser.
+4. **Scroll integration — complete 2026-07-10.** Preserved bottom-follow,
+   cleared removed route anchors, reconciled the right-side turn rail and its
+   thumb/local ids, and covered live-tail and reader-intent behavior.
 5. **Performance setting.** Add default-on preference, UI/i18n copy, undo,
    storage-event behavior, and setting tests.
 6. **Telemetry and closeout.** Add low-volume aggregate trim diagnostics only

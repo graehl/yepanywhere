@@ -5,6 +5,7 @@ import {
   reconcileLinearMessages,
 } from "../linearMessageDedup";
 import { isUnconfirmedSelfSend } from "../deliveryState";
+import { reconcileCodexToolMessages } from "../codexToolReconciliation";
 import {
   findMessageIndexById,
   getMessageId,
@@ -170,9 +171,13 @@ function maybeReconcileApprox(
   messages: Message[],
   provider: string | undefined,
 ): Message[] {
+  const providerReconciled =
+    provider === "codex" || provider === "codex-oss"
+      ? reconcileCodexToolMessages(messages)
+      : messages;
   const approx = usesApproxMessageDedup(provider)
-    ? reconcileLinearMessages(messages, approxDedupOptions(provider))
-    : messages;
+    ? reconcileLinearMessages(providerReconciled, approxDedupOptions(provider))
+    : providerReconciled;
   return usesQueueOperationEchoDedup(provider)
     ? reconcileClaudeQueueOperationEchoes(approx)
     : approx;

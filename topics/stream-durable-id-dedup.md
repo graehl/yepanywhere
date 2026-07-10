@@ -39,11 +39,12 @@ interrupted to deliver a queued steer is double-displayed."
    that risk large). Deterministic alignment carries the load; this only
    catches the residue. The optional capability `approxDedupExcludesTools`
    (codex, codex-oss) removes tool_use/tool_result messages from this
-   backstop entirely: their uuids are deterministic (call_id), so the
-   backstop is redundant for them and would otherwise be the one place a
-   legitimately-repeated identical tool call could be wrongly merged. The
-   `excludeTools` option on both backstop functions implements this; OpenCode
-   leaves it off.
+   backstop entirely: native tool uuids are deterministic (`call_id`), while
+   the code-mode `commandExecution` exception uses a separately scoped exact
+   turn/semantics reconciliation. The broad backstop would otherwise be the
+   one place a legitimately repeated identical tool call could be wrongly
+   merged. The `excludeTools` option on both backstop functions implements
+   this; OpenCode leaves it off.
    The one deliberately wider exception is the **first plain user turn**:
    new-session startup can show the optimistic user echo before Codex has
    finished thread setup and written the durable response-item user row. That
@@ -174,7 +175,8 @@ splits by item class (verified in `references/codex`
 
 | Item | Live thread `item.id` | Durable rollout id | Aligned? |
 |---|---|---|---|
-| Tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
+| Native tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
+| Code-mode nested command | inner `commandExecution` id (`exec-*`) | outer `custom_tool_call.call_id` (`call_*`) | **No direct id** — scoped reconciliation below |
 | User turns | counter `item-{N}` + separate `client_id` | event_msg `client_id` (null until YA sends it); also a positional response-item copy | Deferred (see below) |
 | Assistant / reasoning | counter `item-{N}` (`next_item_id()`) | `response_item.payload.id` — **null in practice** | **No** — no shared id; backstop only |
 
@@ -184,18 +186,20 @@ side** — the live id is a synthetic per-thread counter and the rollout's
 `payload.id` is null (confirmed on a real 2026-06 rollout: 13 assistant
 items, all `payload.id == null`). So the "Assistant w/ `ResponseItem.id`"
 class does not occur, and *all* assistant messages fall to the
-content+timestamp backstop. Only **tool calls** are cleanly alignable.
+content+timestamp backstop. Only **native tool calls** are cleanly alignable by
+provider id. Code-mode adds the bounded exception below.
 
-### Done: tool-call id alignment
+### Done: native tool-call id alignment and code-mode reconciliation
 
-Both sides now key the rendered message uuid on `call_id` (call →
-`call_id`, result → `${call_id}-result`), independent of turn — `call_id`
-is globally unique, so no turn scoping is needed:
+For directly alignable native tools, both sides key the rendered message uuid
+on `call_id` (call → `call_id`, result → `${call_id}-result`), independent of
+turn — `call_id` is globally unique, so no turn scoping is needed:
 - Live (`codex.ts`): `convertItemToSDKMessages` routes tool-backed thread
   items (`isToolBackedThreadItem`) through `buildItemToolUuid(item.id)` /
   `buildItemResultUuid(callId)`; message/reasoning items keep
-  `${itemId}-${turnId}`. The streaming-result and (opt-in) rawResponse
-  paths use the same helpers.
+  `${itemId}-${turnId}`. A code-mode command temporarily uses its inner
+  `exec-*` item id until the scoped reconciliation below. The streaming-result
+  and (opt-in) rawResponse paths use the same helpers.
 - Durable (`normalization.ts`): `codexDurableResponseItemUuid` maps
   `function_call`/`custom_tool_call`/`web_search_call` →
   `call_id`, `*_output` → `${call_id}-result`; the `exec_command_end`
@@ -206,8 +210,22 @@ is globally unique, so no turn scoping is needed:
   across stream and durable sources" asserts uuid equality per `call_id`,
   and "dedups Codex tool messages by id … with the backstop off" proves the
   ids carry tool dedup without `reconcileLinearMessages`.
-- Backstop excluded for tools: with the ids deterministic, the approx-dedup
-  backstop no longer runs over Codex tool messages
+- Code-mode exception (verified 2026-07-10): a real multi-read execution used
+  live id `exec-f6e9…` and durable outer id `call_FE1X…`; the raw SDK log had
+  no `rawResponseItem/completed` bridge for that turn. Both paths did expose
+  the same rollout turn id and normalized to the same `Bash` input/action
+  vector. Server normalization now attaches ephemeral
+  `_codexToolCorrelation` metadata to those live and durable-shaped messages.
+  `codexToolReconciliation.ts` pairs only opposite origins in the same turn
+  with exactly equal normalized name/input/actions, one-to-one by nearest
+  timestamp within 10s, then adopts `call_*` / `call_*-result` as canonical.
+  The durable row remains authoritative and no YA record is persisted.
+- Multi-nested code mode fails closed: several inner `commandExecution`
+  parents cannot be assigned safely to one outer call by id. The explored
+  projection may make their default visual group converge, but raw parent
+  structure and active-tail collapse identity may replace once rollout lands.
+- Backstop excluded for tools: native ids plus the scoped code-mode reconciler
+  carry the known cases, so the approximate backstop does not run over tools
   (`approxDedupExcludesTools`); it stays on only for the residual non-tool
   messages. See the Two-layer remedy note above.
 

@@ -2,7 +2,7 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: In progress. Foundation through semantic-action propagation landed on
+Status: In progress. Foundation through identity reconciliation landed on
 2026-07-10. The derived actions are present in client `ToolCallItem`s but are
 not yet consumed by render segmentation or visible components, so compound
 reads still appear as raw `Ran sed ...` rows.
@@ -101,6 +101,7 @@ propagation slice and is not evidence that the analyzer failed.
 | P0 | Landed 2026-07-10 | `01f088dd` | Recorded rollout authority, graded live/durable convergence, upstream evidence, the no-model-branch rule, and the broad implementation plan. Opened topic `codex-code-mode-render-convergence`. |
 | S1 | Landed 2026-07-10 | `457be41e` | Extracted `codex/displayActions.ts`; moved existing read/search parsing into it; added safe ordered compound read/search/list analysis; retained existing one-action rendering; kept compound calls visually raw. |
 | S2 | Landed 2026-07-10 | `8ec08674` | Added provider-neutral `ToolDisplayAction`; independently derived actions from live command/cwd and persisted GPT-5.5/GPT-5.6 calls; propagated them through tool blocks, reconnect replacement, results, and client preprocessing; made no visible rendering change. |
+| S3 | Landed 2026-07-10 | This commit | Captured the real code-mode identity mismatch; added ephemeral turn/origin correlation metadata and a standalone exact client reconciler; adopted the rollout `call_*` identity for one-to-one matches while leaving ambiguous multi-call orchestration untouched. |
 
 ### Recorded Verification For Landed Slices
 
@@ -113,13 +114,17 @@ propagation slice and is not evidence that the analyzer failed.
 - S2 parity fixtures prove that a deliberately wrong live `commandActions`
   oracle does not change the derived action vector: command text plus cwd is
   the rendering source on the live path, matching rollout-recoverable inputs.
+- S3: 108 focused client/server tests passed without runtime warnings; full
+  lint and typecheck passed; `pnpm console:scan` remained at its existing
+  budget with `+0`; the Codex protocol subset was current; and the exact
+  correlated rollout validated 8946/8946 records against the persisted Zod
+  schema.
 
 ## Remaining Slice Ledger
 
 | Slice | Status | Target outcome | Visible change |
 |---|---|---|---|
-| S3 | Next / not started | Audit and lock parent identity and live-to-rollout reconciliation for compound code-mode commands. | None required. |
-| S4 | Not started | Add a provider-neutral exploration projection that supports one parent with many actions and many parents with one action. | None required; selector/model tests first. |
+| S4 | Next / not started | Add a provider-neutral exploration projection that supports one parent with many actions and many parents with one action. | None required; selector/model tests first. |
 | S5 | Not started | Render multi-action parents through the existing `Exploring` / `Explored` vocabulary while retaining parent-owned raw details. | Yes: removes the raw `Ran sed ...` default presentation for classified exploration-only commands. |
 | S6 | Not started | Stabilize search, navigation, collapse identity, predictive height, mobile layout, and live/reload reconciliation. | Polish and jank prevention. |
 | S7 | Not started | Run corpus/schema/manual verification, update docs, and close or explicitly defer follow-ups. | No new behavior beyond fixes found by verification. |
@@ -136,9 +141,8 @@ correlation across:
 - persisted outer `custom_tool_call(exec)` and its output;
 - client stream-to-rollout replacement and deduplication.
 
-The current parity fixture deliberately uses matching IDs to test action
-propagation. It does not prove that real `commandExecution.id` always equals
-the persisted outer `call_id`.
+The S2 parity fixture deliberately used matching IDs to test action
+propagation. S3 replaces that assumption with real-shape mismatched IDs.
 
 ### Work
 
@@ -154,6 +158,31 @@ the persisted outer `call_id`.
   parent, one action vector, and one result owner.
 - If direct identity cannot converge, document the bounded active-tail
   replacement behavior before allowing UI state to depend on it.
+
+### Landed Evidence And Decision
+
+The correlated 2026-07-10 sample used:
+
+- live app-server parent `exec-f6e9…` for a six-range `commandExecution`;
+- durable outer parent `call_FE1X…` for the matching
+  `custom_tool_call(exec)`;
+- the same rollout turn id on both records;
+- no `rawResponseItem/completed` notification in 1,485 raw SDK records for
+  that long-running turn, so no hidden provider-id bridge was available.
+
+The IDs therefore do not correlate directly. For a single nested execution,
+however, both paths independently recover exactly the same normalized tool
+name, input, and ordered action vector. S3 carries only ephemeral
+`_codexToolCorrelation` turn/origin/item metadata through YA messages. The
+standalone client reconciler requires opposite origins, the same turn, exact
+normalized semantics, a one-to-one nearest match within 10 seconds, and then
+adopts the rollout `call_*` / `call_*-result` identity. The durable copy wins
+shared fields, and no metadata is written to rollout or another durable store.
+
+Several nested executions inside one outer code-mode call cannot be assigned
+one-to-one safely. They fail closed and may replace once at the active tail.
+S4 must make their default explored projection visually compatible without
+pretending that separate live executions own synthetic durable results.
 
 ### Acceptance
 

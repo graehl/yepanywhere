@@ -1,7 +1,8 @@
-import type {
-  CodexSessionEntry,
-  UnifiedSession,
-  UrlProjectId,
+import {
+  getCodexToolCorrelation,
+  type CodexSessionEntry,
+  type UnifiedSession,
+  type UrlProjectId,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import { preprocessMessages } from "../../../client/src/lib/preprocessMessages.js";
@@ -62,6 +63,8 @@ function toolResultBlock(message: Record<string, unknown>) {
 describe("Codex display-action propagation parity", () => {
   it("carries the same compound action vector live and after rollout replay", () => {
     const callId = "call-three-reads";
+    const liveItemId = "exec-three-reads";
+    const turnId = "turn-three-reads";
     const codeModeInput = `const r = await tools.exec_command(${JSON.stringify({
       cmd: READ_COMMAND,
       workdir: "/repo",
@@ -76,6 +79,9 @@ describe("Codex display-action propagation parity", () => {
             call_id: callId,
             name: "exec",
             input: codeModeInput,
+            internal_chat_message_metadata_passthrough: {
+              turn_id: turnId,
+            },
           },
         },
         {
@@ -84,6 +90,9 @@ describe("Codex display-action propagation parity", () => {
           payload: {
             type: "custom_tool_call_output",
             call_id: callId,
+            internal_chat_message_metadata_passthrough: {
+              turn_id: turnId,
+            },
             output: [
               {
                 type: "input_text",
@@ -99,7 +108,7 @@ describe("Codex display-action propagation parity", () => {
     const provider = new CodexProvider() as unknown as CodexProviderBridge;
     const liveMessages = provider.convertItemToSDKMessages(
       {
-        id: callId,
+        id: liveItemId,
         type: "command_execution",
         command: `/bin/bash -lc ${JSON.stringify(READ_COMMAND)}`,
         cwd: "/repo",
@@ -116,7 +125,7 @@ describe("Codex display-action propagation parity", () => {
         status: "completed",
       },
       "session-1",
-      "turn-1",
+      turnId,
       "item/completed",
     );
 
@@ -130,13 +139,28 @@ describe("Codex display-action propagation parity", () => {
       expect.objectContaining({ path: "/wrong/oracle.md" }),
     );
     expect(persistedToolUse).toMatchObject({ id: callId, name: "Bash" });
-    expect(liveToolUse).toMatchObject({ id: callId, name: "Bash" });
+    expect(liveToolUse).toMatchObject({ id: liveItemId, name: "Bash" });
+    expect(getCodexToolCorrelation(persistedMessages[0])).toEqual({
+      origin: "custom_tool_call",
+      turnId,
+      itemId: callId,
+    });
+    expect(getCodexToolCorrelation(liveMessages[0])).toMatchObject({
+      origin: "command_execution",
+      turnId,
+      itemId: liveItemId,
+    });
     expect(toolResultBlock(persistedMessages[1] ?? {})).toMatchObject({
       tool_use_id: callId,
     });
     expect(toolResultBlock(liveMessages[1] ?? {})).toMatchObject({
-      tool_use_id: callId,
+      tool_use_id: liveItemId,
       content: "combined output\n",
+    });
+    expect(getCodexToolCorrelation(persistedMessages[1])).toEqual({
+      origin: "custom_tool_call",
+      turnId,
+      itemId: callId,
     });
 
     const persistedItem = preprocessMessages(

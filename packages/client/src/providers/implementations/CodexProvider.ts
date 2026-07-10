@@ -12,8 +12,9 @@ export class CodexProvider implements Provider {
     supportsDag: false, // Linear history
     supportsCloning: true,
     needsApproxMessageDedup: true,
-    // Tool calls/results dedup deterministically by call_id; keep the backstop
-    // only for the residual non-tool messages. See tasks/032.
+    // Native tools dedup by call_id; code-mode inner commandExecution messages
+    // use their scoped exact reconciler. Keep the general approximate backstop
+    // away from legitimately repeated tools. See tasks/032.
     approxDedupExcludesTools: true,
   };
 
@@ -37,8 +38,9 @@ export class CodexOssProvider implements Provider {
     supportsDag: false, // Linear history
     supportsCloning: true,
     needsApproxMessageDedup: true,
-    // Tool calls/results dedup deterministically by call_id; keep the backstop
-    // only for the residual non-tool messages. See tasks/032.
+    // Native tools dedup by call_id; code-mode inner commandExecution messages
+    // use their scoped exact reconciler. Keep the general approximate backstop
+    // away from legitimately repeated tools. See tasks/032.
     approxDedupExcludesTools: true,
   };
 

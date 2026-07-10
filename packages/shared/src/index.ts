@@ -376,6 +376,16 @@ export type {
   ToolDisplayReadAction,
   ToolDisplaySearchAction,
 } from "./tool-display-actions.js";
+export type {
+  CodexToolCorrelationMetadata,
+  CodexToolCorrelationOrigin,
+} from "./codex-tool-correlation.js";
+export {
+  CODEX_TOOL_CORRELATION_FIELD,
+  createCodexToolCorrelation,
+  getCodexResponseItemTurnId,
+  getCodexToolCorrelation,
+} from "./codex-tool-correlation.js";
 export {
   isUserMessage,
   isAssistantMessage,

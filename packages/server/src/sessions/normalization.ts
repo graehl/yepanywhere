@@ -16,6 +16,9 @@ import type {
   OpenCodeStoredPart,
 } from "@yep-anywhere/shared";
 import {
+  CODEX_TOOL_CORRELATION_FIELD,
+  createCodexToolCorrelation,
+  getCodexResponseItemTurnId,
   getGeminiUserMessageText,
   getMessageContent,
   isConversationEntry,
@@ -558,12 +561,12 @@ function hasCodexResponseItemUserMessages(
   );
 }
 
-// Derive the durable message uuid for a Codex response item. Tool calls and
-// their outputs key on the globally-unique call_id (call -> call_id, result ->
-// `${call_id}-result`) so the durable backfill row shares a uuid with the live
-// stream and dedups by id. Messages and reasoning have no live-matching id, so
-// they keep the positional uuid and rely on the approx-dedup backstop. See
-// topics/stream-durable-id-dedup.md (Codex).
+// Derive the durable message uuid for a Codex response item. Calls and outputs
+// key on the globally-unique call_id. Native live tool items share that id;
+// nested code-mode commandExecution items do not, so their scoped client
+// reconciliation adopts this durable identity. Messages and reasoning retain
+// positional uuids and rely on the approximate backstop. See
+// topics/stream-durable-id-dedup.md.
 function codexDurableResponseItemUuid(
   payload: CodexResponseItemEntry["payload"],
   positionalUuid: string,
@@ -669,7 +672,17 @@ function convertCodexResponseItem(
         toolCallContexts.delete(customCallId);
         closedToolResultIds.add(customCallId);
       }
-      return message;
+      const turnId = getCodexResponseItemTurnId(payload);
+      return turnId
+        ? {
+            ...message,
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "custom_tool_call",
+              turnId,
+              customCallId,
+            ),
+          }
+        : message;
     }
 
     case "web_search_call":
@@ -921,6 +934,7 @@ function convertCodexCustomToolCallPayload(
     rawToolName,
     rawInput,
   );
+  const turnId = getCodexResponseItemTurnId(payload);
 
   const content: ContentBlock[] = [
     {
@@ -942,6 +956,15 @@ function convertCodexCustomToolCallPayload(
       content,
     },
     codexToolName: rawToolName,
+    ...(turnId
+      ? {
+          [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+            "custom_tool_call",
+            turnId,
+            callId,
+          ),
+        }
+      : {}),
     timestamp,
   };
 

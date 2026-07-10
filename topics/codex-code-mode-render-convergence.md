@@ -6,9 +6,9 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: in progress. The extraction and parity-only propagation slices are
-implemented as of 2026-07-10; the client carries derived multi-action metadata
-but does not render it yet.
+Status: in progress. Extraction, parity propagation, and the bounded
+live-to-rollout identity reconciliation are implemented as of 2026-07-10; the
+client carries derived multi-action metadata but does not render it yet.
 
 Canonical slice status, landed commit history, verification evidence, and
 deferred follow-ups are tracked in
@@ -27,6 +27,8 @@ Implementation progress:
   keeping compound execution as one `Bash` call.
 - [x] Carry rollout-derived multi-action analysis through the normalized
   in-memory tool-call shape with live/reload parity.
+- [x] Reconcile one-to-one code-mode `commandExecution` parents to the outer
+  durable `custom_tool_call` identity using exact same-turn semantics.
 - [ ] Render one-to-many actions within `Exploring` / `Explored` groups.
 
 The in-memory boundary is the provider-neutral `ToolDisplayAction` contract in
@@ -106,6 +108,13 @@ sed -n '1020,1335p' native/apps/mclone-native-client/src/flat_client_driver.rs
 the completed `commandExecution` item contained three structured `read`
 actions with names and absolute paths. This confirms that upstream already
 performs the desired one-command-to-many-actions analysis.
+
+A second correlated sample locked identity behavior: app-server used an inner
+`exec-f6e9…` id while rollout stored the outer `call_FE1X…` id, and the raw log
+contained no `rawResponseItem/completed` bridge for the turn. YA now attaches
+ephemeral turn/origin metadata and reconciles only exact, one-to-one normalized
+matches to the rollout id. Ambiguous multi-nested calls remain a bounded
+active-tail replacement; no YA-owned durable correlation record exists.
 
 At investigation time YA discarded that information for rendering. The landed
 extractor and propagation slices now independently derive rollout-recoverable

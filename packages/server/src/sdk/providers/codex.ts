@@ -8,7 +8,11 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { promisify } from "node:util";
-import type { ModelInfo } from "@yep-anywhere/shared";
+import {
+  CODEX_TOOL_CORRELATION_FIELD,
+  createCodexToolCorrelation,
+  type ModelInfo,
+} from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
@@ -362,6 +366,7 @@ type NormalizedThreadItem =
       command: string;
       aggregated_output: string;
       exit_code?: number;
+      durationMs?: number;
       status: string;
       cwd?: string;
       commandActions?: unknown[];
@@ -3585,6 +3590,10 @@ export class CodexProvider implements AgentProvider {
             this.getOptionalNumber(itemRecord.exit_code) ??
             this.getOptionalNumber(itemRecord.exitCode) ??
             undefined,
+          durationMs:
+            this.getOptionalNumber(itemRecord.duration_ms) ??
+            this.getOptionalNumber(itemRecord.durationMs) ??
+            undefined,
           status: this.normalizeStatus(itemRecord.status),
           ...(cwd ? { cwd } : {}),
           ...(commandActions ? { commandActions } : {}),
@@ -3864,12 +3873,11 @@ export class CodexProvider implements AgentProvider {
     return `${itemId}-${turnId}`;
   }
 
-  // Tool items carry Codex's globally-unique call_id as their thread item id,
-  // and the durable rollout persists the same call_id on the matching response
-  // item. Key the rendered uuid on call_id alone (no turn scoping — call_id is
-  // already unique) so the streamed message and its durable backfill row share
-  // a uuid and dedup by id instead of the content+timestamp backstop. See
-  // topics/stream-durable-id-dedup.md (Codex tool calls).
+  // Native tool thread items carry Codex's globally-unique call_id as item.id,
+  // so this uuid aligns directly with the durable response item. A code-mode
+  // commandExecution instead carries an inner exec-* id while rollout stores
+  // the outer call_* id; the client reconciles that scoped exception via
+  // _codexToolCorrelation. See topics/stream-durable-id-dedup.md.
   private buildItemToolUuid(callId: string): string {
     return callId;
   }
@@ -4013,6 +4021,15 @@ export class CodexProvider implements AgentProvider {
       session_id: sessionId,
       uuid: this.buildItemResultUuid(itemId),
       _isStreaming: true,
+      ...(sourceEvent === "command_output_delta"
+        ? {
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "command_execution",
+              turnId,
+              itemId,
+            ),
+          }
+        : {}),
       message: {
         role: "user",
         content: [
@@ -4199,6 +4216,11 @@ export class CodexProvider implements AgentProvider {
             type: "assistant",
             session_id: sessionId,
             uuid: this.buildItemToolUuid(callId),
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "custom_tool_call",
+              params.turnId,
+              callId,
+            ),
             message: {
               role: "assistant",
               content: [
@@ -4265,6 +4287,11 @@ export class CodexProvider implements AgentProvider {
             type: "user",
             session_id: sessionId,
             uuid: this.buildItemResultUuid(callId),
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "custom_tool_call",
+              params.turnId,
+              callId,
+            ),
             message: {
               role: "user",
               content: [toolResult],
@@ -4323,9 +4350,10 @@ export class CodexProvider implements AgentProvider {
   ): SDKMessage[] {
     const isComplete = sourceEvent === "item/completed";
     const observedAt = new Date().toISOString();
-    // Tool items key the uuid on call_id (item.id) so stream and durable rows
-    // dedup by id; message/reasoning items use a counter id (item-N) with no
-    // durable equivalent, so they stay turn-scoped and rely on the backstop.
+    // Native tool items key the uuid on call_id (item.id). Code-mode
+    // commandExecution items temporarily key on exec-* and carry correlation
+    // metadata for adoption of the outer durable call_* id client-side.
+    // Message/reasoning counters have no durable equivalent and stay scoped.
     const uuid = this.isToolBackedThreadItem(item)
       ? this.buildItemToolUuid(item.id)
       : `${item.id}-${turnId}`;
@@ -4384,6 +4412,12 @@ export class CodexProvider implements AgentProvider {
 
       case "command_execution": {
         const messages: SDKMessage[] = [];
+        const correlationStartedAt =
+          item.durationMs !== undefined
+            ? new Date(
+                Date.parse(observedAt) - Math.max(0, item.durationMs),
+              ).toISOString()
+            : observedAt;
         const normalizedInvocation = normalizeCodexToolInvocation("Bash", {
           command: item.command,
           ...(item.cwd ? { cwd: item.cwd } : {}),
@@ -4401,6 +4435,12 @@ export class CodexProvider implements AgentProvider {
             type: "assistant",
             session_id: sessionId,
             uuid,
+            [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+              "command_execution",
+              turnId,
+              item.id,
+              correlationStartedAt,
+            ),
             message: {
               role: "assistant",
               content: [
@@ -4458,6 +4498,12 @@ export class CodexProvider implements AgentProvider {
               type: "user",
               session_id: sessionId,
               uuid: `${uuid}-result`,
+              [CODEX_TOOL_CORRELATION_FIELD]: createCodexToolCorrelation(
+                "command_execution",
+                turnId,
+                item.id,
+                correlationStartedAt,
+              ),
               message: {
                 role: "user",
                 content: [toolResultBlock],

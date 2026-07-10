@@ -1,9 +1,8 @@
-# Stream / Persisted Render Parity
+# Stream / Persisted Render Convergence
 
-> For every provider, rendering a session **live from the stream** and
-> rendering the **same session reloaded from persisted storage** must produce
-> equivalent UI. Streaming is not allowed to surface information that reload
-> silently drops.
+> Provider persistence is the durable transcript authority. The live stream
+> may add useful ephemeral detail near the active tail, but live items that
+> have persisted counterparts should converge with minimal structural change.
 
 Topic: stream-persisted-render-parity
 
@@ -12,9 +11,12 @@ opposite direction — display-only objects that are *not* provider turns),
 [provider-authoring](provider-authoring.md) (a new provider must satisfy this
 contract), [codex-sessions](codex-sessions.md),
 [stream-durable-id-dedup](stream-durable-id-dedup.md) (the id/dedup half of
-"same session, two sources"). Dev-doc: `docs/project/multi-provider-integration.md`.
+"same session, two sources"), and
+[codex-code-mode-render-convergence](codex-code-mode-render-convergence.md)
+(the Codex 5.6 normalization/rendering plan). Dev-doc:
+`docs/project/multi-provider-integration.md`.
 
-## The invariant
+## The convergence contract
 
 A session reaches the UI two ways:
 
@@ -23,20 +25,36 @@ A session reaches the UI two ways:
 - **Persisted** — the same session re-read from disk later (Codex rollout
   JSONL, Claude JSONL DAG, OpenCode SQLite, …).
 
-Both feed the same `preprocessMessages` → render-item pipeline. **The two
-render-item streams must be equivalent** — same tool calls, same results, same
-*structured* fields. This is provider-agnostic: it is a property of every
-provider's stream-vs-reload pair, not a Codex-only concern. The harness
-currently exercises Codex because that is where a divergence was found; adding
-a stream+persisted fixture for another provider is the way to extend coverage,
-not a sign the contract is Codex-scoped.
+Both feed the same `preprocessMessages` → render-item pipeline, but equality is
+graded by whether the live item has a durable counterpart:
 
-"Equivalent UI" is stronger than "equivalent visible text": the parity harness
-compares the **structured tool-result objects**, so a field that renders
-nothing today (e.g. `exitCode: 0`, which only shows `rc=N` when non-zero) still
-must match. The reason is that structured fields are latent UI — a later
-renderer change can surface them, and a value present live but absent on reload
-would then flicker in and out across a reload.
+- **Durable-corresponding items — strong convergence.** Tool calls, tool
+  results, assistant messages, and other records present in both paths should
+  preserve semantic identity, ordering, grouping, parameters, and roughly the
+  same layout. These are the highest-jank failures because a refresh can
+  reorder several rows or replace one group with another.
+- **Live enrichment — update in place.** Streaming output, elapsed time,
+  progress, provisional status, or a more timely label may enrich a durable
+  item while it is active. Prefer changes that do not alter row count, group
+  boundaries, navigation anchors, or stable identity. Once the persisted
+  counterpart is available, the item settles to the durable representation.
+- **Truly ephemeral live items — allowed.** Thinking deltas, transient status,
+  progress, and other provider events that are never persisted may appear and
+  disappear near the live tail when they are useful. They are not evidence
+  that YA should invent a parallel persisted transcript.
+
+The practical stability boundary is therefore `settled transcript | recently
+completed turn | active live tail`: the left side should be very stable; some
+bounded movement at the right edge is expected. Provider persistence remains
+the sole durable source of truth. In particular, Codex rollout files are the
+canonical durable transcript; YA must not create a second durable message or
+metadata record to preserve live-only shape.
+
+For durable-corresponding items, "converge" is stronger than "eventually show
+similar text." Structured fields are latent UI, and item count/order/grouping
+are layout. A fact used to restructure a live tool call should either be
+recoverable from persistence or be demonstrably safe as bounded optimistic
+tail presentation.
 
 ## Enforcement
 
@@ -47,6 +65,12 @@ difference by path (e.g. `$[3].toolResult.structured.exitCode`). The
 `runPersistedPipeline` / `runStreamPipeline` pair build the two sides from the
 same logical session; keep the two fixtures representing the *same* commands so
 a drift means a real asymmetry, not two different sessions.
+
+The harness intentionally enforces strict equality for facts and items that
+the fixture declares paired. That is a conservative test for the
+durable-corresponding category, not a ban on separate live-only event types.
+When an intentional live-only item is added, test its tail lifecycle separately
+and do not weaken paired-tool parity to accommodate it.
 
 ## Worked instance: Codex Bash `exitCode` (2026-07-01)
 
@@ -65,12 +89,11 @@ gaps, both fixed:
    exit code for a zero exit. Fixed by adding the `exec_command_end` event the
    real reload path relies on (the later `function_call_output` is deduped).
 
-The durable lesson: **make both sides funnel through the same normalizer with
-the same information source.** For Codex commands that means the structured
-`exec_command_end`, not a best-effort parse of an output string. When a stream
-event carries a structured fact (exit code, timing, interruption), ensure the
-persisted representation carries the same fact, and parse it into the same
-structured field.
+The durable lesson: **make durable-corresponding items funnel through the same
+normalizer using facts recoverable on both sides.** For these Codex commands
+that means the structured `exec_command_end`, not a best-effort parse of an
+output string. Live-only facts may still render at the active tail, but they
+must not silently restructure the settled tool call after reload.
 
 ## Provider-normalizes direction (deferred)
 

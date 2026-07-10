@@ -63,6 +63,11 @@ section below for what would have to change at higher fan-out.
   between provider stream/REST inputs and transcript DOM rendering; see the
   linked tactical plan before reshaping `useSession`, `useSessionMessages`,
   transcript augments, subagents, or same-tab message caches.
+- [`topics/stream-persisted-render-parity.md`](topics/stream-persisted-render-parity.md)
+  — graded convergence contract between the active live tail and the durable
+  provider transcript: strong structural stability for paired tool calls,
+  bounded optimistic/live-only detail near the tail, and no YA shadow
+  transcript replacing provider persistence as source of truth.
 - [`topics/session-media-handles.md`](topics/session-media-handles.md) —
   problem statement and latent proposal for replacing transcript inline
   base64 image/blob payloads with authenticated server media handles.

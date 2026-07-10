@@ -14,7 +14,7 @@ to produce*),
 [provider-abstraction](provider-abstraction.md) (when a provider/model
 conditional gets promoted to the `AgentProvider` seam),
 [stream-persisted-render-parity](stream-persisted-render-parity.md) (the
-binding equivalence between the two delivery paths),
+convergence contract between the two delivery paths),
 [stream-durable-id-dedup](stream-durable-id-dedup.md) (id stability across
 stream and durable copies),
 [provider-state-machine](provider-state-machine.md) (the status half of the
@@ -55,16 +55,17 @@ Where normalization lives today:
 New provider work extends those helpers; it does not add conversion logic
 downstream of them.
 
-## Two delivery paths, one output
+## Two delivery paths, one durable-corresponding output
 
 A session reaches the UI live from the **stream** and again later
 re-read from **persisted** storage. Both feed the same render pipeline, and
 [stream-persisted-render-parity](stream-persisted-render-parity.md) requires
-the two render-item streams to be equivalent — same tool calls, same
-*structured* result fields, not merely the same visible text. Message ids
-must match deterministically across the two paths wherever the provider
-allows ([stream-durable-id-dedup](stream-durable-id-dedup.md)); a provider
-whose ids genuinely cannot align sets the `needsApproxMessageDedup`
+items with durable counterparts to converge — same semantic tool calls and
+*structured* result fields, not merely similar visible text. Useful live-only
+tail events are allowed; they do not justify a YA-owned shadow transcript.
+Message ids must match deterministically across the two paths wherever the
+provider allows ([stream-durable-id-dedup](stream-durable-id-dedup.md)); a
+provider whose ids genuinely cannot align sets the `needsApproxMessageDedup`
 capability and accepts the tight content+timestamp reconcile backstop.
 
 ## Typing stance: rigidly described, loosely enforced

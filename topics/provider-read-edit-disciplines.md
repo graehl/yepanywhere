@@ -12,7 +12,9 @@ boundary principle this normalization obeys),
 (per-backend tool normalization), [`codex-api-provider.md`](codex-api-provider.md)
 (Codex protocol), [`relative-filenames.md`](relative-filenames.md) (file-path
 display these blocks feed), [`collapse-expand-mode.md`](collapse-expand-mode.md)
-(outline grouping that consumes this canonical mapping).
+(outline grouping that consumes this canonical mapping), and
+[`codex-code-mode-render-convergence.md`](codex-code-mode-render-convergence.md)
+(the planned one-command-to-many-actions extension for Codex code mode).
 
 Topic: provider-read-edit-disciplines
 

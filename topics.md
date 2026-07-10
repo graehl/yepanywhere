@@ -94,8 +94,8 @@
   output secrets.
 - bash-result-contract - Provider-normalized Bash result fields for output,
   return code, timing, and empty-output rendering.
-- stream-persisted-render-parity - Live-stream and reloaded-from-disk rendering
-  must produce equivalent UI for every provider.
+- stream-persisted-render-parity - Strong convergence for live items with
+  durable counterparts, with bounded optimistic/live-only detail at the tail.
 - provider-authoring - Map for adding a new agent provider to the harness
   (interface, reader, normalization, parity, snooping JSONL).
 - browser-profile-devices - Browser profile identity, automated browser
@@ -139,3 +139,5 @@
   transcript load contracts for large provider sessions.
 - transcript-virtualization - Viewport-bounded transcript rendering, native
   content visibility, and first-traversal scroll stability.
+- codex-code-mode-render-convergence - Shared rollout-recoverable semantic
+  actions for GPT-5.5 and GPT-5.6 command rendering and explored grouping.

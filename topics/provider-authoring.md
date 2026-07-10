@@ -61,16 +61,17 @@ normalization (`sessions/normalization.ts` dispatch; provider-specific
 normalizers like `codex/normalization.ts`). A new provider's normalized output
 must validate against the `claude-sdk-schema` Zod types.
 
-## The hard contract: stream == persisted
+## The convergence contract: paired stream items settle to persisted shape
 
 The live and reader halves are two producers of the *same* session, so they
-must render equivalently — see
-[stream-persisted-render-parity](stream-persisted-render-parity.md). Concretely:
-whatever structured facts the live stream surfaces (tool exit codes, timing,
-interruption, background state), the persisted format must carry and the reader
-must recover into the same structured fields. Add a stream+persisted fixture to
-`test/render-parity.test.ts` for the new provider; a green unit test on one path
-is not proof the other matches.
+must strongly converge for items present in both — see
+[stream-persisted-render-parity](stream-persisted-render-parity.md). Concretely,
+structured facts that define a durable tool call's identity, ordering,
+grouping, parameters, result, or settled layout must be recoverable into the
+same fields on reload. Useful live-only tail events may render transiently;
+they are tested as a lifecycle rather than forced into provider persistence.
+Add a stream+persisted fixture to `test/render-parity.test.ts` for paired tool
+items; a green unit test on one path is not proof the settled render converges.
 
 ## Snooping real session JSONL
 

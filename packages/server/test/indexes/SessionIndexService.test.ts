@@ -51,12 +51,13 @@ describe("SessionIndexService", () => {
   async function createSession(
     sessionId: string,
     content: string,
+    timestamp = new Date(),
   ): Promise<void> {
     const jsonl = JSON.stringify({
       type: "user",
       message: { content },
       uuid: `msg-${sessionId}`,
-      timestamp: new Date().toISOString(),
+      timestamp: timestamp.toISOString(),
     });
     await writeFile(join(sessionDir, `${sessionId}.jsonl`), `${jsonl}\n`);
   }
@@ -1200,10 +1201,9 @@ describe("SessionIndexService", () => {
 
   describe("active window", () => {
     it("filters cached summaries by activeAfter without deleting archive entries", async () => {
-      await createSession("session-old", "Old session");
-      await createSession("session-new", "New session");
-
       const oldTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      await createSession("session-old", "Old session", oldTime);
+      await createSession("session-new", "New session");
       await utimes(join(sessionDir, "session-old.jsonl"), oldTime, oldTime);
 
       const activeAfterMs = Date.now() - 14 * 24 * 60 * 60 * 1000;

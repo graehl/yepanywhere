@@ -24,7 +24,7 @@ import { MessageList } from "../MessageList";
 installMessageListTestEnvironment();
 
 describe("MessageList scroll and follow", () => {
-  it("enables off-screen transcript rendering by default and allows opt-out", () => {
+  it("disables off-screen transcript rendering by default and allows opt-in", () => {
     const messages = [userMessage("user-1", "completed request")];
     const { container, rerender } = render(<MessageList messages={messages} />);
 
@@ -32,12 +32,12 @@ describe("MessageList scroll and follow", () => {
       container
         .querySelector(".message-list")
         ?.classList.contains("message-list-offscreen-rendering"),
-    ).toBe(true);
+    ).toBe(false);
 
     rerender(
       <MessageList
         messages={messages}
-        offscreenTranscriptRenderingEnabled={false}
+        offscreenTranscriptRenderingEnabled={true}
       />,
     );
 
@@ -45,7 +45,7 @@ describe("MessageList scroll and follow", () => {
       container
         .querySelector(".message-list")
         ?.classList.contains("message-list-offscreen-rendering"),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("scrolls to current from a focused composer with Ctrl+End", () => {

@@ -141,18 +141,21 @@ Goal: a very long transcript should cost the browser (Blink style/layout/paint/
 raster memory, and any per-tick layout) only for what's near the viewport, not
 for the whole history.
 
-### Chosen mechanism: `content-visibility: auto` first (2026-07-09)
+### Rejected default experiment: `content-visibility: auto`
 
-Decision: realize Stage 2 first with CSS `content-visibility: auto` on transcript
-rows (plus `contain-intrinsic-size: auto <estimate>`), **not** JS row unmounting.
+Experimented 2026-07-09; default rejected 2026-07-10.
+
+Initial decision: realize Stage 2 first with CSS `content-visibility: auto` on
+transcript rows (plus `contain-intrinsic-size: auto <estimate>`), **not** JS row
+unmounting.
 Rationale — the hard part of JS windowing is that every coupling below assumes
 rows stay in the DOM; `content-visibility: auto` keeps the DOM intact and only
 tells the browser to skip rendering work (and discard rendered state) for
 off-screen subtrees. So it bounds the native-memory / layout cost — the actual
 defect — while the turn rail's rect reads, in-transcript search `scrollIntoView`,
 selection/comment anchors, and native find-in-page keep working unchanged. It is
-~a few lines of CSS versus a large, risky refactor, and it is behavior-preserving
-(so it can default on). `contain-intrinsic-size: auto Xpx` gives off-screen rows a
+~a few lines of CSS versus a large, risky refactor, and was expected to be
+behavior-preserving. `contain-intrinsic-size: auto Xpx` gives off-screen rows a
 placeholder height and remembers the real size after first render, keeping the
 scrollbar stable.
 
@@ -182,16 +185,45 @@ reported repeated downward scroll corrections during its first upward traversal,
 then stability after roughly ten corrections. That symptom matches the residual
 risk above: each row starts with the 120px fallback, then records its real height
 when it first becomes relevant. A browser-local, default-on Performance setting
-now scopes the CSS optimization so the same device and session can disable it
-for a direct A/B check. Keep the default unchanged until that check confirms or
-falsifies the suspected cause; the setting is a diagnostic escape hatch, not a
-substitute for stable default scrolling.
+scoped the CSS optimization so the same device and session could disable it for
+a direct A/B check. Disabling it fixed the regression, including for the short,
+finished session. That falsifies the behavior-preserving premise: variable row
+heights and bottom-anchored transcript scrolling make first-reveal geometry
+corrections user-visible.
 
-Fall back to JS row unmounting (the design below) only if `content-visibility`
-proves insufficient (memory still unbounded) or its scroll/turn-rail behavior
-can't be made acceptable. Not needed as of this landing.
+Decision: default the experiment off immediately. Keep the browser-local toggle
+only for explicit comparison while the longer-term design is considered. The
+~150 MB RSS reduction measured above does not justify fighting the reader's
+scroll position, and the experiment does not bound retained transcript data.
 
-### Fallback design: JS windowed rendering
+### Preferred direction to evaluate: bounded semantic client window
+
+Do not hide an unbounded transcript behind estimated-height spacers. Keep the
+full transcript canonical on the server and model the active client transcript
+as a contiguous, recent semantic window. Drop an older prefix only at safe turn
+boundaries, retain pagination metadata, and expose omitted history through the
+existing Load older path. Any bound should include estimated bytes/render cost,
+not only turns, because a single Codex turn can contain hundreds of tool rows.
+Trimming must also prune message-associated augment and tool/agent maps.
+
+This direction is not implemented or approved in detail. Design it against:
+
+- [`memory-growth.md`](memory-growth.md), which distinguishes bounded initial
+  loading from growth of the active client tail;
+- [`Session Catch-up Must Not Fetch Full Transcripts`](../docs/tactical/055-session-catchup-unbounded-fetch.md),
+  which defines the server/catch-up bounding invariant and explicit full-history
+  escape hatch;
+- [`session-detail-data-layer.md`](session-detail-data-layer.md), whose canonical
+  reducer and loaded-window metadata are the natural ownership boundary; and
+- the earlier [`initial-load performance investigation`](../docs/tactical/033-session-initial-load-performance.md),
+  which already warned that `content-visibility` risked scroll height, browser
+  find, selection, and search anchors.
+
+The JS spacer-window design below remains research, not the chosen fallback. It
+preserves a continuous synthetic scroll range but shares the same hard geometry
+and anchoring problems that invalidated the CSS shortcut.
+
+### Research design: JS windowed rendering
 
 Render only rows near the viewport (plus a small overscan); replace off-screen
 runs with spacer elements sized from measured/estimated row heights. Bounds both

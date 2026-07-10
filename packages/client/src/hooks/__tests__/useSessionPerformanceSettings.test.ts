@@ -87,14 +87,14 @@ describe("useSessionPerformanceSettings", () => {
     expect(result.current.sessionTranscriptCacheTtlHours).toBe(1);
     expect(result.current.sessionScrollBehaviorMode).toBe("live-tail");
     expect(result.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
-      true,
+      false,
     );
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheTtlHours()).toBe(1);
     expect(getSessionScrollBehaviorMode()).toBe("live-tail");
-    expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(true);
+    expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(false);
   });
 
   it("persists and publishes off-screen transcript rendering updates", () => {
@@ -104,19 +104,19 @@ describe("useSessionPerformanceSettings", () => {
     );
 
     act(() => {
-      first.current.setSessionOffscreenTranscriptRenderingEnabled(false);
+      first.current.setSessionOffscreenTranscriptRenderingEnabled(true);
     });
 
     expect(first.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
-      false,
+      true,
     );
     expect(second.current.sessionOffscreenTranscriptRenderingEnabled).toBe(
-      false,
+      true,
     );
-    expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(false);
+    expect(getSessionOffscreenTranscriptRenderingEnabled()).toBe(true);
     expect(
       localStorage.getItem(UI_KEYS.sessionOffscreenTranscriptRendering),
-    ).toBe("false");
+    ).toBe("true");
   });
 
   it("seeds the budget from the legacy boolean toggle", () => {

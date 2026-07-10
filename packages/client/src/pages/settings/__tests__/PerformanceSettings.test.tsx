@@ -29,19 +29,19 @@ describe("PerformanceSettings", () => {
     window.localStorage.clear();
   });
 
-  it("defaults off-screen transcript rendering on and persists opt-out", () => {
+  it("defaults off-screen transcript rendering off and persists opt-in", () => {
     render(<PerformanceSettings />);
 
     const toggle = screen.getByRole("checkbox", {
       name: "performanceOffscreenTranscriptRenderingTitle",
     }) as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
+    expect(toggle.checked).toBe(false);
 
     fireEvent.click(toggle);
 
-    expect(toggle.checked).toBe(false);
+    expect(toggle.checked).toBe(true);
     expect(
       window.localStorage.getItem(UI_KEYS.sessionOffscreenTranscriptRendering),
-    ).toBe("false");
+    ).toBe("true");
   });
 });

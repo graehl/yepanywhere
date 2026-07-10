@@ -14,7 +14,7 @@ import {
 import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
-const DEFAULT_SESSION_OFFSCREEN_TRANSCRIPT_RENDERING_ENABLED = true;
+const DEFAULT_SESSION_OFFSCREEN_TRANSCRIPT_RENDERING_ENABLED = false;
 
 /** Budget 0 disables the cache (matching the old default-off toggle). */
 const DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB = 0;

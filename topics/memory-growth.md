@@ -24,6 +24,15 @@
   only the initial non-incremental session detail response; streaming and
   `afterMessageId` refreshes must append normally so the loaded tail can grow
   without repeated recutting.
+- CSS `content-visibility: auto` is not a safe default bound for transcript
+  rows. A hosted mobile client confirmed repeated scroll-position corrections
+  as variable-height rows replaced their intrinsic fallback sizes on first
+  reveal. The browser-local experiment remains available but defaults off; see
+  [`transcript-virtualization.md`](transcript-virtualization.md). A future bound
+  should instead be explicit in the session-detail data model: keep the server
+  transcript canonical, retain a contiguous recent semantic window on the
+  client, and recover omitted history through pagination. That design remains
+  unimplemented pending review.
 - The old in-tab session-load cache was a developer convenience only:
   `VITE_SESSION_LOAD_CACHE=true` retained every visited transcript without
   production eviction or source/query invalidation. It proved the warm-return

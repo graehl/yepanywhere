@@ -724,7 +724,7 @@ export const MessageList = memo(function MessageList({
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
   scrollBehaviorMode = DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
-  offscreenTranscriptRenderingEnabled = true,
+  offscreenTranscriptRenderingEnabled = false,
   inert = false,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,

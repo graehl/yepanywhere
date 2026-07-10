@@ -2,10 +2,10 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: In progress. Foundation through interaction and layout hardening landed
-on 2026-07-10. Classified compound reads use the same compact `Exploring` /
-`Explored` surface as canonical exploration calls; closeout and corpus/manual
-verification remain.
+Status: Complete as of 2026-07-10. Classified compound reads use the same
+compact `Exploring` / `Explored` surface as canonical exploration calls, with
+rollout-derived structure, parent-owned raw details, stable semantic search,
+and no YA-owned durable transcript record.
 
 ## Contract And Document Ownership
 
@@ -16,7 +16,7 @@ live-versus-durable convergence rules live in
 This document is the canonical execution worklog for that contract:
 
 - landed commits and their verification evidence;
-- the exact remaining implementation slices;
+- the exact implementation slices and their disposition;
 - per-slice acceptance criteria and tripwires;
 - closeout gates and deferred follow-ups.
 
@@ -75,7 +75,7 @@ gate.
 
 ## Current Checkpoint
 
-After S5, one rollout-recoverable analysis drives both the canonical and
+At closeout, one rollout-recoverable analysis drives both the canonical and
 compound exploration presentation:
 
 | Layer | Current state |
@@ -104,7 +104,8 @@ ordinary `Ran` / `Exec` renderer.
 | S3 | Landed 2026-07-10 | `78c92691` | Captured the real code-mode identity mismatch; added ephemeral turn/origin correlation metadata and a standalone exact client reconciler; adopted the rollout `call_*` identity for one-to-one matches while leaving ambiguous multi-call orchestration untouched. |
 | S4 | Landed 2026-07-10 | `3ce47d02` | Added the standalone provider-neutral exploration projection; modeled ordered entries under result-owning parents; retained canonical group IDs and the existing visible adapter; covered one-to-many, many-to-one, mutation/time boundaries, duplicates, and lifecycle stability. |
 | S5 | Landed 2026-07-10 | `61799081` | Routed client segmentation and `ExploredToolGroup` through the projection; rendered pending/settled semantic rows; retained one expandable raw parent and one combined result; added narrow-width layout and i18n-ready copy. |
-| S6 | Landed 2026-07-10 | This commit | Added standalone semantic presentation/search helpers; indexed compound entries without synthetic transcript rows; preserved collapse/raw-detail state through settlement; added file/range interactions, accessibility relationships, responsive clipping, and bounded opt-in intrinsic-height estimates. |
+| S6 | Landed 2026-07-10 | `98d26ade` | Added standalone semantic presentation/search helpers; indexed compound entries without synthetic transcript rows; preserved collapse/raw-detail state through settlement; added file/range interactions, accessibility relationships, responsive clipping, and bounded opt-in intrinsic-height estimates. |
+| S7 | Landed 2026-07-10 | This commit | Ran the provider/client parity matrix, protocol drift check, selected and full-corpus persisted-schema validation; closed documentation and explicitly disposed of optional follow-ups. |
 
 ### Recorded Verification For Landed Slices
 
@@ -134,14 +135,21 @@ ordinary `Ran` / `Exec` renderer.
 - S6: 92 focused projection, presentation, explored-component, transcript
   search, navigation, and scroll tests passed without runtime warnings;
   typecheck and lint passed; `pnpm console:scan` stayed at its existing budget
-  with `+0`. The user explicitly waived browser/screenshot inspection for this
-  slice, so before/after reload inspection remains in S7.
+  with `+0`. The user explicitly waived browser/screenshot inspection, and S7
+  records that waiver without claiming a visual pass.
+- S7: 145 focused server extractor, normalization, provider, session, and
+  render-parity tests passed with one intentional skip; 148 focused client
+  propagation, reconciliation, projection, component, search, navigation, and
+  scroll tests passed without runtime warnings. The Codex protocol subset was
+  current. Selected GPT-5.5 and GPT-5.6 rollouts validated 456/456 and 559/559
+  records, and the full available Codex corpus validated
+  1,889,566/1,889,566 records across 1,354 rollout files. Typecheck and lint
+  passed; `pnpm console:scan` remained at its existing budget with `+0`.
 
-## Remaining Slice Ledger
+## Slice Ledger Complete
 
-| Slice | Status | Target outcome | Visible change |
-|---|---|---|---|
-| S7 | Next / not started | Run corpus/schema/manual verification, update docs, and close or explicitly defer follow-ups. | No new behavior beyond fixes found by verification. |
+No required implementation slice remains. Optional work is listed with an
+explicit disposition below.
 
 ## Slice S3: Parent Identity And Reconciliation Preflight
 
@@ -195,7 +203,7 @@ shared fields, and no metadata is written to rollout or another durable store.
 
 Several nested executions inside one outer code-mode call cannot be assigned
 one-to-one safely. They fail closed and may replace once at the active tail.
-S4 must make their default explored projection visually compatible without
+S4 makes their default explored projection visually compatible without
 pretending that separate live executions own synthetic durable results.
 
 ### Acceptance
@@ -388,20 +396,34 @@ the existing default-off offscreen-rendering experiment; S6 does not re-enable
 - Record any parser corpus gaps as evidence-backed follow-ups rather than
   silently broadening the final slice.
 
+### Closeout Result
+
+All automated gates passed without requiring a parser or renderer change. The
+selected GPT-5.5 sample exercises separate `function_call(exec_command)`
+records; the selected GPT-5.6 sample exercises code-mode `custom_tool_call`
+records and contains compound `sed`/`rg` commands. The broader corpus check
+found no persisted-schema drift.
+
+The user explicitly waived browser/screenshot inspection for S6/S7. This
+closeout therefore does not claim that a manual before/after-reload visual pass
+was performed. Structural DOM, lifecycle, search, navigation, responsive CSS,
+and parent-result ownership are covered by tests; a future reported visual
+regression is the trigger for another manual desktop/mobile inspection.
+
 ## Deferred Or Potential Follow-Ups
 
 These are not required for the first correct `Explored` rendering.
 
-| Follow-up | Trigger / value | Guardrail |
-|---|---|---|
-| Contiguous read-range coalescing | Repeated adjacent ranges of one file make even semantic rows noisy, as in the six-`sed` example. | Presentation-only; retain exact underlying actions and raw command. Merge only same-path contiguous ranges with no gaps or reordering. |
-| Bounded oracle mismatch diagnostics | Real live `commandActions` reveal safe cases the rollout-derived parser misses. | Off by default or debug-only, rate/budget bounded, and never changes settled rendering. |
-| Additional shell recognizers | A sanitized rollout corpus repeatedly shows an unclassified read/list/search idiom. | Expand from evidence; continue failing closed; do not import a full shell parser casually. |
-| Optimistic live-only enrichment | A concrete tail UX benefit remains after deterministic rendering lands. | Reconciliation must be bounded and measured; rollout remains authoritative. |
-| Cross-provider semantic actions | Another provider emits compound exploration under one parent and benefits from the shared type. | Add through its own durable-equivalent adapter; do not infer from Codex model/version. |
-| Same-file overlap/dedup summaries | Models repeatedly reread overlapping windows and the group becomes hard to scan. | Never hide that rereads occurred; summarize counts/ranges with an inspectable expansion. |
-| Code-mode Bash result-envelope convergence | Persisted code-mode Bash content and live aggregated output produce different raw/envelope text in search/debug or future raw details. | Normalize from provider-equivalent evidence; do not attach separate persisted metadata. Keep separate from action grouping unless it blocks parity. |
-| Raw-command copy affordance polish | Compact explored rows make the existing raw command harder to discover. | Reuse existing copy/detail patterns and avoid a YA-specific default-on concept. |
+| Follow-up | Disposition | Trigger / value | Guardrail |
+|---|---|---|---|
+| Contiguous read-range coalescing | Deferred optional polish. | Repeated adjacent ranges of one file make even semantic rows noisy, as in the six-`sed` example. | Presentation-only; retain exact underlying actions and raw command. Merge only same-path contiguous ranges with no gaps or reordering. |
+| Bounded oracle mismatch diagnostics | Deferred; no runtime diagnostic added. | Real live `commandActions` reveal safe cases the rollout-derived parser misses. | Off by default or debug-only, rate/budget bounded, and never changes settled rendering. |
+| Additional shell recognizers | Evidence-triggered only. | A sanitized rollout corpus repeatedly shows an unclassified read/list/search idiom. | Expand from evidence; continue failing closed; do not import a full shell parser casually. |
+| Optimistic live-only enrichment | Deferred; no proven need after convergence. | A concrete tail UX benefit remains after deterministic rendering lands. | Reconciliation must be bounded and measured; rollout remains authoritative. |
+| Cross-provider semantic actions | Deferred until another provider supplies equivalent evidence. | Another provider emits compound exploration under one parent and benefits from the shared type. | Add through its own durable-equivalent adapter; do not infer from Codex model/version. |
+| Same-file overlap/dedup summaries | Deferred optional polish. | Models repeatedly reread overlapping windows and the group becomes hard to scan. | Never hide that rereads occurred; summarize counts/ranges with an inspectable expansion. |
+| Code-mode Bash result-envelope convergence | Separate concern; not blocking explored rendering. | Persisted code-mode Bash content and live aggregated output produce different raw/envelope text in search/debug or future raw details. | Normalize from provider-equivalent evidence; do not attach separate persisted metadata. Keep separate from action grouping unless it blocks parity. |
+| Raw-command copy affordance polish | Satisfied by reusing `ToolCallRow` and its existing Copy command action. | Compact explored rows make the existing raw command harder to discover. | Reuse existing copy/detail patterns and avoid a YA-specific default-on concept. |
 
 ## Stop Conditions
 
@@ -450,6 +472,13 @@ relationships, and hardened long-content clipping at narrow widths.
 
 The optional offscreen-rendering experiment receives a bounded explored-row
 height estimate, but remains default-off under the transcript virtualization
-decision. S7 remains responsible for corpus/schema gates, the user-waived
-manual desktop/mobile reload check, final documentation status, and explicit
-follow-up disposition.
+decision.
+
+### 2026-07-10 — Verification And Closeout
+
+S7 passed the focused server/client matrices, checked the generated Codex
+protocol subset, validated representative GPT-5.5 and GPT-5.6 rollouts, and
+validated every available Codex rollout record. No schema, parser, parity, or
+renderer correction was needed. Manual visual inspection is recorded as
+user-waived rather than passed, and every optional follow-up now has an explicit
+disposition.

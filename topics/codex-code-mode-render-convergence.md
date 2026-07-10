@@ -6,11 +6,10 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: in progress. Extraction, parity propagation, bounded identity
-reconciliation, the provider-neutral exploration projection, and compact
-multi-action rendering are implemented as of 2026-07-10. Semantic search,
-interaction, and layout hardening are also implemented; closeout verification
-remains.
+Status: complete as of 2026-07-10. Extraction, parity propagation, bounded
+identity reconciliation, provider-neutral projection, compact multi-action
+rendering, semantic search, and interaction/layout hardening are implemented
+and verified against the available Codex rollout corpus.
 
 Canonical slice status, landed commit history, verification evidence, and
 deferred follow-ups are tracked in
@@ -37,7 +36,9 @@ Implementation progress:
   retaining one raw parent and one combined result.
 - [x] Harden semantic search, navigation identity, collapse/raw-detail state,
   file/range interactions, responsive clipping, and opt-in intrinsic height.
-- [ ] Complete corpus/schema and manual before/after-reload verification.
+- [x] Complete provider/client parity, protocol, selected-schema, and full
+  Codex-corpus verification. Manual before/after screenshots were explicitly
+  waived by the user and are not claimed as performed.
 
 The in-memory boundary is the provider-neutral `ToolDisplayAction` contract in
 `packages/shared/src/tool-display-actions.ts`. Codex normalization attaches its
@@ -125,11 +126,10 @@ matches to the rollout id. Ambiguous multi-nested calls remain a bounded
 active-tail replacement; no YA-owned durable correlation record exists.
 
 At investigation time YA discarded that information for rendering. The landed
-extractor and propagation slices now independently derive rollout-recoverable
-actions from command text plus workdir/cwd and carry them to the client. Live
-`commandActions` remain an oracle rather than a rendering source. The remaining
-gap is client segmentation and presentation: it still classifies only the
-parent tool name, so a multi-action `Bash` parent renders as raw `Ran` output.
+pipeline now independently derives rollout-recoverable actions from command
+text plus workdir/cwd, carries them to the client, projects them as semantic
+entries, and renders them through the existing explored surface. Live
+`commandActions` remain an oracle rather than a rendering source.
 
 ### First-party Codex behavior
 
@@ -223,9 +223,9 @@ After shared action analysis:
   `Ran`/`Exec` rendering. A read followed by `git status`, a redirect, or an
   unrecognized pipeline is not an exploration group.
 
-Client grouping must evolve from “a run of exploration `ToolCallItem`s” to “a
-run of tool calls whose semantic action lists are exploration-only.” This
-allows both:
+Client grouping now accepts “a run of tool calls whose semantic action lists
+are exploration-only,” rather than only “a run of exploration
+`ToolCallItem`s.” This allows both:
 
 - several adjacent one-action calls, as today; and
 - several action rows within one compound execution.
@@ -361,13 +361,27 @@ parent so action summaries do not masquerade as separate executions.
 - Focused tests, parity tests, lint, typecheck, and client warning checks pass
   without warnings.
 
-## Open implementation decisions
+## Closed Implementation Decisions
 
-- Whether a single parent containing several actions participates in the same
-  component as a run of several parent calls or uses a small adapter around the
-  existing group component.
-- How much of upstream shell parsing is worth matching after the initial
-  observed corpus. Expand from evidence; do not adopt a full parser by default.
-- Whether any optimistic live-only enrichment is useful after deterministic
-  rollout-derived analysis lands. Defer unless a concrete UX benefit exceeds
-  its reconciliation cost.
+- A single parent containing several actions and a run of several canonical
+  parents use the same provider-neutral projection and `ExploredToolGroup`.
+- The bounded shell recognizers cover the observed corpus and continue to fail
+  closed. Additional upstream parity is evidence-triggered; a full shell parser
+  is not adopted by default.
+- No optimistic live-only enrichment ships. Rollout-derived structure is
+  sufficient, and live `commandActions` remain fixture/diagnostic oracle data.
+
+## Closeout Verification
+
+- 145 focused server extractor, normalization, provider, session, and
+  render-parity tests passed with one intentional skip.
+- 148 focused client propagation, reconciliation, projection, component,
+  search, navigation, and scroll tests passed without runtime warnings.
+- The generated Codex protocol subset matched the installed `0.144.1` target.
+- Selected GPT-5.5 and GPT-5.6 rollouts validated 456/456 and 559/559 records.
+- The full available Codex corpus validated 1,889,566/1,889,566 records across
+  1,354 rollout files.
+- Typecheck and lint passed; the client console warning budget remained at
+  `+0`.
+- Manual before/after screenshots were user-waived and are not represented as
+  a completed visual inspection.

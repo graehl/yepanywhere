@@ -7,10 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-10
+
+### Added
+- Render Codex code-mode command/tool rows through the shared display-action
+  pipeline, including compact command details for persisted and streamed
+  transcripts.
+- Add file-link actions for starting new sessions from referenced files.
+- Add an Agents-page kill action for live provider cards.
+
 ### Changed
-- Refresh Codex CLI/app-server compatibility through 0.144.0, prefer
+- Refresh Codex CLI/app-server compatibility through 0.144.1, prefer
   GPT-5.6 Sol by default, and add compact Sol/Terra/Luna model glyphs. Upgrade
   claude-agent-sdk and Claude Code compatibility through 0.3.205 / 2.1.205.
+- Disable off-screen transcript rendering by default while keeping it
+  configurable, and keep compact-history turn tails inside the requested scope.
+- Stream thinking outlines incrementally and render Claude local-command rows.
+- Improve long-transcript rendering cost, search-preview hover stability, and
+  sidebar/session feed rendering by reducing avoidable client updates.
+
+### Fixed
+- Fix Codex titles polluted by injected plugin context and hide
+  plugin-prefixed startup instructions from visible transcripts.
+- Cancel unacted steering sends and clear interrupted pending approvals.
+- Unlock notification-type toggles without a reload and scope them under push
+  notification settings.
+- Keep filtered bulk action selection limited to the filtered session set.
+- Skip unconfigured remote-client deploy uploads.
 
 ## [0.6.0] - 2026-07-06
 

@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.7.3] - 2026-07-10
+
+### Added
+- Render Codex code-mode command/tool rows in hosted remote transcripts.
+- Add hosted file-link actions for starting new sessions from referenced files.
+- Add an Agents-page kill action for live provider cards.
+
+### Changed
+- Refresh hosted remote compatibility for the npm `0.6.1` server, Codex
+  CLI/app-server compatibility through 0.144.1, and Claude Agent SDK 0.3.205.
+- Disable off-screen transcript rendering by default while keeping it
+  configurable, and tighten compact-history turn tail loading.
+- Improve long-transcript rendering cost, thinking outline streaming, search
+  preview stability, and sidebar/session feed rendering.
+
+### Fixed
+- Fix Codex titles polluted by injected plugin context and hide
+  plugin-prefixed startup instructions from visible transcripts.
+- Cancel unacted steering sends and clear interrupted pending approvals.
+- Unlock notification-type toggles without a reload and scope them under push
+  notification settings.
+- Skip unconfigured remote-client deploy uploads.
+
 ## [site-v1.7.2] - 2026-07-07
 
 ### Fixed

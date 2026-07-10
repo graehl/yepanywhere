@@ -389,9 +389,11 @@ export function useSessionMessages(
   );
   const returnedMessages = getReturnedSessionMessages(storeBackedDetail);
   const returnedAgentContent = getReturnedAgentContent(storeBackedDetail);
+  const returnedToolUseToAgentEntries =
+    storeBackedDetail?.revealed?.toolUseToAgentEntries;
   const returnedToolUseToAgent = useMemo(
-    () => buildReturnedToolUseToAgent(storeBackedDetail?.revealed),
-    [storeBackedDetail?.revealed],
+    () => buildReturnedToolUseToAgent(returnedToolUseToAgentEntries),
+    [returnedToolUseToAgentEntries],
   );
   useEffect(() => {
     if (!canRevealReturnedDetail || storeBackedDetail?.revealed) {

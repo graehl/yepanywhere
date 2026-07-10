@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useRef,
 } from "react";
 import type { ZodError } from "zod";
@@ -87,14 +88,24 @@ export function SchemaValidationProvider({
     [settings.enabled, settings.ignoredTools, showToast, ignoreToolErrors],
   );
 
-  const value: SchemaValidationContextValue = {
-    reportValidationError,
-    isToolIgnored,
-    ignoreToolErrors,
-    clearIgnoredTools,
-    ignoredTools: settings.ignoredTools,
-    enabled: settings.enabled,
-  };
+  const value = useMemo<SchemaValidationContextValue>(
+    () => ({
+      reportValidationError,
+      isToolIgnored,
+      ignoreToolErrors,
+      clearIgnoredTools,
+      ignoredTools: settings.ignoredTools,
+      enabled: settings.enabled,
+    }),
+    [
+      clearIgnoredTools,
+      ignoreToolErrors,
+      isToolIgnored,
+      reportValidationError,
+      settings.enabled,
+      settings.ignoredTools,
+    ],
+  );
 
   return (
     <SchemaValidationContext.Provider value={value}>

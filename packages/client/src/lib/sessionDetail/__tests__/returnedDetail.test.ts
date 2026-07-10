@@ -138,9 +138,9 @@ describe("returned session detail helpers", () => {
 
     expect(getReturnedSessionMessages(unrevealed)).toBe(emptyMessages);
     expect(getReturnedAgentContent(unrevealed)).toBe(emptyAgentContent);
-    expect(buildReturnedToolUseToAgent(unrevealed?.revealed)).toEqual(
-      new Map(),
-    );
+    expect(
+      buildReturnedToolUseToAgent(unrevealed?.revealed?.toolUseToAgentEntries),
+    ).toEqual(new Map());
   });
 
   it("builds returned tool-use mappings from revealed entries", () => {
@@ -150,8 +150,8 @@ describe("returned session detail helpers", () => {
       }),
     );
 
-    expect(buildReturnedToolUseToAgent(detail?.revealed)).toEqual(
-      new Map([["tool-1", "agent-1"]]),
-    );
+    expect(
+      buildReturnedToolUseToAgent(detail?.revealed?.toolUseToAgentEntries),
+    ).toEqual(new Map([["tool-1", "agent-1"]]));
   });
 });

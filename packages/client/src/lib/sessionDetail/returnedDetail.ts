@@ -89,9 +89,11 @@ export function getReturnedAgentContent(
 }
 
 export function buildReturnedToolUseToAgent(
-  revealed: ReturnedDetailStoreState | undefined,
+  toolUseToAgentEntries:
+    | ReturnedDetailStoreState["toolUseToAgentEntries"]
+    | undefined,
 ): Map<string, string> {
-  return revealed
-    ? new Map(revealed.toolUseToAgentEntries)
+  return toolUseToAgentEntries
+    ? new Map(toolUseToAgentEntries)
     : new Map<string, string>();
 }

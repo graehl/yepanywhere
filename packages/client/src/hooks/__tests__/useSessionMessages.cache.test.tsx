@@ -841,6 +841,73 @@ describe("useSessionMessages cache", () => {
     expect(rendered.result.current.toolUseToAgent).toBe(returnedToolUseToAgent);
   });
 
+  it("keeps the tool-use map stable for message-only store changes", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailMemoryCache.dispatch(defaultStoreEntryKey(), {
+        type: "registerToolUseAgent",
+        toolUseId: "tool-1",
+        agentId: "agent-1",
+      });
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.toolUseToAgent.get("tool-1")).toBe(
+        "agent-1",
+      ),
+    );
+    const returnedToolUseToAgent = rendered.result.current.toolUseToAgent;
+
+    act(() => {
+      defaultSessionDetailMemoryCache.dispatch(defaultStoreEntryKey(), {
+        type: "applyStreamMessage",
+        message: {
+          uuid: "msg-2",
+          type: "assistant",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "assistant", content: "world" },
+        },
+      });
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.messages).toHaveLength(2),
+    );
+    expect(rendered.result.current.toolUseToAgent).toBe(returnedToolUseToAgent);
+  });
+
   it("returns empty transcript surfaces when store data is missing after reveal", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 

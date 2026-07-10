@@ -173,6 +173,47 @@ describe("SessionDetailMemoryCache", () => {
     expect(notifications).toBe(2);
   });
 
+  it("stores an atomically trimmed loaded window in route snapshots", () => {
+    const store = createSessionDetailMemoryCache();
+    const storeKey = key("trimmed-session");
+    const source = snapshot("trimmed-session", [
+      "msg-1",
+      "msg-2",
+      "msg-3",
+    ]);
+    source.pagination = {
+      hasOlderMessages: false,
+      totalMessageCount: 3,
+      returnedMessageCount: 3,
+      totalCompactions: 0,
+      totalUserTurns: 3,
+    };
+    store.replaceRouteSnapshot(storeKey, source);
+
+    store.dispatch(storeKey, {
+      type: "trimLoadedWindow",
+      startMessageId: "msg-2",
+      reason: "user_turn",
+      nowMs: Date.parse("2026-07-10T12:00:00.000Z"),
+    });
+
+    const retained = store.readRouteSnapshot(storeKey);
+    expect(retained?.messages.map((entry) => entry.uuid)).toEqual([
+      "msg-2",
+      "msg-3",
+    ]);
+    expect(retained?.pagination).toEqual({
+      hasOlderMessages: true,
+      totalMessageCount: 3,
+      returnedMessageCount: 2,
+      truncatedBeforeMessageId: "msg-2",
+      totalCompactions: 0,
+      totalUserTurns: 3,
+      truncatedBy: "user_turn",
+    });
+    expect(store.getStats().entries[0]?.messageCount).toBe(2);
+  });
+
   it("keeps subscription-only entries out of stats", () => {
     const store = createSessionDetailMemoryCache();
     const storeKey = key("session-a");

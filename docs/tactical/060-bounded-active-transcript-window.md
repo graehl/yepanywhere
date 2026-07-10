@@ -25,7 +25,25 @@ Added
 
 Focused coverage has 15 passing fixtures, including 10,000 irrelevant policy
 evaluations with zero planner calls. No reducer, store, React, setting, or
-runtime behavior is wired in this slice. Slices 2–6 remain pending.
+runtime behavior is wired in this slice.
+
+### 2026-07-10: Slice 2 complete — atomic reducer trim
+
+Added the `trimLoadedWindow` session-detail action and
+`trimLoadedWindow.ts`. The reducer independently rejects missing, first-row,
+invalid-time, and 60-seconds-or-newer boundaries, then atomically:
+
+- retains the planned suffix and replaces loaded-window pagination;
+- preserves the session, durable tail cursor/watermark, and deferred queue;
+- drops markdown augments owned by removed messages; and
+- computes transitive tool/agent reachability from retained main messages,
+  retained agent transcripts, and active (`pending`/`running`) agents so
+  orphaned terminal agent trees are reclaimed without losing live work.
+
+Reducer/store coverage verifies the bounded route snapshot, monotonic
+pagination totals, auxiliary cleanup, nested-agent reachability, active-agent
+preservation, and referential no-op guards. The action is not dispatched by
+runtime lifecycle code yet. Slices 3–6 remain pending.
 
 ## Goal
 
@@ -277,8 +295,9 @@ it need not synchronously scan or trim inside the settings event handler.
 1. **Pure policy projection — complete 2026-07-10.** Added real-turn/compact
    classification, cheap structural gates, bounded planning, age guard, and
    fixtures. No React or DOM.
-2. **Atomic reducer trim.** Add the action, pagination update, reachability-
-   based auxiliary pruning, and reducer/store fixtures.
+2. **Atomic reducer trim — complete 2026-07-10.** Added the action, pagination
+   update, transitive reachability-based auxiliary pruning, and reducer/store
+   fixtures.
 3. **Coordinator lifecycle.** Wire bottom-follow input, structural revisions,
    pending age candidates, and mount-scoped Load older suppression.
 4. **Scroll integration.** Preserve bottom-follow and clear removed anchors;

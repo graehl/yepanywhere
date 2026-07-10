@@ -22,6 +22,7 @@ import type {
   SessionDetailAction,
   SessionDetailState,
 } from "./types";
+import { trimSessionDetailLoadedWindow } from "./trimLoadedWindow";
 
 export function createInitialSessionDetailState(): SessionDetailState {
   return {
@@ -720,6 +721,9 @@ export function reduceSessionDetailState(
         ),
       };
     }
+
+    case "trimLoadedWindow":
+      return trimSessionDetailLoadedWindow(state, action);
 
     case "prependOlderMessages": {
       const taggedMessages = tagJsonlMessages(action.messages);

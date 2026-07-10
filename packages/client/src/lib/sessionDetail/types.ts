@@ -5,6 +5,7 @@ import type {
   SessionRouteScrollSnapshot,
   SessionRouteSnapshot,
 } from "../sessionRouteSnapshots";
+import type { ActiveWindowStructuralKind } from "./activeWindowTrimPolicy";
 
 export interface AgentContent {
   messages: Message[];
@@ -105,6 +106,12 @@ export type SessionDetailAction =
       messages: Message[];
       session: SessionMetadata;
       pagination: PaginationInfo;
+    }
+  | {
+      type: "trimLoadedWindow";
+      startMessageId: string;
+      reason: ActiveWindowStructuralKind;
+      nowMs: number;
     }
   | {
       type: "prependOlderMessages";

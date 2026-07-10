@@ -257,9 +257,9 @@ describe("clientSummaryState", () => {
       100,
     );
 
-    expect(
-      selectProviderRuntimeStatusForSession(state, "session-1")?.eventCount,
-    ).toBe(2);
+    const status = selectProviderRuntimeStatusForSession(state, "session-1");
+    expect(status?.kind).toBe("retrying");
+    expect(status?.kind === "retrying" ? status.eventCount : null).toBe(2);
   });
 
   it("keeps an event-created entity when an older snapshot omits it", () => {

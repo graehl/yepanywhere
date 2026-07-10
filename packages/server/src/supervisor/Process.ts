@@ -257,8 +257,16 @@ function isClaudeSdkApiRetryMessage(
   );
 }
 
-type ProviderRuntimeRetryStatus = Exclude<ProviderRuntimeStatus, null>;
-type ProviderRuntimeReason = ProviderRuntimeRetryStatus["reason"];
+type ProviderRuntimeStatusValue = Exclude<ProviderRuntimeStatus, null>;
+type ProviderRuntimeRetryStatus = Extract<
+  ProviderRuntimeStatusValue,
+  { kind: "retrying" }
+>;
+type ProviderRuntimeTerminalStatus = Extract<
+  ProviderRuntimeStatusValue,
+  { kind: "terminal" }
+>;
+type ProviderRuntimeReason = ProviderRuntimeStatusValue["reason"];
 
 function readFiniteNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -339,6 +347,77 @@ function buildClaudeApiRetryStatus(
     ...(maxRetries !== undefined ? { maxRetries } : {}),
     eventCount: previous?.kind === "retrying" ? previous.eventCount + 1 : 1,
     source: "claude.system.api_retry",
+  };
+}
+
+function normalizeCodexTerminalReason(
+  codexErrorInfo: unknown,
+): ProviderRuntimeReason {
+  switch (codexErrorInfo) {
+    case "serverOverloaded":
+      return "overloaded";
+    case "usageLimitExceeded":
+    case "sessionBudgetExceeded":
+      return "rate_limit";
+    case "internalServerError":
+      return "server_error";
+    default:
+      break;
+  }
+
+  if (codexErrorInfo && typeof codexErrorInfo === "object") {
+    const keys = Object.keys(codexErrorInfo as Record<string, unknown>);
+    if (
+      keys.some((key) =>
+        [
+          "httpConnectionFailed",
+          "responseStreamConnectionFailed",
+          "responseStreamDisconnected",
+        ].includes(key),
+      )
+    ) {
+      return "network";
+    }
+  }
+
+  return "unknown";
+}
+
+function buildCodexTerminalStatus(
+  provider: ProviderName,
+  message: SDKMessage,
+  receivedAt: Date,
+): ProviderRuntimeTerminalStatus | null {
+  if (
+    provider !== "codex" ||
+    message.type !== "error" ||
+    message.codexWillRetry !== false
+  ) {
+    return null;
+  }
+
+  const errorMessage =
+    typeof message.error === "string" && message.error.trim()
+      ? message.error.trim()
+      : "Codex turn failed";
+  const turnId =
+    typeof message.codexTurnId === "string" && message.codexTurnId
+      ? message.codexTurnId
+      : undefined;
+  const requestId =
+    typeof message.codexRequestId === "string" && message.codexRequestId
+      ? message.codexRequestId
+      : undefined;
+
+  return {
+    kind: "terminal",
+    provider,
+    reason: normalizeCodexTerminalReason(message.codexErrorInfo),
+    message: errorMessage,
+    occurredAt: receivedAt.toISOString(),
+    source: "codex.error",
+    ...(turnId ? { turnId } : {}),
+    ...(requestId ? { requestId } : {}),
   };
 }
 
@@ -488,6 +567,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   isProcessAlive?: () => boolean;
   /** Return true when an idle process should stay owned for an explicit feature. */
   shouldRetainIdleProcess?: (sessionId: string) => boolean;
+  /** Terminal provider incident retained by Supervisor across process reaping. */
+  initialProviderRuntimeStatus?: ProviderRuntimeStatus;
   /** Actively query provider/session status when passive evidence is stale. */
   probeLivenessFn?: () => Promise<ProviderLivenessProbeResult>;
   /** Passive raw provider/app-server event cadence, when available. */
@@ -760,6 +841,7 @@ export class Process {
     this.getProviderActivityFn = options.getProviderActivityFn ?? null;
     this.getProviderRetentionFn = options.getProviderRetentionFn ?? null;
     this.refreshPromptCacheFn = options.refreshPromptCacheFn ?? null;
+    this.providerRuntimeStatus = options.initialProviderRuntimeStatus ?? null;
     this._recapMode =
       options.recapMode ?? (options.recapsEnabled ? "side-session" : "off");
     this._recapAfterSeconds = normalizeRecapAfterSeconds(
@@ -1217,7 +1299,25 @@ export class Process {
       return;
     }
 
-    if (isProviderRuntimeProgressMessage(message)) {
+    const terminalStatus = buildCodexTerminalStatus(
+      this.provider,
+      message,
+      receivedAt,
+    );
+    if (terminalStatus) {
+      this.setProviderRuntimeStatus(terminalStatus);
+      return;
+    }
+
+    if (message.type === "user") {
+      this.clearProviderRuntimeStatus();
+      return;
+    }
+
+    if (
+      isProviderRuntimeProgressMessage(message) &&
+      this.providerRuntimeStatus?.kind === "retrying"
+    ) {
       this.clearProviderRuntimeStatus();
     }
   }
@@ -1232,6 +1332,12 @@ export class Process {
 
   private clearProviderRuntimeStatus(): void {
     this.setProviderRuntimeStatus(null);
+  }
+
+  private clearRetryingProviderRuntimeStatus(): void {
+    if (this.providerRuntimeStatus?.kind === "retrying") {
+      this.clearProviderRuntimeStatus();
+    }
   }
 
   private toLivenessState(): LivenessProcessState {
@@ -1635,7 +1741,7 @@ export class Process {
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
-    this.clearProviderRuntimeStatus();
+    this.clearRetryingProviderRuntimeStatus();
 
     this.resolvePendingToolApprovals({
       message: `Process terminated: ${reason}`,
@@ -3259,7 +3365,7 @@ export class Process {
     this.clearIdleTimer();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
-    this.clearProviderRuntimeStatus();
+    this.clearRetryingProviderRuntimeStatus();
 
     // Call the SDK's abort function if available
     if (this.abortFn) {
@@ -3466,7 +3572,7 @@ export class Process {
         `Process error: ${this._sessionId} - ${err.message}`,
       );
 
-      this.clearProviderRuntimeStatus();
+      this.clearRetryingProviderRuntimeStatus();
       this.emit({ type: "error", error: err });
 
       // Detect process termination errors - set flag synchronously BEFORE markTerminated
@@ -3563,7 +3669,7 @@ export class Process {
 
   private transitionToIdle(): void {
     this.clearIdleTimer();
-    this.clearProviderRuntimeStatus();
+    this.clearRetryingProviderRuntimeStatus();
 
     // Promote deferred messages as the same stitched user turn the provider
     // receives, so the live echo and later transcript catch-up agree.
@@ -4011,7 +4117,7 @@ export class Process {
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.iteratorDone = true;
-    this.clearProviderRuntimeStatus();
+    this.clearRetryingProviderRuntimeStatus();
 
     this.emit({ type: "idle-reap" });
 

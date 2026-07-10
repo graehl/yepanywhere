@@ -3492,9 +3492,12 @@ describe("CodexProvider Event Normalization", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
       type: "error",
+      uuid: "codex-error-turn-1",
       session_id: "session-1",
       error:
         "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again later.",
+      codexWillRetry: false,
+      codexTurnId: "turn-1",
     });
   });
 

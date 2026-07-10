@@ -1734,11 +1734,14 @@ export class CodexProvider implements AgentProvider {
         ) {
           yield {
             type: "error",
+            uuid: `codex-error-${turnResult.turn.id}`,
             session_id: sessionId,
             error: turnResult.turn.error.message,
             codexErrorInfo: turnResult.turn.error.codexErrorInfo ?? null,
             codexAdditionalDetails:
               turnResult.turn.error.additionalDetails ?? null,
+            codexWillRetry: false,
+            codexTurnId: turnResult.turn.id,
             codexFailureTrace: this.snapshotCodexFailureTrace(failureTrace),
             codexFailureSummary: this.formatCodexFailureTrace(failureTrace),
             codexRequestId: this.extractOpenAIRequestId(
@@ -3389,6 +3392,9 @@ export class CodexProvider implements AgentProvider {
 
         const errorEvent = {
           type: "error",
+          uuid: params?.turnId
+            ? `codex-error-${params.turnId}`
+            : `codex-error-${sessionId}-${Date.now()}`,
           session_id: sessionId,
           error: message,
           codexErrorInfo: params?.error.codexErrorInfo ?? null,

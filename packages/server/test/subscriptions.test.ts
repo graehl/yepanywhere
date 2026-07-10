@@ -520,7 +520,9 @@ describe("createSessionSubscription", () => {
   });
 
   it("emits complete and stops further events", async () => {
-    const { process, fireEvent } = createMockProcess();
+    const { process, fireEvent } = createMockProcess({
+      getProviderRuntimeStatus: vi.fn(() => MOCK_PROVIDER_RUNTIME_STATUS),
+    });
     const { emit, events } = collectEmit();
 
     createSessionSubscription(process, emit);
@@ -536,6 +538,9 @@ describe("createSessionSubscription", () => {
       "sess-1",
     );
     expect((complete[1] as Record<string, unknown>).timestamp).toBeDefined();
+    expect(
+      (complete[1] as Record<string, unknown>).providerRuntimeStatus,
+    ).toEqual(MOCK_PROVIDER_RUNTIME_STATUS);
 
     // Events after complete should be ignored
     const countBefore = events.length;

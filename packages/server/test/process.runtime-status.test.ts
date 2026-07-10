@@ -202,6 +202,86 @@ describe("Process", () => {
       controller.finish();
     });
 
+    it("records terminal Codex errors until the next user turn", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+      });
+
+      controller.push({
+        type: "error",
+        uuid: "codex-error-turn-1",
+        session_id: "sess-1",
+        error: "Selected model is at capacity. Please try a different model.",
+        codexErrorInfo: "serverOverloaded",
+        codexWillRetry: false,
+        codexTurnId: "turn-1",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+      });
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "terminal",
+        provider: "codex",
+        reason: "overloaded",
+        message:
+          "Selected model is at capacity. Please try a different model.",
+        turnId: "turn-1",
+        source: "codex.error",
+      });
+
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => {
+        expect(process.state.type).toBe("idle");
+      });
+      expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+
+      controller.push({
+        type: "user",
+        uuid: "user-2",
+        session_id: "sess-1",
+        message: { role: "user", content: "Try again" },
+      });
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus).toBe(null);
+      });
+
+      controller.finish();
+    });
+
+    it("restores a retained terminal status into a reactivated process", async () => {
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "codex",
+        idleTimeoutMs: 100,
+        initialProviderRuntimeStatus: {
+          kind: "terminal",
+          provider: "codex",
+          reason: "overloaded",
+          message: "Selected model is at capacity.",
+          occurredAt: "2026-07-10T18:14:32.213Z",
+          source: "codex.error",
+          turnId: "turn-1",
+        },
+      });
+
+      expect(process.getInfo().providerRuntimeStatus).toMatchObject({
+        kind: "terminal",
+        reason: "overloaded",
+        turnId: "turn-1",
+      });
+
+      controller.finish();
+    });
+
     it("clears retry status when assistant progress resumes", async () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {

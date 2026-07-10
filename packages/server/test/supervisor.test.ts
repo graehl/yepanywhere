@@ -4,6 +4,10 @@ import { MockClaudeSDK, createMockScenario } from "../src/sdk/mock.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
 import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
 import {
+  createControllableIterator,
+  waitFor,
+} from "./process.test-support.js";
+import {
   type ResumeCompactionError,
   Supervisor,
 } from "../src/supervisor/Supervisor.js";
@@ -3058,6 +3062,145 @@ describe("Supervisor", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe("terminal provider status retention", () => {
+    it("keeps terminal status after the provider process is reaped", async () => {
+      const controller = createControllableIterator();
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession: async () => ({
+          iterator: controller.iterator,
+          queue: new MessageQueue(),
+          abort: () => controller.finish(),
+          isProcessAlive: () => true,
+        }),
+      };
+      const runtimeSupervisor = new Supervisor({
+        provider,
+        idleTimeoutMs: 20,
+      });
+
+      const process = await runtimeSupervisor.reactivateSession(
+        "/tmp/test",
+        "terminal-session",
+        undefined,
+        { providerName: "codex" },
+      );
+
+      controller.push({
+        type: "error",
+        uuid: "codex-error-turn-1",
+        session_id: "terminal-session",
+        error: "Selected model is at capacity.",
+        codexErrorInfo: "serverOverloaded",
+        codexWillRetry: false,
+        codexTurnId: "turn-1",
+      });
+      controller.push({ type: "result", session_id: "terminal-session" });
+
+      await waitFor(() => {
+        expect(
+          runtimeSupervisor.getProviderRuntimeStatusForSession(
+            "terminal-session",
+          )?.kind,
+        ).toBe("terminal");
+      });
+      await waitFor(() => {
+        expect(
+          runtimeSupervisor.getProcessForSession("terminal-session"),
+        ).toBeUndefined();
+      });
+
+      expect(
+        runtimeSupervisor.getProviderRuntimeStatusForSession(
+          "terminal-session",
+        ),
+      ).toMatchObject({
+        kind: "terminal",
+        reason: "overloaded",
+        turnId: "turn-1",
+      });
+      expect(process.getInfo().providerRuntimeStatus?.kind).toBe("terminal");
+    });
+
+    it("clears retained terminal status when the next user turn begins", async () => {
+      const controller = createControllableIterator();
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession: async () => ({
+          iterator: controller.iterator,
+          queue: new MessageQueue(),
+          abort: () => controller.finish(),
+          isProcessAlive: () => true,
+        }),
+      };
+      const runtimeSupervisor = new Supervisor({ provider });
+
+      await runtimeSupervisor.reactivateSession(
+        "/tmp/test",
+        "terminal-session",
+        undefined,
+        { providerName: "codex" },
+      );
+
+      controller.push({
+        type: "error",
+        uuid: "codex-error-turn-1",
+        session_id: "terminal-session",
+        error: "Selected model is at capacity.",
+        codexErrorInfo: "serverOverloaded",
+        codexWillRetry: false,
+        codexTurnId: "turn-1",
+      });
+      await waitFor(() => {
+        expect(
+          runtimeSupervisor.getProviderRuntimeStatusForSession(
+            "terminal-session",
+          )?.kind,
+        ).toBe("terminal");
+      });
+
+      controller.push({
+        type: "user",
+        uuid: "user-turn-2",
+        session_id: "terminal-session",
+        message: { role: "user", content: "Try again" },
+      });
+      await waitFor(() => {
+        expect(
+          runtimeSupervisor.getProviderRuntimeStatusForSession(
+            "terminal-session",
+          ),
+        ).toBe(null);
+      });
+
+      controller.finish();
     });
   });
 });

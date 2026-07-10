@@ -252,6 +252,7 @@ export function createSessionSubscription(
           emit("complete", {
             sessionId: process.sessionId,
             timestamp: new Date().toISOString(),
+            providerRuntimeStatus: process.getProviderRuntimeStatus(),
           });
           completed = true;
           clearInterval(heartbeatInterval);

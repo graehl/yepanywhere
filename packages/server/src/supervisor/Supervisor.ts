@@ -78,6 +78,9 @@ import {
 /** Maximum number of terminated processes to retain */
 const MAX_TERMINATED_PROCESSES = 50;
 
+/** Maximum terminal provider incidents retained until the YA server restarts. */
+const MAX_TERMINAL_PROVIDER_STATUSES = 256;
+
 /** How long to retain terminated process info (10 minutes) */
 const TERMINATED_RETENTION_MS = 10 * 60 * 1000;
 
@@ -495,6 +498,10 @@ export interface SupervisorOptions {
 export class Supervisor {
   private processes: Map<string, Process> = new Map();
   private sessionToProcess: Map<string, string> = new Map(); // sessionId -> processId
+  private terminalProviderStatuses: Map<
+    string,
+    Extract<Exclude<ProviderRuntimeStatus, null>, { kind: "terminal" }>
+  > = new Map();
   private sessionActivationInFlight: Map<string, Promise<Process>> = new Map();
   private observedProcessIds: Set<string> = new Set();
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
@@ -977,6 +984,9 @@ export class Supervisor {
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
+      initialProviderRuntimeStatus: resumeSessionId
+        ? this.terminalProviderStatuses.get(resumeSessionId)
+        : null,
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
@@ -1445,6 +1455,9 @@ export class Supervisor {
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
+      initialProviderRuntimeStatus: resumeSessionId
+        ? this.terminalProviderStatuses.get(resumeSessionId)
+        : null,
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
@@ -1576,6 +1589,9 @@ export class Supervisor {
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
+      initialProviderRuntimeStatus: resumeSessionId
+        ? this.terminalProviderStatuses.get(resumeSessionId)
+        : null,
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
@@ -1705,6 +1721,9 @@ export class Supervisor {
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
         this.shouldRetainIdleProcess(sessionId),
+      initialProviderRuntimeStatus: resumeSessionId
+        ? this.terminalProviderStatuses.get(resumeSessionId)
+        : null,
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
       getProviderRetentionFn: getProviderRetention,
@@ -2501,6 +2520,44 @@ export class Supervisor {
     const processId = this.sessionToProcess.get(sessionId);
     if (!processId) return undefined;
     return this.processes.get(processId);
+  }
+
+  getProviderRuntimeStatusForSession(
+    sessionId: string,
+  ): ProviderRuntimeStatus {
+    return (
+      this.getProcessForSession(sessionId)?.getProviderRuntimeStatus() ??
+      this.terminalProviderStatuses.get(sessionId) ??
+      null
+    );
+  }
+
+  private retainTerminalProviderStatus(
+    sessionId: string,
+    status: Extract<
+      Exclude<ProviderRuntimeStatus, null>,
+      { kind: "terminal" }
+    >,
+  ): void {
+    this.terminalProviderStatuses.delete(sessionId);
+    this.terminalProviderStatuses.set(sessionId, status);
+    while (
+      this.terminalProviderStatuses.size > MAX_TERMINAL_PROVIDER_STATUSES
+    ) {
+      const oldestSessionId = this.terminalProviderStatuses.keys().next().value;
+      if (typeof oldestSessionId !== "string") break;
+      this.terminalProviderStatuses.delete(oldestSessionId);
+    }
+  }
+
+  private clearTerminalProviderStatus(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): void {
+    if (!this.terminalProviderStatuses.delete(sessionId)) {
+      return;
+    }
+    this.emitProviderRuntimeStatusChange(sessionId, projectId, null);
   }
 
   /**
@@ -3449,6 +3506,12 @@ export class Supervisor {
       } else if (event.type === "complete") {
         this.unregisterProcess(process);
       } else if (event.type === "message") {
+        if (event.message.type === "user") {
+          this.clearTerminalProviderStatus(
+            process.sessionId,
+            process.projectId,
+          );
+        }
         this.cacheMissBillingMonitor.observeMessage(process, event.message);
         if (
           isAwaySummaryMessage(event.message) &&
@@ -3497,6 +3560,13 @@ export class Supervisor {
         // The old temp ID mapping is retained (no delete)
         this.sessionToProcess.set(event.newSessionId, process.id);
         this.everOwnedSessions.add(event.newSessionId);
+        const retainedStatus = this.terminalProviderStatuses.get(
+          event.oldSessionId,
+        );
+        if (retainedStatus) {
+          this.terminalProviderStatuses.delete(event.oldSessionId);
+          this.retainTerminalProviderStatus(event.newSessionId, retainedStatus);
+        }
 
         // Persist executor for remote execution resume support
         // This saves which SSH host was used so resume can reconnect to the same remote
@@ -3603,6 +3673,9 @@ export class Supervisor {
           event.reason,
         );
       } else if (event.type === "provider-runtime-status-change") {
+        if (event.status?.kind === "terminal") {
+          this.retainTerminalProviderStatus(process.sessionId, event.status);
+        }
         this.emitProviderRuntimeStatusChange(
           process.sessionId,
           process.projectId,

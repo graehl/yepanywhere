@@ -1766,9 +1766,13 @@ export function useSession(
         const completeData = data as {
           eventType: string;
           sessionId?: string;
+          providerRuntimeStatus?: ProviderRuntimeStatus;
         };
         logSessionUiTrace("stream-complete", { sessionId });
-        reportProviderRuntimeStatus(completeData.sessionId ?? sessionId, null);
+        reportProviderRuntimeStatus(
+          completeData.sessionId ?? sessionId,
+          completeData.providerRuntimeStatus,
+        );
         setProcessState("idle");
         setStatus({ owner: "none" });
         setSessionLiveness(null);

@@ -4335,9 +4335,12 @@ function SessionPageContent({
                 className="session-header-thinking"
                 label={
                   providerRuntimeStatus
-                    ? t("toolbarProviderRuntimeAria", {
-                        summary: t("processInfoRuntimeRetrying"),
-                      })
+                      ? t("toolbarProviderRuntimeAria", {
+                          summary:
+                            providerRuntimeStatus.kind === "terminal"
+                              ? t("processInfoRuntimeTerminal")
+                              : t("processInfoRuntimeRetrying"),
+                        })
                     : undefined
                 }
               />

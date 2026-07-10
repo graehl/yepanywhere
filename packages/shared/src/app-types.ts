@@ -207,6 +207,16 @@ export type ProviderRuntimeStatus =
       eventCount: number;
       source: string;
     }
+  | {
+      kind: "terminal";
+      provider: ProviderName;
+      reason: ProviderRuntimeRetryReason;
+      message: string;
+      occurredAt: string;
+      source: string;
+      turnId?: string;
+      requestId?: string;
+    }
   | null;
 
 /** Context usage information extracted from the last assistant message */

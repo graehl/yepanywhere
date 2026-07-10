@@ -364,7 +364,11 @@ export function ProcessInfoBody({
         <Section title={t("processInfoSectionProviderRuntime")}>
           <InfoRow
             label={t("processInfoLabelRuntimeStatus")}
-            value={t("processInfoRuntimeRetrying")}
+            value={
+              providerRuntimeStatus.kind === "terminal"
+                ? t("processInfoRuntimeTerminal")
+                : t("processInfoRuntimeRetrying")
+            }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeReason")}
@@ -372,11 +376,16 @@ export function ProcessInfoBody({
           />
           <InfoRow
             label={t("processInfoLabelRuntimeHttpStatus")}
-            value={providerRuntimeStatus.httpStatus}
+            value={
+              providerRuntimeStatus.kind === "retrying"
+                ? providerRuntimeStatus.httpStatus
+                : null
+            }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeRetryAt")}
             value={
+              providerRuntimeStatus.kind === "retrying" &&
               providerRuntimeStatus.retryAt
                 ? formatTime(providerRuntimeStatus.retryAt)
                 : null
@@ -385,6 +394,7 @@ export function ProcessInfoBody({
           <InfoRow
             label={t("processInfoLabelRuntimeRetryDelay")}
             value={
+              providerRuntimeStatus.kind === "retrying" &&
               providerRuntimeStatus.retryDelayMs !== undefined
                 ? formatMsDuration(providerRuntimeStatus.retryDelayMs)
                 : null
@@ -392,27 +402,62 @@ export function ProcessInfoBody({
           />
           <InfoRow
             label={t("processInfoLabelRuntimeStarted")}
-            value={formatTime(providerRuntimeStatus.startedAt)}
+            value={
+              providerRuntimeStatus.kind === "retrying"
+                ? formatTime(providerRuntimeStatus.startedAt)
+                : null
+            }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeLastSeen")}
-            value={formatTime(providerRuntimeStatus.lastSeenAt)}
+            value={
+              providerRuntimeStatus.kind === "retrying"
+                ? formatTime(providerRuntimeStatus.lastSeenAt)
+                : null
+            }
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeOccurred")}
+            value={
+              providerRuntimeStatus.kind === "terminal"
+                ? formatTime(providerRuntimeStatus.occurredAt)
+                : null
+            }
+          />
+          <InfoRow
+            label={t("processInfoLabelRuntimeMessage")}
+            value={
+              providerRuntimeStatus.kind === "terminal"
+                ? providerRuntimeStatus.message
+                : null
+            }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeAttempt")}
-            value={providerRuntimeStatus.attempt}
+            value={
+              providerRuntimeStatus.kind === "retrying"
+                ? providerRuntimeStatus.attempt
+                : null
+            }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeMaxRetries")}
             value={
+              providerRuntimeStatus.kind === "retrying" &&
               providerRuntimeStatus.maxRetries === "unbounded"
                 ? t("processInfoRuntimeUnbounded")
-                : providerRuntimeStatus.maxRetries
+                : providerRuntimeStatus.kind === "retrying"
+                  ? providerRuntimeStatus.maxRetries
+                  : null
             }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeEventCount")}
-            value={providerRuntimeStatus.eventCount}
+            value={
+              providerRuntimeStatus.kind === "retrying"
+                ? providerRuntimeStatus.eventCount
+                : null
+            }
           />
           <InfoRow
             label={t("processInfoLabelRuntimeSource")}

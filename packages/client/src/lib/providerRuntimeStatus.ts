@@ -49,13 +49,19 @@ export function describeProviderRuntimeStatus(
   }
 
   const provider = getProvider(status.provider).displayName;
+  const reason = getProviderRuntimeReasonLabel(status, t);
   const label =
-    status.reason === "rate_limit"
-      ? t("toolbarProviderRuntimeRateLimited", { provider })
-      : t("toolbarProviderRuntimeRetrying", { provider });
-  const retryAtMs = parseTimestampMs(status.retryAt);
+    status.kind === "terminal"
+      ? t("toolbarProviderRuntimeStopped", { provider })
+      : status.reason === "rate_limit"
+        ? t("toolbarProviderRuntimeRateLimited", { provider })
+        : t("toolbarProviderRuntimeRetrying", { provider });
+  const retryAtMs =
+    status.kind === "retrying" ? parseTimestampMs(status.retryAt) : null;
   const summary =
-    retryAtMs !== null
+    status.kind === "terminal"
+      ? t("toolbarProviderRuntimeStoppedReason", { label, reason })
+      : retryAtMs !== null
       ? t("toolbarProviderRuntimeRetryAt", {
           label,
           time: formatRetryClockTime(retryAtMs),
@@ -63,14 +69,21 @@ export function describeProviderRuntimeStatus(
       : label;
   const title = [
     summary,
+    status.kind === "terminal"
+      ? t("providerRuntimeTerminalTitle")
+      : t("providerRuntimeRetryingTitle"),
     t("providerRuntimeReasonTitle", {
-      reason: getProviderRuntimeReasonLabel(status, t),
+      reason,
     }),
-    status.httpStatus !== undefined
+    status.kind === "terminal" ? status.message : null,
+    status.kind === "retrying" && status.httpStatus !== undefined
       ? t("providerRuntimeHttpStatusTitle", { status: status.httpStatus })
       : null,
-    status.lastSeenAt
+    status.kind === "retrying" && status.lastSeenAt
       ? t("providerRuntimeLastSeenTitle", { time: status.lastSeenAt })
+      : null,
+    status.kind === "terminal"
+      ? t("providerRuntimeOccurredTitle", { time: status.occurredAt })
       : null,
     status.source
       ? t("providerRuntimeSourceTitle", { source: status.source })
@@ -83,7 +96,7 @@ export function describeProviderRuntimeStatus(
     label,
     summary,
     retryAtMs,
-    tone: status.reason === "server_error" ? "danger" : "warn",
+    tone: status.kind === "terminal" ? "danger" : "warn",
     title,
   };
 }

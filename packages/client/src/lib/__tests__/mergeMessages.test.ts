@@ -560,6 +560,26 @@ describe("mergeStreamMessage", () => {
       expect(result.messages[2]?.id).toBe("msg-3");
     });
 
+    it("keeps an identified error when a following result has no id", () => {
+      const existing: Message[] = [
+        {
+          uuid: "codex-error-turn-1",
+          type: "error",
+          error: "Selected model is at capacity.",
+          _source: "sdk",
+        },
+      ];
+
+      const result = mergeStreamMessage(existing, {
+        type: "result",
+      });
+
+      expect(result.messages).toHaveLength(2);
+      expect(result.messages[0]?.uuid).toBe("codex-error-turn-1");
+      expect(result.messages[0]?.type).toBe("error");
+      expect(result.messages[1]?.type).toBe("result");
+    });
+
     it("suppresses replay-only Claude siblings when authoritative JSONL already exists", () => {
       const existing: Message[] = [
         {

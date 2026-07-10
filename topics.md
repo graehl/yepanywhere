@@ -60,6 +60,7 @@
 - floating-new-session-composer - Non-session-page `+` quick composer, new-session prefill, and click-time non-browser speech prewarm.
 - permission-mode - Provider-independent approval preference with model-capability-gated Auto fallback.
 - codex-sessions - Codex rollout storage, compression representation, and YA's durable read assumptions.
+- codex-user-turn-provenance - Use Codex's persisted user-turn lifecycle to distinguish real prompts from user-role contextual response items.
 - codex-metadata-scanner - Codex rollout head-metadata discovery, current cache layers, and scanner performance gaps.
 - project-queue - Server-owned project-level queued messages, idle promotion, and hidden-by-default UI surfaces.
 - inbox - Session-attention tiers for pending input, active work, recent activity, and unread notification state.

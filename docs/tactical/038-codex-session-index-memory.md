@@ -526,16 +526,17 @@ Implementation shape:
   summary state instead of pushing entries into an array.
 - Track the first `session_meta` entry for id, created time, source,
   originator, CLI version, parent/fork id, and model-provider fallback.
-- Track title with the current duplicate-user-message rules:
-  - remember the first non-system `event_msg.user_message`;
-  - remember the first non-system `response_item` user message;
-  - if any response-item user message exists, use the response-item title path
-    and ignore event user-message titles.
-- Track message count with the same duplicate-user-message rules:
-  - count `event_msg.user_message` entries separately;
-  - count `response_item` message entries with role `user` or `assistant`;
-  - final count is `responseMessageCount` plus event user-message count only
-    when no response-item user message was seen.
+- Track user-turn provenance with a one-entry lookbehind:
+  - remember a user-role `response_item` until the next parsed entry;
+  - an immediately following `event_msg.user_message` witnesses one real user
+    turn and supplies the title text, while the response remains the rich
+    transcript payload;
+  - exclude marked provider-context responses from the legacy fallback;
+  - if the rollout has no user-message events, preserve unrecognized user-role
+    responses as legacy turns.
+- Count each witnessed or legacy-fallback user turn once, plus assistant-role
+  response messages. Do not count both sides of a response/event pair or any
+  hidden provider-context response.
 - Track last `turn_context.payload.model` for the model, first `turn_context`
   for launch approval/sandbox policy, and latest usable `token_count` for
   context usage. Compute provider and context-window fallback after the scan so

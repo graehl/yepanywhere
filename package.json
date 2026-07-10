@@ -8,6 +8,7 @@
     "clone-references": "node scripts/clone-references.mjs",
     "codex:protocol:update": "node scripts/update-codex-protocol.mjs",
     "codex:protocol:check": "node scripts/update-codex-protocol.mjs --check",
+    "codex:user-turns:audit": "tsx scripts/audit-codex-user-turn-provenance.ts",
     "i18n:check": "node scripts/prune-i18n-placeholders.mjs --check",
     "i18n:health": "node scripts/prune-i18n-placeholders.mjs --health",
     "i18n:missing": "node scripts/report-i18n-missing.mjs",

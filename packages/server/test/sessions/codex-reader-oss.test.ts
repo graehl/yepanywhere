@@ -224,14 +224,6 @@ describe("CodexSessionReader - OSS Support", () => {
         },
       }),
       JSON.stringify({
-        type: "event_msg",
-        timestamp: now,
-        payload: {
-          type: "user_message",
-          message: "event title should be ignored when response user exists",
-        },
-      }),
-      JSON.stringify({
         type: "response_item",
         timestamp: now,
         payload: {
@@ -244,6 +236,14 @@ describe("CodexSessionReader - OSS Support", () => {
       }),
       JSON.stringify(responseUser),
       JSON.stringify(responseUser),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "user_message",
+          message: "response title",
+        },
+      }),
       JSON.stringify({
         type: "response_item",
         timestamp: now,
@@ -310,7 +310,7 @@ describe("CodexSessionReader - OSS Support", () => {
       id: sessionId,
       title: "response title",
       fullTitle: "response title",
-      messageCount: 3,
+      messageCount: 2,
       provider: "codex-oss",
       model: "qwen2.5-coder",
       parentSessionId: "parent-session",
@@ -429,6 +429,92 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(session?.summary).toMatchObject({
       title: "actual first turn",
       fullTitle: "actual first turn",
+    });
+  });
+
+  it("uses user-turn provenance when plugins are followed by environment", async () => {
+    const sessionId = "plugin-environment-startup-title";
+    const now = new Date().toISOString();
+    const actualPrompt = "actual first turn";
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+          cli_version: "0.144.1",
+          originator: "yep-anywhere",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "<recommended_plugins>\n- GitHub\n</recommended_plugins>",
+            },
+            {
+              type: "input_text",
+              text: "<environment_context>\n<cwd>/repo</cwd>\n</environment_context>",
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: actualPrompt }],
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: { type: "user_message", message: actualPrompt },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "visible response" }],
+        },
+      }),
+    ];
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    const headSummary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+      { readMode: "head" },
+    );
+    expect(headSummary).toMatchObject({
+      title: actualPrompt,
+      fullTitle: actualPrompt,
+      messageCount: 1,
+    });
+
+    const session = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(session?.summary).toMatchObject({
+      title: actualPrompt,
+      fullTitle: actualPrompt,
+      messageCount: 2,
     });
   });
 

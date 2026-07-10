@@ -52,9 +52,9 @@ function loadCodexFixtureEntries(name: string): CodexSessionEntry[] {
 
 describe("Codex Normalization", () => {
   it("normalizes a codex session as a flat list without parentUuid", () => {
-    // 1. User message (event_msg) - will be deduped because of item #3
-    // 2. Assistant message (response_item)
-    // 3. User message (response_item)
+    // 1. Assistant message (response_item)
+    // 2. User message (response_item)
+    // 3. User provenance witness (event_msg, consumed as a duplicate)
     const entries: CodexSessionEntry[] = [
       {
         type: "response_item",
@@ -66,23 +66,22 @@ describe("Codex Normalization", () => {
         },
       },
       {
-        type: "event_msg",
-        timestamp: "2024-01-01T00:00:02Z",
-        payload: {
-          type: "user_message",
-          message: "How are you?",
-        },
-      },
-      // Duplicate user message event (should be deduped/shadowed by response_item)
-      // Actually, we want to test that if a response_item exists, event_msgs are ignored.
-      // So we add a response_item for the user message.
-      {
         type: "response_item",
         timestamp: "2024-01-01T00:00:02Z",
         payload: {
           type: "message",
           role: "user",
           content: [{ type: "input_text", text: "How are you?" }],
+        },
+      },
+      // Codex persists the rich response item first, then the user_message
+      // event that witnesses its user-authored provenance.
+      {
+        type: "event_msg",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "user_message",
+          message: "How are you?",
         },
       },
     ];
@@ -1201,6 +1200,14 @@ describe("Codex Normalization", () => {
           ],
         },
       },
+      {
+        type: "event_msg",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "user_message",
+          message: "Please review this.\n<image>\nThanks.",
+        },
+      },
     ];
 
     const result = normalizeSession(buildLoadedSession(entries));
@@ -1388,6 +1395,77 @@ describe("Codex Normalization", () => {
       type: "text",
       text: "actual user turn",
     });
+  });
+
+  it("skips plugin and environment context without AGENTS instructions", () => {
+    const actualPrompt = "actual user turn";
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-07-10T17:09:45.684Z",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "<recommended_plugins>\n- GitHub\n</recommended_plugins>",
+            },
+            {
+              type: "input_text",
+              text: "<environment_context>\n<cwd>/repo</cwd>\n</environment_context>",
+            },
+          ],
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-07-10T17:09:45.686Z",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: actualPrompt }],
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2026-07-10T17:09:45.686Z",
+        payload: { type: "user_message", message: actualPrompt },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.message?.content).toEqual([
+      { type: "text", text: actualPrompt },
+    ]);
+  });
+
+  it("preserves a paired user prompt that looks like environment context", () => {
+    const actualPrompt =
+      "<environment_context>\nI typed this myself\n</environment_context>";
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-07-10T17:09:45.686Z",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: actualPrompt }],
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2026-07-10T17:09:45.686Z",
+        payload: { type: "user_message", message: actualPrompt },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.message?.content).toEqual([
+      { type: "text", text: actualPrompt },
+    ]);
   });
 
   it("emits turn_aborted as a visible system entry", () => {

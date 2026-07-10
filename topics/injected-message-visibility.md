@@ -113,6 +113,25 @@ Codex summary reader also skips the row when deriving the first-turn session
 title; the session-summary index version advances with that interpretation so
 already-cached plugin-prefixed titles are rebuilt after restart.
 
+### Codex user-turn provenance (landed 2026-07-10)
+
+The startup-prefix rule above did not cover Codex's optional composition of
+recommended plugins plus environment context when no `AGENTS.md` exists. YA
+now follows Codex's persisted lifecycle instead of treating user-role syntax as
+authorship: an accepted prompt is the user-role response item immediately
+followed by an `event_msg/user_message`. The event witnesses provenance; the
+response item remains the rich rendering payload and the duplicate event is
+consumed.
+
+Unpaired current-format response items are provider context and do not render,
+title the session, or count as user turns. Rollouts with no user-message events
+retain an exact-marker legacy fallback so unknown older or foreign prompts are
+not silently erased. The same classifier now owns durable normalization, title
+extraction, and message counting, and session-summary index version 4 rebuilds
+previous cached interpretations. See
+[`codex-user-turn-provenance.md`](codex-user-turn-provenance.md) for upstream
+source receipts and the local-corpus audit.
+
 Remaining Part 2 scope: broader resume-from-full init text can still render as
 normal turns. It predates the compaction work and needs its own classification,
 not a local CSS hide.

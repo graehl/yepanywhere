@@ -47,9 +47,16 @@ import {
   readCodexRolloutMetadata,
 } from "./codex-discovery.js";
 import {
-  isCodexStartupInstructionText,
-  normalizeSession,
-} from "./normalization.js";
+  type CodexUserResponseEntry,
+  buildCodexUserTurnProvenance,
+  codexUserResponseText,
+  countCodexUserTurns,
+  findFirstCodexUserTurn,
+  isCodexContextualUserResponse,
+  isCodexUserMessageEventEntry,
+  isCodexUserResponseEntry,
+} from "./codex-user-turn-provenance.js";
+import { normalizeSession } from "./normalization.js";
 import { SummaryParserClient } from "./summary-parser-worker-client.js";
 import type {
   SummaryParserWorkerMode,
@@ -278,10 +285,11 @@ interface CodexSummaryState {
   metaEntry?: CodexSessionMetaEntry;
   firstTurnContext?: CodexTurnContextEntry;
   firstEventUserTitle?: CodexSummaryTitleCandidate;
-  firstResponseUserTitle?: CodexSummaryTitleCandidate;
-  sawResponseItemUser: boolean;
+  firstLegacyResponseUserTitle?: CodexSummaryTitleCandidate;
+  pendingResponseUser?: CodexUserResponseEntry;
   eventUserMessageCount: number;
-  responseMessageCount: number;
+  legacyResponseUserCount: number;
+  assistantMessageCount: number;
   model?: string;
   contextCandidate?: CodexSummaryContextCandidate;
 }
@@ -1219,9 +1227,9 @@ export class CodexSessionReader implements ISessionReader {
     const startedAt = Date.now();
     const memoryBefore = process.memoryUsage();
     const state: CodexSummaryState = {
-      sawResponseItemUser: false,
       eventUserMessageCount: 0,
-      responseMessageCount: 0,
+      legacyResponseUserCount: 0,
+      assistantMessageCount: 0,
     };
     const seenDedupeKeys = new Set<string>();
     let lineCount = 0;
@@ -1325,16 +1333,16 @@ export class CodexSessionReader implements ISessionReader {
   }
 
   private hasHeadSummary(state: CodexSummaryState): boolean {
-    return !!(
-      state.metaEntry &&
-      (state.firstResponseUserTitle || state.firstEventUserTitle)
-    );
+    return !!state.metaEntry && state.eventUserMessageCount > 0;
   }
 
   private applySummaryEntry(
     state: CodexSummaryState,
     entry: CodexSessionEntry,
   ): void {
+    const precedingResponseUser = state.pendingResponseUser;
+    state.pendingResponseUser = undefined;
+
     if (entry.type === "session_meta") {
       state.metaEntry ??= entry;
       return;
@@ -1349,11 +1357,15 @@ export class CodexSessionReader implements ISessionReader {
     }
 
     if (entry.type === "event_msg") {
-      if (entry.payload.type === "user_message") {
+      if (isCodexUserMessageEventEntry(entry)) {
         state.eventUserMessageCount += 1;
         if (!state.firstEventUserTitle) {
-          const fullTitle = entry.payload.message.trim();
-          if (!this.isSystemPromptUserMessage(fullTitle)) {
+          const fullTitle =
+            entry.payload.message.trim() ||
+            (precedingResponseUser
+              ? codexUserResponseText(precedingResponseUser.payload)
+              : "");
+          if (fullTitle) {
             state.firstEventUserTitle = {
               title: truncateSessionTitle(fullTitle) || null,
               fullTitle,
@@ -1388,29 +1400,27 @@ export class CodexSessionReader implements ISessionReader {
       return;
     }
 
-    if (payload.role === "user" || payload.role === "assistant") {
-      state.responseMessageCount += 1;
-    }
-
-    if (payload.role !== "user") {
+    if (payload.role === "assistant") {
+      state.assistantMessageCount += 1;
       return;
     }
 
-    state.sawResponseItemUser = true;
-    if (state.firstResponseUserTitle) {
+    if (!isCodexUserResponseEntry(entry)) {
       return;
     }
 
-    const fullTitle = payload.content
-      .map((content) =>
-        "text" in content && typeof content.text === "string"
-          ? content.text
-          : "",
-      )
-      .join("\n")
-      .trim();
-    if (fullTitle && !this.isSystemPromptUserMessage(fullTitle)) {
-      state.firstResponseUserTitle = {
+    state.pendingResponseUser = entry;
+    if (isCodexContextualUserResponse(payload)) {
+      return;
+    }
+
+    state.legacyResponseUserCount += 1;
+    if (state.firstLegacyResponseUserTitle) {
+      return;
+    }
+    const fullTitle = codexUserResponseText(payload);
+    if (fullTitle) {
+      state.firstLegacyResponseUserTitle = {
         title: truncateSessionTitle(fullTitle) || null,
         fullTitle,
       };
@@ -1426,9 +1436,11 @@ export class CodexSessionReader implements ISessionReader {
     const metaEntry = state.metaEntry;
     if (!metaEntry) return null;
 
-    const messageCount =
-      state.responseMessageCount +
-      (state.sawResponseItemUser ? 0 : state.eventUserMessageCount);
+    const userMessageCount =
+      state.eventUserMessageCount > 0
+        ? state.eventUserMessageCount
+        : state.legacyResponseUserCount;
+    const messageCount = state.assistantMessageCount + userMessageCount;
     if (messageCount === 0) return null;
 
     const model = state.model;
@@ -1438,13 +1450,12 @@ export class CodexSessionReader implements ISessionReader {
       model,
       provider,
     );
-    const title =
-      (state.sawResponseItemUser
-        ? state.firstResponseUserTitle
-        : state.firstEventUserTitle) ?? {
-        title: null,
-        fullTitle: null,
-      };
+    const title = (state.eventUserMessageCount > 0
+      ? state.firstEventUserTitle
+      : state.firstLegacyResponseUserTitle) ?? {
+      title: null,
+      fullTitle: null,
+    };
     const parentSessionId =
       typeof metaEntry.payload.forked_from_id === "string"
         ? metaEntry.payload.forked_from_id
@@ -1794,54 +1805,14 @@ export class CodexSessionReader implements ISessionReader {
     title: string | null;
     fullTitle: string | null;
   } {
-    const hasResponseItemUser = this.hasResponseItemUserMessages(entries);
-    const skipLeadingSystemPrompts = true;
-
-    // Find first user message
-    for (const entry of entries) {
-      if (
-        !hasResponseItemUser &&
-        entry.type === "event_msg" &&
-        entry.payload.type === "user_message"
-      ) {
-        const fullTitle = entry.payload.message.trim();
-        if (
-          skipLeadingSystemPrompts &&
-          this.isSystemPromptUserMessage(fullTitle)
-        ) {
-          continue;
-        }
-        const title = truncateSessionTitle(fullTitle) || null;
-        return { title, fullTitle };
-      }
-
-      if (entry.type === "response_item") {
-        const payload = entry.payload;
-        if (payload.type === "message" && payload.role === "user") {
-          const text = payload.content
-            .map((c) => ("text" in c ? c.text : ""))
-            .join("\n")
-            .trim();
-          if (
-            text &&
-            !(skipLeadingSystemPrompts && this.isSystemPromptUserMessage(text))
-          ) {
-            const title = truncateSessionTitle(text) || null;
-            return { title, fullTitle: text };
-          }
-        }
-      }
+    const firstTurn = findFirstCodexUserTurn(entries);
+    if (!firstTurn) {
+      return { title: null, fullTitle: null };
     }
-
-    return { title: null, fullTitle: null };
-  }
-
-  private isSystemPromptUserMessage(text: string): boolean {
-    const trimmed = text.trimStart();
-    return (
-      isCodexStartupInstructionText(trimmed) ||
-      trimmed.startsWith("<environment_context>")
-    );
+    return {
+      title: truncateSessionTitle(firstTurn.text) || null,
+      fullTitle: firstTurn.text,
+    };
   }
 
   /**
@@ -1852,28 +1823,17 @@ export class CodexSessionReader implements ISessionReader {
    * those are streaming duplicates.
    */
   private countMessages(entries: CodexSessionEntry[]): number {
-    let count = 0;
-    const hasResponseItemUser = this.hasResponseItemUserMessages(entries);
-
-    for (const entry of entries) {
-      if (entry.type === "event_msg") {
-        // Only count user_message events (not agent_message streaming tokens)
-        if (entry.payload.type === "user_message" && !hasResponseItemUser) {
-          count++;
-        }
-      } else if (entry.type === "response_item") {
-        if (entry.payload.type === "message") {
-          if (
-            entry.payload.role === "user" ||
-            entry.payload.role === "assistant"
-          ) {
-            count++;
-          }
-        }
-      }
-    }
-
-    return count;
+    const provenance = buildCodexUserTurnProvenance(entries);
+    const assistantCount = entries.reduce(
+      (count, entry) =>
+        entry.type === "response_item" &&
+        entry.payload.type === "message" &&
+        entry.payload.role === "assistant"
+          ? count + 1
+          : count,
+      0,
+    );
+    return assistantCount + countCodexUserTurns(entries, provenance);
   }
 
   /**
@@ -2015,15 +1975,6 @@ export class CodexSessionReader implements ISessionReader {
 
     const model = this.extractModel(entries);
     return this.determineProvider(metaEntry, model);
-  }
-
-  private hasResponseItemUserMessages(entries: CodexSessionEntry[]): boolean {
-    return entries.some(
-      (entry) =>
-        entry.type === "response_item" &&
-        entry.payload.type === "message" &&
-        entry.payload.role === "user",
-    );
   }
 }
 

@@ -1,6 +1,6 @@
 # Bounded Active Transcript Window
 
-Status: implementation in progress; slices 1-5 complete and runtime active.
+Status: implemented; all six slices complete and runtime active.
 
 Topic: memory-growth
 Topic: session-detail-data-layer
@@ -111,7 +111,24 @@ Hook coverage verifies default-on trimming from 31 to 20 user turns while
 following the tail, an explicit opt-out, and re-enabling the same mounted view.
 Settings coverage verifies persistence, same-tab publication, cross-tab
 updates, accessible UI state, and Undo restoration. Automatic active-window
-trimming is now active; Slice 6 remains for telemetry assessment and closeout.
+trimming is now active; the final telemetry assessment is recorded below.
+
+### 2026-07-10: Slice 6 complete — telemetry assessment and closeout
+
+No new trim event or console diagnostic was added. Existing optional
+`[ClientTelemetry]` samples already report, at a low fixed cadence, DOM node and
+message-row counts, JS heap values, and deduped session-detail bytes split
+between live-retained and warm-cache entries. The Performance pane exposes the
+same transcript-memory aggregates interactively. Those measurements show the
+effect this feature is intended to produce without logging message content or
+emitting work for every eligibility check or accepted trim.
+
+Coverage now explicitly proves that an accepted store trim reduces both entry
+message count and approximate byte charge, while the client-log collector
+fixture verifies that row counts and transcript-memory aggregates occupy the
+same telemetry sample. This closes the diagnostic question in favor of the
+existing sampled path. All acceptance criteria are implemented; future work is
+ordinary observation and tuning rather than another required slice.
 
 ## Goal
 
@@ -375,9 +392,9 @@ it need not synchronously scan or trim inside the settings event handler.
 5. **Performance setting — complete 2026-07-10.** Added the default-on
    preference, UI/i18n copy, Undo, storage-event behavior, activation, and
    focused settings/runtime tests.
-6. **Telemetry and closeout.** Add low-volume aggregate trim diagnostics only
-   if existing memory/row telemetry cannot show the effect. Do not log message
-   text or emit per-check console chatter.
+6. **Telemetry and closeout — complete 2026-07-10.** Confirmed existing sampled
+   memory/row telemetry shows the effect, added outcome coverage, and avoided a
+   duplicative per-trim event or console chatter.
 
 Keep these reviewable. In particular, do not combine the first implementation
 with row virtualization, server pagination changes, provider compaction policy,

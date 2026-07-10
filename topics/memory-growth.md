@@ -20,12 +20,12 @@
   `fullHistory=1` explicitly authorizes access across older compactions. This
   keeps both sparse-compaction Claude sessions and many-compaction Codex turns
   from rendering nearly the whole transcript by default.
-- The current implementation applies `tailTurns=<n>` and
+- Initial loading applies `tailTurns=<n>` and
   `tailFrom=<message-id>` only to the initial non-incremental session detail
   response; streaming and `afterMessageId` refreshes append normally. The
-  agreed follow-up is a cheap client-store auto-trim that periodically restores
-  approximately the same semantic bounds as a fresh load while the reader is
-  following the bottom. See
+  client store now auto-trims old prefixes while the reader follows the bottom,
+  periodically restoring approximately the same semantic bounds as a fresh
+  load. See
   [`docs/tactical/060-bounded-active-transcript-window.md`](../docs/tactical/060-bounded-active-transcript-window.md).
 - CSS `content-visibility: auto` is not a safe default bound for transcript
   rows. A hosted mobile client confirmed repeated scroll-position corrections
@@ -52,6 +52,12 @@
   (`getSessionTranscriptMemoryStats`, also shown in Performance settings).
   A multi-day tab that balloons should be explained from those samples
   before anyone reaches for a live heap snapshot.
+- The bounded active-window feature does not add a per-trim log or telemetry
+  event. Existing 15-second client samples already show the outcome through
+  DOM message-row counts and deduped live/warm transcript bytes; store coverage
+  proves an accepted trim reduces both its message count and approximate byte
+  charge. This avoids duplicative console/log traffic and records no message
+  content.
 - Any future client-side transcript cache beyond `SessionRouteSnapshot` needs
   an explicit design note before it ships: what user-visible behavior it
   changes, what data it retains, its eviction policy, memory/entry limits,

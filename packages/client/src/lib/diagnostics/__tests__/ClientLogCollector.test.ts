@@ -113,6 +113,10 @@ describe("ClientLogCollector", () => {
     const payload = JSON.parse(
       (telemetry.message as string).replace("[ClientTelemetry] ", ""),
     );
+    expect(payload.dom).toMatchObject({
+      nodes: expect.any(Number),
+      messageRows: expect.any(Number),
+    });
     expect(payload.transcriptMemory).toMatchObject({
       totalBytes: expect.any(Number),
       liveRetainedBytes: expect.any(Number),

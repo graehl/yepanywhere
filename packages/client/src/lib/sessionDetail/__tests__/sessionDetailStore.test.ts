@@ -189,6 +189,7 @@ describe("SessionDetailMemoryCache", () => {
       totalUserTurns: 3,
     };
     store.replaceRouteSnapshot(storeKey, source);
+    const beforeTrimStats = store.getStats().entries[0];
 
     store.dispatch(storeKey, {
       type: "trimLoadedWindow",
@@ -211,7 +212,11 @@ describe("SessionDetailMemoryCache", () => {
       totalUserTurns: 3,
       truncatedBy: "user_turn",
     });
-    expect(store.getStats().entries[0]?.messageCount).toBe(2);
+    const afterTrimStats = store.getStats().entries[0];
+    expect(afterTrimStats?.messageCount).toBe(2);
+    expect(afterTrimStats?.approxBytes).toBeLessThan(
+      beforeTrimStats?.approxBytes ?? 0,
+    );
   });
 
   it("keeps subscription-only entries out of stats", () => {

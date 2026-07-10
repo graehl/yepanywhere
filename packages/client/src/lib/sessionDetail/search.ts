@@ -13,6 +13,12 @@ import {
   getExploredEntrySearchText,
 } from "./exploration";
 import {
+  getExplorationEntryDisplayLabel,
+  getExplorationEntrySearchText,
+  getExplorationEntrySummaryText,
+  isCanonicalExplorationEntry,
+} from "./explorationPresentation";
+import {
   getLatestRenderItemsTimestampMs,
   type RenderTurnGroup,
 } from "./renderItems";
@@ -700,31 +706,53 @@ export function getFullSessionSearchAnchorsForSegment(
     return anchor ? [anchor] : [];
   }
 
+  const entryCount = segment.projection.entries.length;
+  const rawMultiParentSearchText = segment.projection.parents.flatMap(
+    (parent) => {
+      if (parent.entries.length < 2) return [];
+      const parentAnchor = getFullSessionSearchAnchorForItem(parent.item);
+      return parentAnchor?.searchText ? [parentAnchor.searchText] : [];
+    },
+  );
   const anchors: RenderNavAnchor[] = [
     {
       id: segment.id,
-      preview: `Explored: ${segment.items.length} ${
-        segment.items.length === 1 ? "item" : "items"
-      }`,
+      preview: `Explored: ${entryCount} ${entryCount === 1 ? "item" : "items"}`,
       searchText: joinSearchParts([
         "Explored",
-        `${segment.items.length} items`,
+        "Exploring",
+        `${entryCount} ${entryCount === 1 ? "item" : "items"}`,
+        ...rawMultiParentSearchText,
       ]),
       timestampMs: getLatestRenderItemsTimestampMs(segment.items),
     },
   ];
 
-  for (const item of segment.items) {
-    const anchor = getFullSessionSearchAnchorForItem(item);
-    if (anchor) {
-      const exploredPreview = getExploredEntrySearchPreview(item);
-      const exploredSearchText = getExploredEntrySearchText(item);
+  for (const parent of segment.projection.parents) {
+    const parentAnchor = getFullSessionSearchAnchorForItem(parent.item);
+    for (const entry of parent.entries) {
+      const canonical = isCanonicalExplorationEntry(parent, entry);
+      const entrySummary = getExplorationEntrySummaryText(entry);
+      const exploredPreview = canonical
+        ? getExploredEntrySearchPreview(parent.item)
+        : `${getExplorationEntryDisplayLabel(parent, entry)}: ${entrySummary}`;
+      const exploredSearchText = canonical
+        ? getExploredEntrySearchText(parent.item)
+        : getExplorationEntrySearchText(parent, entry);
+      const includeParentSearchText = parent.entries.length === 1;
       anchors.push({
-        ...anchor,
-        id: `${segment.id}:${item.id}`,
-        preview: `Explored / ${exploredPreview || anchor.preview}`,
-        searchText: joinSearchParts([exploredSearchText, anchor.searchText]),
+        id: canonical
+          ? `${segment.id}:${parent.item.id}`
+          : `${segment.id}:entry:${entry.id}`,
+        preview: `Explored / ${exploredPreview}`,
+        searchText: joinSearchParts([
+          exploredSearchText,
+          includeParentSearchText ? parentAnchor?.searchText : undefined,
+        ]),
         targetId: segment.id,
+        timestampMs:
+          parentAnchor?.timestampMs ??
+          getLatestMessageTimestampMs(parent.item.sourceMessages),
       });
     }
   }

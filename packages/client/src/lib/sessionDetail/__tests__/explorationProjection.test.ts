@@ -7,6 +7,12 @@ import {
   buildExplorationProjectionSegments,
   projectExplorationParent,
 } from "../explorationProjection";
+import {
+  estimateExplorationGroupHeightPx,
+  getExplorationEntryDisplayLabel,
+  getExplorationEntrySearchText,
+  getExplorationEntrySummaryText,
+} from "../explorationPresentation";
 import { buildAssistantTimelineRows } from "../timeline";
 
 function sourceMessage(id: string, timestamp: string): Message {
@@ -350,5 +356,46 @@ describe("exploration projection", () => {
     expect(compactSegments([invalid])).toEqual([
       { kind: "item", id: "invalid-bash" },
     ]);
+  });
+
+  it("derives compact presentation text and bounded intrinsic heights", () => {
+    const compound = toolCall({
+      id: "compound-presentation",
+      displayActions: THREE_READS,
+    });
+    const parent = projectExplorationParent(compound);
+    const second = parent?.entries[1];
+    expect(parent).not.toBeNull();
+    expect(second).toBeDefined();
+    if (!parent || !second) return;
+
+    expect(getExplorationEntryDisplayLabel(parent, second)).toBe("Read");
+    expect(getExplorationEntrySummaryText(second)).toBe(
+      "src/session.ts lines 101-200",
+    );
+    expect(getExplorationEntrySearchText(parent, second)).toContain(
+      "/workspace/src/session.ts",
+    );
+    expect(
+      estimateExplorationGroupHeightPx({
+        detailRowCount: 1,
+        entryCount: 3,
+        expanded: true,
+      }),
+    ).toBe(132);
+    expect(
+      estimateExplorationGroupHeightPx({
+        detailRowCount: 1,
+        entryCount: 6,
+        expanded: true,
+      }),
+    ).toBe(162);
+    expect(
+      estimateExplorationGroupHeightPx({
+        detailRowCount: 1,
+        entryCount: 6,
+        expanded: false,
+      }),
+    ).toBe(26);
   });
 });

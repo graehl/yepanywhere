@@ -28,9 +28,11 @@ the presentation the user saw in recent Claude/Codex. It is real but **partial**
 
 - `packages/client/src/components/blocks/ExploredToolGroup.tsx`:
   `buildAssistantRenderSegments` walks an assistant message's render items and
-  folds a **run of ≥2** consecutive exploration tool calls into one
-  `{kind:"explored"}` segment; a single call renders normally. Runs break when
-  two calls are more than `EXPLORATION_GROUP_MAX_GAP_MS` (5 min) apart.
+  folds either a **run of ≥2** consecutive exploration tool parents or one
+  parent with **≥2 ordered semantic exploration actions** into one
+  `{kind:"explored"}` segment. A single one-action parent renders normally.
+  Runs break when two parents are more than
+  `EXPLORATION_GROUP_MAX_GAP_MS` (5 min) apart.
 - **Exploration kinds = read / search / list only** (`getExplorationKind`),
   canonicalized cross-provider through `toolRegistry.get(name).tool` plus
   lowercase aliases — so it rides on the same canonical vocabulary as the
@@ -44,10 +46,12 @@ the presentation the user saw in recent Claude/Codex. It is real but **partial**
 - **Default is expanded.** `ExploredToolGroup` opens with `expanded = true`, so
   today's behavior is *grouping*, not *collapsing*. There is no mode that
   default-collapses.
-- **Only exploration kinds fold.** Edits, `Bash`, web fetches, and **subagent
-  (`Task`) calls** are never grouped — they always render full.
-- **Runs only.** A lone read between two edits stays full; grouping needs ≥2
-  adjacent same-class calls.
+- **Only exploration semantics fold.** Edits, web fetches, and **subagent
+  (`Task`) calls** are never grouped. A Bash/Exec parent folds only when its
+  fail-closed semantic analysis contains reads/searches/lists exclusively.
+- **Runs or a compound exploration parent.** A lone one-action read between two
+  edits stays full; grouping needs either ≥2 adjacent parents or ≥2 ordered
+  semantic entries under one parent.
 - **Per-group local state.** Expand/collapse is component-local `useState`, not a
   session- or app-level density preference, so it cannot express "collapse more,
   everywhere, by default."

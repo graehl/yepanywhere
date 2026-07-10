@@ -196,6 +196,12 @@ only for explicit comparison while the longer-term design is considered. The
 ~150 MB RSS reduction measured above does not justify fighting the reader's
 scroll position, and the experiment does not bound retained transcript data.
 
+2026-07-10 explored-rendering hardening: grouped exploration rows publish a
+bounded intrinsic-height estimate derived from their visible entry/detail-row
+count, capped at the group's existing scrollable-body height. The override is
+consumed only when this default-off experiment is explicitly enabled; it does
+not change the default or weaken the decision above.
+
 ### Preferred direction to evaluate: bounded semantic client window
 
 Do not hide an unbounded transcript behind estimated-height spacers. Keep the

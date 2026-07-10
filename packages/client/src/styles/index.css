@@ -4473,6 +4473,10 @@ a.linkified-url:hover {
   contain-intrinsic-size: auto 120px;
 }
 
+.message-list-offscreen-rendering .explored-message-row {
+  contain-intrinsic-size: auto var(--explored-group-intrinsic-height, 120px);
+}
+
 .queued-context-return {
   position: sticky;
   top: var(--space-2);

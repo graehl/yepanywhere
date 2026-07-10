@@ -750,6 +750,99 @@ describe("session detail render selectors", () => {
     ).toBe(Date.parse("2026-07-02T12:02:00.000Z"));
   });
 
+  it("indexes compound exploration entries without synthetic transcript targets", () => {
+    const compound: RenderItem = {
+      type: "tool_call",
+      id: "call-compound",
+      toolName: "Bash",
+      toolInput: {
+        command:
+          "sed -n '1,100p' src/session.ts && sed -n '101,200p' src/session.ts && sed -n '1,80p' src/driver.ts",
+      },
+      displayActions: [
+        {
+          kind: "read",
+          path: "src/session.ts",
+          absolutePath: "/workspace/src/session.ts",
+          name: "session.ts",
+          startLine: 1,
+          endLine: 100,
+        },
+        {
+          kind: "read",
+          path: "src/session.ts",
+          absolutePath: "/workspace/src/session.ts",
+          name: "session.ts",
+          startLine: 101,
+          endLine: 200,
+        },
+        {
+          kind: "read",
+          path: "src/driver.ts",
+          absolutePath: "/workspace/src/driver.ts",
+          name: "driver.ts",
+          startLine: 1,
+          endLine: 80,
+        },
+      ],
+      status: "complete",
+      sourceMessages: [
+        sourceMessage("compound-msg", "2026-07-02T12:02:00.000Z"),
+      ],
+    };
+    const groupId = "explored-call-compound-call-compound";
+    const anchors = getFullSessionSearchAnchors([
+      { isUserPrompt: false, items: [compound] },
+    ]);
+
+    expect(
+      anchors.map(({ id, preview, targetId }) => ({ id, preview, targetId })),
+    ).toEqual([
+      {
+        id: groupId,
+        preview: "Explored: 3 items",
+        targetId: undefined,
+      },
+      {
+        id: `${groupId}:entry:call-compound:0`,
+        preview: "Explored / Read: src/session.ts lines 1-100",
+        targetId: groupId,
+      },
+      {
+        id: `${groupId}:entry:call-compound:1`,
+        preview: "Explored / Read: src/session.ts lines 101-200",
+        targetId: groupId,
+      },
+      {
+        id: `${groupId}:entry:call-compound:2`,
+        preview: "Explored / Read: src/driver.ts lines 1-80",
+        targetId: groupId,
+      },
+    ]);
+    expect(anchors.some((anchor) => anchor.id === "call-compound:0")).toBe(
+      false,
+    );
+
+    const rangeMatches = getSearchMatchProjection({
+      anchors,
+      query: "101-200",
+      searchReady: true,
+    });
+    expect(rangeMatches.matches.map((anchor) => anchor.id)).toEqual([
+      `${groupId}:entry:call-compound:1`,
+    ]);
+    expect(Array.from(rangeMatches.matchTargetIds)).toEqual([groupId]);
+
+    const rawCommandMatches = getSearchMatchProjection({
+      anchors,
+      query: "sed -n",
+      searchReady: true,
+    });
+    expect(rawCommandMatches.matches.map((anchor) => anchor.id)).toEqual([
+      groupId,
+    ]);
+  });
+
   it("derives assistant timeline row metadata", () => {
     const read: RenderItem = {
       type: "tool_call",

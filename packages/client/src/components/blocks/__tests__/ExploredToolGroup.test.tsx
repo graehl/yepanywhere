@@ -56,6 +56,33 @@ function projectionFor(items: ToolCallItem[]) {
   return segment.projection;
 }
 
+const threeReadActions: NonNullable<ToolCallItem["displayActions"]> = [
+  {
+    kind: "read",
+    path: "src/session.ts",
+    absolutePath: `${projectRoot}/src/session.ts`,
+    name: "session.ts",
+    startLine: 1,
+    endLine: 100,
+  },
+  {
+    kind: "read",
+    path: "src/session.ts",
+    absolutePath: `${projectRoot}/src/session.ts`,
+    name: "session.ts",
+    startLine: 101,
+    endLine: 200,
+  },
+  {
+    kind: "read",
+    path: "src/driver.ts",
+    absolutePath: `${projectRoot}/src/driver.ts`,
+    name: "driver.ts",
+    startLine: 1,
+    endLine: 80,
+  },
+];
+
 describe("ExploredToolGroup", () => {
   afterEach(() => {
     cleanup();
@@ -347,32 +374,7 @@ describe("ExploredToolGroup", () => {
           },
         },
       ),
-      displayActions: [
-        {
-          kind: "read" as const,
-          path: "src/session.ts",
-          absolutePath: `${projectRoot}/src/session.ts`,
-          name: "session.ts",
-          startLine: 1,
-          endLine: 100,
-        },
-        {
-          kind: "read" as const,
-          path: "src/session.ts",
-          absolutePath: `${projectRoot}/src/session.ts`,
-          name: "session.ts",
-          startLine: 101,
-          endLine: 200,
-        },
-        {
-          kind: "read" as const,
-          path: "src/driver.ts",
-          absolutePath: `${projectRoot}/src/driver.ts`,
-          name: "driver.ts",
-          startLine: 1,
-          endLine: 80,
-        },
-      ],
+      displayActions: threeReadActions,
     } satisfies ToolCallItem;
     const projection = projectionFor([compound]);
 
@@ -400,14 +402,193 @@ describe("ExploredToolGroup", () => {
     expect(screen.getByText("lines 1-80")).toBeDefined();
     expect(screen.queryByText(command)).toBeNull();
     expect(screen.queryByText("combined output once")).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show command details" }),
+    const semanticEntries = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-exploration-entry-id]"),
     );
+    expect(semanticEntries).toHaveLength(3);
+    expect(semanticEntries.every((entry) => !entry.dataset.renderId)).toBe(
+      true,
+    );
+    expect(screen.getAllByRole("button", { name: "Copy path" })).toHaveLength(
+      3,
+    );
+    expect(
+      screen.getByRole("link", { name: "lines 1-100" }).getAttribute("href"),
+    ).toContain("line=1&lineEnd=100&view=range");
+
+    const groupHeader = container.querySelector<HTMLButtonElement>(
+      ".explored-group-header",
+    );
+    const groupBody = container.querySelector<HTMLElement>(
+      ".explored-group-body",
+    );
+    expect(groupHeader?.getAttribute("aria-controls")).toBe(groupBody?.id);
+    expect(groupHeader?.getAttribute("aria-expanded")).toBe("true");
+
+    const detailsButton = screen.getByRole("button", {
+      name: "Show command details",
+    });
+    fireEvent.click(detailsButton);
 
     expect(screen.getByText("Ran")).toBeDefined();
     expect(screen.getAllByText(command)).toHaveLength(1);
     expect(screen.getAllByText("combined output once")).toHaveLength(1);
     expect(container.querySelectorAll(".explored-parent-raw")).toHaveLength(1);
+    expect(detailsButton.getAttribute("aria-controls")).toBe(
+      container.querySelector<HTMLElement>(".explored-parent-raw")?.id,
+    );
+  });
+
+  it("keeps duplicate filenames and long search scopes distinguishable", () => {
+    const longQuery =
+      "a deliberately long search query that must stay available when clipped";
+    const actions: NonNullable<ToolCallItem["displayActions"]> = [
+      {
+        kind: "read",
+        path: "packages/client/src/features/deeply/nested/index.ts",
+        name: "index.ts",
+        startLine: 1,
+        endLine: 40,
+      },
+      {
+        kind: "read",
+        path: "packages/server/src/features/deeply/nested/index.ts",
+        name: "index.ts",
+        startLine: 41,
+        endLine: 80,
+      },
+      {
+        kind: "search",
+        query: longQuery,
+        path: "packages/client/src/features/deeply/nested",
+      },
+    ];
+    const compound = {
+      ...toolCall("call-long-paths", "Bash", { command: "safe reads" }),
+      displayActions: actions,
+    } satisfies ToolCallItem;
+
+    const { container } = render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId={projectId}
+          projectPath={projectRoot}
+          sessionId="session-1"
+        >
+          <ExploredToolGroup
+            id="explored-long-paths"
+            projection={projectionFor([compound])}
+          />
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    expect(
+      screen.getByText("packages/client/src/features/deeply/nested/index.ts"),
+    ).toBeDefined();
+    expect(
+      screen.getByText("packages/server/src/features/deeply/nested/index.ts"),
+    ).toBeDefined();
+    expect(
+      screen
+        .getByText(longQuery)
+        .closest(".explored-entry-semantic-summary")
+        ?.getAttribute("title"),
+    ).toContain(longQuery);
+    expect(
+      container
+        .querySelector(".explored-entry-semantic-summary")
+        ?.getAttribute("title"),
+    ).toContain("packages/client/src/features/deeply/nested/index.ts");
+    expect(
+      Array.from(
+        container.querySelectorAll<HTMLElement>(".explored-entry-tool"),
+        (entry) => entry.textContent,
+      ),
+    ).toEqual(["Read", "Read", "Search"]);
+  });
+
+  it("preserves collapse and raw-detail state while a live parent settles to rollout", () => {
+    const command = "sed -n '1,100p' src/session.ts";
+    const pending = {
+      ...toolCall(
+        "call-stable-parent",
+        "Bash",
+        { command, cwd: projectRoot },
+        "2026-05-28T00:00:00.000Z",
+      ),
+      displayActions: threeReadActions,
+    } satisfies ToolCallItem;
+    pending.sourceMessages[0]!._source = "sdk";
+    const durable = {
+      ...toolCall(
+        "call-stable-parent",
+        "Bash",
+        { command, cwd: projectRoot },
+        "2026-05-28T00:00:00.000Z",
+        { content: "durable combined output", isError: false },
+      ),
+      displayActions: threeReadActions,
+    } satisfies ToolCallItem;
+    durable.sourceMessages[0]!._source = "jsonl";
+
+    const renderGroup = (item: ToolCallItem) => {
+      const projection = projectionFor([item]);
+      return (
+        <I18nProvider>
+          <SessionMetadataProvider
+            projectId={projectId}
+            projectPath={projectRoot}
+            sessionId="session-1"
+          >
+            <ExploredToolGroup
+              id={projection.id}
+              projection={projection}
+              sessionProvider="codex"
+            />
+          </SessionMetadataProvider>
+        </I18nProvider>
+      );
+    };
+
+    const { container, rerender } = render(renderGroup(pending));
+    const group = container.querySelector<HTMLElement>(
+      '[data-render-type="explored"]',
+    );
+    expect(screen.getByText("Exploring")).toBeDefined();
+    expect(group?.dataset.renderId).toBe(
+      "explored-call-stable-parent-call-stable-parent",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show command details" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Hide command details" }),
+    ).toBeDefined();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse explored tools" }),
+    );
+    expect(
+      group?.style.getPropertyValue("--explored-group-intrinsic-height"),
+    ).toBe("26px");
+
+    rerender(renderGroup(durable));
+    expect(screen.getByText("Explored")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Expand explored tools" }),
+    ).toBeDefined();
+    expect(container.querySelector(".explored-group-body")).toBeNull();
+    expect(group?.dataset.renderId).toBe(
+      "explored-call-stable-parent-call-stable-parent",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand explored tools" }),
+    );
+    expect(screen.getByText("durable combined output")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Hide command details" }),
+    ).toBeDefined();
   });
 });

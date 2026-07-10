@@ -570,6 +570,7 @@ button.tool-summary {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
@@ -583,11 +584,47 @@ button.tool-summary {
   white-space: nowrap;
 }
 
-.explored-entry-range,
-.explored-entry-scope {
+.explored-entry-path,
+.explored-entry-query {
+  flex: 1 1 auto;
+}
+
+.explored-entry-range {
   flex-shrink: 0;
   color: var(--text-dimmed, #666);
   font-size: var(--font-size-sm);
+}
+
+.explored-entry-scope {
+  flex: 0 1 45%;
+  color: var(--text-dimmed, #666);
+  font-size: var(--font-size-sm);
+}
+
+.explored-entry-path,
+.explored-entry-scope {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.explored-entry-path .file-path-link,
+.explored-entry-scope .file-path-link {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.explored-entry-path .file-path-link-name,
+.explored-entry-scope .file-path-link-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.explored-entry-range .file-path-link {
+  color: inherit;
+  font-family: inherit;
+  text-decoration-color: transparent;
 }
 
 .explored-parent-details {
@@ -658,6 +695,10 @@ button.tool-summary {
 
   .explored-entry-semantic-summary {
     gap: 0.35rem;
+  }
+
+  .explored-entry-scope {
+    max-width: 38%;
   }
 
   .explored-parent-details {

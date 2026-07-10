@@ -2,10 +2,10 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: In progress. Foundation through visible semantic exploration rendering
-landed on 2026-07-10. Classified compound reads now use the same compact
-`Exploring` / `Explored` surface as canonical exploration calls; interaction,
-search, layout hardening, and closeout verification remain.
+Status: In progress. Foundation through interaction and layout hardening landed
+on 2026-07-10. Classified compound reads use the same compact `Exploring` /
+`Explored` surface as canonical exploration calls; closeout and corpus/manual
+verification remain.
 
 ## Contract And Document Ownership
 
@@ -103,7 +103,8 @@ ordinary `Ran` / `Exec` renderer.
 | S2 | Landed 2026-07-10 | `8ec08674` | Added provider-neutral `ToolDisplayAction`; independently derived actions from live command/cwd and persisted GPT-5.5/GPT-5.6 calls; propagated them through tool blocks, reconnect replacement, results, and client preprocessing; made no visible rendering change. |
 | S3 | Landed 2026-07-10 | `78c92691` | Captured the real code-mode identity mismatch; added ephemeral turn/origin correlation metadata and a standalone exact client reconciler; adopted the rollout `call_*` identity for one-to-one matches while leaving ambiguous multi-call orchestration untouched. |
 | S4 | Landed 2026-07-10 | `3ce47d02` | Added the standalone provider-neutral exploration projection; modeled ordered entries under result-owning parents; retained canonical group IDs and the existing visible adapter; covered one-to-many, many-to-one, mutation/time boundaries, duplicates, and lifecycle stability. |
-| S5 | Landed 2026-07-10 | This commit | Routed client segmentation and `ExploredToolGroup` through the projection; rendered pending/settled semantic rows; retained one expandable raw parent and one combined result; added narrow-width layout and i18n-ready copy. |
+| S5 | Landed 2026-07-10 | `61799081` | Routed client segmentation and `ExploredToolGroup` through the projection; rendered pending/settled semantic rows; retained one expandable raw parent and one combined result; added narrow-width layout and i18n-ready copy. |
+| S6 | Landed 2026-07-10 | This commit | Added standalone semantic presentation/search helpers; indexed compound entries without synthetic transcript rows; preserved collapse/raw-detail state through settlement; added file/range interactions, accessibility relationships, responsive clipping, and bounded opt-in intrinsic-height estimates. |
 
 ### Recorded Verification For Landed Slices
 
@@ -130,13 +131,17 @@ ordinary `Ran` / `Exec` renderer.
   suite passed; typecheck and lint passed; `pnpm console:scan` stayed at its
   existing budget with `+0`. Interactive browser inspection remained a manual
   gate because no preview browser was attached to the implementation session.
+- S6: 92 focused projection, presentation, explored-component, transcript
+  search, navigation, and scroll tests passed without runtime warnings;
+  typecheck and lint passed; `pnpm console:scan` stayed at its existing budget
+  with `+0`. The user explicitly waived browser/screenshot inspection for this
+  slice, so before/after reload inspection remains in S7.
 
 ## Remaining Slice Ledger
 
 | Slice | Status | Target outcome | Visible change |
 |---|---|---|---|
-| S6 | Next / not started | Stabilize search, navigation, collapse identity, predictive height, mobile layout, and live/reload reconciliation. | Polish and jank prevention. |
-| S7 | Not started | Run corpus/schema/manual verification, update docs, and close or explicitly defer follow-ups. | No new behavior beyond fixes found by verification. |
+| S7 | Next / not started | Run corpus/schema/manual verification, update docs, and close or explicitly defer follow-ups. | No new behavior beyond fixes found by verification. |
 
 ## Slice S3: Parent Identity And Reconciliation Preflight
 
@@ -336,6 +341,29 @@ visible improvement.
 - Manual before/after-reload inspection is stable on desktop and phone-width
   layouts.
 
+### Landed Interaction Boundary
+
+`sessionDetail/explorationPresentation.ts` now owns semantic entry labels,
+search text, compact summaries, and the bounded explored-row height estimate.
+Full-session search creates one anchor per semantic entry, counts entries rather
+than result-owning parents, and indexes a multi-action parent's raw command and
+combined result only once on the group anchor. Entry anchors target the stable
+group row; their opaque ids and `data-exploration-entry-id` attributes are not
+transcript message ids and are ignored by route scroll snapshots.
+
+Projected read paths and ranges use the existing session file-link and copy
+behavior. Long paths, duplicate filenames, repeated ranges, and long search
+queries retain their full accessible/title text while flex clipping keeps the
+default row compact. Group and raw-detail buttons expose `aria-controls` and
+`aria-expanded` relationships.
+
+A lifecycle component fixture replaces an SDK-sourced pending parent with its
+JSONL-sourced completed counterpart using the same reconciled parent id. Group
+identity, collapsed state, raw-detail expansion, entry order, and one combined
+result owner remain stable. The explored-row intrinsic estimate is used only by
+the existing default-off offscreen-rendering experiment; S6 does not re-enable
+`content-visibility` or introduce another virtualization default.
+
 ## Slice S7: Verification And Closeout
 
 ### Required Gates
@@ -409,6 +437,19 @@ GPT-5.5-style explored runs keep their existing renderer-specific summaries.
 
 This is first-party-compatible Codex behavior rather than a new YA-visible
 concept, so it uses the existing default explored surface instead of adding a
-configuration option. S6 remains responsible for search-entry indexing,
-navigation/collapse stability, predictive height, link behavior, and manual
-desktop/mobile reload inspection.
+configuration option. S6 subsequently added search-entry indexing,
+navigation/collapse stability, predictive height, and link behavior.
+
+### 2026-07-10 — Interaction And Layout Hardening
+
+S6 made the semantic entries independently searchable while keeping navigation
+and route-scroll identity anchored to real result-owning parents. It preserved
+group and raw-detail state through a live-to-rollout lifecycle fixture, reused
+the existing file/range/copy interactions, added explicit accessibility
+relationships, and hardened long-content clipping at narrow widths.
+
+The optional offscreen-rendering experiment receives a bounded explored-row
+height estimate, but remains default-off under the transcript virtualization
+decision. S7 remains responsible for corpus/schema gates, the user-waived
+manual desktop/mobile reload check, final documentation status, and explicit
+follow-up disposition.

@@ -179,6 +179,10 @@ and one code-mode parent with several actions share the same explored model.
 `buildAssistantRenderSegments` and `ExploredToolGroup` consume that projection;
 the component shows semantic rows by default and nests the unchanged parent
 tool renderer only when raw command details are requested.
+`sessionDetail/explorationPresentation.ts` owns the next semantic presentation
+step: entry labels, compact/search text, and explored-row height estimates.
+Search entry ids remain presentation anchors targeting the stable group; only
+real parent ids participate in transcript row and scroll-snapshot identity.
 
 ### The uniform diff augment
 

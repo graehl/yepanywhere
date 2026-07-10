@@ -1,23 +1,28 @@
-import { memo, useRef, useState } from "react";
+import { type CSSProperties, memo, useId, useRef, useState } from "react";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
 import { useI18n } from "../../i18n";
 import { MESSAGE_STALE_THRESHOLD_MS } from "../../lib/messageAge";
 import {
   getExplorationKind,
-  getExploredEntryDisplayLabel,
   getExploredEntryFallbackSummary,
   getLatestRenderItemsTimestampMs,
 } from "../../lib/sessionDetail/renderSelectors";
+import {
+  estimateExplorationGroupHeightPx,
+  getExplorationEntryDisplayLabel,
+  isCanonicalExplorationEntry,
+} from "../../lib/sessionDetail/explorationPresentation";
 import type {
   ExplorationEntry,
   ExplorationParent,
   ExplorationProjection,
 } from "../../lib/sessionDetail/explorationProjection";
-import { getPathBasename, makeDisplayPath } from "../../lib/text";
+import { makeDisplayPath } from "../../lib/text";
 import type { ToolCallItem } from "../../types/renderItems";
 import { MessageAge } from "../MessageAge";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
+import { SessionFilePathLink } from "../SessionFilePathLink";
 import { getToolSummary } from "../tools/summaries";
 import { ToolCallRow } from "./ToolCallRow";
 
@@ -91,31 +96,8 @@ function renderEntrySummary(
   return getExploredEntryFallbackSummary(item, projectPath);
 }
 
-function projectedEntryLabel(
-  parent: ExplorationParent,
-  entry: ExplorationEntry,
-): string {
-  if (
-    parent.entries.length === 1 &&
-    getExplorationKind(parent.item.toolName) === entry.kind
-  ) {
-    return getExploredEntryDisplayLabel(parent.item.toolName);
-  }
-  switch (entry.kind) {
-    case "read":
-      return "Read";
-    case "search":
-      return "Search";
-    case "list":
-      return "List";
-  }
-}
-
-function projectedEntryRenderId(
-  parent: ExplorationParent,
-  entry: ExplorationEntry,
-): string {
-  return parent.entries.length === 1 ? parent.item.id : entry.id;
+function projectedEntryRenderId(parent: ExplorationParent): string | undefined {
+  return parent.entries.length === 1 ? parent.item.id : undefined;
 }
 
 function parentNeedsRawDetails(parent: ExplorationParent): boolean {
@@ -136,6 +118,7 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
   const [expandedParentIds, setExpandedParentIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const accessibilityId = useId();
   const { t } = useI18n();
   const sessionMetadata = useOptionalSessionMetadata();
   const projectPath = sessionMetadata?.projectPath ?? null;
@@ -167,6 +150,18 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
   const toggleLabel = expanded
     ? t("explorationCollapse")
     : t("explorationExpand");
+  const rawParents = projection.parents.filter(parentNeedsRawDetails);
+  const bodyId = `${accessibilityId}-body`;
+  const intrinsicHeight = estimateExplorationGroupHeightPx({
+    detailRowCount: rawParents.length,
+    entryCount,
+    expanded,
+  });
+  const rowStyle: CSSProperties & {
+    "--explored-group-intrinsic-height": string;
+  } = {
+    "--explored-group-intrinsic-height": `${intrinsicHeight}px`,
+  };
   const toggleParentDetails = (parentId: string) => {
     setExpandedParentIds((current) => {
       const next = new Set(current);
@@ -191,6 +186,7 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
         .join(" ")}
       data-render-type="explored"
       data-render-id={id}
+      style={rowStyle}
     >
       <div className="message-render-content">
         <div className="explored-group timeline-item">
@@ -199,12 +195,15 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
             className="timeline-dot-btn"
             onClick={() => setExpanded((value) => !value)}
             aria-label={toggleLabel}
+            aria-controls={bodyId}
+            aria-expanded={expanded}
             title={toggleLabel}
           />
           <button
             type="button"
             className="explored-group-header"
             onClick={() => setExpanded((value) => !value)}
+            aria-controls={bodyId}
             aria-expanded={expanded}
           >
             <span className="explored-group-title">{title}</span>
@@ -214,14 +213,15 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
             </span>
           </button>
           {expanded && (
-            <div className="explored-group-body" role="list">
+            <div className="explored-group-body" id={bodyId} role="list">
               {projection.parents.flatMap((parent) =>
                 parent.entries.map((entry) => (
                   <div
                     key={entry.id}
                     className={`explored-entry status-${parent.item.status}`}
-                    data-render-id={projectedEntryRenderId(parent, entry)}
+                    data-render-id={projectedEntryRenderId(parent)}
                     data-exploration-entry-id={entry.id}
+                    data-exploration-kind={entry.kind}
                     data-exploration-parent-id={entry.parentId}
                     data-render-type={parent.item.type}
                     role="listitem"
@@ -230,11 +230,10 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
                       {statusGlyph(parent.item.status)}
                     </span>
                     <span className="explored-entry-tool">
-                      {projectedEntryLabel(parent, entry)}
+                      {getExplorationEntryDisplayLabel(parent, entry)}
                     </span>
                     <span className="explored-entry-summary">
-                      {parent.entries.length === 1 &&
-                      getExplorationKind(parent.item.toolName) !== null
+                      {isCanonicalExplorationEntry(parent, entry)
                         ? renderEntrySummary(
                             parent.item,
                             sessionProvider,
@@ -245,44 +244,44 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
                   </div>
                 )),
               )}
-              {projection.parents
-                .filter(parentNeedsRawDetails)
-                .map((parent) => {
-                  const parentExpanded = expandedParentIds.has(parent.item.id);
-                  const detailsLabel = parentExpanded
-                    ? t("explorationHideCommandDetails")
-                    : t("explorationShowCommandDetails");
-                  return (
-                    <div
-                      key={`details-${parent.item.id}`}
-                      className="explored-parent-details"
+              {rawParents.map((parent, parentIndex) => {
+                const parentExpanded = expandedParentIds.has(parent.item.id);
+                const detailsLabel = parentExpanded
+                  ? t("explorationHideCommandDetails")
+                  : t("explorationShowCommandDetails");
+                const rawDetailsId = `${accessibilityId}-raw-${parentIndex}`;
+                return (
+                  <div
+                    key={`details-${parent.item.id}`}
+                    className="explored-parent-details"
+                  >
+                    <button
+                      type="button"
+                      className="explored-parent-details-toggle"
+                      onClick={() => toggleParentDetails(parent.item.id)}
+                      aria-controls={rawDetailsId}
+                      aria-expanded={parentExpanded}
                     >
-                      <button
-                        type="button"
-                        className="explored-parent-details-toggle"
-                        onClick={() => toggleParentDetails(parent.item.id)}
-                        aria-expanded={parentExpanded}
-                      >
-                        <span className="expand-chevron" aria-hidden="true">
-                          {parentExpanded ? "▾" : "▸"}
-                        </span>
-                        {detailsLabel}
-                      </button>
-                      {parentExpanded && (
-                        <div className="explored-parent-raw">
-                          <ToolCallRow
-                            id={parent.item.id}
-                            toolName={parent.item.toolName}
-                            toolInput={parent.item.toolInput}
-                            toolResult={parent.item.toolResult}
-                            status={parent.item.status}
-                            sessionProvider={sessionProvider}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      <span className="expand-chevron" aria-hidden="true">
+                        {parentExpanded ? "▾" : "▸"}
+                      </span>
+                      {detailsLabel}
+                    </button>
+                    {parentExpanded && (
+                      <div className="explored-parent-raw" id={rawDetailsId}>
+                        <ToolCallRow
+                          id={parent.item.id}
+                          toolName={parent.item.toolName}
+                          toolInput={parent.item.toolInput}
+                          toolResult={parent.item.toolResult}
+                          status={parent.item.status}
+                          sessionProvider={sessionProvider}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -301,10 +300,10 @@ function renderProjectedEntrySummary(
 ) {
   if (entry.kind === "read") {
     const sourcePath = entry.absolutePath ?? entry.path ?? entry.name ?? "";
-    const displayPath = sourcePath
-      ? makeDisplayPath(sourcePath, projectPath)
-      : "";
-    const name = entry.name || getPathBasename(displayPath);
+    const displaySource = entry.path ?? sourcePath;
+    const displayPath = displaySource
+      ? makeDisplayPath(displaySource, projectPath)
+      : (entry.name ?? "file");
     const range =
       entry.startLine !== undefined && entry.endLine !== undefined
         ? t("explorationLineRange", {
@@ -319,8 +318,28 @@ function renderProjectedEntrySummary(
         className="explored-entry-semantic-summary"
         title={[displayPath, range].filter(Boolean).join(" · ")}
       >
-        <span className="explored-entry-path">{name || displayPath}</span>
-        {range && <span className="explored-entry-range">{range}</span>}
+        <span className="explored-entry-path">
+          <SessionFilePathLink
+            displayPath={displayPath}
+            filePath={sourcePath}
+            lineEnd={entry.endLine}
+            lineNumber={entry.startLine}
+            showLineSuffix={false}
+          />
+        </span>
+        {range && (
+          <span className="explored-entry-range">
+            <SessionFilePathLink
+              displayPath={range}
+              filePath={sourcePath}
+              lineEnd={entry.endLine}
+              lineNumber={entry.startLine}
+              showCopyButton={false}
+              showLineSuffix={false}
+              viewMode="range"
+            />
+          </span>
+        )}
       </span>
     );
   }
@@ -333,7 +352,16 @@ function renderProjectedEntrySummary(
         title={[entry.query, scope].filter(Boolean).join(" · ")}
       >
         <span className="explored-entry-query">{entry.query}</span>
-        {scope && <span className="explored-entry-scope">{scope}</span>}
+        {scope && (
+          <span className="explored-entry-scope">
+            <SessionFilePathLink
+              displayPath={scope}
+              filePath={entry.path ?? scope}
+              showCopyButton={false}
+              showLineSuffix={false}
+            />
+          </span>
+        )}
       </span>
     );
   }

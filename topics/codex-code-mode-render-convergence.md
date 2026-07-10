@@ -8,8 +8,9 @@ Topic: codex-code-mode-render-convergence
 
 Status: in progress. Extraction, parity propagation, bounded identity
 reconciliation, the provider-neutral exploration projection, and compact
-multi-action rendering are implemented as of 2026-07-10. Interaction/layout
-hardening and closeout verification remain.
+multi-action rendering are implemented as of 2026-07-10. Semantic search,
+interaction, and layout hardening are also implemented; closeout verification
+remains.
 
 Canonical slice status, landed commit history, verification evidence, and
 deferred follow-ups are tracked in
@@ -34,8 +35,9 @@ Implementation progress:
   owned by their original result-bearing parents.
 - [x] Render one-to-many actions within `Exploring` / `Explored` groups while
   retaining one raw parent and one combined result.
-- [ ] Harden search, navigation, collapse identity, predictive height, and
-  live/reload layout stability.
+- [x] Harden semantic search, navigation identity, collapse/raw-detail state,
+  file/range interactions, responsive clipping, and opt-in intrinsic height.
+- [ ] Complete corpus/schema and manual before/after-reload verification.
 
 The in-memory boundary is the provider-neutral `ToolDisplayAction` contract in
 `packages/shared/src/tool-display-actions.ts`. Codex normalization attaches its

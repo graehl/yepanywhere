@@ -1,18 +1,20 @@
 import { messageContentToPlainText } from "./sessionMessageText";
+import { isLegacyCodexSetupText } from "./codexLegacySetup";
 
 export const PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH = 700;
 
 export function normalizePublicShareInitialPrompt(
   value: string,
+  sources: ReadonlyArray<{
+    _source?: unknown;
+    codexUserTurnProvenance?: unknown;
+  }> = [],
 ): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
   }
-  if (
-    trimmed.startsWith("# AGENTS.md instructions") ||
-    trimmed.startsWith("<environment_context>")
-  ) {
+  if (isLegacyCodexSetupText(trimmed, sources)) {
     return null;
   }
   const normalized = trimmed.replace(/\s+/g, " ");
@@ -27,6 +29,8 @@ export function getPublicShareInitialPrompt(messages: unknown[]): string | null 
       continue;
     }
     const entry = message as {
+      _source?: unknown;
+      codexUserTurnProvenance?: unknown;
       content?: unknown;
       message?: { content?: unknown };
       type?: unknown;
@@ -37,7 +41,7 @@ export function getPublicShareInitialPrompt(messages: unknown[]): string | null 
     const content =
       messageContentToPlainText(entry.content) ||
       messageContentToPlainText(entry.message?.content);
-    const preview = normalizePublicShareInitialPrompt(content);
+    const preview = normalizePublicShareInitialPrompt(content, [entry]);
     if (preview) {
       return preview;
     }

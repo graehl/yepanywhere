@@ -1453,7 +1453,12 @@ export function createApp(options: AppOptions): AppResult {
       sessionId: string,
     ): Promise<Pick<
       AppSession,
-      "customTitle" | "provider" | "title" | "updatedAt"
+      | "customTitle"
+      | "fullTitle"
+      | "initialPrompt"
+      | "provider"
+      | "title"
+      | "updatedAt"
     > | null> => {
       const response = await app.fetch(
         new Request(
@@ -1468,7 +1473,12 @@ export function createApp(options: AppOptions): AppResult {
       const body = (await response.json()) as {
         session?: Pick<
           AppSession,
-          "customTitle" | "provider" | "title" | "updatedAt"
+          | "customTitle"
+          | "fullTitle"
+          | "initialPrompt"
+          | "provider"
+          | "title"
+          | "updatedAt"
         >;
       };
       return body.session ?? null;

@@ -133,6 +133,13 @@ gradually without a proactive global cache rebuild. See
 [`codex-user-turn-provenance.md`](codex-user-turn-provenance.md) for upstream
 source receipts and the local-corpus audit.
 
+The downstream cleanup now carries `codexUserTurnProvenance` on normalized
+Codex user turns. Client setup recognition is only a compatibility fallback for
+unprovenanced historical rows, is centralized in `codexLegacySetup.ts`, and
+requires complete marked setup blocks. Explicitly paired prompts and live SDK
+echoes always win over text resemblance, including a human-authored literal
+`<environment_context>...</environment_context>` prompt.
+
 Remaining Part 2 scope: broader resume-from-full init text can still render as
 normal turns. It predates the compaction work and needs its own classification,
 not a local CSS hide.

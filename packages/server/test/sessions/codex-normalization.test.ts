@@ -1343,6 +1343,9 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.message?.role).toBe("user");
+    expect(result.messages[0]?.codexUserTurnProvenance).toBe(
+      "legacy-response",
+    );
     const content = result.messages[0]?.message?.content;
     expect(Array.isArray(content) ? content[0] : content).toMatchObject({
       type: "text",
@@ -1390,6 +1393,9 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.message?.role).toBe("user");
+    expect(result.messages[0]?.codexUserTurnProvenance).toBe(
+      "legacy-response",
+    );
     const content = result.messages[0]?.message?.content;
     expect(Array.isArray(content) ? content[0] : content).toMatchObject({
       type: "text",
@@ -1436,6 +1442,7 @@ describe("Codex Normalization", () => {
 
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.codexUserTurnProvenance).toBe("paired");
     expect(result.messages[0]?.message?.content).toEqual([
       { type: "text", text: actualPrompt },
     ]);
@@ -1463,6 +1470,7 @@ describe("Codex Normalization", () => {
 
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.codexUserTurnProvenance).toBe("paired");
     expect(result.messages[0]?.message?.content).toEqual([
       { type: "text", text: actualPrompt },
     ]);

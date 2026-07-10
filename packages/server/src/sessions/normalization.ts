@@ -8,6 +8,7 @@ import type {
   CodexReasoningPayload,
   CodexResponseItemEntry,
   CodexSessionEntry,
+  CodexUserTurnMessageProvenance,
   CodexWebSearchCallPayload,
   GeminiAssistantMessage,
   GeminiSessionMessage,
@@ -613,7 +614,16 @@ function convertCodexResponseItem(
       ) {
         return null;
       }
-      return convertCodexMessagePayload(payload, uuid, entry.timestamp);
+      return convertCodexMessagePayload(
+        payload,
+        uuid,
+        entry.timestamp,
+        userResponseKind === "user-authored"
+          ? "paired"
+          : userResponseKind === "legacy-unknown"
+            ? "legacy-response"
+            : undefined,
+      );
 
     case "reasoning":
       return convertCodexReasoningPayload(payload, uuid, entry.timestamp);
@@ -706,6 +716,10 @@ function convertCodexMessagePayload(
   payload: CodexMessagePayload,
   uuid: string,
   timestamp: string,
+  userTurnProvenance?: Exclude<
+    CodexUserTurnMessageProvenance,
+    "event-only"
+  >,
 ): Message {
   const content: ContentBlock[] = [];
 
@@ -734,6 +748,9 @@ function convertCodexMessagePayload(
         role: payload.role,
         content: [],
       },
+      ...(userTurnProvenance && {
+        codexUserTurnProvenance: userTurnProvenance,
+      }),
       timestamp,
     };
   }
@@ -745,6 +762,9 @@ function convertCodexMessagePayload(
       role: payload.role,
       content,
     },
+    ...(userTurnProvenance && {
+      codexUserTurnProvenance: userTurnProvenance,
+    }),
     timestamp,
   };
 }
@@ -1154,6 +1174,7 @@ function convertCodexEventMsg(
       return {
         uuid,
         type: "user",
+        codexUserTurnProvenance: "event-only",
         message: {
           role: "user",
           content: payload.message,

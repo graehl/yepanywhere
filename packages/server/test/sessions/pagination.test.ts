@@ -411,6 +411,12 @@ describe("sliceAtUserTurnBoundary", () => {
       },
       {
         type: "user",
+        uuid: "provider-context",
+        isSynthetic: true,
+        message: { role: "user", content: "Provider-injected context" },
+      },
+      {
+        type: "user",
         uuid: "caveat",
         isMeta: true,
         message: {

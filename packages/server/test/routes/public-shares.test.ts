@@ -424,6 +424,50 @@ describe("public share owner routes", () => {
     ).toBe(1);
   });
 
+  it("uses normalized user-turn provenance for context-shaped share prompts", async () => {
+    const literalPrompt =
+      "<environment_context>\nI typed this myself\n</environment_context>";
+    const session = makeSession({
+      messages: [
+        {
+          type: "user",
+          uuid: "message-1",
+          codexUserTurnProvenance: "paired",
+          message: { role: "user", content: literalPrompt },
+          timestamp: "2026-05-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => session),
+      getRelayConfig: () => ({
+        url: DEFAULT_RELAY_URL,
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+    const display = new URLSearchParams(new URL(body.url).hash.slice(1));
+
+    expect(response.status).toBe(200);
+    expect(display.get("q")).toBe(
+      "<environment_context> I typed this myself </environment_context>",
+    );
+  });
+
   it("creates new shares with a configured custom YA client URL", async () => {
     const app = createPublicShareRoutes({
       publicShareService: service,

@@ -556,7 +556,8 @@ describe("session detail render selectors", () => {
       {
         type: "user_prompt",
         id: "setup",
-        content: "# AGENTS.md instructions\nRead CLAUDE.md",
+        content:
+          "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>\nRead CLAUDE.md\n</INSTRUCTIONS>",
         sourceMessages: [],
       },
       {
@@ -606,7 +607,7 @@ describe("session detail render selectors", () => {
       {
         type: "user_prompt",
         id: "setup",
-        content: "<environment_context>\ncwd",
+        content: "<environment_context>\ncwd\n</environment_context>",
         sourceMessages: [],
       },
       {
@@ -1973,7 +1974,8 @@ describe("session detail render selectors", () => {
       {
         type: "user_prompt",
         id: "setup",
-        content: "# AGENTS.md instructions\nRead CLAUDE.md",
+        content:
+          "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>\nRead CLAUDE.md\n</INSTRUCTIONS>",
         sourceMessages: [],
       },
       {
@@ -1999,7 +2001,7 @@ describe("session detail render selectors", () => {
         {
           type: "user_prompt",
           id: "setup",
-          content: "<environment_context>\n cwd",
+          content: "<environment_context>\n cwd\n</environment_context>",
           sourceMessages: [],
         },
         {

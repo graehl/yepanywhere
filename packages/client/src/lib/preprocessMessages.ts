@@ -15,6 +15,10 @@ import {
   parseCommandTurn,
   parseLocalCommandStdout,
 } from "./commandTurn";
+import {
+  isLegacyCodexEnvironmentContextText,
+  isLegacyCodexSetupText,
+} from "./codexLegacySetup";
 import { getMessageId } from "./mergeMessages";
 import {
   isTaskNotificationMessage,
@@ -123,14 +127,6 @@ function findLastUserPromptMessageIndex(messages: Message[]): number {
   }
   return 0;
 }
-
-const SESSION_SETUP_PREFIXES = [
-  "# AGENTS.md instructions",
-  "<environment_context>",
-];
-
-const STARTUP_INSTRUCTIONS_SETUP_RE =
-  /^(?:<recommended_plugins>[\s\S]*?<\/recommended_plugins>\s*)?# AGENTS\.md instructions/u;
 
 const RESUME_ENVIRONMENT_CONTEXT_MAX_GAP_MS = 5_000;
 
@@ -451,16 +447,14 @@ function isDisplayableThinking(
 
 function isSessionSetupPrompt(item: UserPromptItem): boolean {
   const text = getPromptText(item.content).trimStart();
-  return (
-    STARTUP_INSTRUCTIONS_SETUP_RE.test(text) ||
-    SESSION_SETUP_PREFIXES.some((prefix) => text.startsWith(prefix))
-  );
+  return isLegacyCodexSetupText(text, item.sourceMessages);
 }
 
 function isEnvironmentContextSetupPrompt(item: UserPromptItem): boolean {
-  return getPromptText(item.content)
-    .trimStart()
-    .startsWith("<environment_context>");
+  return isLegacyCodexEnvironmentContextText(
+    getPromptText(item.content),
+    item.sourceMessages,
+  );
 }
 
 function itemTimestampMs(item: RenderItem): number | null {

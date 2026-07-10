@@ -43,6 +43,7 @@ interface AuditTotals {
   visibleContextResponses: number;
   legacyUnknownResponses: number;
   normalizedUserTurns: number;
+  normalizedProvenancedUserTurns: number;
 }
 
 interface SessionMeta {
@@ -124,7 +125,7 @@ function parseRollout(filePath: string): {
 
 function getSessionMeta(entries: readonly CodexSessionEntry[]): SessionMeta {
   const meta = entries.find((entry) => entry.type === "session_meta");
-  if (!meta || meta.type !== "session_meta") return {};
+  if (meta?.type !== "session_meta") return {};
   return {
     id: meta.payload.id,
     cliVersion: meta.payload.cli_version,
@@ -152,24 +153,35 @@ function safeResponseCategory(entry: CodexSessionEntry): string {
   return `${blockTypes} | ${preview}`;
 }
 
-function normalizedUserTurnText(message: Message): string | null {
+interface NormalizedUserTurn {
+  provenance?: unknown;
+  text: string;
+}
+
+function normalizedUserTurn(message: Message): NormalizedUserTurn | null {
   if (message.type !== "user" || message.message?.role !== "user") {
     return null;
   }
   const content = message.message.content;
-  if (typeof content === "string") return content.trim();
-  if (!Array.isArray(content)) return "";
+  const provenance = message.codexUserTurnProvenance;
+  if (typeof content === "string") {
+    return { provenance, text: content.trim() };
+  }
+  if (!Array.isArray(content)) return { provenance, text: "" };
   if (content.some((block) => block.type === "tool_result")) return null;
-  return content
-    .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
-    .join("")
-    .trim();
+  return {
+    provenance,
+    text: content
+      .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
+      .join("")
+      .trim(),
+  };
 }
 
 function normalizeUserTurns(
   entries: CodexSessionEntry[],
   sessionId: string,
-): string[] {
+): NormalizedUserTurn[] {
   const normalized = normalizeSession({
     summary: {
       id: sessionId,
@@ -185,8 +197,8 @@ function normalizeUserTurns(
     data: { provider: "codex", session: { entries } },
   });
   return normalized.messages
-    .map(normalizedUserTurnText)
-    .filter((text): text is string => text !== null);
+    .map(normalizedUserTurn)
+    .filter((turn): turn is NormalizedUserTurn => turn !== null);
 }
 
 function main(): void {
@@ -211,6 +223,7 @@ function main(): void {
     visibleContextResponses: 0,
     legacyUnknownResponses: 0,
     normalizedUserTurns: 0,
+    normalizedProvenancedUserTurns: 0,
   };
   const unpairedCategories = new Map<string, UnpairedCategory>();
   const exceptions: string[] = [];
@@ -257,6 +270,10 @@ function main(): void {
       ...provenance.responseKinds.values(),
     ].filter((kind) => kind === "legacy-unknown").length;
     totals.normalizedUserTurns += normalizedUserTurns.length;
+    const normalizedProvenancedUserTurns = normalizedUserTurns.filter(
+      (turn) => typeof turn.provenance === "string",
+    ).length;
+    totals.normalizedProvenancedUserTurns += normalizedProvenancedUserTurns;
 
     for (const response of userResponses) {
       if (provenance.responseKinds.get(response) === "user-authored") continue;
@@ -302,6 +319,11 @@ function main(): void {
         `${filePath}: ${normalizedUserTurns.length} normalized user turns != ${classifiedUserTurns} classified turns`,
       );
     }
+    if (normalizedProvenancedUserTurns !== normalizedUserTurns.length) {
+      exceptions.push(
+        `${filePath}: ${normalizedUserTurns.length - normalizedProvenancedUserTurns} normalized user turns lack provenance`,
+      );
+    }
 
     const firstEventText = userEvents[0]?.payload.message.trim();
     const firstTurn = findFirstCodexUserTurn(entries, provenance);
@@ -319,7 +341,7 @@ function main(): void {
       requestedSession = {
         filePath,
         firstTurn: firstTurn?.text ?? null,
-        firstVisibleTurn: normalizedUserTurns[0] ?? null,
+        firstVisibleTurn: normalizedUserTurns[0]?.text ?? null,
         userTurns: classifiedUserTurns,
       };
     }
@@ -339,6 +361,9 @@ function main(): void {
   console.log(`Visible context responses: ${totals.visibleContextResponses}`);
   console.log(`Legacy/unknown responses: ${totals.legacyUnknownResponses}`);
   console.log(`Normalized user turns: ${totals.normalizedUserTurns}`);
+  console.log(
+    `Normalized provenanced user turns: ${totals.normalizedProvenancedUserTurns}`,
+  );
 
   console.log("Unpaired response categories:");
   for (const [category, aggregate] of [...unpairedCategories.entries()].sort(

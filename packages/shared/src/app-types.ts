@@ -66,6 +66,11 @@ export interface AppContentBlock {
  * - content: copied to top level from message.content
  * - role: added based on message type
  */
+export type CodexUserTurnMessageProvenance =
+  | "paired"
+  | "event-only"
+  | "legacy-response";
+
 export interface AppMessageExtensions {
   /**
    * Message identifier - copied from uuid by SessionReader.
@@ -103,6 +108,13 @@ export interface AppMessageExtensions {
    * - "jsonl": Message was read from disk (authoritative)
    */
   _source?: "sdk" | "jsonl";
+
+  /**
+   * Codex durable user-turn provenance. Present when the server classified a
+   * normalized user message from rollout lifecycle evidence or its legacy
+   * compatibility path. Clients must prefer this over setup-text heuristics.
+   */
+  codexUserTurnProvenance?: CodexUserTurnMessageProvenance;
 
   /**
    * True if this message is still being streamed (incomplete).

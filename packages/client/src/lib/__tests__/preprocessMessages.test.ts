@@ -884,7 +884,8 @@ describe("preprocessMessages", () => {
       {
         id: "msg-setup-1",
         role: "user",
-        content: "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfoo",
+        content:
+          "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfoo\n</INSTRUCTIONS>",
         timestamp: "2024-01-01T00:00:00Z",
       },
       {
@@ -909,7 +910,7 @@ describe("preprocessMessages", () => {
       type: "session_setup",
       title: "Session setup",
       prompts: [
-        "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfoo",
+        "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfoo\n</INSTRUCTIONS>",
         "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>",
       ],
     });
@@ -1038,6 +1039,24 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("preserves a context-shaped prompt with server user-turn provenance", () => {
+    const literalPrompt =
+      "<environment_context>\nI typed this myself\n</environment_context>";
+    const messages: Message[] = [
+      {
+        id: "msg-user-1",
+        type: "user",
+        codexUserTurnProvenance: "paired",
+        message: { role: "user", content: literalPrompt },
+        timestamp: "2024-01-01T00:00:00.000Z",
+      },
+    ];
+
+    expect(preprocessMessages(messages)).toMatchObject([
+      { type: "user_prompt", content: literalPrompt },
+    ]);
+  });
+
   it("collapses repeated setup prompts inserted after resume", () => {
     const messages: Message[] = [
       {
@@ -1049,7 +1068,8 @@ describe("preprocessMessages", () => {
       {
         id: "msg-setup-1",
         role: "user",
-        content: "# AGENTS.md instructions for /repo",
+        content:
+          "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>\nRules\n</INSTRUCTIONS>",
         timestamp: "2024-01-01T00:00:01Z",
       },
       {
@@ -1078,7 +1098,7 @@ describe("preprocessMessages", () => {
       type: "session_setup",
       title: "Session setup",
       prompts: [
-        "# AGENTS.md instructions for /repo",
+        "# AGENTS.md instructions for /repo\n<INSTRUCTIONS>\nRules\n</INSTRUCTIONS>",
         "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>",
       ],
     });

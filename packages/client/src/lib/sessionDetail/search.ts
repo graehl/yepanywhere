@@ -1,5 +1,6 @@
 import { getLatestMessageTimestampMs } from "../messageAge";
 import { parseUserPrompt } from "../parseUserPrompt";
+import { isLegacyCodexSetupText } from "../codexLegacySetup";
 import type { ContentBlock } from "../../types";
 import type {
   RenderItem,
@@ -126,11 +127,6 @@ export interface SearchVisibleTurnGroupsInput<
   searchReady: boolean;
   turnGroups: readonly TTurnGroup[];
 }
-
-const SESSION_SETUP_PREFIXES = [
-  "# AGENTS.md instructions",
-  "<environment_context>",
-];
 
 export function getPromptTextForCorrection(
   content: string | ContentBlock[],
@@ -369,17 +365,21 @@ export function getSearchSelectionProjection<TAnchor extends RenderNavAnchor>({
   };
 }
 
-export function isSessionSetupText(text: string): boolean {
-  const trimmed = text.trimStart();
-  return SESSION_SETUP_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+export function isSessionSetupText(
+  text: string,
+  sources: UserPromptItem["sourceMessages"] = [],
+): boolean {
+  return isLegacyCodexSetupText(text, sources);
 }
 
 export function getSearchableUserTurnPreview(item: RenderItem): string | null {
   if (item.type !== "user_prompt" || item.isSubagent) {
     return null;
   }
+  const content = getPromptTextForCorrection(item.content);
+  if (isSessionSetupText(content, item.sourceMessages)) return null;
   const preview = getUserTurnPreview(item.content);
-  return preview && !isSessionSetupText(preview) ? preview : null;
+  return preview || null;
 }
 
 export function selectLatestCorrectablePrompt(
@@ -391,7 +391,7 @@ export function selectLatestCorrectablePrompt(
       continue;
     }
     const content = getPromptTextForCorrection(item.content);
-    if (!content || isSessionSetupText(content)) {
+    if (!content || isSessionSetupText(content, item.sourceMessages)) {
       continue;
     }
     return { id: item.id, content };
@@ -511,8 +511,9 @@ export function getSystemSearchText(item: RenderItem): string {
 
 function getUserSearchAnchor(item: UserPromptItem): RenderNavAnchor | null {
   const text = getPromptTextForCorrection(item.content);
+  if (isSessionSetupText(text, item.sourceMessages)) return null;
   const preview = getSearchPreviewFallback(text);
-  if (!preview || isSessionSetupText(preview)) {
+  if (!preview) {
     return null;
   }
   return {

@@ -137,6 +137,7 @@ import {
   type PreparedComposerSubmission,
   uploadComposerAttachmentFile,
 } from "../lib/sessionComposerSubmission";
+import { isLegacyCodexSetupText } from "../lib/codexLegacySetup";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import {
   serverSupportsProjectQueue,
@@ -196,14 +197,6 @@ function messageKey(message: Message | undefined): string | undefined {
 
 function isForkAnchorMessage(message: Message | undefined): boolean {
   return message?.type === "user" || message?.type === "assistant";
-}
-
-function isSessionSetupTurnText(text: string): boolean {
-  const trimmed = text.trimStart();
-  return (
-    trimmed.startsWith("# AGENTS.md instructions") ||
-    trimmed.startsWith("<environment_context>")
-  );
 }
 
 function isMissingDeferredQueueEntryError(error: unknown): boolean {
@@ -1268,7 +1261,7 @@ function SessionPageContent({
       const firstUser = messages.find((message) => {
         if (message.type !== "user") return false;
         const text = turnContentText(message.message?.content);
-        return !isSessionSetupTurnText(text);
+        return !isLegacyCodexSetupText(text, [message]);
       });
       const firstUserId = messageKey(firstUser);
       if (!firstUserId) {

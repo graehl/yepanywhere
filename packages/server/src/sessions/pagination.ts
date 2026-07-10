@@ -211,6 +211,10 @@ function isLocalCommandTranscriptText(text: string): boolean {
 }
 
 function isSyntheticUserTurn(m: Message): boolean {
+  if ((m as { isSynthetic?: unknown }).isSynthetic === true) {
+    return true;
+  }
+
   if ((m as { isCompactSummary?: unknown }).isCompactSummary === true) {
     return true;
   }

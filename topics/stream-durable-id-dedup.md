@@ -235,13 +235,15 @@ The round-trip exists — sending `clientUserMessageId` on `turn/start`
 (`codex.ts:createTurnStartParams`) and `turn/steer` makes Codex persist it
 as the event_msg `user_message.client_id` (`references/codex`
 `core/src/session/mod.rs:3717` sets `client_id: client_user_message_id`),
-and the live echo already uses the same `message.uuid`. The blocker is the
-durable double-source: when response-item user messages exist (the norm),
-`hasCodexResponseItemUserMessages` renders the user turn from the
-**response item** (positional uuid, no `client_id`) and skips the event_msg
-that carries `client_id`. Aligning requires either correlating the two or
-flipping that gate — entangled, and low marginal value over the 2s
-backstop (the residue is only two identical steers <2s apart). Not done.
+and the live echo already uses the same `message.uuid`. The durable
+double-source is now correlated for authorship by
+`codex-user-turn-provenance.ts`: the adjacent event witnesses the turn and the
+response item remains the rich rendering payload. Normalized messages expose
+that result as `codexUserTurnProvenance`, but still use the response item's
+positional uuid because YA's checked-in event schema does not yet retain the
+paired `client_id`. Adopting that id and re-measuring the approximate backstop
+remain the deliberately separate Slice 3 in
+`topics/codex-user-turn-provenance.md`.
 
 The first user turn has one additional startup wrinkle: YA may render the
 optimistic opening turn before the Codex thread has finished startup and before

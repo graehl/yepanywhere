@@ -328,6 +328,7 @@ export type {
   AppContentBlock,
   // Message extensions
   AppMessageExtensions,
+  CodexUserTurnMessageProvenance,
   AppUserMessage,
   AppAssistantMessage,
   AppSystemMessage,

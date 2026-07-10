@@ -5,7 +5,7 @@
 > Codex's persisted turn lifecycle and retain the paired response item only as
 > the richer rendering payload.
 
-Status: Slice 1 landed 2026-07-10; Slices 2-4 remain planned.
+Status: Slices 1-2 landed 2026-07-10; Slices 3-4 remain planned.
 
 Topic: codex-user-turn-provenance
 
@@ -348,18 +348,19 @@ corpus reported:
 
 | Check | Result |
 | --- | ---: |
-| Plain rollouts parsed | 1,372 |
+| Plain rollouts parsed | 1,374 |
 | Compressed rollouts skipped | 0 |
-| Parsed entries | 1,905,497 |
+| Parsed entries | 1,907,317 |
 | Malformed lines | 0 |
-| User-message events | 13,287 |
-| Paired/authored responses | 13,287 |
-| Hidden provider-context responses | 3,284 |
+| User-message events | 13,300 |
+| Paired/authored responses | 13,300 |
+| Hidden provider-context responses | 3,288 |
 | Legacy/unknown responses | 0 |
-| Normalized visible user turns | 13,287 |
+| Normalized visible user turns | 13,300 |
+| Normalized turns carrying provenance | 13,300 |
 | Exceptions | 0 |
 
-The reported session had seven classified user turns. Both its first classified
+The reported session had eight classified user turns. Both its first classified
 turn and its first normalized visible user turn were the actual repository/MVP
 prompt, not the recommended-plugin list or environment context. The audit also
 grouped every unpaired response by CLI version, originator, content-block
@@ -367,9 +368,9 @@ types, and a safe marker preview; the groups were recognized provider context
 such as environment, `AGENTS.md`, recommended plugins, abort notifications,
 subagent notifications, and legacy warnings.
 
-### Slice 2 — Remove duplicated downstream heuristics
+### Slice 2 — Remove duplicated downstream heuristics (landed 2026-07-10)
 
-Once the server classifier is deployed:
+After the server classifier landed:
 
 1. Route public-share prompt selection, fork/source user-turn slicing, and
    other server consumers through the same provenance result.
@@ -379,6 +380,31 @@ Once the server classifier is deployed:
    same provider shapes.
 4. Remove or narrow obsolete whole-message startup regexes only after tests
    prove no compatibility surface still relies on them.
+
+Slice 2 carries the server result explicitly on every emitted Codex user turn
+as `codexUserTurnProvenance` (`paired`, `event-only`, or `legacy-response`).
+Downstream clients therefore never need to infer authorship from the prompt
+text when current server evidence exists.
+
+Public-share prompt selection now prefers server-owned `initialPrompt`, the
+already-normalized transcript, and the provenance-derived `fullTitle`; it no
+longer applies a second server-side setup-prefix classifier. Fork/source
+selection and recent-user-turn pagination operate on normalized messages and
+also reject explicit provider-synthetic rows.
+
+All remaining client setup recognition routes through
+`lib/codexLegacySetup.ts`. That compatibility predicate:
+
+- runs only when no server user-turn provenance or live SDK source is present;
+- requires the entire text to consist of complete first-party Codex setup
+  blocks, including closing markers;
+- recognizes plugins + environment with or without an `AGENTS.md` fragment;
+- is shared by transcript preprocessing, navigation/search/correction,
+  fork-from-initial-turn selection, and public-share prompt selection.
+
+This preserves old materialized transcripts while ensuring a paired human
+prompt that literally resembles `<environment_context>` remains an ordinary
+user turn on every current surface.
 
 ### Slice 3 — Use the pair for durable user ids and rich event metadata
 
@@ -417,8 +443,8 @@ local-corpus audit**.
 
 It is the smallest slice that fixes both symptoms in the reported session
 without leaving the header and transcript on different definitions of “first
-user prompt.” It also produces evidence before behavior is generalized. Client
-fallback cleanup and user-id alignment are intentionally later slices.
+user prompt.” It also produces evidence before behavior is generalized.
+User-id alignment remains intentionally deferred to Slice 3.
 
 ## Acceptance Criteria
 

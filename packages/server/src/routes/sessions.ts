@@ -1053,6 +1053,7 @@ function isCompactSummaryUserMessage(message: Message): boolean {
 function isUserAuthoredRequest(message: Message): boolean {
   return (
     isHumanUserMessage(message) &&
+    message.isSynthetic !== true &&
     !isCompactSummaryUserMessage(message) &&
     !isSlashCommandSkillBodyUserMessage(message)
   );

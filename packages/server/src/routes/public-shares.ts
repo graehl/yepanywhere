@@ -52,7 +52,12 @@ export interface PublicShareRoutesDeps {
     sessionId: string,
   ) => Promise<Pick<
     AppSession,
-    "customTitle" | "provider" | "title" | "updatedAt"
+    | "customTitle"
+    | "fullTitle"
+    | "initialPrompt"
+    | "provider"
+    | "title"
+    | "updatedAt"
   > | null>;
   getRelayConfig?: () => RelayConfigForPublicShare | null;
   getPublicSharesEnabled?: () => boolean;
@@ -197,12 +202,6 @@ function contentToPlainText(content: unknown): string {
 function normalizePromptPreview(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
-    return null;
-  }
-  if (
-    trimmed.startsWith("# AGENTS.md instructions") ||
-    trimmed.startsWith("<environment_context>")
-  ) {
     return null;
   }
   const normalized = trimmed.replace(/\s+/g, " ");
@@ -980,7 +979,12 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     let session: AppSession | null = null;
     let sessionSummary: Pick<
       AppSession,
-      "customTitle" | "provider" | "title" | "updatedAt"
+      | "customTitle"
+      | "fullTitle"
+      | "initialPrompt"
+      | "provider"
+      | "title"
+      | "updatedAt"
     > | null = null;
     if (body.mode === "frozen" || !deps.loadSessionSummary) {
       session = await deps.loadSession(body.projectId, body.sessionId);
@@ -999,8 +1003,10 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       body.title ?? sessionSummary.customTitle ?? sessionSummary.title;
     const projectName = getProjectName(decodeProjectId(body.projectId));
     const initialPrompt =
-      normalizePromptPreview(body.initialPrompt ?? "") ??
-      (session ? getInitialPromptPreview(session) : null);
+      normalizePromptPreview(sessionSummary.initialPrompt ?? "") ??
+      (session ? getInitialPromptPreview(session) : null) ??
+      normalizePromptPreview(sessionSummary.fullTitle ?? "") ??
+      normalizePromptPreview(body.initialPrompt ?? "");
     const { secret, secretBits, record } =
       await deps.publicShareService.createShare({
         mode: body.mode,

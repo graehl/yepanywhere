@@ -124,6 +124,38 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-07-10:
+
+- Installed Codex is `codex-cli 0.144.1`. Root `package.json` now records
+  `yepAnywhere.codexCli.expectedVersion` and `compatibleThroughVersion` as
+  `0.144.1`; `pnpm codex:protocol:check` remains clean.
+- The no-token app-server `model/list` probe is unchanged from 0.144.0:
+  `gpt-5.6-sol` remains the default, followed by `gpt-5.6-terra`,
+  `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, and
+  `gpt-5.3-codex-spark`, with the same reasoning-effort and service-tier
+  surface consumed by YA.
+- A full Zod audit of 1,342 persisted Codex rollouts now validates all
+  1,875,103 JSONL lines. Schema coverage was added for code-mode tool-search
+  items, `world_state`, `patch_apply_end`, `thread_settings_applied`, the
+  other observed operational event discriminants, and nullable primary rate
+  limits.
+- Codex Desktop code-mode rollouts persist an outer `custom_tool_call` named
+  `exec`, raw JavaScript orchestration input, and text content-block outputs.
+  YA now uses a standalone fail-closed recognizer for direct literal
+  `tools.<name>(...)` calls. A single recognized call reuses the canonical
+  Read/Bash/Edit renderer; multiple calls remain an explicit Exec group; and
+  unknown JavaScript keeps the generic fallback. Both live app-server events
+  and persisted reloads share this normalization, and the recognizer never
+  evaluates provider code.
+- Adjacent `patch_apply_end` events have provider-native call ids that differ
+  from the outer code-mode call id. YA associates structured changes only
+  when exactly one recognized apply-patch call is pending, preserving the raw
+  fallback when correlation is ambiguous.
+
+Status: Codex 0.144.1 app-server, persisted transcript schemas, and code-mode
+tool rendering refreshed; no model-catalog or provider-control change was
+required.
+
 Current source refresh, 2026-07-09:
 
 - Installed Codex is `codex-cli 0.144.0`. Root `package.json` now records

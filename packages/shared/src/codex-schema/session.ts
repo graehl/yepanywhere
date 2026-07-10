@@ -232,6 +232,28 @@ export type CodexCustomToolCallOutputPayload = z.infer<
   typeof CodexCustomToolCallOutputPayloadSchema
 >;
 
+/** Code-mode tool discovery request persisted by newer Codex builds. */
+export const CodexToolSearchCallPayloadSchema = z
+  .object({
+    type: z.literal("tool_search_call"),
+    call_id: z.string().nullable().optional(),
+    status: z.string().optional(),
+    execution: z.string().optional(),
+    arguments: z.unknown().optional(),
+  })
+  .passthrough();
+
+/** Code-mode tool discovery result persisted by newer Codex builds. */
+export const CodexToolSearchOutputPayloadSchema = z
+  .object({
+    type: z.literal("tool_search_output"),
+    call_id: z.string().nullable().optional(),
+    status: z.string().optional(),
+    execution: z.string().optional(),
+    tools: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
 /**
  * Web search call payload.
  */
@@ -280,6 +302,8 @@ export const CodexResponseItemPayloadSchema = z.discriminatedUnion("type", [
   CodexFunctionCallOutputPayloadSchema,
   CodexCustomToolCallPayloadSchema,
   CodexCustomToolCallOutputPayloadSchema,
+  CodexToolSearchCallPayloadSchema,
+  CodexToolSearchOutputPayloadSchema,
   CodexWebSearchCallPayloadSchema,
   CodexGhostSnapshotPayloadSchema,
 ]);
@@ -312,6 +336,7 @@ export const CodexRateLimitsSchema = z.object({
       window_minutes: z.number(),
       resets_at: z.number(),
     })
+    .nullable()
     .optional(),
   secondary: z
     .object({
@@ -442,6 +467,52 @@ export const CodexTaskCompleteEventSchema = z.object({
   last_agent_message: z.string().nullable(),
 });
 
+/** Completed apply_patch event, including provider-native structured changes. */
+export const CodexPatchApplyEndEventSchema = z
+  .object({
+    type: z.literal("patch_apply_end"),
+    call_id: z.string(),
+    turn_id: z.string().optional(),
+    stdout: z.string().optional(),
+    stderr: z.string().optional(),
+    success: z.boolean(),
+    changes: z.record(z.string(), z.unknown()).optional(),
+    status: z.string().optional(),
+  })
+  .passthrough();
+
+/** Snapshot notification emitted after Codex thread settings change. */
+export const CodexThreadSettingsAppliedEventSchema = z
+  .object({
+    type: z.literal("thread_settings_applied"),
+    thread_settings: z.unknown(),
+  })
+  .passthrough();
+
+// Persisted operational events are retained for schema fidelity even when YA
+// does not currently turn them into transcript rows.
+const CodexExecCommandEndEventSchema = z
+  .object({ type: z.literal("exec_command_end"), call_id: z.string() })
+  .passthrough();
+const CodexWebSearchEndEventSchema = z
+  .object({ type: z.literal("web_search_end") })
+  .passthrough();
+const CodexThreadGoalUpdatedEventSchema = z
+  .object({ type: z.literal("thread_goal_updated") })
+  .passthrough();
+const CodexMcpToolCallEndEventSchema = z
+  .object({ type: z.literal("mcp_tool_call_end") })
+  .passthrough();
+const CodexThreadNameUpdatedEventSchema = z
+  .object({ type: z.literal("thread_name_updated") })
+  .passthrough();
+const CodexErrorEventSchema = z
+  .object({ type: z.literal("error") })
+  .passthrough();
+const CodexViewImageToolCallEventSchema = z
+  .object({ type: z.literal("view_image_tool_call") })
+  .passthrough();
+
 /**
  * Union of event message types.
  */
@@ -455,6 +526,15 @@ export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
   CodexTurnAbortedEventSchema,
   CodexTaskStartedEventSchema,
   CodexTaskCompleteEventSchema,
+  CodexPatchApplyEndEventSchema,
+  CodexThreadSettingsAppliedEventSchema,
+  CodexExecCommandEndEventSchema,
+  CodexWebSearchEndEventSchema,
+  CodexThreadGoalUpdatedEventSchema,
+  CodexMcpToolCallEndEventSchema,
+  CodexThreadNameUpdatedEventSchema,
+  CodexErrorEventSchema,
+  CodexViewImageToolCallEventSchema,
 ]);
 
 export type CodexEventMsgPayload = z.infer<typeof CodexEventMsgPayloadSchema>;
@@ -528,6 +608,20 @@ export const CodexTurnContextEntrySchema = z.object({
 
 export type CodexTurnContextEntry = z.infer<typeof CodexTurnContextEntrySchema>;
 
+/** Codex Desktop workspace snapshot; retained but not rendered as conversation. */
+export const CodexWorldStateEntrySchema = z
+  .object({
+    timestamp: z.string(),
+    type: z.literal("world_state"),
+    payload: z
+      .object({
+        full: z.boolean().optional(),
+        state: z.unknown(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 // =============================================================================
 // Session Entry Union
 // =============================================================================
@@ -542,6 +636,7 @@ export const CodexSessionEntrySchema = z.discriminatedUnion("type", [
   CodexEventMsgEntrySchema,
   CodexCompactedEntrySchema,
   CodexTurnContextEntrySchema,
+  CodexWorldStateEntrySchema,
 ]);
 
 export type CodexSessionEntry = z.infer<typeof CodexSessionEntrySchema>;

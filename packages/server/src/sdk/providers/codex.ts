@@ -21,6 +21,7 @@ import {
   type CodexToolCallContext,
   normalizeCodexCommandActionInvocation,
   normalizeCodexCommandExecutionOutput,
+  normalizeCodexCustomToolInvocation,
   normalizeCodexToolInvocation,
   normalizeCodexToolOutputWithContext,
   parseCodexToolArguments,
@@ -4172,9 +4173,9 @@ export class CodexProvider implements AgentProvider {
         const input = this.getOptionalString(item.input);
         if (!callId || !rawToolName) return [];
 
-        const normalizedInvocation = normalizeCodexToolInvocation(
-          canonicalizeCodexToolName(rawToolName),
-          parseCodexToolArguments(input ?? undefined),
+        const normalizedInvocation = normalizeCodexCustomToolInvocation(
+          rawToolName,
+          input ?? "",
         );
         liveEventState.toolCallContexts.set(callId, {
           toolName: normalizedInvocation.toolName,

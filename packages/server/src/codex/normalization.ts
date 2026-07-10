@@ -1,3 +1,9 @@
+import {
+  createCodexCodeModeGroupInput,
+  extractCodexCodeModeCalls,
+  extractCodexCodeModeTextOutput,
+} from "./codeModeExec.js";
+
 export const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
   exec_command: "Bash",
@@ -25,6 +31,11 @@ export interface CodexToolCallContext {
   input: unknown;
   readShellInfo?: CodexReadShellInfo;
   writeShellInfo?: CodexWriteShellInfo;
+  patchApplyResult?: {
+    stderr?: string;
+    stdout?: string;
+    success: boolean;
+  };
 }
 
 export interface NormalizedCodexToolInvocation {
@@ -131,6 +142,36 @@ export function normalizeCodexToolInvocation(
   }
 
   return { toolName: "Bash", input: normalizedInput };
+}
+
+export function normalizeCodexCustomToolInvocation(
+  rawToolName: string,
+  rawInput: unknown,
+): NormalizedCodexToolInvocation {
+  const codeModeCalls =
+    rawToolName === "exec" ? extractCodexCodeModeCalls(rawInput) : [];
+  if (codeModeCalls.length === 1) {
+    const nestedCall = codeModeCalls[0];
+    if (nestedCall) {
+      return normalizeCodexToolInvocation(
+        canonicalizeCodexToolName(nestedCall.toolName),
+        nestedCall.input,
+      );
+    }
+  }
+  if (codeModeCalls.length > 1 && typeof rawInput === "string") {
+    return {
+      toolName: "Exec",
+      input: createCodexCodeModeGroupInput(rawInput, codeModeCalls),
+    };
+  }
+
+  const canonicalToolName = canonicalizeCodexToolName(rawToolName);
+  const normalizedInput =
+    canonicalToolName === "Edit" && typeof rawInput === "string"
+      ? { _rawPatch: rawInput }
+      : rawInput;
+  return normalizeCodexToolInvocation(canonicalToolName, normalizedInput);
 }
 
 export function normalizeCodexCommandActionInvocation(
@@ -246,6 +287,12 @@ export function normalizeCodexToolOutputWithContext(
       // contract — see topics/stream-persisted-render-parity.md.
       exitCode,
     );
+  } else if (context?.toolName === "Edit" && context.patchApplyResult) {
+    const patchOutput = context.patchApplyResult.success
+      ? context.patchApplyResult.stdout
+      : context.patchApplyResult.stderr || context.patchApplyResult.stdout;
+    if (patchOutput) content = patchOutput;
+    isError = !context.patchApplyResult.success;
   }
 
   return { content, structured, isError };
@@ -1039,6 +1086,11 @@ function extractSessionIdFromText(output: string): number | undefined {
 function normalizeCodexToolOutput(
   output: unknown,
 ): NormalizedCodexToolOutputWithExitCode {
+  const codeModeText = extractCodexCodeModeTextOutput(output);
+  if (codeModeText !== undefined) {
+    return normalizeCodexToolOutput(codeModeText);
+  }
+
   if (typeof output === "string") {
     let structured: unknown;
     let isError = false;

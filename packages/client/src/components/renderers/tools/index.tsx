@@ -188,6 +188,7 @@ export const toolRegistry = new ToolRendererRegistry(fallbackToolRenderer);
 import { askUserQuestionRenderer } from "./AskUserQuestionRenderer";
 import { bashOutputRenderer } from "./BashOutputRenderer";
 import { bashRenderer } from "./BashRenderer";
+import { codeModeExecRenderer } from "./CodeModeExecRenderer";
 import { editRenderer } from "./EditRenderer";
 import { exitPlanModeRenderer } from "./ExitPlanModeRenderer";
 import { globRenderer } from "./GlobRenderer";
@@ -229,6 +230,7 @@ toolRegistry.register(writeStdinRenderer);
 // Codex-specific tools
 toolRegistry.register(viewImageRenderer);
 toolRegistry.register(spawnAgentRenderer);
+toolRegistry.register(codeModeExecRenderer);
 
 // Tier 4: Background/async tools
 toolRegistry.register(bashOutputRenderer);

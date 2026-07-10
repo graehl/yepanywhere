@@ -169,6 +169,14 @@ tool-name normalization; classify a new provider's tool names there (not in a
 consumer), and keep each normalization site commented with a pointer to this
 section.
 
+`sessionDetail/explorationProjection.ts` is the next, presentation-only layer.
+It adapts either a canonical exploration tool or a parent carrying
+provider-neutral `displayActions` into ordered entries while retaining the
+original `ToolCallItem` as the sole status/result/raw-detail owner. Entries use
+parent id plus source-order index and never become synthetic transcript tools
+or result owners. This is what lets several canonical parents with one action
+and one code-mode parent with several actions share the same explored model.
+
 ### The uniform diff augment
 
 Renaming gets a block to the right renderer; the **diff augment** gives every

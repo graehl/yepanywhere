@@ -2,6 +2,7 @@
 // Import from the concern modules directly or through this barrel.
 export * from "./composerTail";
 export * from "./exploration";
+export * from "./explorationProjection";
 export * from "./renderItems";
 export * from "./search";
 export * from "./thinking";

@@ -2,10 +2,10 @@
 
 Topic: codex-code-mode-render-convergence
 
-Status: In progress. Foundation through identity reconciliation landed on
-2026-07-10. The derived actions are present in client `ToolCallItem`s but are
-not yet consumed by render segmentation or visible components, so compound
-reads still appear as raw `Ran sed ...` rows.
+Status: In progress. Foundation through the exploration projection landed on
+2026-07-10. The derived actions now have a tested parent/entry projection but
+the visible component still consumes its legacy canonical-item adapter, so
+compound reads still appear as raw `Ran sed ...` rows.
 
 ## Contract And Document Ownership
 
@@ -101,7 +101,8 @@ propagation slice and is not evidence that the analyzer failed.
 | P0 | Landed 2026-07-10 | `01f088dd` | Recorded rollout authority, graded live/durable convergence, upstream evidence, the no-model-branch rule, and the broad implementation plan. Opened topic `codex-code-mode-render-convergence`. |
 | S1 | Landed 2026-07-10 | `457be41e` | Extracted `codex/displayActions.ts`; moved existing read/search parsing into it; added safe ordered compound read/search/list analysis; retained existing one-action rendering; kept compound calls visually raw. |
 | S2 | Landed 2026-07-10 | `8ec08674` | Added provider-neutral `ToolDisplayAction`; independently derived actions from live command/cwd and persisted GPT-5.5/GPT-5.6 calls; propagated them through tool blocks, reconnect replacement, results, and client preprocessing; made no visible rendering change. |
-| S3 | Landed 2026-07-10 | This commit | Captured the real code-mode identity mismatch; added ephemeral turn/origin correlation metadata and a standalone exact client reconciler; adopted the rollout `call_*` identity for one-to-one matches while leaving ambiguous multi-call orchestration untouched. |
+| S3 | Landed 2026-07-10 | `78c92691` | Captured the real code-mode identity mismatch; added ephemeral turn/origin correlation metadata and a standalone exact client reconciler; adopted the rollout `call_*` identity for one-to-one matches while leaving ambiguous multi-call orchestration untouched. |
+| S4 | Landed 2026-07-10 | This commit | Added the standalone provider-neutral exploration projection; modeled ordered entries under result-owning parents; retained canonical group IDs and the existing visible adapter; covered one-to-many, many-to-one, mutation/time boundaries, duplicates, and lifecycle stability. |
 
 ### Recorded Verification For Landed Slices
 
@@ -119,13 +120,16 @@ propagation slice and is not evidence that the analyzer failed.
   budget with `+0`; the Codex protocol subset was current; and the exact
   correlated rollout validated 8946/8946 records against the persisted Zod
   schema.
+- S4: 123 focused projection, preprocessing, reconciliation, selector,
+  timeline, search, navigation, and component tests passed without runtime
+  warnings; full lint and typecheck passed; `pnpm console:scan` remained at
+  its existing budget with `+0`.
 
 ## Remaining Slice Ledger
 
 | Slice | Status | Target outcome | Visible change |
 |---|---|---|---|
-| S4 | Next / not started | Add a provider-neutral exploration projection that supports one parent with many actions and many parents with one action. | None required; selector/model tests first. |
-| S5 | Not started | Render multi-action parents through the existing `Exploring` / `Explored` vocabulary while retaining parent-owned raw details. | Yes: removes the raw `Ran sed ...` default presentation for classified exploration-only commands. |
+| S5 | Next / not started | Render multi-action parents through the existing `Exploring` / `Explored` vocabulary while retaining parent-owned raw details. | Yes: removes the raw `Ran sed ...` default presentation for classified exploration-only commands. |
 | S6 | Not started | Stabilize search, navigation, collapse identity, predictive height, mobile layout, and live/reload reconciliation. | Polish and jank prevention. |
 | S7 | Not started | Run corpus/schema/manual verification, update docs, and close or explicitly defer follow-ups. | No new behavior beyond fixes found by verification. |
 
@@ -237,6 +241,22 @@ ordered entries, and no synthetic result field on entries.
   parent plus source-order index; entries never become transcript tool IDs.
 - Keep parent items on the segment so timestamp, result, raw expansion, search,
   and debug ownership remain available.
+
+### Landed Model Boundary
+
+`sessionDetail/explorationProjection.ts` now owns the pure projection. Each
+entry has a parent id plus source-order index; each parent retains its original
+`ToolCallItem`, including status, result, source messages, and raw tool input.
+The projection supports both one parent with many ordered actions and adjacent
+parents with one action each, and it fails closed at unknown/mutating items or
+the existing five-minute gap.
+
+Canonical explored runs now carry this projection through the assistant
+timeline while preserving their prior `items`, group ids, search anchors, and
+component props. The broader projection builder recognizes multi-action
+parents, but the visible timeline deliberately continues using the canonical
+grouping adapter until S5 teaches `ExploredToolGroup` to consume entries and
+parent-owned details safely.
 
 ### Acceptance
 

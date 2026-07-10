@@ -1,9 +1,7 @@
-import {
-  getLatestMessageTimestampMs,
-  parseTimestampMs,
-} from "../messageAge";
+import { getLatestMessageTimestampMs, parseTimestampMs } from "../messageAge";
 import type { RenderItem, ToolCallItem } from "../../types/renderItems";
 import { buildAssistantRenderSegments } from "./exploration";
+import type { ExplorationProjection } from "./explorationProjection";
 import {
   getLatestRenderItemsTimestampMs,
   type RenderTurnGroup,
@@ -75,6 +73,7 @@ export type AssistantTimelineRow =
       kind: "explored";
       id: string;
       items: ToolCallItem[];
+      projection: ExplorationProjection;
       segmentTimestampMs: number | null;
       staleNowMs?: number;
     }
@@ -281,6 +280,7 @@ export function buildAssistantTimelineRows({
         kind: "explored",
         id: segment.id,
         items: segment.items,
+        projection: segment.projection,
         segmentTimestampMs,
         staleNowMs:
           segmentTimestampMs === latestVisibleTimestampMs ? nowMs : undefined,

@@ -6,14 +6,23 @@ import { getToolSummary } from "../../components/tools/summaries";
 import { getLatestMessageTimestampMs } from "../messageAge";
 import { getPathBasename, makeDisplayPath } from "../text";
 import type { RenderItem, ToolCallItem } from "../../types/renderItems";
+import {
+  createExplorationProjection,
+  EXPLORATION_GROUP_MAX_GAP_MS,
+  type ExplorationProjection,
+  projectExplorationParent,
+} from "./explorationProjection";
 
 export { getExplorationKind };
 
-const EXPLORATION_GROUP_MAX_GAP_MS = 5 * 60 * 1000;
-
 export type AssistantRenderSegment =
   | { kind: "item"; item: RenderItem }
-  | { kind: "explored"; id: string; items: ToolCallItem[] };
+  | {
+      kind: "explored";
+      id: string;
+      items: ToolCallItem[];
+      projection: ExplorationProjection;
+    };
 
 export function isExplorationToolCall(item: RenderItem): item is ToolCallItem {
   return (
@@ -39,12 +48,16 @@ function renderItemTimestampsAreTooFarApart(
 }
 
 function makeExploredSegment(items: ToolCallItem[]): AssistantRenderSegment {
-  const first = items[0];
-  const last = items[items.length - 1];
+  const parents = items.flatMap((item) => {
+    const parent = projectExplorationParent(item);
+    return parent ? [parent] : [];
+  });
+  const projection = createExplorationProjection(parents);
   return {
     kind: "explored",
-    id: `explored-${first?.id ?? "start"}-${last?.id ?? "end"}`,
+    id: projection.id,
     items,
+    projection,
   };
 }
 

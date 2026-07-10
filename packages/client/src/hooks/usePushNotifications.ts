@@ -4,9 +4,10 @@ import {
   BROWSER_LOCAL_KEYS,
   getOrCreateBrowserProfileId,
 } from "../lib/storageKeys";
-import type {
-  PushDeliveryUrgency,
-  TestNotificationUrgency,
+import {
+  notifyPushSubscriptionChanged,
+  type PushDeliveryUrgency,
+  type TestNotificationUrgency,
 } from "./useSubscribedDevices";
 // Use Vite's base URL - in production remote build this is /remote/
 const SW_PATH = `${import.meta.env.BASE_URL}sw.js`;
@@ -184,6 +185,7 @@ export function usePushNotifications() {
         error: null,
         browserProfileId,
       }));
+      notifyPushSubscriptionChanged();
     } catch (err) {
       console.error("[usePushNotifications] Subscribe error:", err);
       setState((s) => ({
@@ -222,6 +224,7 @@ export function usePushNotifications() {
         isLoading: false,
         error: null,
       }));
+      notifyPushSubscriptionChanged();
     } catch (err) {
       console.error("[usePushNotifications] Unsubscribe error:", err);
       setState((s) => ({
@@ -232,12 +235,12 @@ export function usePushNotifications() {
     }
   }, [registration]);
 
-  // Send a test notification
+  // Send a test notification. Returns true if the server accepted it.
   const sendTest = useCallback(
     async (
       urgency: TestNotificationUrgency = "normal",
       deliveryUrgency: PushDeliveryUrgency = "high",
-    ) => {
+    ): Promise<boolean> => {
       const browserProfileId = getOrCreateBrowserProfileId();
       setState((s) => ({ ...s, isLoading: true, error: null }));
 
@@ -249,6 +252,7 @@ export function usePushNotifications() {
           deliveryUrgency,
         );
         setState((s) => ({ ...s, isLoading: false }));
+        return true;
       } catch (err) {
         console.error("[usePushNotifications] Test push error:", err);
         setState((s) => ({
@@ -256,6 +260,7 @@ export function usePushNotifications() {
           isLoading: false,
           error: err instanceof Error ? err.message : "Failed to send test",
         }));
+        return false;
       }
     },
     [],

@@ -2,6 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useBackgroundRevalidation } from "./useBackgroundRevalidation";
 
+/**
+ * Window event fired when this browser's push subscription is created or
+ * removed, so device lists and subscription-gated UI refresh without a
+ * page reload.
+ */
+export const PUSH_SUBSCRIPTION_CHANGED_EVENT = "ya:push-subscription-changed";
+
+export function notifyPushSubscriptionChanged(): void {
+  window.dispatchEvent(new Event(PUSH_SUBSCRIPTION_CHANGED_EVENT));
+}
+
 export type PushDeliveryUrgency = "very-low" | "low" | "normal" | "high";
 export type TestNotificationUrgency = "normal" | "persistent" | "silent";
 export type PushDeviceType =
@@ -59,6 +70,17 @@ export function useSubscribedDevices() {
   // Fetch on mount
   useEffect(() => {
     fetchDevices();
+  }, [fetchDevices]);
+
+  // Refresh when this browser subscribes/unsubscribes, so gated UI
+  // (e.g. server notification toggles) unlocks without a reload.
+  useEffect(() => {
+    const handleChange = () => {
+      fetchDevices();
+    };
+    window.addEventListener(PUSH_SUBSCRIPTION_CHANGED_EVENT, handleChange);
+    return () =>
+      window.removeEventListener(PUSH_SUBSCRIPTION_CHANGED_EVENT, handleChange);
   }, [fetchDevices]);
 
   // Quietly refresh the device list when the connection re-establishes.

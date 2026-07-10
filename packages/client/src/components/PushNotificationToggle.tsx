@@ -28,6 +28,14 @@ export function PushNotificationToggle() {
     useState<TestNotificationUrgency>("normal");
   const [deliveryUrgency, setDeliveryUrgency] =
     useState<PushDeliveryUrgency>("high");
+  const [testSent, setTestSent] = useState(false);
+
+  const handleSendTest = async () => {
+    setTestSent(false);
+    const accepted = await sendTest(testUrgency, deliveryUrgency);
+    // On failure the hook's `error` line reports what went wrong.
+    setTestSent(accepted);
+  };
 
   const handleToggle = async () => {
     if (isSubscribed) {
@@ -120,6 +128,9 @@ export function PushNotificationToggle() {
             <div className="settings-item-info">
               <strong>{t("pushToggleTestTitle")}</strong>
               <p>{t("pushToggleTestDescription")}</p>
+              <p className="settings-hint push-test-status" aria-live="polite">
+                {testSent ? t("pushToggleTestSent") : " "}
+              </p>
             </div>
             <div className="settings-item-actions">
               <select
@@ -154,7 +165,7 @@ export function PushNotificationToggle() {
               <button
                 type="button"
                 className="settings-button"
-                onClick={() => sendTest(testUrgency, deliveryUrgency)}
+                onClick={handleSendTest}
                 disabled={isLoading}
               >
                 {t("pushToggleSendTest")}

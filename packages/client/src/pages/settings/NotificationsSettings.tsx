@@ -3,7 +3,10 @@ import { BrowserNotificationToggle } from "../../components/BrowserNotificationT
 import { PushNotificationToggle } from "../../components/PushNotificationToggle";
 import { useBrowserNotifications } from "../../hooks/useBrowserNotifications";
 import { useConnectedDevices } from "../../hooks/useConnectedDevices";
-import { useNotificationSettings } from "../../hooks/useNotificationSettings";
+import {
+  type NotificationSettings,
+  useNotificationSettings,
+} from "../../hooks/useNotificationSettings";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 import {
   type PushDeliveryUrgency,
@@ -180,6 +183,58 @@ function isMobilePushDevice(device: UnifiedDevice): boolean {
       device.deviceType === "mobile")
   );
 }
+
+/**
+ * The server-side notification-type toggles, gated on having at least one
+ * push-subscribed device (without one, no notification could be delivered).
+ */
+const SERVER_NOTIFICATION_ROWS: ReadonlyArray<{
+  key: keyof NotificationSettings;
+  titleKey:
+    | "notificationsToolApprovalsTitle"
+    | "notificationsQuestionsTitle"
+    | "notificationsSessionHaltedTitle"
+    | "notificationsProjectInactiveTitle"
+    | "notificationsYaInactiveTitle";
+  descriptionKey:
+    | "notificationsToolApprovalsDescription"
+    | "notificationsQuestionsDescription"
+    | "notificationsSessionHaltedDescription"
+    | "notificationsProjectInactiveDescription"
+    | "notificationsYaInactiveDescription";
+  defaultValue: boolean;
+}> = [
+  {
+    key: "toolApproval",
+    titleKey: "notificationsToolApprovalsTitle",
+    descriptionKey: "notificationsToolApprovalsDescription",
+    defaultValue: true,
+  },
+  {
+    key: "userQuestion",
+    titleKey: "notificationsQuestionsTitle",
+    descriptionKey: "notificationsQuestionsDescription",
+    defaultValue: true,
+  },
+  {
+    key: "sessionHalted",
+    titleKey: "notificationsSessionHaltedTitle",
+    descriptionKey: "notificationsSessionHaltedDescription",
+    defaultValue: false,
+  },
+  {
+    key: "projectInactive",
+    titleKey: "notificationsProjectInactiveTitle",
+    descriptionKey: "notificationsProjectInactiveDescription",
+    defaultValue: false,
+  },
+  {
+    key: "yaInactive",
+    titleKey: "notificationsYaInactiveTitle",
+    descriptionKey: "notificationsYaInactiveDescription",
+    defaultValue: false,
+  },
+];
 
 function deliveryPriorityLabelKey(
   urgency: PushDeliveryUrgency,
@@ -376,108 +431,57 @@ export function NotificationsSettings() {
     testDisplayUrgency,
   ]);
 
+  const serverTogglesGated = !hasSubscriptions;
+  const gatedTooltip = serverTogglesGated
+    ? t("notificationsNoSubscribedDevices")
+    : undefined;
+
   return (
     <>
-      {/* Server-side settings - what types of notifications are sent */}
+      {/* Push notifications, with the server-side notification types they
+          gate scoped underneath: without a subscribed device the server has
+          nowhere to deliver, so the type toggles are disabled. */}
       <section className="settings-section">
-        <h2>{t("notificationsServerTitle")}</h2>
+        <h2>{t("notificationsPushTitle")}</h2>
         <p className="settings-section-description">
-          {t("notificationsServerDescription")}
+          {t("notificationsPushDescription")}
         </p>
         <div className="settings-group">
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("notificationsToolApprovalsTitle")}</strong>
-              <p>{t("notificationsToolApprovalsDescription")}</p>
+          <PushNotificationToggle />
+        </div>
+        <div className="settings-subsection">
+          <h3>{t("notificationsServerTitle")}</h3>
+          <p className="settings-section-description">
+            {t("notificationsServerDescription")}
+          </p>
+          {serverTogglesGated && !devicesLoading && (
+            <div className="settings-info-box settings-subsection-hint">
+              <p>{t("notificationsNoSubscribedDevices")}</p>
             </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={settings?.toolApproval ?? true}
-                onChange={(e) =>
-                  updateSetting("toolApproval", e.target.checked)
-                }
-                disabled={settingsLoading || !hasSubscriptions}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("notificationsQuestionsTitle")}</strong>
-              <p>{t("notificationsQuestionsDescription")}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={settings?.userQuestion ?? true}
-                onChange={(e) =>
-                  updateSetting("userQuestion", e.target.checked)
-                }
-                disabled={settingsLoading || !hasSubscriptions}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("notificationsSessionHaltedTitle")}</strong>
-              <p>{t("notificationsSessionHaltedDescription")}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={settings?.sessionHalted ?? false}
-                onChange={(e) =>
-                  updateSetting("sessionHalted", e.target.checked)
-                }
-                disabled={settingsLoading || !hasSubscriptions}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("notificationsProjectInactiveTitle")}</strong>
-              <p>{t("notificationsProjectInactiveDescription")}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={settings?.projectInactive ?? false}
-                onChange={(e) =>
-                  updateSetting("projectInactive", e.target.checked)
-                }
-                disabled={settingsLoading || !hasSubscriptions}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-
-          <div className="settings-item">
-            <div className="settings-item-info">
-              <strong>{t("notificationsYaInactiveTitle")}</strong>
-              <p>{t("notificationsYaInactiveDescription")}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={settings?.yaInactive ?? false}
-                onChange={(e) => updateSetting("yaInactive", e.target.checked)}
-                disabled={settingsLoading || !hasSubscriptions}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-
-          {!hasSubscriptions && !devicesLoading && (
-            <p className="settings-hint">
-              {t("notificationsNoSubscribedDevices")}
-            </p>
           )}
+          <div className="settings-group">
+            {SERVER_NOTIFICATION_ROWS.map((row) => (
+              <div
+                key={row.key}
+                className="settings-item"
+                title={gatedTooltip}
+              >
+                <div className="settings-item-info">
+                  <strong>{t(row.titleKey)}</strong>
+                  <p>{t(row.descriptionKey)}</p>
+                </div>
+                <label className="toggle-switch" title={gatedTooltip}>
+                  <input
+                    type="checkbox"
+                    checked={settings?.[row.key] ?? row.defaultValue}
+                    onChange={(e) => updateSetting(row.key, e.target.checked)}
+                    disabled={settingsLoading || serverTogglesGated}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -493,17 +497,6 @@ export function NotificationsSettings() {
           </div>
         </section>
       )}
-
-      {/* Push notifications - service worker based */}
-      <section className="settings-section">
-        <h2>{t("notificationsPushTitle")}</h2>
-        <p className="settings-section-description">
-          {t("notificationsPushDescription")}
-        </p>
-        <div className="settings-group">
-          <PushNotificationToggle />
-        </div>
-      </section>
 
       {/* Unified devices list */}
       <section className="settings-section">

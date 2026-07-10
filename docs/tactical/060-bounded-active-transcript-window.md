@@ -6,6 +6,27 @@ Topic: memory-growth
 Topic: session-detail-data-layer
 Topic: transcript-virtualization
 
+## Implementation Status
+
+### 2026-07-10: Slice 1 complete — pure policy projection
+
+Added
+`packages/client/src/lib/sessionDetail/activeWindowTrimPolicy.ts` with:
+
+- a constant-time `shouldConsiderActiveWindowTrim(...)` gate that does not
+  inspect transcript messages;
+- real-user-turn and compact-boundary classification matching the server
+  pagination exclusions;
+- `planActiveWindowTrim(...)` with two-compaction retention, default 30-to-20
+  turn hysteresis, custom-turn hysteresis, later-start intersection semantics,
+  and the strict greater-than-60-second age guard; and
+- pure evaluation orchestration so frequent irrelevant actions can prove they
+  never enter the planner.
+
+Focused coverage has 15 passing fixtures, including 10,000 irrelevant policy
+evaluations with zero planner calls. No reducer, store, React, setting, or
+runtime behavior is wired in this slice. Slices 2–6 remain pending.
+
 ## Goal
 
 Prevent a session page that remains mounted for hours or days from retaining
@@ -75,7 +96,7 @@ The retained compact boundary itself remains visible as the top "Context
 compacted" divider.
 
 Use the same definition of a real user turn as session pagination: compact
-summaries, command wrappers, skill bodies, queue-operation echoes, and other
+summaries, command wrappers, skill bodies, tool-result-only rows, and other
 synthetic user-shaped entries do not count. Prefer a shared client predicate or
 fixture parity with `packages/server/src/sessions/pagination.ts`; do not invent
 a looser `message.type === "user"` count in the hot path.
@@ -219,6 +240,15 @@ above the trim boundary while still reporting bottom-follow, add it as another
 constant-time suppression gate rather than attempting to repair a removed DOM
 selection.
 
+The right-side `UserTurnNavigator` rail is part of the trim contract, not an
+incidental resize effect. Its anchors derive from retained turn groups, so old
+turn notches/bookmarks must disappear with their rows and the rail's marker
+positions, active id, and scrollbar thumb must be fully remeasured against the
+reduced `scrollHeight`. Reconcile or clear rail-local ids that no longer exist,
+including `previewId`, `previewWindowAnchorId`, an open notch context menu, and
+search/active marker state. Do not leave a hover preview or menu targeting a
+trimmed turn merely because the rail was open during the store update.
+
 ## Performance Setting
 
 Add a browser-local boolean preference alongside the other session performance
@@ -244,14 +274,16 @@ it need not synchronously scan or trim inside the settings event handler.
 
 ## Implementation Slices
 
-1. **Pure policy projection.** Add real-turn/compact classification, cheap
-   structural gates, bounded planning, age guard, and fixtures. No React or DOM.
+1. **Pure policy projection — complete 2026-07-10.** Added real-turn/compact
+   classification, cheap structural gates, bounded planning, age guard, and
+   fixtures. No React or DOM.
 2. **Atomic reducer trim.** Add the action, pagination update, reachability-
    based auxiliary pruning, and reducer/store fixtures.
 3. **Coordinator lifecycle.** Wire bottom-follow input, structural revisions,
    pending age candidates, and mount-scoped Load older suppression.
 4. **Scroll integration.** Preserve bottom-follow and clear removed anchors;
-   verify streaming and ordinary completed-turn behavior in the browser.
+   trim/recompute the right-side turn rail and its thumb/local ids; verify
+   streaming and ordinary completed-turn behavior in the browser.
 5. **Performance setting.** Add default-on preference, UI/i18n copy, undo,
    storage-event behavior, and setting tests.
 6. **Telemetry and closeout.** Add low-volume aggregate trim diagnostics only
@@ -298,6 +330,9 @@ or a generic byte-budget framework.
 - A following-bottom live session trims atomically and remains at bottom while
   new messages continue streaming.
 - A reader above the bottom is not trimmed.
+- The right-side turn rail contains only retained turn bookmarks after trim,
+  remeasures marker/thumb geometry, and clears stale hover, preview, menu,
+  active, and search ids for removed turns.
 - Load older pins the mounted view before the older page is applied; subsequent
   growth does not trim until unmount/remount.
 - Default preference is on, an explicit off persists, cross-tab storage events

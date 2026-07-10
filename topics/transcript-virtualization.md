@@ -177,6 +177,16 @@ position drift as far-off-screen intrinsic estimates correct to real heights on
 first scroll-through; `auto` minimizes it. If it janks in practice, add height-
 model marker placement (below) rather than reaching for full unmounting.
 
+2026-07-10 follow-up: a completed Codex session on the hosted mobile client
+reported repeated downward scroll corrections during its first upward traversal,
+then stability after roughly ten corrections. That symptom matches the residual
+risk above: each row starts with the 120px fallback, then records its real height
+when it first becomes relevant. A browser-local, default-on Performance setting
+now scopes the CSS optimization so the same device and session can disable it
+for a direct A/B check. Keep the default unchanged until that check confirms or
+falsifies the suspected cause; the setting is a diagnostic escape hatch, not a
+substitute for stable default scrolling.
+
 Fall back to JS row unmounting (the design below) only if `content-visibility`
 proves insufficient (memory still unbounded) or its scroll/turn-rail behavior
 can't be made acceptable. Not needed as of this landing.

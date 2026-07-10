@@ -137,3 +137,5 @@
   discontinuity for the default compact tail.
 - memory-growth - Browser/client memory-growth investigations and bounded
   transcript load contracts for large provider sessions.
+- transcript-virtualization - Viewport-bounded transcript rendering, native
+  content visibility, and first-traversal scroll stability.

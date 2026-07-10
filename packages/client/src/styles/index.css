@@ -4463,6 +4463,9 @@ a.linkified-url:hover {
 
 .message-render-row {
   position: relative;
+}
+
+.message-list-offscreen-rendering .message-render-row {
   /* Stage 2 (topics/transcript-virtualization.md): let the browser skip
      rendering (style/layout/paint) and discard rendered state for off-screen
      rows, bounding a long transcript's native cost to the viewport. The DOM

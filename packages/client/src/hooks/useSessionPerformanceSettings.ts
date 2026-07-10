@@ -14,6 +14,7 @@ import {
 import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
+const DEFAULT_SESSION_OFFSCREEN_TRANSCRIPT_RENDERING_ENABLED = true;
 
 /** Budget 0 disables the cache (matching the old default-off toggle). */
 const DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB = 0;
@@ -96,6 +97,7 @@ function subscribe(listener: () => void) {
       event.key === UI_KEYS.sessionTranscriptCacheBudgetMb ||
       event.key === UI_KEYS.sessionTranscriptCacheTtlHours ||
       event.key === UI_KEYS.sessionScrollBehavior ||
+      event.key === UI_KEYS.sessionOffscreenTranscriptRendering ||
       event.key === null
     ) {
       applySessionDetailRetentionPreferences();
@@ -115,11 +117,18 @@ function getSnapshot() {
     String(getSessionTranscriptCacheBudgetMb()),
     String(getSessionTranscriptCacheTtlHours()),
     getSessionScrollBehaviorMode(),
+    getSessionOffscreenTranscriptRenderingEnabled() ? "1" : "0",
   ].join(":");
 }
 
 function parseSnapshot(snapshot: string) {
-  const [domLinger, budgetMb, ttlHours, scrollBehavior] = snapshot.split(":");
+  const [
+    domLinger,
+    budgetMb,
+    ttlHours,
+    scrollBehavior,
+    offscreenTranscriptRendering,
+  ] = snapshot.split(":");
   const parsedBudget = Number(budgetMb);
   const parsedTtl = Number(ttlHours);
   const sessionTranscriptCacheBudgetMb = Number.isFinite(parsedBudget)
@@ -134,6 +143,8 @@ function parseSnapshot(snapshot: string) {
       : DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS,
     sessionScrollBehaviorMode:
       parseSessionScrollBehaviorMode(scrollBehavior),
+    sessionOffscreenTranscriptRenderingEnabled:
+      offscreenTranscriptRendering !== "0",
   };
 }
 
@@ -174,6 +185,13 @@ export function getSessionScrollBehaviorMode(): SessionScrollBehaviorMode {
   );
 }
 
+export function getSessionOffscreenTranscriptRenderingEnabled(): boolean {
+  return loadBooleanPreference(
+    UI_KEYS.sessionOffscreenTranscriptRendering,
+    DEFAULT_SESSION_OFFSCREEN_TRANSCRIPT_RENDERING_ENABLED,
+  );
+}
+
 function applySessionDetailRetentionPreferences(): void {
   const budgetMb = getSessionTranscriptCacheBudgetMb();
   configureSessionDetailRetention({
@@ -190,6 +208,13 @@ function applySessionDetailRetentionPreferences(): void {
 
 export function setSessionDomLingerPreference(enabled: boolean): void {
   savePreference(UI_KEYS.sessionDomLinger, String(enabled));
+  emitChange();
+}
+
+export function setSessionOffscreenTranscriptRenderingPreference(
+  enabled: boolean,
+): void {
+  savePreference(UI_KEYS.sessionOffscreenTranscriptRendering, String(enabled));
   emitChange();
 }
 
@@ -266,7 +291,7 @@ export function useSessionPerformanceSettings() {
   const snapshot = useSyncExternalStore(
     subscribe,
     getSnapshot,
-    () => `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}`,
+    () => `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}:1`,
   );
   const settings = useMemo(() => parseSnapshot(snapshot), [snapshot]);
 
@@ -286,6 +311,10 @@ export function useSessionPerformanceSettings() {
     setSessionScrollBehaviorModePreference,
     [],
   );
+  const setSessionOffscreenTranscriptRenderingEnabled = useCallback(
+    setSessionOffscreenTranscriptRenderingPreference,
+    [],
+  );
 
   return {
     ...settings,
@@ -293,5 +322,6 @@ export function useSessionPerformanceSettings() {
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
     setSessionScrollBehaviorMode,
+    setSessionOffscreenTranscriptRenderingEnabled,
   };
 }

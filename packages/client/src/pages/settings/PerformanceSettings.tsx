@@ -41,9 +41,11 @@ export function PerformanceSettings() {
     useSessionLoadingProgress();
   const {
     sessionDomLingerEnabled,
+    sessionOffscreenTranscriptRenderingEnabled,
     sessionTranscriptCacheBudgetMb,
     sessionTranscriptCacheTtlHours,
     setSessionDomLingerEnabled,
+    setSessionOffscreenTranscriptRenderingEnabled,
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
   } = useSessionPerformanceSettings();
@@ -132,6 +134,7 @@ export function PerformanceSettings() {
       streamingEnabled,
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
+      sessionOffscreenTranscriptRenderingEnabled,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -140,6 +143,7 @@ export function PerformanceSettings() {
       streamingEnabled,
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
+      sessionOffscreenTranscriptRenderingEnabled,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -150,6 +154,9 @@ export function PerformanceSettings() {
       setStreamingEnabled(snapshot.streamingEnabled);
       setSessionLoadingProgressEnabled(snapshot.sessionLoadingProgressEnabled);
       setSessionDomLingerEnabled(snapshot.sessionDomLingerEnabled);
+      setSessionOffscreenTranscriptRenderingEnabled(
+        snapshot.sessionOffscreenTranscriptRenderingEnabled,
+      );
       setSessionTranscriptCacheBudgetMb(
         snapshot.sessionTranscriptCacheBudgetMb,
       );
@@ -162,6 +169,7 @@ export function PerformanceSettings() {
       setStreamingEnabled,
       setSessionLoadingProgressEnabled,
       setSessionDomLingerEnabled,
+      setSessionOffscreenTranscriptRenderingEnabled,
       setSessionTranscriptCacheBudgetMb,
       setSessionTranscriptCacheTtlHours,
       setStableToolPreviewRendering,
@@ -220,6 +228,25 @@ export function PerformanceSettings() {
                 setSessionDomLingerEnabled(event.target.checked)
               }
               aria-label={t("performanceKeepRecentSessionMountedTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("performanceOffscreenTranscriptRenderingTitle")}</strong>
+            <p>{t("performanceOffscreenTranscriptRenderingDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sessionOffscreenTranscriptRenderingEnabled}
+              onChange={(event) =>
+                setSessionOffscreenTranscriptRenderingEnabled(
+                  event.target.checked,
+                )
+              }
+              aria-label={t("performanceOffscreenTranscriptRenderingTitle")}
             />
             <span className="toggle-slider" />
           </label>

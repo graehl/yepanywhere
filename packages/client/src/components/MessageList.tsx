@@ -527,6 +527,8 @@ interface Props {
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
   scrollBehaviorMode?: SessionScrollBehaviorMode;
+  /** Allow CSS to skip rendering transcript rows outside the viewport. */
+  offscreenTranscriptRenderingEnabled?: boolean;
   inert?: boolean;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
@@ -722,6 +724,7 @@ export const MessageList = memo(function MessageList({
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
   scrollBehaviorMode = DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
+  offscreenTranscriptRenderingEnabled = true,
   inert = false,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
@@ -2185,9 +2188,15 @@ export const MessageList = memo(function MessageList({
         : followButton}
       {mobileSelectionQuoteButton}
       <div
-        className={`message-list${
-          progressiveRevealActive ? " message-list-progressive-hydrating" : ""
-        }`}
+        className={[
+          "message-list",
+          progressiveRevealActive ? "message-list-progressive-hydrating" : "",
+          offscreenTranscriptRenderingEnabled
+            ? "message-list-offscreen-rendering"
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         ref={containerRef}
         aria-busy={progressiveRevealActive ? true : undefined}
       >

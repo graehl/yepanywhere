@@ -58,6 +58,8 @@ export const UI_KEYS = {
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",
   sessionDomLinger: "yep-anywhere-session-dom-linger-enabled",
+  sessionOffscreenTranscriptRendering:
+    "yep-anywhere-session-offscreen-transcript-rendering-enabled",
   // Legacy boolean toggle; seeds the budget preference until the slider
   // is first used, and stays coherent for older bundles.
   sessionTranscriptCache: "yep-anywhere-session-transcript-cache-enabled",

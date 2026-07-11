@@ -90,13 +90,62 @@ describe("WriteStdinRenderer", () => {
     ).toBeDefined();
   });
 
-  it("extracts exit status summary from new output envelope", () => {
+  it("suppresses exit 0 in the summary per the command-metadata contract", () => {
     const summary = writeStdinRenderer.getResultSummary?.(
       "Chunk ID: ff710e\nProcess exited with code 0\nOutput:\nready\n",
       false,
     );
 
-    expect(summary).toBe("exit 0");
+    expect(summary).toBe("1 lines");
+  });
+
+  it("summarizes a nonzero envelope exit code with runtime", () => {
+    const summary = writeStdinRenderer.getResultSummary?.(
+      "Chunk ID: ff710e\nWall time: 0.0518 seconds\nProcess exited with code 2\nOutput:\nboom\n",
+      false,
+    );
+
+    expect(summary).toBe("rc=2 in 0.0518 seconds");
+  });
+
+  it("renders a unified-exec chunk record as its output text with a meta line", () => {
+    const { container } = render(
+      <div>
+        {writeStdinRenderer.renderToolResult(
+          {
+            chunk_id: "d935b8",
+            wall_time_seconds: 22.4,
+            session_id: 40452,
+            exit_code: 0,
+            output: "hyp-tokens: first=85 min=42\n",
+            stdout: "hyp-tokens: first=85 min=42\n",
+          },
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText(/hyp-tokens: first=85 min=42/)).toBeDefined();
+    expect(screen.queryByText(/chunk_id/)).toBeNull();
+    expect(
+      container.querySelector(".command-result-meta")?.textContent,
+    ).toBe("22.4s");
+  });
+
+  it("summarizes a failed chunk record as rc=N with runtime", () => {
+    const summary = writeStdinRenderer.getResultSummary?.(
+      {
+        chunk_id: "aa",
+        wall_time_seconds: 30.0016,
+        exit_code: 2,
+        output: "boom\n",
+        stdout: "boom\n",
+      },
+      false,
+    );
+
+    expect(summary).toBe("rc=2 in 30s");
   });
 
   it("renders output text without JSON escaping artifacts", () => {

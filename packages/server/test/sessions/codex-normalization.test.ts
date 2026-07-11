@@ -1151,6 +1151,9 @@ describe("Codex Normalization", () => {
     expect(result.messages[1]?.toolUseResult).toMatchObject({
       stdout: "/repo\nREADME.md\n",
       stderr: "",
+      // Runtime recovered from the shell envelope (§ Command execution
+      // metadata in topics/provider-output-contract.md).
+      durationSeconds: 0.1,
     });
   });
 
@@ -1216,6 +1219,11 @@ describe("Codex Normalization", () => {
     expect(result.messages[1]?.toolUseResult).toMatchObject({
       chunk_id: "5cc06a",
       exit_code: 0,
+      // Normalized command metadata and stdout alias ride alongside the
+      // raw chunk fields (§ Command execution metadata).
+      stdout: chunk.output,
+      exitCode: 0,
+      durationSeconds: 22.4,
     });
   });
 

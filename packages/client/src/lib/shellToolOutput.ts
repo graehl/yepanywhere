@@ -16,7 +16,8 @@ function extractExitCode(text: string): number | undefined {
 }
 
 function extractWallTime(text: string): string | undefined {
-  const match = text.match(/(?:^|\n)\s*Wall time:\s*([^\n]+)\s*(?:\n|$)/i);
+  // Codex emits both "Wall time: 0.05 seconds" and "Wall time 30.0 seconds".
+  const match = text.match(/(?:^|\n)\s*Wall time:?\s+([^\n]+)\s*(?:\n|$)/i);
   if (!match?.[1]) {
     return undefined;
   }
@@ -34,4 +35,53 @@ export function parseShellToolOutput(text: string): ParsedShellToolOutput {
     wallTime: extractWallTime(text),
     hasEnvelope,
   };
+}
+
+/**
+ * Normalized command-execution metadata carried on structured tool results
+ * (spec: topics/provider-output-contract.md § Command execution metadata).
+ */
+export interface CommandResultMeta {
+  exitCode?: number;
+  durationSeconds?: number;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+/**
+ * Read command metadata from a structured tool result, accepting both the
+ * normalized fields (exitCode, durationSeconds) and raw provider fields a
+ * normalization pass-through retains (exit_code, wall_time_seconds).
+ */
+export function getCommandResultMeta(structured: unknown): CommandResultMeta {
+  if (!structured || typeof structured !== "object") {
+    return {};
+  }
+  const record = structured as Record<string, unknown>;
+  const exitCode = finiteNumber(record.exitCode ?? record.exit_code);
+  const durationSeconds = finiteNumber(
+    record.durationSeconds ?? record.wall_time_seconds,
+  );
+  return {
+    ...(exitCode !== undefined ? { exitCode } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+  };
+}
+
+/** Compact human duration: "0.3s", "12.5s", "2m14s". */
+export function formatCommandDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return "";
+  }
+  if (seconds < 60) {
+    const rounded = Math.round(seconds * 10) / 10;
+    return `${rounded}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds - minutes * 60);
+  return remainder > 0 ? `${minutes}m${remainder}s` : `${minutes}m`;
 }

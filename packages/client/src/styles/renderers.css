@@ -1550,6 +1550,19 @@ details[open] .collapsible__icon {
   font-size: var(--font-size-lg);
 }
 
+/* Command runtime / exit-code line under an expanded shell result. */
+.command-result-meta {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.bash-result-meta-badges {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
 /* Bash Collapsed Preview */
 .bash-collapsed-preview {
   display: flex;

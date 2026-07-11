@@ -1,5 +1,9 @@
 import { type ReactNode, useState } from "react";
-import { parseShellToolOutput } from "../../../lib/shellToolOutput";
+import {
+  formatCommandDuration,
+  getCommandResultMeta,
+  parseShellToolOutput,
+} from "../../../lib/shellToolOutput";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
 import { AnsiText } from "../../ui/AnsiText";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
@@ -160,8 +164,15 @@ function getResultText(result: unknown): string {
     return result;
   }
 
-  if (isRecord(result) && typeof result.content === "string") {
-    return result.content;
+  if (isRecord(result)) {
+    // Normalized command results carry the text under content/stdout;
+    // unified-exec chunk records carry it under output.
+    for (const field of ["content", "stdout", "output"]) {
+      const value = result[field];
+      if (typeof value === "string") {
+        return value;
+      }
+    }
   }
 
   if (result === null || result === undefined) {
@@ -173,6 +184,30 @@ function getResultText(result: unknown): string {
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+/**
+ * Command metadata line for the expanded result body — runtime always when
+ * known, exit code only when nonzero (contract:
+ * topics/provider-output-contract.md § Command execution metadata).
+ */
+function getResultMetaLine(result: unknown, text: string): string | null {
+  const meta = getCommandResultMeta(result);
+  const parsed = parseShellToolOutput(text);
+  const exitCode = meta.exitCode ?? parsed.exitCode;
+  const duration =
+    meta.durationSeconds !== undefined
+      ? formatCommandDuration(meta.durationSeconds)
+      : parsed.wallTime;
+
+  const parts: string[] = [];
+  if (duration) {
+    parts.push(duration);
+  }
+  if (exitCode !== undefined && exitCode !== 0) {
+    parts.push(`rc=${exitCode}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function countContentLines(content: string): number {
@@ -287,14 +322,27 @@ export const writeStdinRenderer: ToolRenderer<
     const parsed = parseShellToolOutput(text);
     const linkedToolName = getLinkedToolName(input);
     const linkedFilePath = getLinkedFilePath(input);
+    const metaLine = getResultMetaLine(result, text);
+    const metaRow = metaLine ? (
+      <div className="command-result-meta">{metaLine}</div>
+    ) : null;
 
     if (!parsed.output.trim()) {
-      if (parsed.exitCode !== undefined) {
+      const exitCode = getCommandResultMeta(result).exitCode ?? parsed.exitCode;
+      if (exitCode !== undefined && exitCode !== 0) {
         return (
-          <div className="bash-empty">{`Command exited with code ${parsed.exitCode}`}</div>
+          <>
+            <div className="bash-empty">{`Command exited with code ${exitCode}`}</div>
+            {metaRow}
+          </>
         );
       }
-      return <div className="bash-empty">No output</div>;
+      return (
+        <>
+          <div className="bash-empty">No output</div>
+          {metaRow}
+        </>
+      );
     }
 
     if (linkedToolName === "Read" && linkedFilePath) {
@@ -319,6 +367,7 @@ export const writeStdinRenderer: ToolRenderer<
             )
           }
         />
+        {metaRow}
       </div>
     );
   },
@@ -347,12 +396,17 @@ export const writeStdinRenderer: ToolRenderer<
 
     const text = getResultText(result);
     const parsed = parseShellToolOutput(text);
-    if (parsed.exitCode !== undefined && parsed.wallTime) {
-      return `exit ${parsed.exitCode} in ${parsed.wallTime}`;
-    }
+    const meta = getCommandResultMeta(result);
+    const exitCode = meta.exitCode ?? parsed.exitCode;
+    const duration =
+      meta.durationSeconds !== undefined
+        ? formatCommandDuration(meta.durationSeconds)
+        : parsed.wallTime;
 
-    if (parsed.exitCode !== undefined) {
-      return `exit ${parsed.exitCode}`;
+    // Exit code 0 is the default and stays silent per the command-metadata
+    // contract; runtime detail lives in the expanded result body.
+    if (exitCode !== undefined && exitCode !== 0) {
+      return duration ? `rc=${exitCode} in ${duration}` : `rc=${exitCode}`;
     }
 
     if (!parsed.output.trim()) {

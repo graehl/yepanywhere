@@ -15,7 +15,10 @@ import {
   getDisplayBashCommandFromInput,
   isCodexProvider,
 } from "../../../lib/bashCommand";
-import { parseShellToolOutput } from "../../../lib/shellToolOutput";
+import {
+  formatCommandDuration,
+  parseShellToolOutput,
+} from "../../../lib/shellToolOutput";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
 import { AnsiText } from "../../ui/AnsiText";
@@ -302,6 +305,32 @@ function BashModalContent({
           </span>
         </div>
       )}
+      <BashResultMetaBadges result={result} />
+    </div>
+  );
+}
+
+/**
+ * Runtime and exit-code badges for command detail views. Exit code 0 stays
+ * silent; runtime shows whenever the provider reported one (contract:
+ * topics/provider-output-contract.md § Command execution metadata).
+ */
+function BashResultMetaBadges({ result }: { result: BashResult | undefined }) {
+  const showExit = result?.exitCode !== undefined && result.exitCode !== 0;
+  const showDuration = result?.durationSeconds !== undefined;
+  if (!showExit && !showDuration) {
+    return null;
+  }
+  return (
+    <div className="bash-result-meta-badges">
+      {showExit && (
+        <span className="badge badge-error">rc={result?.exitCode}</span>
+      )}
+      {showDuration && result?.durationSeconds !== undefined && (
+        <span className="badge badge-info">
+          {formatCommandDuration(result.durationSeconds)}
+        </span>
+      )}
     </div>
   );
 }
@@ -430,6 +459,7 @@ function BashToolResult({
           Background: {result.backgroundTaskId}
         </span>
       )}
+      <BashResultMetaBadges result={result} />
       {stdout && (
         <div className="bash-stdout bash-expanded-section">
           <div className="bash-inline-section-header">

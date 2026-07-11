@@ -278,12 +278,24 @@ export function normalizeCodexToolOutputWithContext(
       // Bash results match the live-stream structured result. Equivalence is a
       // contract — see topics/stream-persisted-render-parity.md.
       bashExitCode,
+      // Command runtime, from the chunk record or the shell envelope (spec:
+      // topics/provider-output-contract.md § Command execution metadata).
+      chunk?.durationSeconds ?? extractWallTimeSecondsFromText(content),
     );
   } else if (context?.toolName === "WriteStdin") {
     const chunk = parseCodexUnifiedExecChunkOutput(content);
     if (chunk) {
       content = chunk.output;
-      structured = chunk.record;
+      // Raw chunk fields pass through; normalized command metadata and a
+      // stdout alias ride alongside so renderers need no chunk knowledge.
+      structured = {
+        ...chunk.record,
+        stdout: chunk.output,
+        ...(chunk.exitCode !== undefined ? { exitCode: chunk.exitCode } : {}),
+        ...(chunk.durationSeconds !== undefined
+          ? { durationSeconds: chunk.durationSeconds }
+          : {}),
+      };
       if (chunk.exitCode !== undefined) {
         isError = chunk.exitCode !== 0;
       }
@@ -766,6 +778,7 @@ function formatByteSize(bytes: number): string {
 }
 
 interface CodexUnifiedExecChunk {
+  durationSeconds?: number;
   exitCode?: number;
   output: string;
   record: Record<string, unknown>;
@@ -801,13 +814,29 @@ function parseCodexUnifiedExecChunkOutput(
     return undefined;
   }
   const exitCode = parsed.exit_code;
+  const durationSeconds = parsed.wall_time_seconds;
   return {
     ...(typeof exitCode === "number" && Number.isFinite(exitCode)
       ? { exitCode }
       : {}),
+    ...(typeof durationSeconds === "number" && Number.isFinite(durationSeconds)
+      ? { durationSeconds }
+      : {}),
     output: parsed.output,
     record: parsed,
   };
+}
+
+/** Command runtime from the shell envelope: "Wall time[:] 30.0 seconds". */
+function extractWallTimeSecondsFromText(content: string): number | undefined {
+  const match = content.match(
+    /(?:^|\n)\s*Wall time:?\s+([\d.]+)\s*seconds?\b/i,
+  );
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function extractCodexShellOutputContent(content: string): string {
@@ -833,6 +862,7 @@ function createBashToolResult(
   backgroundTaskId?: string,
   interrupted = false,
   exitCode?: number,
+  durationSeconds?: number,
 ): {
   stdout: string;
   stderr: string;
@@ -840,6 +870,7 @@ function createBashToolResult(
   isImage: false;
   backgroundTaskId?: string;
   exitCode?: number;
+  durationSeconds?: number;
 } {
   return {
     stdout: interrupted || isError ? "" : output,
@@ -848,6 +879,7 @@ function createBashToolResult(
     isImage: false,
     ...(backgroundTaskId ? { backgroundTaskId } : {}),
     ...(exitCode !== undefined ? { exitCode } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
   };
 }
 

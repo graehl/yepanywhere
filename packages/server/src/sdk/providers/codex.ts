@@ -7,7 +7,6 @@
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { promisify } from "node:util";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
   createCodexToolCorrelation,
@@ -30,7 +29,7 @@ import {
   parseCodexToolArguments,
 } from "../../codex/normalization.js";
 import { getLogger } from "../../logging/logger.js";
-import { findCodexCliPath } from "../cli-detection.js";
+import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
 import type {
@@ -120,7 +119,6 @@ import type {
 } from "./types.js";
 
 const log = getLogger().child({ component: "codex-provider" });
-const execFileAsync = promisify(execFile);
 const CODEX_DESKTOP_BROWSER_SKILL_NAME =
   "browser:control-in-app-browser";
 
@@ -1100,11 +1098,8 @@ export class CodexProvider implements AgentProvider {
   private async getInstalledCodexCliVersion(): Promise<string | null> {
     try {
       const codexCommand = await this.resolveCodexCommand();
-      const { stdout } = await execFileAsync(codexCommand, ["--version"], {
-        encoding: "utf-8",
-        timeout: 3000,
-      });
-      return normalizeSemver(stdout);
+      const version = await getCodexCliVersion(codexCommand);
+      return normalizeSemver(version);
     } catch {
       return null;
     }

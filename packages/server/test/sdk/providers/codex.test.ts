@@ -170,7 +170,7 @@ describe("CodexProvider", () => {
       }
     });
 
-    it("should prefer OpenAI Codex desktop bins over stale sandbox fallback on Windows", () => {
+    it("should order OpenAI Codex desktop bins before stale sandbox fallback on Windows", () => {
       if (process.platform !== "win32") return;
 
       const tempDir = mkdtempSync(join(tmpdir(), "codex-desktop-bin-"));

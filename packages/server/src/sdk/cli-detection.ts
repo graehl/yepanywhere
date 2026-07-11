@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 const isWindows = os.platform() === "win32";
+const CODEX_VERSION_PROBE_TIMEOUT_MS = 3000;
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
@@ -58,6 +59,16 @@ export interface CodexCliInfo {
   error?: string;
 }
 
+export interface CodexCliInstall {
+  path: string;
+  version: string;
+  normalizedVersion: string | null;
+}
+
+interface VersionedCodexCandidate extends CodexCliInstall {
+  order: number;
+}
+
 /**
  * Detect the Codex CLI installation.
  *
@@ -70,12 +81,9 @@ export interface CodexCliInfo {
 export async function detectCodexCli(
   explicitPath?: string,
 ): Promise<CodexCliInfo> {
-  const codexPath = await findCodexCliPath(explicitPath);
-  if (codexPath) {
-    const version = await getCodexVersion(codexPath);
-    if (version) {
-      return { found: true, path: codexPath, version };
-    }
+  const install = await findCodexCliInstall(explicitPath);
+  if (install) {
+    return { found: true, path: install.path, version: install.version };
   }
 
   return {
@@ -145,13 +153,150 @@ function parseWhichOutput(stdout: string): string[] {
     .filter(Boolean);
 }
 
-async function isUsableCodexPath(path: string): Promise<boolean> {
-  return Boolean(await getCodexVersion(path));
+function dedupePathKey(path: string): string {
+  return isWindows ? path.toLowerCase() : path;
+}
+
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const path of paths) {
+    const key = dedupePathKey(path);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(path);
+  }
+  return unique;
+}
+
+export function normalizeCodexCliVersion(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+)\.(\d+)\.(\d+)(?:-([\w.]+))?/);
+  if (!match) return null;
+  const [, major, minor, patch, pre] = match;
+  return pre
+    ? `${major}.${minor}.${patch}-${pre}`
+    : `${major}.${minor}.${patch}`;
+}
+
+export function compareCodexCliVersions(a: string, b: string): number {
+  const parsedA = splitCodexCliVersion(a);
+  const parsedB = splitCodexCliVersion(b);
+  for (let i = 0; i < 3; i++) {
+    const partA = parsedA.parts[i] ?? 0;
+    const partB = parsedB.parts[i] ?? 0;
+    if (partA !== partB) return partA < partB ? -1 : 1;
+  }
+  if (parsedA.pre === null && parsedB.pre === null) return 0;
+  if (parsedA.pre === null) return 1;
+  if (parsedB.pre === null) return -1;
+  return parsedA.pre < parsedB.pre ? -1 : parsedA.pre > parsedB.pre ? 1 : 0;
+}
+
+function splitCodexCliVersion(version: string): {
+  parts: number[];
+  pre: string | null;
+} {
+  const dashIndex = version.indexOf("-");
+  const core = dashIndex === -1 ? version : version.slice(0, dashIndex);
+  const pre = dashIndex === -1 ? null : version.slice(dashIndex + 1);
+  return {
+    parts: core.split(".").map((part) => {
+      const parsed = Number.parseInt(part, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }),
+    pre,
+  };
+}
+
+function compareCodexCandidates(
+  a: VersionedCodexCandidate,
+  b: VersionedCodexCandidate,
+): number {
+  if (a.normalizedVersion && b.normalizedVersion) {
+    const versionOrder = compareCodexCliVersions(
+      a.normalizedVersion,
+      b.normalizedVersion,
+    );
+    if (versionOrder !== 0) return versionOrder;
+  } else if (a.normalizedVersion) {
+    return 1;
+  } else if (b.normalizedVersion) {
+    return -1;
+  }
+
+  // Lower order means earlier discovery priority; keep it as the tie-breaker.
+  return b.order - a.order;
+}
+
+function selectBestCodexCandidate(
+  candidates: VersionedCodexCandidate[],
+): VersionedCodexCandidate | null {
+  let best: VersionedCodexCandidate | null = null;
+  for (const candidate of candidates) {
+    if (!best || compareCodexCandidates(candidate, best) > 0) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+async function probeCodexCandidate(
+  path: string,
+  order: number,
+): Promise<VersionedCodexCandidate | null> {
+  const version = await getCodexCliVersion(path);
+  if (!version) return null;
+  return {
+    path,
+    version,
+    normalizedVersion: normalizeCodexCliVersion(version),
+    order,
+  };
+}
+
+async function getPathCodexCandidates(): Promise<string[]> {
+  try {
+    const { stdout } = await execAsync(whichCommand("codex"), {
+      encoding: "utf-8",
+    });
+    return parseWhichOutput(stdout);
+  } catch {
+    return [];
+  }
+}
+
+async function findAutoCodexCliInstall(): Promise<CodexCliInstall | null> {
+  const candidatePaths = uniquePaths([
+    ...(await getPathCodexCandidates()),
+    ...getCodexCommonPaths().filter((path) => existsSync(path)),
+  ]);
+
+  const candidates = (
+    await Promise.all(
+      candidatePaths.map((path, order) => probeCodexCandidate(path, order)),
+    )
+  ).filter((candidate): candidate is VersionedCodexCandidate =>
+    Boolean(candidate),
+  );
+
+  const best = selectBestCodexCandidate(candidates);
+  return best
+    ? {
+        path: best.path,
+        version: best.version,
+        normalizedVersion: best.normalizedVersion,
+      }
+    : null;
 }
 
 /**
  * Find the Codex CLI path by checking an explicit path first, then PATH, then
- * common locations. If an explicit path is provided but missing, return null:
+ * common locations. In auto mode, all usable candidates are probed and the
+ * highest parsed CLI version wins; discovery order is only a tie-breaker.
+ * If an explicit path is provided but missing, return null:
  * explicit provider configuration is authoritative and should not silently
  * drift to a different install.
  * Returns the path if found, null otherwise.
@@ -163,32 +308,54 @@ export async function findCodexCliPath(
     return existsSync(explicitPath) ? explicitPath : null;
   }
 
-  try {
-    const { stdout } = await execAsync(whichCommand("codex"), {
-      encoding: "utf-8",
-    });
-    for (const codexPath of parseWhichOutput(stdout)) {
-      if (await isUsableCodexPath(codexPath)) return codexPath;
-    }
-  } catch {
-    // Not in PATH
+  const install = await findAutoCodexCliInstall();
+  return install?.path ?? null;
+}
+
+export async function findCodexCliInstall(
+  explicitPath?: string,
+): Promise<CodexCliInstall | null> {
+  if (explicitPath) {
+    if (!existsSync(explicitPath)) return null;
+    const version = await getCodexCliVersion(explicitPath);
+    return version
+      ? {
+          path: explicitPath,
+          version,
+          normalizedVersion: normalizeCodexCliVersion(version),
+        }
+      : null;
   }
 
-  for (const path of getCodexCommonPaths()) {
-    if (existsSync(path) && (await isUsableCodexPath(path))) return path;
-  }
+  return findAutoCodexCliInstall();
+}
 
-  return null;
+function isWindowsCommandScript(path: string): boolean {
+  return isWindows && /\.(?:cmd|bat)$/i.test(path);
+}
+
+function quoteWindowsCommandPath(path: string): string {
+  return `"${path.replace(/"/g, '""')}"`;
 }
 
 /**
  * Get the version of the Codex CLI at the given path.
  */
-async function getCodexVersion(codexPath: string): Promise<string | undefined> {
+export async function getCodexCliVersion(
+  codexPath: string,
+): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync(codexPath, ["--version"], {
+    const options = {
       encoding: "utf-8",
-    });
+      timeout: CODEX_VERSION_PROBE_TIMEOUT_MS,
+      windowsHide: true,
+    } as const;
+    const { stdout } = isWindowsCommandScript(codexPath)
+      ? await execAsync(`${quoteWindowsCommandPath(codexPath)} --version`, {
+          ...options,
+          windowsHide: true,
+        })
+      : await execFileAsync(codexPath, ["--version"], options);
     const output = stdout.trim();
     return output;
   } catch {

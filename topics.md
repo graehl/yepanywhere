@@ -142,3 +142,5 @@
   content visibility, and first-traversal scroll stability.
 - codex-code-mode-render-convergence - Shared rollout-recoverable semantic
   actions for GPT-5.5 and GPT-5.6 command rendering and explored grouping.
+- windows-codex-cli-detection - Windows Codex auto-discovery across PATH
+  shims, desktop binaries, and fallback installs.

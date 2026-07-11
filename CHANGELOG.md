@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-07-11
+
+### Added
+- Add bounded active transcript-window trimming to reduce long-session memory
+  and rendering cost while preserving search, navigation, and hidden-content
+  awareness.
+- Render Codex `web.run` browsing and compound exploration output as structured
+  transcript tool rows.
+- Add Codex user-turn provenance tracking and audit tooling so streamed and
+  persisted transcripts resolve user turns consistently.
+
+### Changed
+- Normalize Codex code-mode shell/run/wait rows, retries, failures, exit/runtime
+  metadata, output previews, and shell auto-expand behavior.
+- Improve session freshness, transcript context identity stability, and summary
+  cache rebuild behavior to reduce avoidable client churn.
+- Choose the newest available Codex CLI during autodetection and enumerate all
+  Unix PATH candidates.
+
+### Fixed
+- Surface terminal provider turn failures and handle Codex retry/process-failure
+  payloads.
+- Link shell polls to their command, fold waits into a single row, and hide
+  info-free empty polls.
+- Fix session info modal scrolling and hide unavailable Codex browser-skill UI.
+
 ## [0.6.1] - 2026-07-10
 
 ### Added

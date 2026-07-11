@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.7.4] - 2026-07-11
+
+### Added
+- Add bounded active transcript-window trimming in the hosted remote client to
+  reduce long-session memory and rendering cost while preserving search,
+  navigation, and hidden-content awareness.
+- Render Codex `web.run` browsing and compound exploration output as structured
+  hosted transcript tool rows.
+- Add Codex user-turn provenance handling so hosted streamed and persisted
+  transcripts resolve user turns consistently.
+
+### Changed
+- Normalize Codex code-mode shell/run/wait rows, retries, failures, exit/runtime
+  metadata, output previews, and shell auto-expand behavior.
+- Improve session freshness, transcript context identity stability, and summary
+  cache rebuild behavior to reduce avoidable hosted-client churn.
+- Choose the newest available Codex CLI during autodetection and enumerate all
+  Unix PATH candidates.
+
+### Fixed
+- Surface terminal provider turn failures and handle Codex retry/process-failure
+  payloads.
+- Link shell polls to their command, fold waits into a single row, and hide
+  info-free empty polls.
+- Fix session info modal scrolling and hide unavailable Codex browser-skill UI.
+
 ## [site-v1.7.3] - 2026-07-10
 
 ### Added

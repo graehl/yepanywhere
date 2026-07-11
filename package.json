@@ -42,8 +42,8 @@
     "lint": "node scripts/biome.cjs lint .",
     "format": "node scripts/biome.cjs format --write .",
     "prepare": "husky",
-    "site:dev": "cd site && npm run dev",
-    "site:build": "cd site && npm run build"
+    "site:dev": "node scripts/run-site-npm.mjs dev",
+    "site:build": "node scripts/run-site-npm.mjs build"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
@@ -74,5 +74,5 @@
     "tssrp6a": "^3.0.0",
     "tweetnacl": "^1.0.3"
   },
-  "version": "0.6.1"
+  "version": "0.6.2"
 }

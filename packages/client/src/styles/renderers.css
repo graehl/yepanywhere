@@ -1991,13 +1991,9 @@ details[open] .collapsible__icon {
   position: relative;
 }
 
-.edit-collapsed-preview .diff-expand-button {
-  position: relative;
-  bottom: auto;
-  right: auto;
-  align-self: flex-end;
-  margin-top: 0.25rem;
-  opacity: 1;
+/* Tapping a diff preview opens the full-diff modal. */
+.diff-tap-target {
+  cursor: pointer;
 }
 
 .edit-collapsed-error {
@@ -2169,35 +2165,8 @@ details[open] .collapsible__icon {
   pointer-events: none;
 }
 
-/* Expand button (appears on hover) */
-.diff-expand-button {
-  position: absolute;
-  bottom: 0.5rem;
-  right: 0.5rem;
-  padding: 0.25rem 0.75rem;
-  background: var(--vscode-button-background, #0e639c);
-  color: var(--vscode-button-foreground, #fff);
-  border: none;
-  border-radius: 4px;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  z-index: 10;
-  pointer-events: auto;
-}
-
-.diff-view-container:hover .diff-expand-button {
-  opacity: 1;
-}
-
-.diff-expand-button:hover {
-  background: var(--vscode-button-hoverBackground, #1177bb);
-}
-
-/* Always show expand button on mobile (no hover on touch devices) */
+/* Always show the copy button on mobile (no hover on touch devices) */
 @media (max-width: 600px) {
-  .diff-expand-button,
   .diff-copy-button {
     opacity: 1;
   }

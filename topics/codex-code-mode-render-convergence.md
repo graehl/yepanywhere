@@ -103,6 +103,35 @@ read/search/list action from a compound command. The parent remains one `Bash`
 call with an ordered `displayActions` vector because it still owns only one
 combined execution result.
 
+### 2026-07-11 shape drift: JS-literal arguments and detached cells
+
+A GPT-5.6 rollout from 2026-07-09 (`019f48bb-…`, 1,797 `exec` calls)
+falsified two assumptions of the shipped extractor:
+
+- **Nested-call arguments are JS object literals, not strict JSON.** The
+  model emits unquoted identifier keys, single-quoted strings, spaces, and
+  trailing commas — often mixed with quoted keys in one object
+  (`{cmd:"pwd && ls","workdir":"/repo"}`). Strict `JSON.parse` rejected
+  essentially every `exec_command` in the session, so every run fell
+  closed to a raw `exec` block and the transcript omitted the command.
+  The literal reader now parses JS literal expressions without evaluating
+  code (identifier keys, `'…'`/interpolation-free `` `…` `` strings, JS
+  escapes, trailing commas) and still fails closed on interpolation,
+  identifiers, and calls. Evidence: 738/738 single-`exec_command` calls in
+  that rollout recover their command; the 4 remaining raw `exec` blocks are
+  genuinely non-literal or looping scripts.
+- **Scripts detach into cells.** A code-mode script that outlives its
+  `yield_time_ms` returns `Script running with cell ID N`; a later
+  `function_call` named `wait` (`{cell_id, yield_time_ms, max_tokens}`)
+  collects the finished script's printed output — commonly a unified-exec
+  result record `{chunk_id, wall_time_seconds, exit_code, output}`.
+  `wait` now normalizes to the `WriteStdin` (Shell, "waiting for output")
+  presentation; unified-exec chunk records unwrap to their inner `output`
+  (with `exit_code` driving the error state) for `WriteStdin` and `Bash`
+  results; and client preprocessing links `wait` rows to the originating
+  command by cell id, including a poll that itself detaches into a new
+  cell. Anything not exactly one chunk record keeps its raw text.
+
 ### Live app-server shape
 
 Raw SDK logging is enabled in the inspected environment and records Codex

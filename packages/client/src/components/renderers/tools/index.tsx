@@ -11,6 +11,7 @@ const TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
   exec_command: "Bash",
   write_stdin: "WriteStdin",
+  wait: "WriteStdin", // detached code-mode cell poll; same shell presentation
   update_plan: "UpdatePlan",
   apply_patch: "Edit",
   web_search_call: "WebSearch",

@@ -395,6 +395,146 @@ describe("preprocessMessages", () => {
     }
   });
 
+  it("links wait calls to the command whose script detached into a cell", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-bash-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "bash-1",
+            name: "Bash",
+            input: { command: "./run-job.sh" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-bash-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "bash-1",
+            content:
+              "Script running with cell ID 39\nWall time 10.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-wait-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "wait-1",
+            name: "WriteStdin",
+            input: { cell_id: "39", yield_time_ms: 10000 },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const waitCall = items.find(
+      (item) => item.type === "tool_call" && item.id === "wait-1",
+    );
+
+    expect(waitCall?.type).toBe("tool_call");
+    if (waitCall?.type === "tool_call") {
+      expect(waitCall.toolInput).toMatchObject({
+        cell_id: "39",
+        linked_command: "./run-job.sh",
+        linked_tool_name: "Bash",
+      });
+    }
+  });
+
+  it("carries command linkage through a poll that detaches into a new cell", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-bash-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "bash-1",
+            name: "Bash",
+            input: { command: "make bench" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-bash-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "bash-1",
+            content: "Process running with session ID 41132",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-poll-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "poll-1",
+            name: "WriteStdin",
+            input: { session_id: 41132, chars: "" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+      {
+        id: "msg-poll-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "poll-1",
+            content:
+              "Script running with cell ID 52\nWall time 10.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:03Z",
+      },
+      {
+        id: "msg-wait-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "wait-1",
+            name: "WriteStdin",
+            input: { cell_id: "52" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:04Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const waitCall = items.find(
+      (item) => item.type === "tool_call" && item.id === "wait-1",
+    );
+
+    expect(waitCall?.type).toBe("tool_call");
+    if (waitCall?.type === "tool_call") {
+      expect(waitCall.toolInput).toMatchObject({
+        cell_id: "52",
+        linked_command: "make bench",
+      });
+    }
+  });
+
   it("links write_stdin calls to prior exec_command using session id", () => {
     const messages: Message[] = [
       {

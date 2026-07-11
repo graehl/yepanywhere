@@ -1210,6 +1210,24 @@ function extractSessionIdFromToolResult(
   return match[1];
 }
 
+function extractCellIdFromWriteStdinInput(input: unknown): string | undefined {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+  return coerceSessionId(input.cell_id ?? input.cellId);
+}
+
+/** A code-mode script that outlives its yield window detaches into a cell
+ * ("Script running with cell ID N"); a later `wait` call polls that cell. */
+function extractCellIdFromToolResult(item: ToolCallItem): string | undefined {
+  const raw = item.toolResult?.content ?? "";
+  const text = typeof raw === "string" ? raw : "";
+  const match = text.match(
+    /(?:^|\n)\s*Script\s+running\s+with\s+cell\s+ID\s+(\w+)\b/i,
+  );
+  return match?.[1];
+}
+
 function withLinkedCommand(input: unknown, command: string): unknown {
   if (!isRecord(input)) {
     return input;
@@ -1275,6 +1293,10 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
     string,
     { command?: string; filePath?: string; toolName?: string }
   >();
+  const cellToMetadata = new Map<
+    string,
+    { command?: string; filePath?: string; toolName?: string }
+  >();
 
   return items.map((item) => {
     if (item.type !== "tool_call") {
@@ -1286,11 +1308,11 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
       isFileSessionToolName(item.toolName)
     ) {
       const sessionId = extractSessionIdFromToolResult(item);
-      if (!sessionId) {
+      const cellId = extractCellIdFromToolResult(item);
+      if (!sessionId && !cellId) {
         return item;
       }
 
-      const existing = sessionToMetadata.get(sessionId) ?? {};
       const command = isCommandSessionToolName(item.toolName)
         ? extractCommandFromInput(item.toolInput)
         : undefined;
@@ -1298,25 +1320,48 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
         ? extractFilePathFromToolInput(item.toolInput)
         : undefined;
 
-      sessionToMetadata.set(sessionId, {
-        command: command ?? existing.command,
-        filePath: filePath ?? existing.filePath,
-        toolName: item.toolName ?? existing.toolName,
-      });
+      for (const [id, metadataById] of [
+        [sessionId, sessionToMetadata],
+        [cellId, cellToMetadata],
+      ] as const) {
+        if (!id) continue;
+        const existing = metadataById.get(id) ?? {};
+        metadataById.set(id, {
+          command: command ?? existing.command,
+          filePath: filePath ?? existing.filePath,
+          toolName: item.toolName ?? existing.toolName,
+        });
+      }
       return item;
     }
 
     const toolName = item.toolName.toLowerCase();
-    if (toolName !== "writestdin" && toolName !== "write_stdin") {
+    if (
+      toolName !== "writestdin" &&
+      toolName !== "write_stdin" &&
+      toolName !== "wait"
+    ) {
       return item;
     }
 
     const sessionId = extractSessionIdFromWriteStdinInput(item.toolInput);
-    if (!sessionId) {
-      return item;
+    const cellId = extractCellIdFromWriteStdinInput(item.toolInput);
+    const metadata =
+      (sessionId ? sessionToMetadata.get(sessionId) : undefined) ??
+      (cellId ? cellToMetadata.get(cellId) : undefined);
+
+    // A poll can itself detach into a new cell; carry the origin metadata
+    // forward so a later wait on that cell still links to the command.
+    const detachedCellId = extractCellIdFromToolResult(item);
+    if (detachedCellId && metadata) {
+      const existing = cellToMetadata.get(detachedCellId) ?? {};
+      cellToMetadata.set(detachedCellId, {
+        command: metadata.command ?? existing.command,
+        filePath: metadata.filePath ?? existing.filePath,
+        toolName: metadata.toolName ?? existing.toolName,
+      });
     }
 
-    const metadata = sessionToMetadata.get(sessionId);
     if (!metadata) {
       return item;
     }

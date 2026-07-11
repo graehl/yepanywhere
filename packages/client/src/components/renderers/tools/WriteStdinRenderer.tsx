@@ -29,6 +29,32 @@ function getSessionId(input: unknown): string {
   return "unknown";
 }
 
+function getCellId(input: unknown): string | undefined {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+  const value = input.cell_id ?? input.cellId;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return undefined;
+}
+
+function getTargetLine(input: unknown): string {
+  const sessionId = getSessionId(input);
+  if (sessionId !== "unknown") {
+    return `command session ${sessionId}`;
+  }
+  const cellId = getCellId(input);
+  if (cellId) {
+    return `script cell ${cellId}`;
+  }
+  return "command session unknown";
+}
+
 function getChars(input: unknown): string | undefined {
   if (!isRecord(input) || typeof input.chars !== "string") {
     return undefined;
@@ -232,7 +258,6 @@ export const writeStdinRenderer: ToolRenderer<
 
   renderToolUse(input, _context) {
     const summaryContext = { projectPath: _context.projectPath };
-    const sessionId = getSessionId(input);
     const chars = getChars(input);
     const command = getLinkedCommand(input);
     const filePath = getLinkedFilePath(input);
@@ -251,7 +276,7 @@ export const writeStdinRenderer: ToolRenderer<
     return (
       <div className="bash-tool-use">
         <pre className="code-block">
-          <code>{`${originLine}${fileLine}${commandLine}command session ${sessionId}\n${action}`}</code>
+          <code>{`${originLine}${fileLine}${commandLine}${getTargetLine(input)}\n${action}`}</code>
         </pre>
       </div>
     );

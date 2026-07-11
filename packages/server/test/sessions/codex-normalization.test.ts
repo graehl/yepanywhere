@@ -1104,6 +1104,166 @@ describe("Codex Normalization", () => {
     expect(toolResultMessage?.toolUseResult).toMatchObject({ ok: true });
   });
 
+  it("normalizes code-mode exec with JS-literal (unquoted-key) arguments to Bash", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "custom_tool_call",
+          call_id: "call-js-literal",
+          name: "exec",
+          input:
+            'const r = await tools.exec_command({cmd:"pwd && ls",workdir:"/repo",yield_time_ms:10000,max_output_tokens:30000}); text(r.output);',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "custom_tool_call_output",
+          call_id: "call-js-literal",
+          output: [
+            {
+              type: "input_text",
+              text: "Script completed\nWall time 0.1 seconds\nOutput:\n",
+            },
+            { type: "input_text", text: "/repo\nREADME.md\n" },
+          ],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const toolUseBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(toolUseBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-js-literal",
+      name: "Bash",
+      input: { command: "pwd && ls", workdir: "/repo" },
+    });
+
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      stdout: "/repo\nREADME.md\n",
+      stderr: "",
+    });
+  });
+
+  it("normalizes wait calls to WriteStdin and unwraps unified-exec chunk output", () => {
+    const chunk = {
+      chunk_id: "5cc06a",
+      wall_time_seconds: 22.4,
+      exit_code: 0,
+      original_token_count: 5047,
+      output: "started job serial=1 pid=1981745\nlog: /repo/run.log\n",
+    };
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          call_id: "call-wait",
+          name: "wait",
+          arguments: '{"cell_id":"39","yield_time_ms":10000,"max_tokens":12000}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-wait",
+          output: [
+            {
+              type: "input_text",
+              text: "Script completed\nWall time 8.2 seconds\nOutput:\n",
+            },
+            { type: "input_text", text: JSON.stringify(chunk) },
+          ],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const toolUseBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(toolUseBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-wait",
+      name: "WriteStdin",
+      input: { cell_id: "39" },
+    });
+
+    const resultContent = result.messages[1]?.message?.content;
+    const resultBlock = Array.isArray(resultContent)
+      ? resultContent[0]
+      : resultContent;
+    expect(resultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call-wait",
+      content: chunk.output,
+    });
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      chunk_id: "5cc06a",
+      exit_code: 0,
+    });
+  });
+
+  it("marks a failed unified-exec chunk as an error", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          call_id: "call-wait-fail",
+          name: "wait",
+          arguments: '{"cell_id":"7"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-wait-fail",
+          output: [
+            {
+              type: "input_text",
+              text: "Script completed\nWall time 1.0 seconds\nOutput:\n",
+            },
+            {
+              type: "input_text",
+              text: '{"chunk_id":"aa","exit_code":2,"output":"boom\\n"}',
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    const resultContent = result.messages[1]?.message?.content;
+    const resultBlock = Array.isArray(resultContent)
+      ? resultContent[0]
+      : resultContent;
+    expect(resultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call-wait-fail",
+      content: "boom\n",
+      is_error: true,
+    });
+  });
+
   it("normalizes new tooling fixture (update_plan + write_stdin) with readable output text", () => {
     const entries = loadCodexFixtureEntries("new-tooling-format");
 

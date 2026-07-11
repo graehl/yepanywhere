@@ -3,8 +3,11 @@
  *
  * This is deliberately not a JavaScript parser. It recognizes only direct
  * `tools.<name>(literal)` calls and identifiers bound by a simple
- * `const <name> = <JSON literal>` declaration. Unknown expressions fail
- * closed so transcript rendering never depends on evaluating persisted code.
+ * `const <name> = <literal>` declaration. A literal is a JS literal
+ * expression (models emit unquoted identifier keys, single-quoted strings,
+ * and trailing commas at least as often as strict JSON), parsed without
+ * evaluation. Unknown expressions fail closed so transcript rendering never
+ * depends on evaluating persisted code.
  */
 
 export interface CodexCodeModeNestedCall {
@@ -141,8 +144,170 @@ function parseJsonLiteral(text: string): unknown | undefined {
   try {
     return JSON.parse(text);
   } catch {
-    return undefined;
+    return parseJsLiteralExpression(text);
   }
+}
+
+const JS_ESCAPE_MAP: Record<string, string> = {
+  "0": "\0",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  v: "\v",
+};
+
+interface ParsedLiteralValue {
+  end: number;
+  value: unknown;
+}
+
+/**
+ * Parse one JS literal expression (object, array, string, number, boolean,
+ * null) without evaluating code. Returns undefined for anything else —
+ * identifiers, calls, spreads, template interpolation — so callers keep the
+ * fail-closed contract of the JSON path.
+ */
+function parseJsLiteralExpression(text: string): unknown | undefined {
+  const parsed = parseLiteralValue(text, skipTrivia(text, 0));
+  if (!parsed) return undefined;
+  if (skipTrivia(text, parsed.end) !== text.length) return undefined;
+  return parsed.value;
+}
+
+function parseLiteralValue(
+  source: string,
+  start: number,
+): ParsedLiteralValue | null {
+  const char = source[start];
+  if (char === '"' || char === "'" || char === "`") {
+    return parseLiteralString(source, start);
+  }
+  if (char === "{") return parseLiteralObject(source, start);
+  if (char === "[") return parseLiteralArray(source, start);
+  const keyword = readIdentifier(source, start);
+  if (keyword) {
+    if (keyword.value === "true") return { end: keyword.end, value: true };
+    if (keyword.value === "false") return { end: keyword.end, value: false };
+    if (keyword.value === "null") return { end: keyword.end, value: null };
+    return null;
+  }
+  return parseLiteralNumber(source, start);
+}
+
+function parseLiteralString(
+  source: string,
+  start: number,
+): ParsedLiteralValue | null {
+  const quote = source[start];
+  let value = "";
+  let index = start + 1;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === "\\") {
+      const escaped = source[index + 1];
+      if (escaped === undefined) return null;
+      if (escaped === "u" || escaped === "x") {
+        const hexLength = escaped === "x" ? 2 : 4;
+        const hex = source.slice(index + 2, index + 2 + hexLength);
+        if (!new RegExp(`^[0-9a-fA-F]{${hexLength}}$`).test(hex)) return null;
+        value += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 2 + hexLength;
+        continue;
+      }
+      value += JS_ESCAPE_MAP[escaped] ?? escaped;
+      index += 2;
+      continue;
+    }
+    if (char === quote) {
+      return { end: index + 1, value };
+    }
+    // Template interpolation would need evaluation; fail closed.
+    if (quote === "`" && char === "$" && source[index + 1] === "{") return null;
+    if (quote !== "`" && char === "\n") return null;
+    value += char;
+    index++;
+  }
+  return null;
+}
+
+const LITERAL_NUMBER_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/;
+
+function parseLiteralNumber(
+  source: string,
+  start: number,
+): ParsedLiteralValue | null {
+  const match = LITERAL_NUMBER_RE.exec(source.slice(start));
+  if (!match) return null;
+  const value = Number(match[0]);
+  if (!Number.isFinite(value)) return null;
+  return { end: start + match[0].length, value };
+}
+
+function parseLiteralObject(
+  source: string,
+  start: number,
+): ParsedLiteralValue | null {
+  const value: Record<string, unknown> = {};
+  let index = skipTrivia(source, start + 1);
+  while (index < source.length) {
+    if (source[index] === "}") return { end: index + 1, value };
+
+    let key: string;
+    const char = source[index];
+    if (char === '"' || char === "'") {
+      const parsedKey = parseLiteralString(source, index);
+      if (!parsedKey || typeof parsedKey.value !== "string") return null;
+      key = parsedKey.value;
+      index = parsedKey.end;
+    } else {
+      const identifier = readIdentifier(source, index);
+      if (!identifier) return null;
+      key = identifier.value;
+      index = identifier.end;
+    }
+
+    index = skipTrivia(source, index);
+    if (source[index] !== ":") return null;
+    index = skipTrivia(source, index + 1);
+    const parsedValue = parseLiteralValue(source, index);
+    if (!parsedValue) return null;
+    value[key] = parsedValue.value;
+
+    index = skipTrivia(source, parsedValue.end);
+    if (source[index] === ",") {
+      index = skipTrivia(source, index + 1);
+      continue;
+    }
+    if (source[index] === "}") return { end: index + 1, value };
+    return null;
+  }
+  return null;
+}
+
+function parseLiteralArray(
+  source: string,
+  start: number,
+): ParsedLiteralValue | null {
+  const value: unknown[] = [];
+  let index = skipTrivia(source, start + 1);
+  while (index < source.length) {
+    if (source[index] === "]") return { end: index + 1, value };
+
+    const parsedValue = parseLiteralValue(source, index);
+    if (!parsedValue) return null;
+    value.push(parsedValue.value);
+
+    index = skipTrivia(source, parsedValue.end);
+    if (source[index] === ",") {
+      index = skipTrivia(source, index + 1);
+      continue;
+    }
+    if (source[index] === "]") return { end: index + 1, value };
+    return null;
+  }
+  return null;
 }
 
 function collectConstLiterals(source: string): Map<string, unknown> {

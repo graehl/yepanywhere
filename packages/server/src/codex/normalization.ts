@@ -18,6 +18,9 @@ export const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
   exec_command: "Bash",
   write_stdin: "WriteStdin",
+  // A detached code-mode script cell is polled with `wait`; it shares the
+  // shell-session presentation ("waiting for output") with stdin polls.
+  wait: "WriteStdin",
   update_plan: "UpdatePlan",
   apply_patch: "Edit",
   web_search_call: "WebSearch",
@@ -256,7 +259,16 @@ export function normalizeCodexToolOutputWithContext(
         : writeResult;
     }
   } else if (context?.toolName === "Bash") {
-    const bashContent = extractCodexShellOutputContent(content);
+    let bashContent = extractCodexShellOutputContent(content);
+    let bashExitCode = exitCode;
+    const chunk = parseCodexUnifiedExecChunkOutput(bashContent);
+    if (chunk) {
+      bashContent = chunk.output;
+      if (chunk.exitCode !== undefined) {
+        bashExitCode = chunk.exitCode;
+        isError = chunk.exitCode !== 0;
+      }
+    }
     structured = createBashToolResult(
       interrupted ? "" : bashContent,
       isError,
@@ -265,8 +277,17 @@ export function normalizeCodexToolOutputWithContext(
       // Carry a recoverable exit code so reloaded (function_call_output-only)
       // Bash results match the live-stream structured result. Equivalence is a
       // contract — see topics/stream-persisted-render-parity.md.
-      exitCode,
+      bashExitCode,
     );
+  } else if (context?.toolName === "WriteStdin") {
+    const chunk = parseCodexUnifiedExecChunkOutput(content);
+    if (chunk) {
+      content = chunk.output;
+      structured = chunk.record;
+      if (chunk.exitCode !== undefined) {
+        isError = chunk.exitCode !== 0;
+      }
+    }
   } else if (context?.toolName === "Edit" && context.patchApplyResult) {
     const patchOutput = context.patchApplyResult.success
       ? context.patchApplyResult.stdout
@@ -742,6 +763,51 @@ function formatByteSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}\u202fb`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
   return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
+}
+
+interface CodexUnifiedExecChunk {
+  exitCode?: number;
+  output: string;
+  record: Record<string, unknown>;
+}
+
+const UNIFIED_EXEC_CHUNK_MARKERS = [
+  "chunk_id",
+  "session_id",
+  "wall_time_seconds",
+  "original_token_count",
+] as const;
+
+/**
+ * Recognize a unified-exec result record printed as a tool output — the
+ * shape `tools.exec_command`/`wait` return for detached shell sessions:
+ * `{"chunk_id":…,"wall_time_seconds":…,"exit_code":…,"output":"…"}`.
+ * The embedded `output` is the command's real text; showing the raw JSON
+ * hides it. Anything not exactly one such object fails closed.
+ */
+function parseCodexUnifiedExecChunkOutput(
+  content: string,
+): CodexUnifiedExecChunk | undefined {
+  const body = extractCodexShellOutputContent(content).trim();
+  if (!body.startsWith("{") || !body.endsWith("}")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || typeof parsed.output !== "string") return undefined;
+  if (!UNIFIED_EXEC_CHUNK_MARKERS.some((marker) => marker in parsed)) {
+    return undefined;
+  }
+  const exitCode = parsed.exit_code;
+  return {
+    ...(typeof exitCode === "number" && Number.isFinite(exitCode)
+      ? { exitCode }
+      : {}),
+    output: parsed.output,
+    record: parsed,
+  };
 }
 
 function extractCodexShellOutputContent(content: string): string {

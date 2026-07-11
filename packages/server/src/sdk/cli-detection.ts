@@ -259,7 +259,11 @@ async function probeCodexCandidate(
 
 async function getPathCodexCandidates(): Promise<string[]> {
   try {
-    const { stdout } = await execAsync(whichCommand("codex"), {
+    // `where` returns every Windows match, while Unix `which` needs `-a` to
+    // enumerate beyond the first PATH hit so version selection can compare all
+    // installed candidates.
+    const command = isWindows ? whichCommand("codex") : "which -a codex";
+    const { stdout } = await execAsync(command, {
       encoding: "utf-8",
     });
     return parseWhichOutput(stdout);

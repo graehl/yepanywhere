@@ -358,6 +358,16 @@ export interface ToolRenderer<TInput = unknown, TResult = unknown> {
    * "Asked"). Falls back to `displayName` when unset.
    */
   pendingDisplayName?: string;
+  /**
+   * Dynamic display-name override, consulted before displayName /
+   * pendingDisplayName. Lets a renderer reflect call state only the input
+   * carries — e.g. a backgrounded Bash run keeps reading "Running" after
+   * the tool call itself completed. Return undefined to fall through.
+   */
+  displayNameForCall?(
+    input: TInput,
+    status: "pending" | "complete" | "error" | "aborted" | "incomplete",
+  ): string | undefined;
   /** Render the tool_use block (what Claude wants to do) */
   renderToolUse(input: TInput, context: RenderContext): ReactNode;
   /** Render the tool_result block (what happened) */

@@ -2038,6 +2038,245 @@ describe("preprocessMessages", () => {
     });
   });
 
+  describe("background command annotation", () => {
+    function backgroundLaunchMessages(): Message[] {
+      return [
+        {
+          id: "msg-bg-use",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "bash-bg-1",
+              name: "Bash",
+              input: { command: "sleep 600", run_in_background: true },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "msg-bg-result",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "bash-bg-1",
+              content:
+                "Command running in background with ID: bxyz123. Output is being written to: /tmp/tasks/bxyz123.output",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+    }
+
+    function findBashCall(items: ReturnType<typeof preprocessMessages>) {
+      return items.find(
+        (item) => item.type === "tool_call" && item.id === "bash-bg-1",
+      );
+    }
+
+    it("marks a backgrounded run as running while no completion evidence exists", () => {
+      const items = preprocessMessages(backgroundLaunchMessages());
+      const call = findBashCall(items);
+      expect(call?.type).toBe("tool_call");
+      if (call?.type === "tool_call") {
+        expect(call.toolInput).toMatchObject({
+          _backgroundTaskStatus: "running",
+        });
+      }
+    });
+
+    it("marks a backgrounded run completed when its task notification arrives", () => {
+      const messages: Message[] = [
+        ...backgroundLaunchMessages(),
+        {
+          uuid: "33333333-3333-3333-3333-333333333333",
+          type: "user",
+          origin: { kind: "task-notification" },
+          message: {
+            role: "user",
+            content: [
+              "<task-notification>",
+              "<task-id>bxyz123</task-id>",
+              "<status>completed</status>",
+              "<summary>Background command completed (exit code 0)</summary>",
+              "</task-notification>",
+            ].join("\n"),
+          },
+          timestamp: "2024-01-01T00:10:00Z",
+        },
+      ];
+
+      const call = findBashCall(preprocessMessages(messages));
+      expect(call?.type).toBe("tool_call");
+      if (call?.type === "tool_call") {
+        expect(call.toolInput).toMatchObject({
+          _backgroundTaskStatus: "completed",
+        });
+      }
+    });
+
+    it("leaves a Codex session-ID background run on the existing pending presentation", () => {
+      // "Process running with session ID N" results intentionally keep the
+      // call pending (spinner + present-tense header) until the same call's
+      // final output arrives, so the annotation pass must not touch them.
+      const messages: Message[] = [
+        {
+          id: "msg-bg-use",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "bash-bg-1",
+              name: "Bash",
+              input: { command: "make bench" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "msg-bg-result",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "bash-bg-1",
+              content: "Process running with session ID 41132",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+
+      const call = findBashCall(preprocessMessages(messages));
+      expect(call?.type).toBe("tool_call");
+      if (call?.type === "tool_call") {
+        expect(call.status).toBe("pending");
+        expect(
+          (call.toolInput as Record<string, unknown>)._backgroundTaskStatus,
+        ).toBeUndefined();
+      }
+    });
+
+    it("keeps a detached code-mode script running until its cell wait exits", () => {
+      const detachMessages: Message[] = [
+        {
+          id: "msg-bg-use",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "bash-bg-1",
+              name: "Bash",
+              input: { command: "./run-job.sh" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "msg-bg-result",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "bash-bg-1",
+              content:
+                "Script running with cell ID 52\nWall time 10.0 seconds\nOutput:\n",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+
+      const runningCall = findBashCall(preprocessMessages(detachMessages));
+      expect(runningCall?.type).toBe("tool_call");
+      if (runningCall?.type === "tool_call") {
+        expect(runningCall.toolInput).toMatchObject({
+          _backgroundTaskStatus: "running",
+        });
+      }
+
+      const completedCall = findBashCall(
+        preprocessMessages([
+          ...detachMessages,
+          {
+            id: "msg-wait-use",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "wait-1",
+                name: "WriteStdin",
+                input: { cell_id: "52" },
+              },
+            ],
+            timestamp: "2024-01-01T00:00:02Z",
+          },
+          {
+            id: "msg-wait-result",
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "wait-1",
+                content:
+                  "Chunk ID: ff710e\nProcess exited with code 0\nOutput:\nready\n",
+              },
+            ],
+            timestamp: "2024-01-01T00:00:03Z",
+          },
+        ]),
+      );
+      expect(completedCall?.type).toBe("tool_call");
+      if (completedCall?.type === "tool_call") {
+        expect(completedCall.toolInput).toMatchObject({
+          _backgroundTaskStatus: "completed",
+        });
+      }
+    });
+
+    it("does not annotate an ordinary foreground command", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-fg-use",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "bash-fg-1",
+              name: "Bash",
+              input: { command: "ls" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "msg-fg-result",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "bash-fg-1",
+              content: "README.md\n",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+
+      const call = preprocessMessages(messages).find(
+        (item) => item.type === "tool_call" && item.id === "bash-fg-1",
+      );
+      expect(call?.type).toBe("tool_call");
+      if (call?.type === "tool_call") {
+        expect(
+          (call.toolInput as Record<string, unknown>)._backgroundTaskStatus,
+        ).toBeUndefined();
+      }
+    });
+  });
+
   describe("task notifications", () => {
     const TASK_NOTIFICATION_XML = [
       "<task-notification>",

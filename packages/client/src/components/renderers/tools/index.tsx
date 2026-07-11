@@ -152,8 +152,21 @@ class ToolRendererRegistry {
     return null;
   }
 
-  getDisplayName(toolName: string, status?: ToolCallItem["status"]): string {
+  getDisplayName(
+    toolName: string,
+    status?: ToolCallItem["status"],
+    input?: unknown,
+  ): string {
     const renderer = this.get(toolName);
+    if (input !== undefined && renderer.displayNameForCall) {
+      const dynamicName = renderer.displayNameForCall(
+        input,
+        status ?? "complete",
+      );
+      if (dynamicName) {
+        return dynamicName;
+      }
+    }
     if (status === "pending" && renderer.pendingDisplayName) {
       return renderer.pendingDisplayName;
     }

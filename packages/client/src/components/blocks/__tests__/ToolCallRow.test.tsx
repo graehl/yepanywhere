@@ -885,9 +885,25 @@ describe("ToolCallRow", () => {
       status: "complete",
       rowWidthPx: 900,
     });
+    // The cap is the preview-lines setting (4 visual lines by default)
+    // times the line height, matching the rendered line-clamp.
     expect(huge).toBe(
       DEFERRED_PREVIEW_HEIGHT.outputRowChromePx +
-        DEFERRED_PREVIEW_HEIGHT.maxOutputPx +
+        4 * DEFERRED_PREVIEW_HEIGHT.outputLineHeightPx +
+        DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
+    );
+
+    const tall = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "cat big.log" },
+      result: { stdout: `${"line\n".repeat(100)}`, stderr: "" },
+      status: "complete",
+      rowWidthPx: 900,
+      previewLineCount: 8,
+    });
+    expect(tall).toBe(
+      DEFERRED_PREVIEW_HEIGHT.outputRowChromePx +
+        8 * DEFERRED_PREVIEW_HEIGHT.outputLineHeightPx +
         DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     );
   });

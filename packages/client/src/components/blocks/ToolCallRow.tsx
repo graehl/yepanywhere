@@ -179,6 +179,9 @@ export function estimateDeferredPreviewHeightPx(params: {
   status: ToolCallItem["status"];
   rowWidthPx?: number | null;
   typography?: Partial<DeferredPreviewTypographyMetrics>;
+  /** Output-preview-lines appearance setting; the rendered preview clamps
+   * to this many visual lines, so the estimate must share the cap. */
+  previewLineCount?: number;
 }): number | null {
   if (
     !canDeferRichToolRow(params.status) ||
@@ -197,11 +200,13 @@ export function estimateDeferredPreviewHeightPx(params: {
     params.rowWidthPx,
     typography,
   );
+  const previewLines = clamp(Math.round(params.previewLineCount ?? 4), 1, 8);
+  const maxOutputPx = previewLines * typography.outputLineHeightPx;
   const outputPx = output
     ? Math.max(
         DEFERRED_PREVIEW_HEIGHT.minOutputRowPx,
         Math.min(
-          DEFERRED_PREVIEW_HEIGHT.maxOutputPx,
+          maxOutputPx,
           estimateWrappedLineCount(output, charsPerLine) *
             typography.outputLineHeightPx,
         ) + typography.outputRowChromePx,
@@ -213,7 +218,12 @@ export function estimateDeferredPreviewHeightPx(params: {
   return clamp(
     outputPx + DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     DEFERRED_PREVIEW_HEIGHT.minPx,
-    DEFERRED_PREVIEW_HEIGHT.maxPx,
+    Math.max(
+      DEFERRED_PREVIEW_HEIGHT.maxPx,
+      maxOutputPx +
+        typography.outputRowChromePx +
+        DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
+    ),
   );
 }
 
@@ -493,6 +503,7 @@ export const ToolCallRow = memo(function ToolCallRow({
         status,
         rowWidthPx,
         typography: deferredPreviewTypography,
+        previewLineCount: outputToolPreviewLineCount,
       }),
     [
       toolName,
@@ -501,6 +512,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       status,
       rowWidthPx,
       deferredPreviewTypography,
+      outputToolPreviewLineCount,
     ],
   );
 
@@ -836,7 +848,7 @@ export const ToolCallRow = memo(function ToolCallRow({
         )}
 
         <span className="tool-name">
-          {toolRegistry.getDisplayName(toolName, status)}
+          {toolRegistry.getDisplayName(toolName, status, toolInput)}
         </span>
 
         {hasInteractiveSummary && canRenderInteractiveSummary ? (

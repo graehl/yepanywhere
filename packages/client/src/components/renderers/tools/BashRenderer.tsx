@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -28,7 +29,10 @@ import type { BashInput, BashResult, ToolRenderer } from "./types";
 
 const MAX_LINES_COLLAPSED = 20;
 const MAX_LINES_TOOL_USE = 12;
-const PREVIEW_MAX_CHARS_PER_LINE = 110;
+/** Character budget per preview line. Display truncation is the CSS
+ * line-clamp (which counts wrapped visual lines); this only bounds how much
+ * text enters the DOM, so it must exceed any plausible visual line width. */
+const PREVIEW_MAX_CHARS_PER_LINE = 320;
 const RICH_PREVIEW_LINES = 20;
 const RICH_PREVIEW_MAX_CHARS = 4000;
 const NO_FIXED_FONT_RICH_CONTENT: RenderedMathResult = {
@@ -646,6 +650,13 @@ function BashCollapsedPreview({
           <div className="bash-preview-row bash-preview-output-row">
             <div
               className={`bash-preview-output ${truncated ? "bash-preview-truncated" : ""} ${isError || result?.stderr ? "bash-preview-error" : ""}`}
+              style={
+                {
+                  "--bash-preview-line-count": String(
+                    outputToolPreviewLineCount,
+                  ),
+                } as CSSProperties
+              }
             >
               <FixedFontMathToggle
                 sourceText={previewText}
@@ -700,6 +711,18 @@ export const bashRenderer: ToolRenderer<BashInput, BashResult> = {
   tool: "Bash",
   displayName: "Ran",
   pendingDisplayName: "Run",
+
+  // A backgrounded command's tool call completes while the process keeps
+  // running, so the header verb stays present-tense until completion
+  // evidence arrives (see annotateBackgroundCommands in preprocessMessages).
+  displayNameForCall(input, status) {
+    if (status !== "complete") {
+      return undefined;
+    }
+    const backgroundStatus = (input as unknown as Record<string, unknown> | null)
+      ?._backgroundTaskStatus;
+    return backgroundStatus === "running" ? "Running" : undefined;
+  },
 
   renderToolUse(input, _context) {
     return <BashToolUse input={input as BashInput} />;

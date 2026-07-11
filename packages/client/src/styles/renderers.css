@@ -1619,7 +1619,6 @@ details[open] .collapsible__icon {
   flex: 1;
   min-width: 0;
   position: relative;
-  max-height: 5rem;
   overflow: hidden;
 }
 
@@ -1631,14 +1630,18 @@ details[open] .collapsible__icon {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-secondary, var(--text-muted));
+  /* The preview budget is visual (wrapped) lines, so the clamp — not a
+     fixed max-height or a character cut — decides where display stops.
+     The count comes from the output-preview-lines appearance setting. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--bash-preview-line-count, 4);
+  line-clamp: var(--bash-preview-line-count, 4);
+  overflow: hidden;
 }
 
 .bash-preview-output.bash-preview-error pre {
   color: var(--error-color);
-}
-
-.bash-preview-truncated {
-  max-height: 5rem;
 }
 
 .bash-preview-fade {

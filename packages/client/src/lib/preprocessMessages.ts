@@ -88,7 +88,8 @@ export function preprocessMessages(
     compactCoalescedItems,
   );
   const enrichedItems = enrichWriteStdinWithCommand(slashCommandCoalescedItems);
-  return collapseSessionSetupRuns(enrichedItems);
+  const backgroundAnnotatedItems = annotateBackgroundCommands(enrichedItems);
+  return collapseSessionSetupRuns(backgroundAnnotatedItems);
 }
 
 function collectOrphanedToolIds(
@@ -1286,6 +1287,152 @@ function extractFilePathFromToolInput(input: unknown): string | undefined {
   }
   const filePath = input.file_path.trim();
   return filePath.length > 0 ? filePath : undefined;
+}
+
+const BACKGROUND_LAUNCH_ID_RE =
+  /(?:Command|Process)\s+running\s+(?:in\s+background\s+with\s+ID|with\s+session\s+ID)\s*:?\s*([\w-]+)/i;
+const DETACHED_CELL_ID_RE =
+  /(?:^|\n)\s*Script\s+running\s+with\s+cell\s+ID\s+(\w+)\b/i;
+const PROCESS_EXITED_RE = /(?:^|\n)\s*Process exited with code \d+/i;
+const BACKGROUND_ENDED_STATUS_RE =
+  /^(completed|failed|killed|stopped|success|error|done)/i;
+
+function getRecordField(
+  value: unknown,
+  field: string,
+): unknown {
+  return isRecord(value) ? value[field] : undefined;
+}
+
+function toolResultContent(item: ToolCallItem): string {
+  const raw = item.toolResult?.content;
+  return typeof raw === "string" ? raw : "";
+}
+
+/**
+ * Mark completed Bash calls whose command was backgrounded so the row can
+ * keep a present-tense header ("Running") until completion evidence appears
+ * later in the transcript: a task-notification for the call, a
+ * BashOutput/TaskOutput poll reporting completion, a KillShell, or a Codex
+ * unified-exec/wait poll whose chunk carries an exit code.
+ */
+function annotateBackgroundCommands(items: RenderItem[]): RenderItem[] {
+  const endedKeys = new Set<string>();
+  const addEnded = (...keys: Array<string | false | undefined>) => {
+    for (const key of keys) {
+      if (key) endedKeys.add(key);
+    }
+  };
+
+  for (const item of items) {
+    if (item.type === "task_notification") {
+      if (item.status && BACKGROUND_ENDED_STATUS_RE.test(item.status)) {
+        addEnded(item.taskId, item.toolUseId && `tool:${item.toolUseId}`);
+      }
+      continue;
+    }
+    if (item.type !== "tool_call") {
+      continue;
+    }
+    const toolName = item.toolName.toLowerCase();
+    const input = item.toolInput;
+    const structured = item.toolResult?.structured;
+
+    if (toolName === "bashoutput" || toolName === "bash_output") {
+      const id = coerceSessionId(
+        getRecordField(structured, "shellId") ??
+          getRecordField(input, "bash_id"),
+      );
+      const status = getRecordField(structured, "status");
+      const exited = typeof getRecordField(structured, "exitCode") === "number";
+      if (id && (exited || status === "completed" || status === "failed")) {
+        addEnded(id);
+      }
+    } else if (toolName === "taskoutput" || toolName === "task_output") {
+      const task = getRecordField(structured, "task");
+      const status = getRecordField(task, "status");
+      if (status === "completed" || status === "failed") {
+        addEnded(
+          coerceSessionId(
+            getRecordField(task, "task_id") ??
+              getRecordField(input, "task_id"),
+          ),
+        );
+      }
+    } else if (toolName === "killshell" || toolName === "kill_shell") {
+      addEnded(
+        coerceSessionId(
+          getRecordField(structured, "shell_id") ??
+            getRecordField(input, "shell_id"),
+        ),
+      );
+    } else if (
+      toolName === "writestdin" ||
+      toolName === "write_stdin" ||
+      toolName === "wait"
+    ) {
+      const finished =
+        typeof getRecordField(structured, "exit_code") === "number" ||
+        PROCESS_EXITED_RE.test(toolResultContent(item));
+      if (finished) {
+        const sessionId = extractSessionIdFromWriteStdinInput(input);
+        const cellId = extractCellIdFromWriteStdinInput(input);
+        addEnded(
+          sessionId && `session:${sessionId}`,
+          cellId && `cell:${cellId}`,
+        );
+      }
+    }
+  }
+
+  return items.map((item) => {
+    if (
+      item.type !== "tool_call" ||
+      item.status !== "complete" ||
+      !isCommandSessionToolName(item.toolName)
+    ) {
+      return item;
+    }
+
+    const content = toolResultContent(item);
+    const keys: string[] = [`tool:${item.id}`];
+    let backgrounded =
+      getRecordField(item.toolInput, "run_in_background") === true;
+
+    const structuredTaskId = coerceSessionId(
+      getRecordField(item.toolResult?.structured, "backgroundTaskId"),
+    );
+    if (structuredTaskId) {
+      backgrounded = true;
+      keys.push(structuredTaskId, `session:${structuredTaskId}`);
+    }
+    const launchMatch = content.match(BACKGROUND_LAUNCH_ID_RE);
+    if (launchMatch?.[1]) {
+      backgrounded = true;
+      keys.push(launchMatch[1]);
+      if (/session\s+ID/i.test(launchMatch[0])) {
+        keys.push(`session:${launchMatch[1]}`);
+      }
+    }
+    const cellMatch = content.match(DETACHED_CELL_ID_RE);
+    if (cellMatch?.[1]) {
+      backgrounded = true;
+      keys.push(`cell:${cellMatch[1]}`);
+    }
+
+    if (!backgrounded) {
+      return item;
+    }
+    const ended = keys.some((key) => endedKeys.has(key));
+    const toolInput = isRecord(item.toolInput) ? item.toolInput : {};
+    return {
+      ...item,
+      toolInput: {
+        ...toolInput,
+        _backgroundTaskStatus: ended ? "completed" : "running",
+      },
+    };
+  });
 }
 
 function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {

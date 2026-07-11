@@ -522,14 +522,19 @@ describe("preprocessMessages", () => {
     ];
 
     const items = preprocessMessages(messages);
-    const waitCall = items.find(
-      (item) => item.type === "tool_call" && item.id === "wait-1",
-    );
 
-    expect(waitCall?.type).toBe("tool_call");
-    if (waitCall?.type === "tool_call") {
-      expect(waitCall.toolInput).toMatchObject({
-        cell_id: "52",
+    // The wait on the detached cell folds into the originating poll row,
+    // which keeps the linkage the wait inherited.
+    expect(
+      items.find((item) => item.type === "tool_call" && item.id === "wait-1"),
+    ).toBeUndefined();
+    const pollCall = items.find(
+      (item) => item.type === "tool_call" && item.id === "poll-1",
+    );
+    expect(pollCall?.type).toBe("tool_call");
+    if (pollCall?.type === "tool_call") {
+      expect(pollCall.toolInput).toMatchObject({
+        session_id: 41132,
         linked_command: "make bench",
       });
     }
@@ -646,12 +651,121 @@ describe("preprocessMessages", () => {
       });
     }
 
-    const wait53 = byId("wait-53");
-    expect(wait53?.type).toBe("tool_call");
-    if (wait53?.type === "tool_call") {
-      expect(wait53.toolInput).toMatchObject({
-        linked_command: "./agentctl start train-job --watch",
+    // The wait on the poll's detached cell folds into the poll row.
+    expect(byId("wait-53")).toBeUndefined();
+  });
+
+  it("folds a detached poll and the wait that collects it into one row", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-poll-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "poll-1",
+            name: "WriteStdin",
+            input: { session_id: 21394, chars: "", linked_command: "watch x" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-poll-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "poll-1",
+            content:
+              "Script running with cell ID 92\nWall time 10.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-wait-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "wait-92",
+            name: "WriteStdin",
+            input: { cell_id: "92" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+      {
+        id: "msg-wait-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "wait-92",
+            content:
+              "Script completed\nWall time 27.0 seconds\nOutput:\n[I]: step=2700\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:03Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const tools = items.filter((item) => item.type === "tool_call");
+    expect(tools).toHaveLength(1);
+    const merged = tools[0];
+    if (merged?.type === "tool_call") {
+      expect(merged.id).toBe("poll-1");
+      expect(merged.status).toBe("complete");
+      expect(merged.toolInput).toMatchObject({
+        session_id: 21394,
+        linked_command: "watch x",
       });
+      expect(merged.toolResult?.content).toContain("[I]: step=2700");
+    }
+  });
+
+  it("keeps an unresolved detached poll as its own still-running row", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-poll-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "poll-1",
+            name: "WriteStdin",
+            input: { session_id: 21394, chars: "", linked_command: "watch x" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-poll-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "poll-1",
+            content:
+              "Script running with cell ID 92\nWall time 10.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const poll = items.find(
+      (item) => item.type === "tool_call" && item.id === "poll-1",
+    );
+    expect(poll?.type).toBe("tool_call");
+    if (poll?.type === "tool_call") {
+      expect(poll.status).toBe("complete");
+      expect(poll.toolResult?.content).toContain(
+        "Script running with cell ID 92",
+      );
     }
   });
 

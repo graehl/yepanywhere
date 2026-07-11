@@ -94,7 +94,7 @@ describe("WriteStdinRenderer", () => {
     const detachEnvelope =
       "Script running with cell ID 53\nWall time 30.0 seconds\nOutput:\n";
     expect(writeStdinRenderer.getResultSummary?.(detachEnvelope, false)).toBe(
-      "still running",
+      "still running · 30s",
     );
 
     render(
@@ -109,6 +109,21 @@ describe("WriteStdinRenderer", () => {
     expect(
       screen.getByText(/Still running — output continues as script cell 53/),
     ).toBeDefined();
+  });
+
+  it("puts the runtime in the summary line whenever it is known", () => {
+    expect(
+      writeStdinRenderer.getResultSummary?.(
+        "Script completed\nWall time 27.0 seconds\nOutput:\nline one\nline two\n",
+        false,
+      ),
+    ).toBe("2 lines · 27s");
+    expect(
+      writeStdinRenderer.getResultSummary?.(
+        "Wall time 30.0 seconds\nOutput:\n",
+        false,
+      ),
+    ).toBe("No output · 30s");
   });
 
   it("suppresses exit 0 in the summary per the command-metadata contract", () => {

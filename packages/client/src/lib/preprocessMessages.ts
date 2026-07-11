@@ -61,8 +61,51 @@ export interface PreprocessAugments {
  *
  * This is a pure function - given the same messages, returns the same items.
  * Safe to call on every render (use useMemo).
+ *
+ * Results are additionally cached by input identity so a remounted view
+ * (route switch back, tab raise) whose messages array survived in the
+ * session-detail cache reuses the previous computation instead of
+ * re-running the whole pipeline. This relies on two standing contracts:
+ * message arrays are replaced on change, never mutated in place
+ * (mergeJSONLMessages builds a new array; no-op filters return the same
+ * one), and returned render items are treated as immutable downstream.
  */
+interface PreprocessCacheEntry {
+  markdown: PreprocessAugments["markdown"];
+  activeToolApproval: boolean | undefined;
+  items: RenderItem[];
+}
+
+const preprocessResultCache = new WeakMap<Message[], PreprocessCacheEntry[]>();
+const PREPROCESS_CACHE_VARIANTS_PER_ARRAY = 3;
+
 export function preprocessMessages(
+  messages: Message[],
+  augments?: PreprocessAugments,
+): RenderItem[] {
+  const markdown = augments?.markdown;
+  const activeToolApproval = augments?.activeToolApproval;
+  const cachedVariants = preprocessResultCache.get(messages);
+  const cached = cachedVariants?.find(
+    (entry) =>
+      entry.markdown === markdown &&
+      entry.activeToolApproval === activeToolApproval,
+  );
+  if (cached) {
+    return cached.items;
+  }
+
+  const computed = computePreprocessedMessages(messages, augments);
+  const variants = cachedVariants ?? [];
+  variants.push({ markdown, activeToolApproval, items: computed });
+  if (variants.length > PREPROCESS_CACHE_VARIANTS_PER_ARRAY) {
+    variants.shift();
+  }
+  preprocessResultCache.set(messages, variants);
+  return computed;
+}
+
+function computePreprocessedMessages(
   messages: Message[],
   augments?: PreprocessAugments,
 ): RenderItem[] {
@@ -93,7 +136,10 @@ export function preprocessMessages(
     compactCoalescedItems,
   );
   const enrichedItems = enrichWriteStdinWithCommand(slashCommandCoalescedItems);
-  const backgroundAnnotatedItems = annotateBackgroundCommands(enrichedItems);
+  const pollCoalescedItems = coalesceDetachedPollContinuations(enrichedItems);
+  const backgroundAnnotatedItems = annotateBackgroundCommands(
+    pollCoalescedItems,
+  );
   const shellPollFilteredItems = hideContextFreeEmptyShellPolls(
     backgroundAnnotatedItems,
   );
@@ -1550,6 +1596,91 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
       toolInput,
     };
   });
+}
+
+function isShellPollToolName(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  return (
+    normalized === "writestdin" ||
+    normalized === "write_stdin" ||
+    normalized === "wait"
+  );
+}
+
+/**
+ * One logical shell poll can span several transcript records: the poll's
+ * script detaches into a cell ("Script running with cell ID N") and a later
+ * `wait` on that cell collects the actual result — possibly detaching again
+ * before it does. Rendering each record separately reads as a puzzling
+ * "still running → cell N" row followed by an unlabeled result row, so fold
+ * the chain into the originating poll: it keeps its input and linkage and
+ * takes the final wait's result. A wait that never resolves in the loaded
+ * transcript leaves the poll honestly "still running".
+ *
+ * Single scan plus a prebuilt cell-id index: cell ids restart within a
+ * rollout, so a consumer takes the first unconsumed wait AFTER its own
+ * position, never an earlier reuse.
+ */
+function coalesceDetachedPollContinuations(items: RenderItem[]): RenderItem[] {
+  const waitIndicesByCell = new Map<string, number[]>();
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    if (item?.type !== "tool_call" || !isShellPollToolName(item.toolName)) {
+      continue;
+    }
+    const cellId = extractCellIdFromWriteStdinInput(item.toolInput);
+    if (!cellId) continue;
+    const list = waitIndicesByCell.get(cellId);
+    if (list) {
+      list.push(index);
+    } else {
+      waitIndicesByCell.set(cellId, [index]);
+    }
+  }
+  if (waitIndicesByCell.size === 0) {
+    return items;
+  }
+
+  const consumed = new Set<number>();
+  const takeNextWaitOnCell = (cellId: string, after: number): number => {
+    const list = waitIndicesByCell.get(cellId);
+    if (!list) return -1;
+    for (const index of list) {
+      if (index > after && !consumed.has(index)) return index;
+    }
+    return -1;
+  };
+
+  const result: RenderItem[] = [];
+  for (let i = 0; i < items.length; i++) {
+    if (consumed.has(i)) continue;
+    let item = items[i];
+    if (item === undefined) continue;
+
+    if (item.type === "tool_call" && isShellPollToolName(item.toolName)) {
+      let cellId = extractCellIdFromToolResult(item);
+      let after = i;
+      while (cellId) {
+        const waitIndex = takeNextWaitOnCell(cellId, after);
+        if (waitIndex < 0) break;
+        const wait = items[waitIndex];
+        if (wait?.type !== "tool_call") break;
+        consumed.add(waitIndex);
+        after = waitIndex;
+        item = {
+          ...item,
+          status: wait.status,
+          toolResult: wait.toolResult,
+        };
+        cellId =
+          wait.toolResult !== undefined
+            ? extractCellIdFromToolResult(wait)
+            : undefined;
+      }
+    }
+    result.push(item);
+  }
+  return result;
 }
 
 /**

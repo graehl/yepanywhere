@@ -187,6 +187,23 @@ function getResultText(result: unknown): string {
   return JSON.stringify(result, null, 2);
 }
 
+/** Compact runtime ("30s", "2m14s") from structured metadata or the shell
+ * envelope's "Wall time N seconds" line. */
+function getCompactDuration(result: unknown, text: string): string | undefined {
+  const meta = getCommandResultMeta(result);
+  if (meta.durationSeconds !== undefined) {
+    return formatCommandDuration(meta.durationSeconds) || undefined;
+  }
+  const wallTime = parseShellToolOutput(text).wallTime;
+  if (!wallTime) {
+    return undefined;
+  }
+  const seconds = Number.parseFloat(wallTime);
+  return Number.isFinite(seconds)
+    ? formatCommandDuration(seconds) || undefined
+    : wallTime;
+}
+
 /**
  * Command metadata line for the expanded result body — runtime always when
  * known, exit code only when nonzero (contract:
@@ -418,17 +435,23 @@ export const writeStdinRenderer: ToolRenderer<
         : parsed.wallTime;
 
     // Exit code 0 is the default and stays silent per the command-metadata
-    // contract; runtime detail lives in the expanded result body.
+    // contract.
     if (exitCode !== undefined && exitCode !== 0) {
       return duration ? `rc=${exitCode} in ${duration}` : `rc=${exitCode}`;
     }
 
+    const compactDuration = getCompactDuration(result, text);
+    const withDuration = (summary: string) =>
+      compactDuration ? `${summary} · ${compactDuration}` : summary;
+
     if (!parsed.output.trim()) {
-      return extractDetachedCellId(text) ? "still running" : "No output";
+      return withDuration(
+        extractDetachedCellId(text) ? "still running" : "No output",
+      );
     }
 
     const lineCount = parsed.output.split("\n").filter(Boolean).length;
-    return `${lineCount} lines`;
+    return withDuration(`${lineCount} lines`);
   },
 
   renderInteractiveSummary(input, result, isError, _context) {

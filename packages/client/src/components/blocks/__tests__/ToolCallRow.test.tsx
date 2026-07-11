@@ -649,6 +649,47 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".expand-chevron")).not.toBeNull();
   });
 
+  it("auto-expands a shell row whose output fits the preview budget", () => {
+    // Default output-preview-lines budget is 2; two lines fit.
+    const { container } = render(
+      <ToolCallRow
+        id="tool-pty-short"
+        toolName="WriteStdin"
+        toolInput={{ session_id: 37863, chars: "" }}
+        toolResult={{
+          content:
+            "Script completed\nWall time 27.0 seconds\nOutput:\n[I]: step=2700\n[I]: step=2800\n",
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(screen.getByText(/step=2700/)).toBeDefined();
+    expect(container.querySelector(".expand-chevron")).not.toBeNull();
+  });
+
+  it("keeps a long shell output collapsed behind its summary", () => {
+    const longOutput = Array.from({ length: 30 }, (_, i) => `line ${i}`).join(
+      "\n",
+    );
+    render(
+      <ToolCallRow
+        id="tool-pty-long"
+        toolName="WriteStdin"
+        toolInput={{ session_id: 37863, chars: "" }}
+        toolResult={{
+          content: `Script completed\nWall time 27.0 seconds\nOutput:\n${longOutput}`,
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(screen.queryByText(/line 12/)).toBeNull();
+    expect(screen.getByText(/30 lines/)).toBeDefined();
+  });
+
   it("collapses generic expanded tool rows from the left strip", () => {
     const { container } = render(
       <ToolCallRow

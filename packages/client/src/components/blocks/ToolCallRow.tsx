@@ -695,10 +695,37 @@ export const ToolCallRow = memo(function ToolCallRow({
   const isNonExpandable =
     hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
 
+  // A shell poll whose whole output fits the output-preview-lines budget
+  // reads inline without a click; the row stays collapsible.
+  const isShellSessionTool = rendererToolName === "WriteStdin";
+  const shellOutputFitsPreview = useMemo(() => {
+    if (!isShellSessionTool || status !== "complete" || toolResult?.isError) {
+      return false;
+    }
+    const output = parseShellToolOutput(
+      typeof toolResult?.content === "string" ? toolResult.content : "",
+    ).output.trim();
+    return (
+      output.length > 0 &&
+      output.split("\n").length <= outputToolPreviewLineCount
+    );
+  }, [isShellSessionTool, status, toolResult, outputToolPreviewLineCount]);
+
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(
-    !isNonExpandable && (toolName === "Edit" || toolName === "TodoWrite"),
+    !isNonExpandable &&
+      (toolName === "Edit" ||
+        toolName === "TodoWrite" ||
+        shellOutputFitsPreview),
   );
+  // A live poll completes after mount; expand it then, unless the user
+  // has toggled the row themselves.
+  const userToggledExpandRef = useRef(false);
+  useEffect(() => {
+    if (shellOutputFitsPreview && !userToggledExpandRef.current) {
+      setExpanded(true);
+    }
+  }, [shellOutputFitsPreview]);
 
   // Dot-expanded: inline full result for preview-first rows (starts collapsed).
   const [dotExpanded, setDotExpanded] = useState(false);
@@ -853,6 +880,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   const handleToggle = () => {
     hydrateNow();
     if (!isNonExpandable) {
+      userToggledExpandRef.current = true;
       setExpanded((v) => {
         if (!v) {
           shouldFocusExpandedTopRef.current = true;

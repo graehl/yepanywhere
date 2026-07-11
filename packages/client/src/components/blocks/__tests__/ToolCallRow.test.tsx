@@ -59,6 +59,86 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".tool-use-expanded")).toBeNull();
   });
 
+  it("shows the provider-reported runtime in the Ran label tooltip", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-elapsed"
+        toolName="Bash"
+        toolInput={{ command: "sleep 12" }}
+        toolResult={{
+          content: "ok",
+          isError: false,
+          structured: {
+            stdout: "ok",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+            durationSeconds: 12.5,
+          },
+        }}
+        status="complete"
+        startTimestampMs={1_000}
+        resultTimestampMs={14_000}
+      />,
+    );
+
+    const label = container.querySelector<HTMLElement>(".tool-name");
+    expect(label).toBeTruthy();
+    fireEvent.pointerEnter(label as HTMLElement);
+    expect((label as HTMLElement).title).toBe("took 12.5s");
+  });
+
+  it("falls back to the message-time delta tooltip when no runtime is reported", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-elapsed-delta"
+        toolName="Bash"
+        toolInput={{ command: "make" }}
+        toolResult={{
+          content: "ok",
+          isError: false,
+          structured: {
+            stdout: "ok",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+        }}
+        status="complete"
+        startTimestampMs={1_000}
+        resultTimestampMs={9_000}
+      />,
+    );
+
+    const label = container.querySelector<HTMLElement>(".tool-name");
+    fireEvent.pointerEnter(label as HTMLElement);
+    expect((label as HTMLElement).title).toBe("took ~8s");
+  });
+
+  it("shows live elapsed time for a backgrounded running command", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-elapsed-bg"
+        toolName="Bash"
+        toolInput={{
+          command: "sleep 600",
+          run_in_background: true,
+          _backgroundTaskStatus: "running",
+        }}
+        toolResult={{
+          content: "Command running in background with ID: bxyz123",
+          isError: false,
+        }}
+        status="complete"
+        startTimestampMs={Date.now() - 90_000}
+      />,
+    );
+
+    const label = container.querySelector<HTMLElement>(".tool-name");
+    fireEvent.pointerEnter(label as HTMLElement);
+    expect((label as HTMLElement).title).toMatch(/^running for 1m3[01]s$/);
+  });
+
   it("shows pending pi Bash output previews when live updates attach one", () => {
     const { container } = render(
       <ToolCallRow

@@ -19,7 +19,11 @@ import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewR
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
-import { parseShellToolOutput } from "../../lib/shellToolOutput";
+import {
+  formatCommandDuration,
+  getCommandResultMeta,
+  parseShellToolOutput,
+} from "../../lib/shellToolOutput";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
@@ -32,6 +36,10 @@ interface Props {
   toolResult?: ToolResultData;
   status: ToolCallItem["status"];
   sessionProvider?: string;
+  /** Tool-call start (first source-message time) — a command's start. */
+  startTimestampMs?: number | null;
+  /** Result arrival time; null while pending or when no result message. */
+  resultTimestampMs?: number | null;
 }
 
 export const DEFERRED_PREVIEW_HEIGHT = {
@@ -78,6 +86,60 @@ const COMMAND_PREVIEW_MAX_CHARS_PER_LINE = 220;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Tooltip for the Ran/Running label: the command's elapsed time. Prefers the
+ * provider-reported runtime; falls back to the request→result message-time
+ * delta (approximate, marked "~"). Computed on hover so a running command's
+ * elapsed time is fresh without re-rendering the row. Contract:
+ * topics/provider-output-contract.md § Command execution metadata.
+ */
+function computeCommandElapsedTitle(params: {
+  toolInput: unknown;
+  structuredResult: unknown;
+  status: ToolCallItem["status"];
+  startTimestampMs?: number | null;
+  resultTimestampMs?: number | null;
+  nowMs: number;
+}): string | null {
+  const {
+    toolInput,
+    structuredResult,
+    status,
+    startTimestampMs,
+    resultTimestampMs,
+    nowMs,
+  } = params;
+  const backgroundStatus =
+    toolInput && typeof toolInput === "object"
+      ? (toolInput as Record<string, unknown>)._backgroundTaskStatus
+      : undefined;
+
+  if (status === "pending" || backgroundStatus === "running") {
+    return typeof startTimestampMs === "number"
+      ? `running for ${formatCommandDuration((nowMs - startTimestampMs) / 1000)}`
+      : null;
+  }
+
+  const meta = getCommandResultMeta(structuredResult);
+  if (meta.durationSeconds !== undefined) {
+    return `took ${formatCommandDuration(meta.durationSeconds)}`;
+  }
+  if (
+    typeof startTimestampMs === "number" &&
+    typeof resultTimestampMs === "number" &&
+    resultTimestampMs >= startTimestampMs
+  ) {
+    return `took ~${formatCommandDuration((resultTimestampMs - startTimestampMs) / 1000)}`;
+  }
+  if (
+    backgroundStatus === "completed" &&
+    typeof startTimestampMs === "number"
+  ) {
+    return `started ${formatCommandDuration((nowMs - startTimestampMs) / 1000)} ago`;
+  }
+  return null;
 }
 
 function normalizeTypographyMetrics(
@@ -428,6 +490,8 @@ export const ToolCallRow = memo(function ToolCallRow({
   toolResult,
   status,
   sessionProvider,
+  startTimestampMs,
+  resultTimestampMs,
 }: Props) {
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [bashCommandExpanded, setBashCommandExpanded] = useState(false);
@@ -490,6 +554,30 @@ export const ToolCallRow = memo(function ToolCallRow({
   const isReadTool = rendererToolName === "Read";
   const isBashTool = rendererToolName === "Bash";
   const isGrepTool = rendererToolName === "Grep";
+  const handleToolNamePointerEnter = useCallback(
+    (event: React.PointerEvent<HTMLSpanElement>) => {
+      if (!isBashTool) {
+        return;
+      }
+      event.currentTarget.title =
+        computeCommandElapsedTitle({
+          toolInput,
+          structuredResult,
+          status,
+          startTimestampMs,
+          resultTimestampMs,
+          nowMs: Date.now(),
+        }) ?? "";
+    },
+    [
+      isBashTool,
+      toolInput,
+      structuredResult,
+      status,
+      startTimestampMs,
+      resultTimestampMs,
+    ],
+  );
   const canRenderInteractiveSummary =
     status === "complete" || (status === "pending" && isEditTool);
   const mayHaveInteractiveSummary =
@@ -847,7 +935,10 @@ export const ToolCallRow = memo(function ToolCallRow({
           </span>
         )}
 
-        <span className="tool-name">
+        <span
+          className="tool-name"
+          onPointerEnter={handleToolNamePointerEnter}
+        >
           {toolRegistry.getDisplayName(toolName, status, toolInput)}
         </span>
 

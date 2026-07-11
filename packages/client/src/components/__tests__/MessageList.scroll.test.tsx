@@ -228,6 +228,44 @@ describe("MessageList scroll and follow", () => {
     composerTarget.remove();
   });
 
+  it("retargets the position timestamp to a hovered row's start time", async () => {
+    const onTranscriptPositionTimestampChange = vi.fn();
+    const assistantStart = "2026-04-26T12:04:00.000Z";
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request", "2026-04-26T12:00:00.000Z"),
+          assistantMessage("assistant-1", "earlier response", assistantStart),
+        ]}
+        onTranscriptPositionTimestampChange={
+          onTranscriptPositionTimestampChange
+        }
+      />,
+    );
+
+    const row = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    expect(row).toBeTruthy();
+    fireEvent.pointerOver(row as HTMLElement);
+
+    // Hover overrides even in follow mode, where scroll position reports null.
+    await waitFor(() => {
+      expect(onTranscriptPositionTimestampChange).toHaveBeenLastCalledWith(
+        new Date(assistantStart).getTime(),
+      );
+    });
+
+    // Leaving the transcript (composer / dead area) restores the status quo.
+    const messageList = container.querySelector<HTMLElement>(".message-list");
+    fireEvent.pointerLeave(messageList as HTMLElement);
+    await waitFor(() => {
+      expect(onTranscriptPositionTimestampChange).toHaveBeenLastCalledWith(
+        null,
+      );
+    });
+  });
+
   it("reports the most recent visible turn end while scrolled back", async () => {
     const onTranscriptPositionTimestampChange = vi.fn();
     const assistantEnd = "2026-04-26T12:04:00.000Z";

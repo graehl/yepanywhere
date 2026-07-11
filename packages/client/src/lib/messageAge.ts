@@ -32,6 +32,22 @@ export function getLatestMessageTimestampMs(
   return latest;
 }
 
+/** Earliest source-message time — a tool row's start (e.g. command start),
+ * where the latest is its most recent result. */
+export function getEarliestMessageTimestampMs(
+  messages: readonly Message[],
+): number | null {
+  let earliest: number | null = null;
+  for (const message of messages) {
+    const timestampMs = parseTimestampMs(message.timestamp);
+    if (timestampMs === null) {
+      continue;
+    }
+    earliest = earliest === null ? timestampMs : Math.min(earliest, timestampMs);
+  }
+  return earliest;
+}
+
 export function isStaleTimestamp(
   timestampMs: number | null | undefined,
   nowMs: number,

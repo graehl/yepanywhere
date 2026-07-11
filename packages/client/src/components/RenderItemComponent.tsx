@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef } from "react";
 import {
   MESSAGE_STALE_THRESHOLD_MS,
+  getEarliestMessageTimestampMs,
   getLatestMessageTimestampMs,
 } from "../lib/messageAge";
 import {
@@ -324,6 +325,12 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             toolResult={item.toolResult}
             status={item.status}
             sessionProvider={sessionProvider}
+            startTimestampMs={getEarliestMessageTimestampMs(
+              item.sourceMessages,
+            )}
+            resultTimestampMs={
+              item.sourceMessages.length > 1 ? timestampMs : null
+            }
           />
         );
 

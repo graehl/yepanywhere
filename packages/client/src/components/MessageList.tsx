@@ -24,6 +24,7 @@ import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
   formatCompactRelativeAge,
+  getEarliestMessageTimestampMs,
   getLatestMessageTimestampMs,
   MESSAGE_STALE_THRESHOLD_MS,
 } from "../lib/messageAge";
@@ -796,6 +797,9 @@ export const MessageList = memo(function MessageList({
   const [hoveredMarkerTimestampMs, setHoveredMarkerTimestampMs] = useState<
     number | null
   >(null);
+  const [hoveredRowTimestampMs, setHoveredRowTimestampMs] = useState<
+    number | null
+  >(null);
   const [scrollPositionTimestampMs, setScrollPositionTimestampMs] = useState<
     number | null
   >(null);
@@ -1147,13 +1151,62 @@ export const MessageList = memo(function MessageList({
     updateScrollPositionTimestamp({ atBottom: isScrolledToBottom });
   }, [isScrolledToBottom, updateScrollPositionTimestamp]);
 
+  // Row-start times for the transcript hover override: hovering a row (or a
+  // turn-rail marker, which wins) retargets the composer "at N ago" from the
+  // scroll position to that specific turn's start time — a tool row's start
+  // is its command start. Mouse over the composer or dead space resolves no
+  // row, restoring the scroll-position status quo.
+  const rowStartTimestampsById = useMemo(() => {
+    const byId = new Map<string, number>();
+    for (const item of displayRenderItems) {
+      const timestampMs = getEarliestMessageTimestampMs(item.sourceMessages);
+      if (timestampMs !== null) {
+        byId.set(item.id, timestampMs);
+      }
+    }
+    return byId;
+  }, [displayRenderItems]);
+
+  const handleTranscriptPointerOver = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType && event.pointerType !== "mouse") {
+        return;
+      }
+      // Projected child rows (explored-group entries, asides) carry render
+      // ids absent from the items map; walk out to the owning item row.
+      let row =
+        (event.target as Element | null)?.closest?.("[data-render-id]") ??
+        null;
+      let timestampMs: number | null = null;
+      while (row) {
+        const id = (row as HTMLElement).dataset.renderId;
+        const mapped = id ? rowStartTimestampsById.get(id) : undefined;
+        if (mapped !== undefined) {
+          timestampMs = mapped;
+          break;
+        }
+        row = row.parentElement?.closest?.("[data-render-id]") ?? null;
+      }
+      setHoveredRowTimestampMs((current) =>
+        current === timestampMs ? current : timestampMs,
+      );
+    },
+    [rowStartTimestampsById],
+  );
+
+  const handleTranscriptPointerLeave = useCallback(() => {
+    setHoveredRowTimestampMs(null);
+  }, []);
+
   useEffect(() => {
     const contextualTimestampMs =
       hoveredMarkerTimestampMs ??
+      hoveredRowTimestampMs ??
       (isScrolledToBottom ? null : scrollPositionTimestampMs);
     onTranscriptPositionTimestampChange?.(contextualTimestampMs);
   }, [
     hoveredMarkerTimestampMs,
+    hoveredRowTimestampMs,
     isScrolledToBottom,
     onTranscriptPositionTimestampChange,
     scrollPositionTimestampMs,
@@ -2248,6 +2301,8 @@ export const MessageList = memo(function MessageList({
           .join(" ")}
         ref={containerRef}
         aria-busy={progressiveRevealActive ? true : undefined}
+        onPointerOver={handleTranscriptPointerOver}
+        onPointerLeave={handleTranscriptPointerLeave}
       >
         {floatingSelectionQuoteButton}
         {progressiveRevealActive && (

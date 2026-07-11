@@ -88,6 +88,75 @@ describe("ToolCallRow", () => {
     expect((label as HTMLElement).title).toBe("took 12.5s");
   });
 
+  it("prefixes the command tooltip with the elapsed time", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-cmd-title"
+        toolName="Bash"
+        toolInput={{ command: "sleep 12" }}
+        toolResult={{
+          content: "ok",
+          isError: false,
+          structured: {
+            stdout: "ok",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+            durationSeconds: 12.5,
+          },
+        }}
+        status="complete"
+        startTimestampMs={1_000}
+        resultTimestampMs={14_000}
+      />,
+    );
+
+    const command = container.querySelector<HTMLElement>(
+      ".tool-summary-command",
+    );
+    expect(command).toBeTruthy();
+    expect((command as HTMLElement).title).toBe("sleep 12");
+    fireEvent.pointerEnter(command as HTMLElement);
+    expect((command as HTMLElement).title).toBe("[12.5s] sleep 12");
+  });
+
+  it("explains a truncated output preview in its tooltip", () => {
+    const manyLines = Array.from(
+      { length: 57 },
+      (_, index) => `line ${index + 1}`,
+    ).join("\n");
+    const { container } = render(
+      <ToolCallRow
+        id="tool-preview-title"
+        toolName="Bash"
+        toolInput={{ command: "cat big.log" }}
+        toolResult={{
+          content: manyLines,
+          isError: false,
+          structured: {
+            stdout: manyLines,
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+            durationSeconds: 12.5,
+          },
+        }}
+        status="complete"
+        startTimestampMs={1_000}
+        resultTimestampMs={14_000}
+      />,
+    );
+
+    const preview = container.querySelector<HTMLElement>(
+      ".tool-row-collapsed-preview",
+    );
+    expect(preview).toBeTruthy();
+    fireEvent.pointerEnter(preview as HTMLElement);
+    expect((preview as HTMLElement).title).toMatch(
+      /^\[12\.5s\] first \d+ of 57 lines — click for full output$/,
+    );
+  });
+
   it("falls back to the message-time delta tooltip when no runtime is reported", () => {
     const { container } = render(
       <ToolCallRow

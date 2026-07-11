@@ -88,21 +88,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/**
- * Tooltip for the Ran/Running label: the command's elapsed time. Prefers the
- * provider-reported runtime; falls back to the request→result message-time
- * delta (approximate, marked "~"). Computed on hover so a running command's
- * elapsed time is fresh without re-rendering the row. Contract:
- * topics/provider-output-contract.md § Command execution metadata.
- */
-function computeCommandElapsedTitle(params: {
+interface CommandElapsed {
+  seconds: number;
+  kind: "running" | "reported" | "approximate";
+}
+
+interface CommandElapsedParams {
   toolInput: unknown;
   structuredResult: unknown;
   status: ToolCallItem["status"];
   startTimestampMs?: number | null;
   resultTimestampMs?: number | null;
   nowMs: number;
-}): string | null {
+}
+
+/**
+ * The command's elapsed time: provider-reported runtime when present, the
+ * request→result message-time delta as an approximate fallback, or the
+ * still-growing elapsed for pending / backgrounded-running commands.
+ * Contract: topics/provider-output-contract.md § Command execution metadata.
+ */
+function computeCommandElapsed(
+  params: CommandElapsedParams,
+): CommandElapsed | null {
   const {
     toolInput,
     structuredResult,
@@ -118,28 +126,50 @@ function computeCommandElapsedTitle(params: {
 
   if (status === "pending" || backgroundStatus === "running") {
     return typeof startTimestampMs === "number"
-      ? `running for ${formatCommandDuration((nowMs - startTimestampMs) / 1000)}`
+      ? { seconds: (nowMs - startTimestampMs) / 1000, kind: "running" }
       : null;
   }
 
   const meta = getCommandResultMeta(structuredResult);
   if (meta.durationSeconds !== undefined) {
-    return `took ${formatCommandDuration(meta.durationSeconds)}`;
+    return { seconds: meta.durationSeconds, kind: "reported" };
+  }
+  // A backgrounded command's result message is just the launch ack, so its
+  // delta is not the command's runtime.
+  if (backgroundStatus !== undefined) {
+    return null;
   }
   if (
     typeof startTimestampMs === "number" &&
     typeof resultTimestampMs === "number" &&
     resultTimestampMs >= startTimestampMs
   ) {
-    return `took ~${formatCommandDuration((resultTimestampMs - startTimestampMs) / 1000)}`;
-  }
-  if (
-    backgroundStatus === "completed" &&
-    typeof startTimestampMs === "number"
-  ) {
-    return `started ${formatCommandDuration((nowMs - startTimestampMs) / 1000)} ago`;
+    return {
+      seconds: (resultTimestampMs - startTimestampMs) / 1000,
+      kind: "approximate",
+    };
   }
   return null;
+}
+
+/** Tooltip for the Ran/Running label. Computed on hover so a running
+ * command's elapsed time is fresh without re-rendering the row. */
+function computeCommandElapsedTitle(
+  params: CommandElapsedParams,
+): string | null {
+  const elapsed = computeCommandElapsed(params);
+  if (!elapsed) {
+    return null;
+  }
+  const duration = formatCommandDuration(elapsed.seconds);
+  switch (elapsed.kind) {
+    case "running":
+      return `running for ${duration}`;
+    case "reported":
+      return `took ${duration}`;
+    case "approximate":
+      return `took ~${duration}`;
+  }
 }
 
 function normalizeTypographyMetrics(
@@ -758,6 +788,73 @@ export const ToolCallRow = memo(function ToolCallRow({
     setBashCommandExpanded(false);
   }, [headerCommand]);
 
+  // The command tooltip leads with the elapsed (so-far) time — "[12.5s] cmd"
+  // — refreshed on hover so a running command's elapsed stays current.
+  const handleCommandTitlePointerEnter = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      if (!headerCommand) {
+        return;
+      }
+      const elapsed = computeCommandElapsed({
+        toolInput,
+        structuredResult,
+        status,
+        startTimestampMs,
+        resultTimestampMs,
+        nowMs: Date.now(),
+      });
+      event.currentTarget.title = elapsed
+        ? `[${formatCommandDuration(elapsed.seconds)}] ${headerCommand}`
+        : headerCommand;
+    },
+    [
+      headerCommand,
+      toolInput,
+      structuredResult,
+      status,
+      startTimestampMs,
+      resultTimestampMs,
+    ],
+  );
+
+  // Hovering a truncated output preview explains what a click reveals:
+  // "[12.5s] first 4 of 57 lines — click for full output".
+  const handleOutputPreviewPointerEnter = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isBashTool) {
+        return;
+      }
+      const output =
+        getBashResultOutputForRichPreview(structuredResult).trimEnd();
+      const totalLines = output ? output.split("\n").length : 0;
+      if (totalLines <= outputToolPreviewLineCount) {
+        event.currentTarget.title = "";
+        return;
+      }
+      const elapsed = computeCommandElapsed({
+        toolInput,
+        structuredResult,
+        status,
+        startTimestampMs,
+        resultTimestampMs,
+        nowMs: Date.now(),
+      });
+      const elapsedPrefix = elapsed
+        ? `[${formatCommandDuration(elapsed.seconds)}] `
+        : "";
+      event.currentTarget.title = `${elapsedPrefix}first ${outputToolPreviewLineCount} of ${totalLines} lines — click for full output`;
+    },
+    [
+      isBashTool,
+      structuredResult,
+      outputToolPreviewLineCount,
+      toolInput,
+      status,
+      startTimestampMs,
+      resultTimestampMs,
+    ],
+  );
+
   const handleToggle = () => {
     hydrateNow();
     if (!isNonExpandable) {
@@ -952,6 +1049,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           <span
             className="tool-summary tool-summary-command"
             title={headerCommand}
+            onPointerEnter={handleCommandTitlePointerEnter}
           >
             <span
               ref={bashCommandQuoteRef}
@@ -971,6 +1069,7 @@ export const ToolCallRow = memo(function ToolCallRow({
               .filter(Boolean)
               .join(" ")}
             title={headerCommand}
+            onPointerEnter={handleCommandTitlePointerEnter}
             aria-label={
               bashCommandExpanded ? "Collapse command" : "Show full command"
             }
@@ -1040,7 +1139,10 @@ export const ToolCallRow = memo(function ToolCallRow({
 
       {/* Collapsed preview - shown when tool supports it (non-expandable) */}
       {hasCollapsedPreview && previewExpanded && (
-        <div className="tool-row-collapsed-preview">
+        <div
+          className="tool-row-collapsed-preview"
+          onPointerEnter={handleOutputPreviewPointerEnter}
+        >
           {hasPreviewToggle && (
             <ToolRowCollapseStrip
               onCollapse={() => setPreviewExpanded(false)}

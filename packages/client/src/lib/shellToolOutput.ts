@@ -72,7 +72,7 @@ export function getCommandResultMeta(structured: unknown): CommandResultMeta {
   };
 }
 
-/** Compact human duration: "0.3s", "12.5s", "2m14s". */
+/** Compact human duration: "0.3s", "12.5s", "2m14s", "1h5m". */
 export function formatCommandDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return "";
@@ -81,7 +81,18 @@ export function formatCommandDuration(seconds: number): string {
     const rounded = Math.round(seconds * 10) / 10;
     return `${rounded}s`;
   }
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.round(seconds - minutes * 60);
-  return remainder > 0 ? `${minutes}m${remainder}s` : `${minutes}m`;
+  if (seconds < 60 * 60) {
+    const minutes = Math.floor(seconds / 60);
+    const remainder = Math.round(seconds - minutes * 60);
+    if (remainder >= 60) {
+      return `${minutes + 1}m`;
+    }
+    return remainder > 0 ? `${minutes}m${remainder}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(seconds / (60 * 60));
+  const minutes = Math.round((seconds - hours * 60 * 60) / 60);
+  if (minutes >= 60) {
+    return `${hours + 1}h`;
+  }
+  return minutes > 0 ? `${hours}h${minutes}m` : `${hours}h`;
 }

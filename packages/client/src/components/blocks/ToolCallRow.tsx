@@ -28,6 +28,7 @@ import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
+import { HiddenContentBadge } from "../ui/HiddenContentBadge";
 
 interface Props {
   id: string;
@@ -75,7 +76,7 @@ type DeferredPreviewStyle = CSSProperties & {
 
 interface CommandPreview {
   text: string;
-  hiddenLabel: string | null;
+  hiddenCount: number | null;
 }
 
 interface NoOutputBashResult {
@@ -222,21 +223,14 @@ function estimateWrappedLineCount(text: string, charsPerLine: number): number {
   return count;
 }
 
-function formatHiddenCommandLabel({
+function getHiddenCommandCount({
   hiddenChars,
   hiddenLines,
 }: {
   hiddenChars: number;
   hiddenLines: number;
-}): string | null {
-  const parts: string[] = [];
-  if (hiddenLines > 0) {
-    parts.push(`+${hiddenLines} ${hiddenLines === 1 ? "line" : "lines"}`);
-  }
-  if (hiddenChars > 0) {
-    parts.push(`+${hiddenChars}`);
-  }
-  return parts.length > 0 ? parts.join(", ") : null;
+}): number | null {
+  return hiddenLines || hiddenChars || null;
 }
 
 function getCommandPreview(
@@ -260,7 +254,7 @@ function getCommandPreview(
 
   return {
     text,
-    hiddenLabel: formatHiddenCommandLabel({ hiddenChars, hiddenLines }),
+    hiddenCount: getHiddenCommandCount({ hiddenChars, hiddenLines }),
   };
 }
 
@@ -1131,10 +1125,11 @@ export const ToolCallRow = memo(function ToolCallRow({
         )}
         {showBashCommandTarget &&
           !bashCommandExpanded &&
-          bashCommandPreview.hiddenLabel && (
-            <span className="tool-summary-command-more">
-              {bashCommandPreview.hiddenLabel}
-            </span>
+          bashCommandPreview.hiddenCount && (
+            <HiddenContentBadge
+              className="tool-summary-command-more"
+              count={bashCommandPreview.hiddenCount}
+            />
           )}
       </div>
 

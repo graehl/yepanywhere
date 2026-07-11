@@ -1657,6 +1657,10 @@ details[open] .collapsible__icon {
   color: var(--error-color);
 }
 
+.bash-preview-more {
+  align-self: flex-start;
+}
+
 .bash-preview-fade {
   position: absolute;
   bottom: 0;

@@ -27,6 +27,7 @@ import {
   type RenderedMathResult,
   renderFixedFontRichContent,
 } from "../../ui/FixedFontMathToggle";
+import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
 import { Modal } from "../../ui/Modal";
 import type { BashInput, BashResult, ToolRenderer } from "./types";
 
@@ -109,6 +110,17 @@ function getPreviewLimits(lineCount: number): {
     maxLines: normalizedLineCount,
     maxChars: normalizedLineCount * PREVIEW_MAX_CHARS_PER_LINE,
   };
+}
+
+function getHiddenOutputLineCount(output: string, visibleLineCount: number) {
+  if (!output) {
+    return 0;
+  }
+  return Math.max(
+    0,
+    output.trimEnd().split("\n").length -
+      Math.max(1, Math.round(visibleLineCount)),
+  );
 }
 
 function renderFixedFontMathPanel(html: string, className = "code-block") {
@@ -623,6 +635,10 @@ function BashCollapsedPreview({
       ? { maxLines: RICH_PREVIEW_LINES, maxChars: RICH_PREVIEW_MAX_CHARS }
       : getPreviewLimits(outputToolPreviewLineCount),
   );
+  const hiddenOutputLineCount = getHiddenOutputLineCount(
+    output,
+    outputToolPreviewLineCount,
+  );
   const previewRichContent = useMemo(() => {
     if (previewText === output) {
       return fullRichPreview;
@@ -712,6 +728,12 @@ function BashCollapsedPreview({
               text={output}
               label={result?.stderr ? "Copy stderr" : "Copy output"}
             />
+            {hiddenOutputLineCount > 0 && (
+              <HiddenContentBadge
+                className="bash-preview-more"
+                count={hiddenOutputLineCount}
+              />
+            )}
           </div>
         )}
         {!hasOutput && result && !result.interrupted && (

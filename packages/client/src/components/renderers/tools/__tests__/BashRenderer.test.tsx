@@ -73,6 +73,30 @@ describe("BashRenderer", () => {
     );
   });
 
+  it("shows a compact count of output lines omitted from a collapsed preview", () => {
+    const output = ["one", "two", "three", "four"].join("\n");
+
+    render(
+      <div>
+        {bashRenderer.renderCollapsedPreview?.(
+          { command: "printf lines" },
+          {
+            stdout: output,
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          } as BashResult,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    const badge = screen.getByText("+2");
+    const copyButton = screen.getByRole("button", { name: "Copy output" });
+    expect(copyButton.nextElementSibling).toBe(badge);
+  });
+
   it("renders ANSI-colored git diff markdown tables in expanded output", () => {
     const output = [
       "\u001b[1mdiff --git a/notes.md b/notes.md\u001b[0m",

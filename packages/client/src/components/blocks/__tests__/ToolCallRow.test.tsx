@@ -468,8 +468,11 @@ describe("ToolCallRow", () => {
 
     expect(screen.getByText("Ran")).toBeDefined();
     expect(screen.getByText("false")).toBeDefined();
-    expect(screen.getByText("(no output)")).toBeDefined();
-    expect(screen.getByText("rc=7")).toBeDefined();
+    const noOutput = screen.getByText("(no output)");
+    const exitCode = screen.getByText("rc=7");
+    const copyButton = screen.getByRole("button", { name: "Copy command" });
+    expect(noOutput.nextElementSibling).toBe(exitCode);
+    expect(exitCode.nextElementSibling).toBe(copyButton);
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
@@ -548,8 +551,8 @@ describe("ToolCallRow", () => {
     // The hidden-content badge sits on its own line under the Run/Ran
     // label, not inside a nested command button.
     const moreBadge = container.querySelector(".tool-summary-command-more");
-    expect(moreBadge?.textContent).toContain("+1 line");
-    expect(commandText?.textContent).not.toContain("+1 line");
+    expect(moreBadge?.textContent).toContain("+1");
+    expect(commandText?.textContent).not.toContain("+1");
 
     fireEvent.click(commandText as Element);
 

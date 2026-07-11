@@ -308,13 +308,9 @@ button.tool-summary {
   overflow-wrap: anywhere;
 }
 
-.tool-summary-command-more {
-  /* Wraps onto its own line under the Run/Ran label: the flex:1 command
-     fills row 1, so this fixed-size badge has no room and breaks below. */
+.hidden-content-badge {
   display: inline-flex;
   flex: 0 0 auto;
-  align-self: flex-start;
-  margin-top: 3px;
   align-items: center;
   padding: 0.05rem 0.35rem;
   border: 1px solid var(--border-subtle, var(--border-color));
@@ -326,6 +322,13 @@ button.tool-summary {
   font-weight: 700;
   line-height: 1.15;
   white-space: nowrap;
+}
+
+.tool-summary-command-more {
+  /* Wraps onto its own line under the Run/Ran label: the flex:1 command
+     fills row 1, so this fixed-size badge has no room and breaks below. */
+  align-self: flex-start;
+  margin-top: 3px;
 }
 
 .tool-result-suffix {

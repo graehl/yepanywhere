@@ -120,7 +120,7 @@ describe("ToolCallRow", () => {
     expect((command as HTMLElement).title).toBe("[12.5s] sleep 12");
   });
 
-  it("explains a truncated output preview in its tooltip", () => {
+  it("shows the last preview-count output lines in a truncated preview tooltip", () => {
     const manyLines = Array.from(
       { length: 57 },
       (_, index) => `line ${index + 1}`,
@@ -152,9 +152,11 @@ describe("ToolCallRow", () => {
     );
     expect(preview).toBeTruthy();
     fireEvent.pointerEnter(preview as HTMLElement);
-    expect((preview as HTMLElement).title).toMatch(
-      /^\[12\.5s\] first \d+ of 57 lines — click for full output$/,
-    );
+    const title = (preview as HTMLElement).title;
+    // "[Ns] ..." then the last N output lines.
+    expect(title.startsWith("[12.5s] ...\n")).toBe(true);
+    expect(title.endsWith("\nline 57")).toBe(true);
+    expect(title).not.toContain("line 1\n");
   });
 
   it("falls back to the message-time delta tooltip when no runtime is reported", () => {

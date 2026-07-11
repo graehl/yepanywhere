@@ -817,8 +817,8 @@ export const ToolCallRow = memo(function ToolCallRow({
     ],
   );
 
-  // Hovering a truncated output preview explains what a click reveals:
-  // "[12.5s] first 4 of 57 lines — click for full output".
+  // The visible preview is the first N output lines; hovering it shows the
+  // tail in the tooltip — "[Ns] ..." followed by the last N lines.
   const handleOutputPreviewPointerEnter = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!isBashTool) {
@@ -826,8 +826,8 @@ export const ToolCallRow = memo(function ToolCallRow({
       }
       const output =
         getBashResultOutputForRichPreview(structuredResult).trimEnd();
-      const totalLines = output ? output.split("\n").length : 0;
-      if (totalLines <= outputToolPreviewLineCount) {
+      const lines = output ? output.split("\n") : [];
+      if (lines.length <= outputToolPreviewLineCount) {
         event.currentTarget.title = "";
         return;
       }
@@ -842,7 +842,8 @@ export const ToolCallRow = memo(function ToolCallRow({
       const elapsedPrefix = elapsed
         ? `[${formatCommandDuration(elapsed.seconds)}] `
         : "";
-      event.currentTarget.title = `${elapsedPrefix}first ${outputToolPreviewLineCount} of ${totalLines} lines — click for full output`;
+      const lastLines = lines.slice(-outputToolPreviewLineCount).join("\n");
+      event.currentTarget.title = `${elapsedPrefix}...\n${lastLines}`;
     },
     [
       isBashTool,

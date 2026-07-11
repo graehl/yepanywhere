@@ -696,7 +696,10 @@ export const ToolCallRow = memo(function ToolCallRow({
     hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
 
   // A shell poll whose whole output fits the output-preview-lines budget
-  // reads inline without a click; the row stays collapsible.
+  // reads inline without a click; the row stays collapsible. The budget
+  // counts wrapped visual lines, not newlines: a single mega-line (a JSON
+  // blob, a progress-bar dump) would otherwise pass a newline count and
+  // flood the timeline.
   const isShellSessionTool = rendererToolName === "WriteStdin";
   const shellOutputFitsPreview = useMemo(() => {
     if (!isShellSessionTool || status !== "complete" || toolResult?.isError) {
@@ -705,11 +708,25 @@ export const ToolCallRow = memo(function ToolCallRow({
     const output = parseShellToolOutput(
       typeof toolResult?.content === "string" ? toolResult.content : "",
     ).output.trim();
-    return (
-      output.length > 0 &&
-      output.split("\n").length <= outputToolPreviewLineCount
+    if (output.length === 0) {
+      return false;
+    }
+    const charsPerLine = estimatePreviewCharsPerLine(
+      rowWidthPx,
+      deferredPreviewTypography,
     );
-  }, [isShellSessionTool, status, toolResult, outputToolPreviewLineCount]);
+    return (
+      estimateWrappedLineCount(output, charsPerLine) <=
+      outputToolPreviewLineCount
+    );
+  }, [
+    isShellSessionTool,
+    status,
+    toolResult,
+    outputToolPreviewLineCount,
+    rowWidthPx,
+    deferredPreviewTypography,
+  ]);
 
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(

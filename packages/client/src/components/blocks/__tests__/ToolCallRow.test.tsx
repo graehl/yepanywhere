@@ -669,6 +669,28 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".expand-chevron")).not.toBeNull();
   });
 
+  it("keeps a single mega-line shell output collapsed (wrapped-line budget)", () => {
+    // One logical line, but far wider than the preview budget once wrapped;
+    // a newline count alone would call this "1 line" and auto-expand it.
+    const megaLine = `{"chunk_id":"b064ba","output":"${"x".repeat(3000)}"}`;
+    const { container } = render(
+      <ToolCallRow
+        id="tool-pty-megaline"
+        toolName="WriteStdin"
+        toolInput={{ session_id: 37863, chars: "" }}
+        toolResult={{
+          content: `Script completed\nWall time 27.0 seconds\nOutput:\n${megaLine}`,
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(screen.queryByText(/chunk_id/)).toBeNull();
+    expect(screen.getByText(/1 lines/)).toBeDefined();
+    expect(container.querySelector(".expand-chevron")).not.toBeNull();
+  });
+
   it("keeps a long shell output collapsed behind its summary", () => {
     const longOutput = Array.from({ length: 30 }, (_, i) => `line ${i}`).join(
       "\n",

@@ -163,6 +163,33 @@ Display rules (client, `getCommandResultMeta`/`formatCommandDuration` in
   (`exit_code`, `wall_time_seconds`), so a provider whose normalization
   lags still displays correctly once its fields pass through structured.
 
+## Web browsing results (Codex `web.run`)
+
+Codex's namespaced browsing tool (`web.run`; `web__run` when flattened into
+a code-mode `exec` script) normalizes to canonical tool name `Web` with the
+structured result `CodexWebRunResult`
+(`packages/shared/src/codex-web-run.ts`). The provider prints one text blob
+— a script envelope (`Script completed` / `Wall time N seconds` /
+`Output:`) followed by page blocks separated by an exact 80-dash rule. Each
+block is a `Title (URL)` line plus a marker line carrying a follow-up
+reference (`turn0search4`), `[wordlim: N]`, and `Key: value;` metadata
+(Published, Crawled, Content type, Source, Redirected to URL, Total lines);
+the body is either windowed page lines (`L0: …`, several may share one
+physical line) or a prose search snippet.
+
+The parser (`packages/server/src/codex/webRun.ts`) treats the U+E200–E202
+private-use citation wrappers as format-significant markup:
+`cite<id>†<label>[†<domain>]` reduces to its visible
+label, bare page references drop. It fails closed — output without the
+envelope or a page block keeps its raw-text presentation — and the
+normalized `content` string drops the envelope, so "Script completed" never
+reaches rendered text. The client `Web` renderer
+(`packages/client/src/components/renderers/tools/WebRenderer.tsx`) renders
+page content in the prose output font (it is web prose, not terminal
+output) and mirrors the shell-output preview affordances via the shared
+primitives in `renderers/tools/outputPreview.tsx` (first-N-lines clamp,
+tail tooltip, hidden-line badge, hover copy button, click-for-modal).
+
 ## Inline base64 is interchange-only
 
 JSON is the interchange representation, and base64 is how binary survives

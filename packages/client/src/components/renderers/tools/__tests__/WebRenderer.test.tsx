@@ -1,0 +1,190 @@
+import type { CodexWebRunResult } from "@yep-anywhere/shared";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { webRenderer } from "../WebRenderer";
+
+const renderContext = {
+  isStreaming: false,
+  theme: "dark" as const,
+};
+
+const openResult: CodexWebRunResult = {
+  durationSeconds: 0.8,
+  pages: [
+    {
+      title: "README.md · facebook/covost2 at main",
+      url: "https://huggingface.co/datasets/facebook/covost2/blob/main/README.md",
+      ref: "turn1view0",
+      wordLimit: 200,
+      contentType: "text/html",
+      totalLines: 1174,
+      lines: [
+        { n: 37, text: "# Datasets:" },
+        { n: 38, text: "" },
+        { n: 39, text: "CoVoST 2 covers translations from 21 languages." },
+      ],
+    },
+  ],
+};
+
+const searchResult: CodexWebRunResult = {
+  durationSeconds: 1.2,
+  pages: [
+    {
+      title: "First hit",
+      url: "https://arxiv.org/abs/2412.04205",
+      ref: "turn0academia12",
+      published: "1.6 years ago",
+      text: "Snippet prose.",
+    },
+    {
+      title: "Second hit",
+      url: "https://github.com/facebookresearch/covost",
+      ref: "turn0search0",
+      text: "More prose.",
+    },
+  ],
+};
+
+describe("WebRenderer", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("summarizes a single opened page with time, wordlim, lines, and host", () => {
+    expect(
+      webRenderer.getResultSummary?.(openResult, false, {
+        open: [{ ref_id: "turn0search4" }],
+      }),
+    ).toBe("0.8s · wordlim 200 · 1174 lines · huggingface.co");
+  });
+
+  it("summarizes search results by hit count", () => {
+    expect(
+      webRenderer.getResultSummary?.(searchResult, false, {
+        search_query: [{ q: "covost2" }],
+      }),
+    ).toBe("1.2s · 2 results");
+  });
+
+  it("summarizes the requested operations for tool use", () => {
+    expect(
+      webRenderer.getUseSummary?.({
+        search_query: [{ q: "covost2 download" }, { q: "common voice" }],
+      }),
+    ).toBe('search "covost2 download" (+1 more)');
+    expect(
+      webRenderer.getUseSummary?.({
+        open: [{ ref_id: "turn0search4" }],
+        find: [{ ref_id: "turn0search4", pattern: "zh-CN" }],
+      }),
+    ).toBe('open turn0search4 · find "zh-CN"');
+  });
+
+  it("renders page lines in prose with a linked title", () => {
+    render(
+      <div>
+        {webRenderer.renderToolResult(openResult, false, renderContext)}
+      </div>,
+    );
+    const link = screen.getByRole("link", {
+      name: "README.md · facebook/covost2 at main",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "https://huggingface.co/datasets/facebook/covost2/blob/main/README.md",
+    );
+    expect(
+      screen.getByText(/CoVoST 2 covers translations from 21 languages\./),
+    ).toBeDefined();
+    expect(screen.getByText("1174 lines")).toBeDefined();
+    expect(screen.getByText("wordlim 200")).toBeDefined();
+  });
+
+  it("renders collapsed preview rows as hostname links", () => {
+    render(
+      <div>
+        {webRenderer.renderCollapsedPreview?.(
+          {},
+          searchResult,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+    const link = screen.getByRole("link", { name: "arxiv.org" });
+    expect(link.getAttribute("href")).toBe("https://arxiv.org/abs/2412.04205");
+    expect(screen.getByText("Second hit")).toBeDefined();
+  });
+
+  it("shows shell-style preview affordances for long content", () => {
+    const longResult: CodexWebRunResult = {
+      durationSeconds: 0.9,
+      pages: [
+        {
+          title: "Long page",
+          url: "https://example.org/long",
+          ref: "turn0view0",
+          totalLines: 40,
+          lines: Array.from({ length: 40 }, (_, i) => ({
+            n: i,
+            text: `content line ${i}`,
+          })),
+        },
+      ],
+    };
+    render(
+      <div>
+        {webRenderer.renderCollapsedPreview?.(
+          {},
+          longResult,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+    expect(screen.getByText(/content line 0/)).toBeDefined();
+    // Hidden-line badge and copy button match the shell-output preview.
+    expect(screen.getByText(/^\+\d+$/)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Copy page text" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "View web page content" }),
+    ).toBeDefined();
+  });
+
+  it("surfaces the failure reason for pages without a URL", () => {
+    const errorResult: CodexWebRunResult = {
+      pages: [
+        {
+          title: "Internal Error ()",
+          ref: "turn22view0",
+          totalLines: 1,
+          lines: [{ n: 0, text: "URL https://x is not safe to open" }],
+        },
+      ],
+    };
+    render(
+      <div>
+        {webRenderer.renderCollapsedPreview?.(
+          {},
+          errorResult,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+    expect(
+      screen.getByText(/Internal Error \(\) — URL https:\/\/x is not safe/),
+    ).toBeDefined();
+  });
+
+  it("falls back to plain text for unstructured results", () => {
+    render(
+      <div>
+        {webRenderer.renderToolResult("raw text output", false, renderContext)}
+      </div>,
+    );
+    expect(screen.getByText("raw text output")).toBeDefined();
+  });
+});

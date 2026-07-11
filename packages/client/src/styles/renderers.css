@@ -3999,6 +3999,168 @@ details[open] .collapsible__icon {
 }
 
 /* ==========================================================================
+   Web Tool (Codex web.run)
+   ========================================================================== */
+
+.webrun-tool-use {
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.webrun-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.webrun-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.webrun-page-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.webrun-title {
+  font-weight: 600;
+}
+
+.webrun-link {
+  color: var(--link-color);
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.webrun-link:hover {
+  text-decoration: underline;
+}
+
+.webrun-redirect {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  word-break: break-all;
+}
+
+/* Page content is prose, not terminal output: prose font, wrapped lines. */
+.webrun-text {
+  font-family: var(--output-prose-font-family);
+  font-optical-sizing: var(--output-prose-font-optical-sizing);
+  font-variation-settings: var(--output-prose-font-variation-settings);
+  font-size: var(--output-prose-font-size);
+  line-height: var(--output-prose-line-height);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.webrun-page-header .bash-section-copy {
+  flex-shrink: 0;
+}
+
+.webrun-page-header:hover .bash-section-copy,
+.webrun-page-header:focus-within .bash-section-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Collapsed preview: the shell-output affordances (clamped first lines,
+   fade, +N badge, hover copy, click for modal) with prose content. */
+.webrun-collapsed-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: var(--font-size-sm);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.webrun-preview-row {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.webrun-preview-row .webrun-link {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.webrun-preview-title {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webrun-preview-more {
+  color: var(--text-muted);
+}
+
+.webrun-preview-output-row {
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.webrun-preview-output-row:hover .bash-section-copy,
+.webrun-preview-output-row:focus-within .bash-section-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.webrun-preview-output {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.webrun-preview-output-text {
+  font-family: var(--output-prose-font-family);
+  font-optical-sizing: var(--output-prose-font-optical-sizing);
+  font-variation-settings: var(--output-prose-font-variation-settings);
+  font-size: var(--output-prose-font-size);
+  line-height: var(--output-prose-line-height);
+  color: var(--text-secondary, var(--text-muted));
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* Like the shell preview, the visual clamp decides where display stops. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--webrun-preview-line-count, 4);
+  line-clamp: var(--webrun-preview-line-count, 4);
+  overflow: hidden;
+}
+
+.webrun-preview-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.5rem;
+  background: linear-gradient(to bottom, transparent, var(--bg-primary));
+  pointer-events: none;
+}
+
+.webrun-preview-more-badge {
+  align-self: flex-start;
+}
+
+.webrun-error {
+  color: var(--error-color);
+  padding: 0.5rem;
+  background: var(--bg-error, rgba(207, 34, 46, 0.1));
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+/* ==========================================================================
    AskUserQuestion Tool
    ========================================================================== */
 

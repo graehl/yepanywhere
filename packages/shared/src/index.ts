@@ -378,6 +378,11 @@ export type {
   ToolDisplaySearchAction,
 } from "./tool-display-actions.js";
 export type {
+  CodexWebRunLine,
+  CodexWebRunPage,
+  CodexWebRunResult,
+} from "./codex-web-run.js";
+export type {
   CodexToolCorrelationMetadata,
   CodexToolCorrelationOrigin,
 } from "./codex-tool-correlation.js";

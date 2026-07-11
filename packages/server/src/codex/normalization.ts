@@ -11,6 +11,7 @@ import {
   toToolDisplayActions,
   unwrapCodexShellLauncherCommand,
 } from "./displayActions.js";
+import { parseCodexWebRunOutput } from "./webRun.js";
 
 export type { CodexReadShellInfo } from "./displayActions.js";
 
@@ -25,6 +26,8 @@ export const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   apply_patch: "Edit",
   web_search_call: "WebSearch",
   search_query: "WebSearch",
+  // Code-mode flattening of the namespaced `web.run` browsing tool.
+  web__run: "Web",
 };
 
 export interface CodexWriteShellInfo {
@@ -299,6 +302,15 @@ export function normalizeCodexToolOutputWithContext(
       if (chunk.exitCode !== undefined) {
         isError = chunk.exitCode !== 0;
       }
+    }
+  } else if (context?.toolName === "Web") {
+    const webRun = parseCodexWebRunOutput(content);
+    if (webRun) {
+      structured = webRun.result;
+      content = webRun.contentText;
+      // The envelope's "Script completed" confirms the browse ran; page text
+      // that merely contains "Error:" must not mark the call failed.
+      isError = false;
     }
   } else if (context?.toolName === "Edit" && context.patchApplyResult) {
     const patchOutput = context.patchApplyResult.success

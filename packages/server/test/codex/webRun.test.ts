@@ -136,7 +136,7 @@ describe("parseCodexWebRunOutput", () => {
       "L0: alpha",
       "-".repeat(80),
       "Internal Error ()",
-      `${O}cite${S}turn22view0${C} [wordlim: 200] Source: open({\"ref_id\":\"https://api.example.org\"}); Total lines: 1`,
+      `${O}cite${S}turn22view0${C} [wordlim: 200] Source: open({"ref_id":"https://api.example.org"}); Total lines: 1`,
       "L0: URL https://api.example.org is not safe to open (non-retryable error)",
       "-".repeat(80),
     ].join("\n");

@@ -131,6 +131,17 @@ falsified two assumptions of the shipped extractor:
   results; and client preprocessing links `wait` rows to the originating
   command by cell id, including a poll that itself detaches into a new
   cell. Anything not exactly one chunk record keeps its raw text.
+  Two more linking/presentation rules (2026-07-11): a wait's collected
+  output may reveal the PTY session its script started — a provider
+  envelope or the script-printed `SESSION_ID=N` convention — and
+  preprocessing bridges the origin command to that session, so later
+  `write_stdin` polls of it (and cells they detach into) inherit the
+  linkage. A detach envelope renders as "still running →
+  script cell N" rather than "No output", and a completed pure poll
+  with no output, no exit code, and no linked context after enrichment
+  is hidden as an info-free row (pending polls stay visible). Cell ids
+  are not unique across a rollout (numbering restarts); the maps process
+  in transcript order so the latest declaration wins.
 
 ### Live app-server shape
 

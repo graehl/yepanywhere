@@ -24,6 +24,15 @@ function extractWallTime(text: string): string | undefined {
   return match[1].trim();
 }
 
+/** A code-mode script that outlives its yield window detaches into a cell
+ * ("Script running with cell ID N"); a later `wait` call polls that cell. */
+const DETACHED_CELL_ID_RE =
+  /(?:^|\n)\s*Script\s+running\s+with\s+cell\s+ID\s+(\w+)\b/i;
+
+export function extractDetachedCellId(text: string): string | undefined {
+  return DETACHED_CELL_ID_RE.exec(text)?.[1];
+}
+
 export function parseShellToolOutput(text: string): ParsedShellToolOutput {
   const outputMatch = text.match(/(?:^|\n)\s*Output:\s*\n([\s\S]*)$/i);
   const hasEnvelope = !!outputMatch;

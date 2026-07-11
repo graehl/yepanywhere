@@ -21,6 +21,11 @@ import {
 } from "./codexLegacySetup";
 import { getMessageId } from "./mergeMessages";
 import {
+  extractDetachedCellId,
+  getCommandResultMeta,
+  parseShellToolOutput,
+} from "./shellToolOutput";
+import {
   isTaskNotificationMessage,
   parseTaskNotification,
 } from "./parseTaskNotification";
@@ -89,7 +94,10 @@ export function preprocessMessages(
   );
   const enrichedItems = enrichWriteStdinWithCommand(slashCommandCoalescedItems);
   const backgroundAnnotatedItems = annotateBackgroundCommands(enrichedItems);
-  return collapseSessionSetupRuns(backgroundAnnotatedItems);
+  const shellPollFilteredItems = hideContextFreeEmptyShellPolls(
+    backgroundAnnotatedItems,
+  );
+  return collapseSessionSetupRuns(shellPollFilteredItems);
 }
 
 function collectOrphanedToolIds(
@@ -1202,8 +1210,10 @@ function extractSessionIdFromToolResult(
 
   const raw = item.toolResult?.content ?? "";
   const text = typeof raw === "string" ? raw : "";
+  // Accept provider envelopes and the SESSION_ID=N convention code-mode
+  // scripts print precisely so the session can be reconnected later.
   const match = text.match(
-    /(?:^|\n)\s*(?:Process\s+running\s+with\s+session\s+ID|session(?:\s+id)?)\s*:?\s*(\d+)\b/i,
+    /(?:^|\n)\s*(?:Process\s+running\s+with\s+session\s+ID|session[_\s]?id|session)\s*[:=]?\s*(\d+)\b/i,
   );
   if (!match?.[1]) {
     return undefined;
@@ -1222,11 +1232,7 @@ function extractCellIdFromWriteStdinInput(input: unknown): string | undefined {
  * ("Script running with cell ID N"); a later `wait` call polls that cell. */
 function extractCellIdFromToolResult(item: ToolCallItem): string | undefined {
   const raw = item.toolResult?.content ?? "";
-  const text = typeof raw === "string" ? raw : "";
-  const match = text.match(
-    /(?:^|\n)\s*Script\s+running\s+with\s+cell\s+ID\s+(\w+)\b/i,
-  );
-  return match?.[1];
+  return extractDetachedCellId(typeof raw === "string" ? raw : "");
 }
 
 function withLinkedCommand(input: unknown, command: string): unknown {
@@ -1291,8 +1297,6 @@ function extractFilePathFromToolInput(input: unknown): string | undefined {
 
 const BACKGROUND_LAUNCH_ID_RE =
   /(?:Command|Process)\s+running\s+(?:in\s+background\s+with\s+ID|with\s+session\s+ID)\s*:?\s*([\w-]+)/i;
-const DETACHED_CELL_ID_RE =
-  /(?:^|\n)\s*Script\s+running\s+with\s+cell\s+ID\s+(\w+)\b/i;
 const PROCESS_EXITED_RE = /(?:^|\n)\s*Process exited with code \d+/i;
 const BACKGROUND_ENDED_STATUS_RE =
   /^(completed|failed|killed|stopped|success|error|done)/i;
@@ -1414,10 +1418,10 @@ function annotateBackgroundCommands(items: RenderItem[]): RenderItem[] {
         keys.push(`session:${launchMatch[1]}`);
       }
     }
-    const cellMatch = content.match(DETACHED_CELL_ID_RE);
-    if (cellMatch?.[1]) {
+    const detachedCell = extractDetachedCellId(content);
+    if (detachedCell) {
       backgrounded = true;
-      keys.push(`cell:${cellMatch[1]}`);
+      keys.push(`cell:${detachedCell}`);
     }
 
     if (!backgrounded) {
@@ -1509,6 +1513,19 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
       });
     }
 
+    // A wait's collected script output may reveal the shell session the
+    // script started (e.g. a printed SESSION_ID=N line); bridge the origin
+    // metadata to that session so later polls of it link to the command.
+    const declaredSessionId = extractSessionIdFromToolResult(item);
+    if (declaredSessionId && metadata) {
+      const existing = sessionToMetadata.get(declaredSessionId) ?? {};
+      sessionToMetadata.set(declaredSessionId, {
+        command: metadata.command ?? existing.command,
+        filePath: metadata.filePath ?? existing.filePath,
+        toolName: metadata.toolName ?? existing.toolName,
+      });
+    }
+
     if (!metadata) {
       return item;
     }
@@ -1532,5 +1549,49 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
       ...item,
       toolInput,
     };
+  });
+}
+
+/**
+ * Drop completed shell polls that carry no information a reader could act
+ * on: a pure poll (no stdin chars) that produced no output, no error, no
+ * exit code, and — after linkage enrichment — no associated command, file,
+ * or origin tool. Such rows read as a bare "Shell — No output" with no
+ * discoverable context. Pending polls stay visible as live activity, and a
+ * poll with any linked context keeps its row.
+ */
+function hideContextFreeEmptyShellPolls(items: RenderItem[]): RenderItem[] {
+  return items.filter((item) => {
+    if (item.type !== "tool_call" || item.status !== "complete") {
+      return true;
+    }
+    const toolName = item.toolName.toLowerCase();
+    if (
+      toolName !== "writestdin" &&
+      toolName !== "write_stdin" &&
+      toolName !== "wait"
+    ) {
+      return true;
+    }
+    if (item.toolResult?.isError) {
+      return true;
+    }
+
+    const input = isRecord(item.toolInput) ? item.toolInput : {};
+    const chars = typeof input.chars === "string" ? input.chars : "";
+    const hasContext =
+      chars.length > 0 ||
+      [input.linked_command, input.linked_file_path, input.linked_tool_name]
+        .some((value) => typeof value === "string" && value.trim().length > 0);
+    if (hasContext) {
+      return true;
+    }
+
+    const content = item.toolResult?.content ?? "";
+    const parsed = parseShellToolOutput(content);
+    const exitCode =
+      getCommandResultMeta(item.toolResult?.structured).exitCode ??
+      parsed.exitCode;
+    return parsed.output.trim().length > 0 || exitCode !== undefined;
   });
 }

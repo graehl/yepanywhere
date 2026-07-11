@@ -535,6 +535,196 @@ describe("preprocessMessages", () => {
     }
   });
 
+  it("bridges a session id revealed in a wait's output to later polls", () => {
+    // Mirrors the observed launch chain: a command's script detaches into a
+    // cell; the wait on that cell prints SESSION_ID=N for the shell session
+    // the script started; later polls of that session (and cells they
+    // detach into) inherit the launch command.
+    const messages: Message[] = [
+      {
+        id: "msg-bash-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "bash-1",
+            name: "Bash",
+            input: { command: "./agentctl start train-job --watch" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-bash-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "bash-1",
+            content:
+              "Script running with cell ID 39\nWall time 10.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-wait-39-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "wait-39",
+            name: "WriteStdin",
+            input: { cell_id: "39" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+      {
+        id: "msg-wait-39-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "wait-39",
+            content:
+              "Script completed\nWall time 17.1 seconds\nOutput:\nstarted train-job pid=123\nSESSION_ID=21394\n[I]: step=100 loss=0.1",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:03Z",
+      },
+      {
+        id: "msg-poll-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "poll-1",
+            name: "WriteStdin",
+            input: { session_id: 21394, chars: "" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:04Z",
+      },
+      {
+        id: "msg-poll-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "poll-1",
+            content:
+              "Script running with cell ID 53\nWall time 30.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:05Z",
+      },
+      {
+        id: "msg-wait-53-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "wait-53",
+            name: "WriteStdin",
+            input: { cell_id: "53" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:06Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const byId = (id: string) =>
+      items.find((item) => item.type === "tool_call" && item.id === id);
+
+    const poll = byId("poll-1");
+    expect(poll?.type).toBe("tool_call");
+    if (poll?.type === "tool_call") {
+      expect(poll.toolInput).toMatchObject({
+        linked_command: "./agentctl start train-job --watch",
+      });
+    }
+
+    const wait53 = byId("wait-53");
+    expect(wait53?.type).toBe("tool_call");
+    if (wait53?.type === "tool_call") {
+      expect(wait53.toolInput).toMatchObject({
+        linked_command: "./agentctl start train-job --watch",
+      });
+    }
+  });
+
+  it("hides completed context-free shell polls that produced nothing", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-poll-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "poll-empty",
+            name: "WriteStdin",
+            input: { session_id: 999, chars: "" },
+          },
+          {
+            type: "tool_use",
+            id: "poll-output",
+            name: "WriteStdin",
+            input: { session_id: 998, chars: "" },
+          },
+          {
+            type: "tool_use",
+            id: "poll-exit",
+            name: "WriteStdin",
+            input: { session_id: 997, chars: "" },
+          },
+          {
+            type: "tool_use",
+            id: "poll-pending",
+            name: "WriteStdin",
+            input: { session_id: 996, chars: "" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-poll-results",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "poll-empty",
+            content: "Wall time 30.0 seconds\nOutput:\n",
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "poll-output",
+            content: "Wall time 5.0 seconds\nOutput:\nnew log line",
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "poll-exit",
+            content: "Exit code: 0\nWall time 5.0 seconds\nOutput:\n",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const ids = items
+      .filter((item) => item.type === "tool_call")
+      .map((item) => (item.type === "tool_call" ? item.id : ""));
+
+    // Info-free: no chars, no linkage, no output, no exit code.
+    expect(ids).not.toContain("poll-empty");
+    // Output, an exit code, or a still-pending poll all stay visible.
+    expect(ids).toContain("poll-output");
+    expect(ids).toContain("poll-exit");
+    expect(ids).toContain("poll-pending");
+  });
+
   it("links write_stdin calls to prior exec_command using session id", () => {
     const messages: Message[] = [
       {

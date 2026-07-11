@@ -90,6 +90,27 @@ describe("WriteStdinRenderer", () => {
     ).toBeDefined();
   });
 
+  it("summarizes a detached script poll as still running, not No output", () => {
+    const detachEnvelope =
+      "Script running with cell ID 53\nWall time 30.0 seconds\nOutput:\n";
+    expect(writeStdinRenderer.getResultSummary?.(detachEnvelope, false)).toBe(
+      "still running",
+    );
+
+    render(
+      <div>
+        {writeStdinRenderer.renderToolResult(
+          detachEnvelope,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+    expect(
+      screen.getByText(/Still running — output continues as script cell 53/),
+    ).toBeDefined();
+  });
+
   it("suppresses exit 0 in the summary per the command-metadata contract", () => {
     const summary = writeStdinRenderer.getResultSummary?.(
       "Chunk ID: ff710e\nProcess exited with code 0\nOutput:\nready\n",

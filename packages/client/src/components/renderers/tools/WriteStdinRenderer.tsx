@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import {
+  extractDetachedCellId,
   formatCommandDuration,
   getCommandResultMeta,
   parseShellToolOutput,
@@ -337,6 +338,19 @@ export const writeStdinRenderer: ToolRenderer<
           </>
         );
       }
+      // A detached poll is not "no output": the script is still running and
+      // its output arrives with a later wait on the named cell.
+      const detachedCellId = extractDetachedCellId(text);
+      if (detachedCellId) {
+        return (
+          <>
+            <div className="bash-empty">
+              {`Still running — output continues as script cell ${detachedCellId}`}
+            </div>
+            {metaRow}
+          </>
+        );
+      }
       return (
         <>
           <div className="bash-empty">No output</div>
@@ -410,7 +424,7 @@ export const writeStdinRenderer: ToolRenderer<
     }
 
     if (!parsed.output.trim()) {
-      return "No output";
+      return extractDetachedCellId(text) ? "still running" : "No output";
     }
 
     const lineCount = parsed.output.split("\n").filter(Boolean).length;

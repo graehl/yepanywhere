@@ -22,8 +22,9 @@ describe("getToolSummary", () => {
     );
 
     // Exit 0 stays silent per the command-metadata contract
-    // (topics/provider-output-contract.md § Command execution metadata).
-    expect(summary).toBe("Read via PTY: useGlobalSessions.ts → 1 lines");
+    // (topics/provider-output-contract.md § Command execution metadata);
+    // the runtime always shows.
+    expect(summary).toBe("Read via PTY: useGlobalSessions.ts → 1 lines · 0.1s");
   });
 
   it("uses raw write_stdin content when structured result is absent", () => {
@@ -44,7 +45,7 @@ describe("getToolSummary", () => {
     );
 
     expect(summary).toBe(
-      "sed -n '1,140p' packages/client/src/layouts/NavigationLayout.tsx → 1 lines",
+      "sed -n '1,140p' packages/client/src/layouts/NavigationLayout.tsx → 1 lines · 0.1s",
     );
   });
 
@@ -66,7 +67,7 @@ describe("getToolSummary", () => {
     );
 
     expect(summary).toBe(
-      "sed -n '1,140p' packages/client/src/layouts/NavigationLayout.tsx → No output",
+      "sed -n '1,140p' packages/client/src/layouts/NavigationLayout.tsx → No output · 1s",
     );
   });
 

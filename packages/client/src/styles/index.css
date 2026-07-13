@@ -5946,6 +5946,39 @@ a.linkified-url:hover {
   flex-shrink: 0;
 }
 
+.message-input-keyboard-actions {
+  display: flex;
+  width: 100%;
+}
+
+.message-input-keyboard-primary {
+  min-width: 0;
+  min-height: 48px;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--app-yep-green);
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.message-input-keyboard-primary.queue-mode {
+  background: var(--attention-color);
+}
+
+.message-input-keyboard-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .queue-button,
 .stop-button {
   width: var(--composer-primary-control-size);

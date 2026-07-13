@@ -132,6 +132,15 @@ interface PendingDraftInputEdit {
   inputType?: string;
 }
 
+const MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO = 0.8;
+
+function getComposerViewportHeight(): number {
+  const visualViewportHeight = window.visualViewport?.height;
+  return typeof visualViewportHeight === "number"
+    ? Math.min(window.innerHeight, visualViewportHeight)
+    : window.innerHeight;
+}
+
 /** Format file size in human-readable form */
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}\u202fb`;
@@ -347,6 +356,7 @@ export function MessageInput({
   const composerEditedDuringSpeechRef = useRef(false);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
+  const keyboardViewportBaselineRef = useRef<number | null>(null);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -358,6 +368,8 @@ export function MessageInput({
     null,
   );
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+  const [textareaFocused, setTextareaFocused] = useState(false);
+  const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
 
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
@@ -519,6 +531,20 @@ export function MessageInput({
       : effectivePrimaryActionKind === "queue"
         ? t("toolbarQueueLabel")
         : t("toolbarSend");
+  const mobileKeyboardActionLabel = forkSummaryMode
+    ? forkSummaryMode.submitLabel
+    : effectivePrimaryActionKind === "steer"
+      ? t("toolbarShortcutSteerCurrentTurn")
+      : effectivePrimaryActionKind === "queue"
+        ? t("toolbarQueueLabel")
+        : t("toolbarSend");
+  const mobileKeyboardActionIcon = forkSummaryMode
+    ? forkSummaryMode.icon
+    : effectivePrimaryActionKind === "steer"
+      ? "↗"
+      : effectivePrimaryActionKind === "queue"
+        ? "→"
+        : "↑";
 
   const canAttach = !!(projectId && sessionId && onAttach);
 
@@ -808,6 +834,46 @@ export function MessageInput({
       );
     };
   }, [collapsed, revealCollapsedTextareaCursor, text]);
+
+  useEffect(() => {
+    if (
+      !textareaFocused ||
+      typeof window.matchMedia !== "function" ||
+      !hasCoarsePointer()
+    ) {
+      keyboardViewportBaselineRef.current = null;
+      setMobileKeyboardOpen(false);
+      return;
+    }
+
+    if (keyboardViewportBaselineRef.current === null) {
+      keyboardViewportBaselineRef.current = getComposerViewportHeight();
+    }
+
+    const updateKeyboardState = () => {
+      const viewportHeight = getComposerViewportHeight();
+      const previousBaseline = keyboardViewportBaselineRef.current;
+      const baseline =
+        previousBaseline === null
+          ? viewportHeight
+          : Math.max(previousBaseline, viewportHeight);
+      keyboardViewportBaselineRef.current = baseline;
+      setMobileKeyboardOpen(
+        viewportHeight < baseline * MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO,
+      );
+    };
+
+    updateKeyboardState();
+    window.addEventListener("resize", updateKeyboardState);
+    window.visualViewport?.addEventListener("resize", updateKeyboardState);
+    return () => {
+      window.removeEventListener("resize", updateKeyboardState);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        updateKeyboardState,
+      );
+    };
+  }, [textareaFocused]);
 
   const handleSubmit = useCallback(
     (
@@ -1833,8 +1899,16 @@ export function MessageInput({
                   setDismissedSlashQuery(null);
                 }
               }}
-              onBlur={controls.flushDraft}
-              onFocus={revealCollapsedTextareaCursor}
+              onBlur={() => {
+                controls.flushDraft();
+                setTextareaFocused(false);
+              }}
+              onFocus={() => {
+                keyboardViewportBaselineRef.current =
+                  getComposerViewportHeight();
+                setTextareaFocused(true);
+                revealCollapsedTextareaCursor();
+              }}
               onKeyDown={handleKeyDown}
               onSelect={handleTextareaSelectionTarget}
               onPointerUp={handleTextareaSelectionTarget}
@@ -1845,7 +1919,7 @@ export function MessageInput({
                 clearSpeechSelectionTarget();
                 handlePaste(event);
               }}
-              enterKeyHint="send"
+              enterKeyHint="enter"
               placeholder={
                 externalCollapsed
                   ? t("messageInputContinueAbove")
@@ -2073,7 +2147,23 @@ export function MessageInput({
           </div>
         )}
 
-        {!collapsed && (
+        {!collapsed && mobileKeyboardOpen && (
+          <div className="message-input-keyboard-actions">
+            <button
+              type="button"
+              className={`message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={submitPrimaryAction}
+              disabled={disabled || !canSubmit}
+              aria-label={mobileKeyboardActionLabel}
+            >
+              <span>{mobileKeyboardActionLabel}</span>
+              <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
+            </button>
+          </div>
+        )}
+
+        {!collapsed && !mobileKeyboardOpen && (
           <MessageInputToolbar
             mode={mode}
             onModeChange={onModeChange}

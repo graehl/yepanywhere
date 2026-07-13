@@ -172,6 +172,18 @@ with slack**. Two latch/oscillation traps live here:
 
 - Primary message actions, Stop, queue/patient controls, and microphone should
   stay reachable before lower-priority controls are shown inline.
+- A mobile multiline textarea cannot require the software keyboard to expose
+  separate Return and Send keys; `enterKeyHint` can only request the key's
+  presentation, and some Android keyboards still insert a newline for a
+  send-looking key. The composer therefore requests an ordinary Return key and
+  keeps newline behavior on coarse pointers.
+- While a focused coarse-pointer composer has materially contracted the visual
+  viewport (currently below 80% of its pre-keyboard height), the normal bottom
+  toolbar is temporarily replaced by one full-width, 48px-high primary action.
+  It follows the same Send/Queue/Steer/fork action and enabled state as the
+  ordinary primary control. Restoring the viewport or leaving the textarea
+  restores the normal measured toolbar; keyboard-open mode is not another
+  overflow tier.
 - Formula/render controls and heartbeat/pulse controls are lower priority than
   microphone for narrow inline space. They can move behind overflow earlier.
 - Shortcut/help (`?`) is lower priority than context percentage, because context

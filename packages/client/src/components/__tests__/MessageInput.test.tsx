@@ -440,6 +440,69 @@ function installDesktopMatchMedia() {
   };
 }
 
+function installMobileKeyboardViewport(initialHeight = 800) {
+  const previousMatchMedia = Object.getOwnPropertyDescriptor(
+    window,
+    "matchMedia",
+  );
+  const previousVisualViewport = Object.getOwnPropertyDescriptor(
+    window,
+    "visualViewport",
+  );
+  const restoreInnerHeight = installWindowNumberProperty(
+    "innerHeight",
+    initialHeight,
+  );
+  let height = initialHeight;
+  const visualViewport = new EventTarget();
+  Object.defineProperty(visualViewport, "height", {
+    configurable: true,
+    get: () => height,
+  });
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(pointer: coarse)",
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: visualViewport,
+  });
+
+  return {
+    setHeight(nextHeight: number) {
+      height = nextHeight;
+      visualViewport.dispatchEvent(new Event("resize"));
+    },
+    restore() {
+      restoreInnerHeight();
+      if (previousMatchMedia) {
+        Object.defineProperty(window, "matchMedia", previousMatchMedia);
+      } else {
+        Reflect.deleteProperty(window, "matchMedia");
+      }
+      if (previousVisualViewport) {
+        Object.defineProperty(
+          window,
+          "visualViewport",
+          previousVisualViewport,
+        );
+      } else {
+        Reflect.deleteProperty(window, "visualViewport");
+      }
+    },
+  };
+}
+
 function installWindowNumberProperty(key: "innerHeight", value: number) {
   const previous = Object.getOwnPropertyDescriptor(window, key);
 
@@ -660,6 +723,41 @@ describe("MessageInput", () => {
       expect(textarea.style.overflowY).toBe("auto");
     } finally {
       restoreInnerHeight();
+    }
+  });
+
+  it("replaces the mobile toolbar with a large action while the keyboard is open", () => {
+    const viewport = installMobileKeyboardViewport();
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), { onSend });
+
+    try {
+      expect(textarea.getAttribute("enterkeyhint")).toBe("enter");
+      expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
+
+      fireEvent.focus(textarea);
+      act(() => viewport.setHeight(480));
+
+      const keyboardAction = document.querySelector(
+        ".message-input-keyboard-primary",
+      ) as HTMLButtonElement | null;
+      expect(keyboardAction).toBeTruthy();
+      expect(keyboardAction?.textContent).toContain("toolbarSend");
+      expect(document.querySelector(".message-input-toolbar")).toBeNull();
+
+      fireEvent.change(textarea, { target: { value: "mobile send" } });
+      fireEvent.pointerDown(keyboardAction as HTMLButtonElement);
+      fireEvent.click(keyboardAction as HTMLButtonElement);
+
+      expectSubmission(onSend, "mobile send", "direct");
+
+      act(() => viewport.setHeight(800));
+      expect(
+        document.querySelector(".message-input-keyboard-primary"),
+      ).toBeNull();
+      expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
+    } finally {
+      viewport.restore();
     }
   });
 

@@ -5948,13 +5948,14 @@ a.linkified-url:hover {
 
 .message-input-keyboard-actions {
   display: flex;
+  gap: var(--space-2);
   width: 100%;
 }
 
-.message-input-keyboard-primary {
+.message-input-keyboard-action {
   min-width: 0;
   min-height: 48px;
-  flex: 1;
+  flex: 1 1 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5970,11 +5971,16 @@ a.linkified-url:hover {
   touch-action: manipulation;
 }
 
-.message-input-keyboard-primary.queue-mode {
+.message-input-keyboard-actions.has-alternate
+  .message-input-keyboard-action {
+  padding-inline: var(--space-2);
+}
+
+.message-input-keyboard-action.queue-mode {
   background: var(--attention-color);
 }
 
-.message-input-keyboard-primary:disabled {
+.message-input-keyboard-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

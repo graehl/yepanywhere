@@ -286,6 +286,7 @@ vi.mock("../../i18n", () => ({
           effortLevelHighDescription: "Deep reasoning",
           effortLevelMaxDescription: "Maximum effort",
           toolbarQueuePrimaryActionLabel: "Queue from primary action",
+          toolbarQueueShortLabel: "Queue",
           toolbarProjectQueueLabel: "Queue for Project Queue",
           toolbarProjectQueueTooltip:
             "Send after all sessions in this project are idle",
@@ -326,6 +327,7 @@ vi.mock("../../i18n", () => ({
           toolbarShortcutFullSessionReverseSearch:
             "Full-session reverse search",
           toolbarShortcutSteerCurrentTurn: "Steer current turn",
+          toolbarSteerShortLabel: "Steer",
           toolbarShortcutQueueCurrentTurn: "Queue message",
           toolbarShortcutProjectQueue: "Queue for Project Queue",
           toolbarShortcutForkAfterSummary:
@@ -756,6 +758,48 @@ describe("MessageInput", () => {
         document.querySelector(".message-input-keyboard-primary"),
       ).toBeNull();
       expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("shows the alternate beside the primary mobile keyboard action", () => {
+    const viewport = installMobileKeyboardViewport();
+    versionState.version = {
+      ...versionState.version,
+      clientDefaults: {
+        busyComposerDefaultAction: "steer",
+        patientQueueDefault: true,
+      },
+    };
+    const onSend = vi.fn();
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onSend,
+      onQueue,
+      supportsSteering: true,
+    });
+
+    try {
+      fireEvent.focus(textarea);
+      act(() => viewport.setHeight(480));
+
+      const actions = document.querySelectorAll(
+        ".message-input-keyboard-action",
+      );
+      expect(actions).toHaveLength(2);
+      expect(actions[0]?.classList.contains("queue-mode")).toBe(true);
+      expect(actions[0]?.textContent).toContain("Queue");
+      expect(actions[1]?.classList.contains("steer-mode")).toBe(true);
+      expect(actions[1]?.textContent).toContain("Steer");
+
+      fireEvent.change(textarea, { target: { value: "wait until done" } });
+      fireEvent.click(actions[0] as HTMLButtonElement);
+      expectSubmission(onQueue, "wait until done", "patient");
+
+      fireEvent.change(textarea, { target: { value: "steer now" } });
+      fireEvent.click(actions[1] as HTMLButtonElement);
+      expectSubmission(onSend, "steer now", "steer");
     } finally {
       viewport.restore();
     }

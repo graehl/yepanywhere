@@ -538,6 +538,12 @@ export function MessageInput({
       : effectivePrimaryActionKind === "queue"
         ? t("toolbarQueueLabel")
         : t("toolbarSend");
+  const mobileKeyboardActionDisplayLabel =
+    hasActiveDualActions && !forkSummaryMode
+      ? effectivePrimaryActionKind === "queue"
+        ? t("toolbarQueueShortLabel")
+        : t("toolbarSteerShortLabel")
+      : mobileKeyboardActionLabel;
   const mobileKeyboardActionIcon = forkSummaryMode
     ? forkSummaryMode.icon
     : effectivePrimaryActionKind === "steer"
@@ -1062,6 +1068,33 @@ export function MessageInput({
     : effectivePrimaryActionKind === "queue"
       ? handleQueue
       : handleSubmit;
+  const forkSummaryAlternateLabel =
+    forkSummaryMode?.noSummarySubmitLabel ?? t("forkSummaryNoSummarySubmit");
+  const mobileKeyboardAlternateAction = forkSummaryMode?.onSubmitWithoutSummary
+    ? {
+        kind: "send" as const,
+        label: forkSummaryAlternateLabel,
+        displayLabel: forkSummaryAlternateLabel,
+        icon: forkSummaryMode.noSummaryIcon ?? "↱",
+        onClick: handleForkWithoutSummary,
+      }
+    : hasActiveDualActions
+      ? effectivePrimaryActionKind === "queue"
+        ? {
+            kind: "steer" as const,
+            label: t("toolbarShortcutSteerCurrentTurn"),
+            displayLabel: t("toolbarSteerShortLabel"),
+            icon: "↗",
+            onClick: handleSteer,
+          }
+        : {
+            kind: "queue" as const,
+            label: t("toolbarQueueLabel"),
+            displayLabel: t("toolbarQueueShortLabel"),
+            icon: "→",
+            onClick: handleQueue,
+          }
+      : null;
   const collapsedActionKind =
     collapsedComposerButton === "alternate" && hasActiveDualActions
       ? effectivePrimaryActionKind === "queue"
@@ -2148,16 +2181,33 @@ export function MessageInput({
         )}
 
         {!collapsed && mobileKeyboardOpen && (
-          <div className="message-input-keyboard-actions">
+          <div
+            className={`message-input-keyboard-actions${mobileKeyboardAlternateAction ? " has-alternate" : ""}`}
+          >
+            {mobileKeyboardAlternateAction && (
+              <button
+                type="button"
+                className={`message-input-keyboard-action message-input-keyboard-alternate ${mobileKeyboardAlternateAction.kind}-mode`}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={mobileKeyboardAlternateAction.onClick}
+                disabled={disabled || !canSubmit}
+                aria-label={mobileKeyboardAlternateAction.label}
+              >
+                <span>{mobileKeyboardAlternateAction.displayLabel}</span>
+                <span aria-hidden="true">
+                  {mobileKeyboardAlternateAction.icon}
+                </span>
+              </button>
+            )}
             <button
               type="button"
-              className={`message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
+              className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
               onPointerDown={(event) => event.preventDefault()}
               onClick={submitPrimaryAction}
               disabled={disabled || !canSubmit}
               aria-label={mobileKeyboardActionLabel}
             >
-              <span>{mobileKeyboardActionLabel}</span>
+              <span>{mobileKeyboardActionDisplayLabel}</span>
               <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
             </button>
           </div>

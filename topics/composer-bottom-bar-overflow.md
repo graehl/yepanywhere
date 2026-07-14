@@ -179,11 +179,13 @@ with slack**. Two latch/oscillation traps live here:
   keeps newline behavior on coarse pointers.
 - While a focused coarse-pointer composer has materially contracted the visual
   viewport (currently below 80% of its pre-keyboard height), the normal bottom
-  toolbar is temporarily replaced by one full-width, 48px-high primary action.
-  It follows the same Send/Queue/Steer/fork action and enabled state as the
-  ordinary primary control. Restoring the viewport or leaving the textarea
-  restores the normal measured toolbar; keyboard-open mode is not another
-  overflow tier.
+  toolbar is temporarily replaced by a 48px-high action row. Single-action
+  sessions use one full-width primary control; when the composer has two
+  delivery actions, the alternate and configured primary share the row, with
+  the primary on the right as in the normal toolbar. These controls follow the
+  same Send/Queue/Steer/fork handlers and enabled state as the ordinary toolbar.
+  Restoring the viewport or leaving the textarea restores the normal measured
+  toolbar; keyboard-open mode is not another overflow tier.
 - Formula/render controls and heartbeat/pulse controls are lower priority than
   microphone for narrow inline space. They can move behind overflow earlier.
 - Shortcut/help (`?`) is lower priority than context percentage, because context

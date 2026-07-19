@@ -1,6 +1,7 @@
 # Portable Transcript Client Ledger
 
-Status: Phase 3 complete; final evidence reconciliation is in progress.
+Status: Web-only compiler checkpoint complete; no portability experiment is
+authorized.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -91,7 +92,7 @@ decision, not a move-only extraction.
 | PTC-005 | Complete | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
 | PTC-006 | Complete | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
 | PTC-007 | Complete | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
-| PTC-008 | Not started | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
+| PTC-008 | Complete | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
 
 PTC-007 is intentionally one integration cutover row. It may gain preparation
 subtasks, but it must not be subdivided indefinitely merely to avoid making the
@@ -314,3 +315,28 @@ Append one note per landed slice using this shape:
   comparison, root typecheck/lint, console budget, and performance comparison.
 - Follow-ups or surprises: none; legacy consumers outside the primary
   session-detail renderer deliberately retain the compatibility façade.
+
+### PTC-008 — Close the web-only checkpoint (landed 2026-07-19, this commit)
+
+- Moved/changed: reconciled the phase and slice records, recorded the final
+  dependency boundary and evidence, and marked the human decision point in the
+  tactical and long-range architecture documents.
+- Explicitly unchanged: production code, transcript behavior, assertions,
+  provider/server contracts, runtime placement, and renderer ownership.
+- Dependency result: the primary web path uses the internal compiler directly;
+  the legacy facade remains intentionally available to secondary and test
+  consumers. No shadow, dual-compile, or comparison path remains in production.
+- Semantic/browser/private artifact result: the final production cutover had
+  already passed 2,147 client assertions, 49 server parity assertions, 58
+  non-device Playwright cases, exact deterministic desktop/mobile specimens,
+  and exact private desktop/mobile replay for 564 Claude and 500 Codex rows.
+- Performance result: final cutover comparison preserved 1,003 items,
+  effectively constant-time cache identity, and 961/961 reusable prefix
+  references. The closeout rerun measured 0.1961 ms cold, 0.0001 ms cache, and
+  0.2552 ms stabilization medians, all within baseline tolerance.
+- Commands: root lint/typecheck, focused semantic and server parity tests, full
+  client tests, serialized full server tests, shared/relay tests, console
+  budget, fixed performance comparison, and `git diff --check`.
+- Follow-ups or surprises: the public/versioned projection, bounded canonical
+  envelope, prefix facts, server/client negotiation, alternate runtime, second
+  consumer, and native renderer remain behind a new human decision.

@@ -7,9 +7,8 @@
 
 Topic: portable-transcript-compiler
 
-Status: Architecture direction approved; web-only foundation preparation is
-tracked in
-[`docs/tactical/061-portable-transcript-foundation-plan.md`](../docs/tactical/061-portable-transcript-foundation-plan.md).
+Status: Architecture direction approved; the internal web-only foundation is
+complete. Further portability or native work requires a new human decision.
 
 See also:
 
@@ -25,6 +24,37 @@ See also:
   client packaging and its trust boundary;
 - [hard-development-rules](hard-development-rules.md) — hosted-client protocol
   grace and compatibility policy.
+
+## Web-Only Foundation Checkpoint (2026-07-19)
+
+The first conservative checkpoint is complete. The current bounded client
+`Message[]` is now compiled by a pure, browser-free TypeScript module into the
+existing client-internal `RenderItem[]`. The same-input identity cache,
+browser-owned streaming diagnostics, transcript display objects, prior-row
+reference stabilization, React grouping/components, and DOM behavior remain
+separate adapters. The primary web session-detail path consumes that compiler
+boundary directly.
+
+This checkpoint deliberately does **not** implement the conceptual versioned
+envelope or presentation contract described below. There is no public package
+ABI, prefix-fact schema, server/client negotiation, Worker or alternate
+runtime, server execution path, second renderer, or native application. The
+legacy `preprocessMessages` facade remains for secondary and test consumers;
+there is no production dual-compile path.
+
+The completed extraction is independently valuable to the web application:
+semantic projection has a deterministic owner, cache and web lifecycle work
+are explicit, provider-format regressions have exact fixtures and local smoke
+evidence, and performance has a repeatable baseline. See the
+[`foundation plan`](../docs/tactical/061-portable-transcript-foundation-plan.md),
+[`client ledger`](../docs/tactical/061-portable-transcript-client-ledger.md),
+and
+[`baseline/corpus record`](../docs/tactical/061-portable-transcript-baseline-and-corpus.md)
+for the boundary, evidence, and deferred decisions.
+
+No later migration step is authorized by this checkpoint. A human must first
+identify a real second consumer and choose the bounded input, minimum projection
+contract, package/runtime target, and compatibility policy.
 
 ## Decision
 

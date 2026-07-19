@@ -1,6 +1,7 @@
 # Portable Transcript Foundation Plan
 
-Status: Phase 0 complete; production extraction has not started.
+Status: Web-only foundation checkpoint complete; further portability work
+requires a new human decision.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -184,7 +185,7 @@ If a difference appears, classify it before continuing:
 | 1. Pure façade and cache split | Complete | Pure compilation can run without React/DOM/browser state; same-array cache and previous-item stabilization are separate named layers |
 | 2. Domain extraction | Complete | Cohesive postprocessing and message-projection stages live in narrow platform-free modules; current adapter stays behavior-identical |
 | 3. Web integration cutover | Complete | Session detail web rendering uses the new boundary; parity, artifact, browser, and performance gates pass |
-| 4. Closeout | In progress | Ledgers reconciled, temporary comparison path removed or explicitly retained, final evidence recorded, architecture topic points to completed checkpoint |
+| 4. Closeout | Complete | Ledgers reconciled, temporary comparison path removed or explicitly retained, final evidence recorded, architecture topic points to completed checkpoint |
 
 ## Phase 0 Deliverables
 
@@ -217,3 +218,91 @@ After Phase 4, stop and present:
   native-renderer experiment.
 
 No portability experiment begins implicitly from a successful web refactor.
+
+## Completed Web-Only Checkpoint
+
+The authorized checkpoint completed on 2026-07-19. The primary web session
+detail path now has this ownership boundary:
+
+```text
+current bounded client Message[] + augments + approval
+  -> transcriptProjection/compiler.ts (pure semantic projection)
+  -> transcriptProjection/cache.ts (same-input identity cache)
+  -> webTranscriptProjection.ts (browser-owned debug diagnostics)
+  -> transcriptDisplayObjects.ts (YA web/session metadata)
+  -> stableRenderItems.ts (previous-row reference reuse)
+  -> React selectors, grouping, components, and DOM
+```
+
+The compiler directory is source-audited to exclude React, browser globals,
+timers, stores, transport, server APIs, and reverse imports from the legacy
+facade. `preprocessMessages.ts` is deliberately retained as a compatibility
+facade for secondary callers and cross-package tests; the primary web path no
+longer imports it. There is no production shadow compiler, dual-render path,
+or temporary comparison wiring left to remove. Ignored private artifacts
+remain local evidence and are not runtime dependencies.
+
+### Evidence at the checkpoint
+
+- Sanitized semantic characterization covers completed Claude and Codex
+  projection, tool/result ownership, setup and compact folding, shell/write and
+  detached-poll folding, active approval, augments, retry fallback, cache
+  identity, and row-reference stabilization.
+- Full client unit verification passed 2,147 assertions. Focused server
+  render-parity and Codex normalization verification passed 49 assertions.
+- Non-device Playwright passed 58 cases with three environment-dependent
+  skips, including exact desktop/mobile deterministic transcript specimens.
+- Private inactive-session replays were exactly equal at desktop and mobile:
+  564 Claude rows and 500 Codex rows, with matching structural and screenshot
+  digests and no page errors, console warnings, duplicate ids, or overflow.
+- The 683-message benchmark still emits 1,003 items. The final cutover measured
+  a 0.1960 ms cold median and an effectively constant-time cache. The closeout
+  rerun measured 0.1961 ms cold, 0.0001 ms cache, and 0.2552 ms stabilization
+  medians, with 961/961 reusable prefix references. These remain within the
+  recorded Phase 0 tolerances.
+- Lint, typecheck, console budget, focused transcript gates, full client gates,
+  serialized full server gates, browser gates, artifact comparison, and fixed
+  performance comparison were green. The known Vite build notices and
+  default-parallel fake-process timing sensitivity remain unchanged baseline
+  harness limitations, not transcript regressions.
+
+### Value delivered without a mobile application
+
+The current web app gains a named deterministic semantic boundary, explicit
+cache and lifecycle ownership, a narrower place to diagnose provider-format
+changes, and exact conformance/performance tripwires. Those benefits stand
+even if YA never creates another renderer or runtime.
+
+### Deliberately deferred
+
+The checkpoint output is still the existing client-internal `RenderItem[]`,
+and its input is still the current client `Message[]`. Pure modules still use
+client library types and helpers. Provider storage parsing and upstream
+normalization remain server responsibilities. Display-object insertion,
+reference stabilization, grouping, action selection, React rendering, DOM
+behavior, and streaming lifecycle remain web responsibilities. Server parity
+tests still consume the compatibility facade; they do not make the compiler a
+server runtime dependency.
+
+There is no canonical bounded envelope, prefix-fact schema, public or versioned
+projection ABI, package/runtime compatibility promise, server/client execution
+negotiation, Worker boundary, or native consumer. Live/pagination/unknown-shape
+browser specimens remain optional corpus expansion rather than claims made by
+this checkpoint.
+
+### Decisions required before continuing
+
+No next implementation step is authorized. A future human-reviewed phase must
+first decide:
+
+1. what real second consumer is being built and which minimum semantics it
+   needs;
+2. whether the internal model should become a public/versioned projection or
+   remain an implementation detail;
+3. what bounded canonical envelope and whole-history prefix facts the server
+   must provide;
+4. which packaging/runtime target is justified by that consumer and measured
+   constraints;
+5. how server/client capability negotiation, fallback, and version grace work;
+6. the independently bounded scope and acceptance criteria for any native
+   renderer experiment.

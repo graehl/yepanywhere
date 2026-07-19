@@ -243,3 +243,32 @@ Complete this section immediately before the preparation commit:
   `crypto` and chunk-size warnings plus Playwright's `NO_COLOR`/`FORCE_COLOR`
   warning. Live, pagination, and unknown-shape browser specimens remain later
   corpus additions, not Phase 0 blockers.
+
+## Final Checkpoint Evidence
+
+The surface census and Phase 0 measurements above intentionally describe the
+starting revision. At the completed web-only checkpoint, the primary web path
+uses the pure internal compiler, named identity cache, web diagnostics adapter,
+display-object adapter, and reference-stabilization adapter as separate layers.
+The complete dependency boundary and deferred work are recorded in the
+[`foundation plan`](061-portable-transcript-foundation-plan.md).
+
+Final production-cutover evidence:
+
+| Evidence | Result |
+|---|---|
+| Focused compiler/cache/selector boundary | 110/110 assertions passed cleanly |
+| Full client unit | 254 files, 2,147 assertions passed |
+| Focused server render parity/Codex normalization | 49/49 assertions passed |
+| Full server unit | 188 files, 2,661 assertions passed with one Vitest worker |
+| Deterministic browser | Exact desktop/mobile specimens passed |
+| Full non-device Playwright | 58 passed, 3 environment-dependent skips |
+| Private local artifacts | Exact desktop/mobile structural and screenshot parity for 564 Claude and 500 Codex rows |
+| Console budget | 110/110 sites, unchanged |
+| Fixed-input benchmark | 683 messages, 1,003 items, 0.1961 ms cold median, 0.0001 ms cache median, 0.2552 ms stabilization median, 961/961 reusable prefix references |
+
+The single-worker server result is the authoritative full-server gate for this
+campaign because default intra-suite parallelism intermittently starves
+untouched fake-Codex polling tests. Those same 2,661 assertions pass when the
+harness is serialized. This pre-existing timing sensitivity did not justify a
+transcript-refactor assertion or production change.

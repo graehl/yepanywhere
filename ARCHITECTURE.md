@@ -303,13 +303,22 @@ clients; compatible servers can still do the expensive/history-aware work;
 mobile compilation remains bounded; and native clients can render real sessions
 without inheriting the DOM-heavy component tree.
 
-**Trigger.** The documentation/design trigger has been met by recurring hosted
-client/server skew, repeated provider render-normalization work, and an approved
-native-client direction. Begin implementation only with a minimal pure
-projection union plus a second non-DOM consumer and server/client fixture
-parity. Do not add projection transport or native live-session behavior until
-the existing session-detail store/selector boundary is stable under that
-adapter and the bounded-input contract is enforced.
+**Current checkpoint.** The conservative web-only foundation completed on
+2026-07-19: current `Message[]` input is transformed into the existing internal
+`RenderItem[]` by a browser-free TypeScript compiler, with cache, web
+diagnostics, display-object insertion, reference stabilization, and React
+rendering kept as explicit adapters. The primary session-detail path uses this
+boundary, protected by semantic, browser, private-artifact, and performance
+tripwires. See the completed
+[`foundation plan`](docs/tactical/061-portable-transcript-foundation-plan.md).
+This is useful web architecture but is not yet the versioned envelope or
+platform-neutral projection proposed above.
+
+**Next trigger.** Continue only after a human identifies a real second consumer
+and decides its bounded input, minimum projection contract, packaging/runtime,
+and compatibility policy. Do not add a public/versioned IR, projection
+transport, server/client negotiation, alternate runtime, or native live-session
+behavior implicitly from the successful web extraction.
 
 ### Disk-pressure degraded mode
 

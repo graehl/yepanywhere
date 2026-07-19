@@ -728,7 +728,7 @@ describe("MessageInput", () => {
     }
   });
 
-  it("shows More while empty and a large action for keyboard-open content", () => {
+  it("keeps the normal toolbar while empty and uses compact actions for content", () => {
     const viewport = installMobileKeyboardViewport();
     const onSend = vi.fn();
     const textarea = renderMessageInput(vi.fn(() => true), { onSend });
@@ -740,13 +740,13 @@ describe("MessageInput", () => {
       fireEvent.focus(textarea);
       act(() => viewport.setHeight(480));
 
+      expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
       expect(
-        screen.getByRole("button", { name: "More toolbar controls" }),
-      ).toBeTruthy();
+        document.querySelector(".message-input-keyboard-compact"),
+      ).toBeNull();
       expect(
         document.querySelector(".message-input-keyboard-primary"),
       ).toBeNull();
-      expect(document.querySelector(".message-input-toolbar")).toBeNull();
 
       fireEvent.change(textarea, { target: { value: "mobile send" } });
       const keyboardAction = document.querySelector(
@@ -754,6 +754,10 @@ describe("MessageInput", () => {
       ) as HTMLButtonElement | null;
       expect(keyboardAction).toBeTruthy();
       expect(keyboardAction?.textContent).toContain("toolbarSend");
+      expect(
+        document.querySelector(".message-input-keyboard-more"),
+      ).toBeTruthy();
+      expect(document.querySelector(".message-input-toolbar")).toBeNull();
 
       fireEvent.pointerDown(keyboardAction as HTMLButtonElement);
       fireEvent.click(keyboardAction as HTMLButtonElement);
@@ -763,8 +767,9 @@ describe("MessageInput", () => {
         document.querySelector(".message-input-keyboard-primary"),
       ).toBeNull();
       expect(
-        screen.getByRole("button", { name: "More toolbar controls" }),
-      ).toBeTruthy();
+        document.querySelector(".message-input-keyboard-more"),
+      ).toBeNull();
+      expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
 
       act(() => viewport.setHeight(800));
       expect(
@@ -864,8 +869,9 @@ describe("MessageInput", () => {
         document.querySelectorAll(".message-input-keyboard-action"),
       ).toHaveLength(0);
       expect(
-        screen.getByRole("button", { name: "More toolbar controls" }),
-      ).toBeTruthy();
+        document.querySelector(".message-input-keyboard-more"),
+      ).toBeNull();
+      expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
     } finally {
       viewport.restore();
     }
@@ -892,6 +898,9 @@ describe("MessageInput", () => {
       act(() => textarea.focus());
       act(() => viewport.setHeight(480));
 
+      expect(document.querySelector(".message-input-toolbar")).toBeTruthy();
+      fireEvent.change(textarea, { target: { value: "project later" } });
+
       const more = screen.getByRole("button", {
         name: "More toolbar controls",
       });
@@ -906,7 +915,6 @@ describe("MessageInput", () => {
       fireEvent.click(attach);
       expect(inputClick).toHaveBeenCalledTimes(1);
 
-      fireEvent.change(textarea, { target: { value: "project later" } });
       fireEvent.click(
         screen.getByRole("button", { name: "Queue for Project Queue" }),
       );

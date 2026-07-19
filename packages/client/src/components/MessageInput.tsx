@@ -889,6 +889,12 @@ export function MessageInput({
     };
   }, [textareaFocused]);
 
+  useEffect(() => {
+    if (!canSubmit) {
+      setMobileKeyboardMoreOpen(false);
+    }
+  }, [canSubmit]);
+
   const handleSubmit = useCallback(
     (
       messageOverride?: unknown,
@@ -1853,6 +1859,7 @@ export function MessageInput({
     canSend: canSubmit,
     disabled,
   };
+  const showMobileKeyboardCompact = mobileKeyboardOpen && canSubmit;
 
   return (
     <div
@@ -2271,7 +2278,7 @@ export function MessageInput({
           </div>
         )}
 
-        {!collapsed && mobileKeyboardOpen && (
+        {!collapsed && showMobileKeyboardCompact && (
           <div className="message-input-keyboard-compact">
             {mobileKeyboardMoreOpen && (
               <div
@@ -2334,7 +2341,7 @@ export function MessageInput({
           </div>
         )}
 
-        {!collapsed && !mobileKeyboardOpen && (
+        {!collapsed && !showMobileKeyboardCompact && (
           <MessageInputToolbar {...toolbarProps} />
         )}
       </div>

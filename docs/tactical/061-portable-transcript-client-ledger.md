@@ -1,6 +1,6 @@
 # Portable Transcript Client Ledger
 
-Status: Phase 2 domain extraction in progress; behavior remains frozen.
+Status: Phase 2 complete; web integration cutover is the next gate.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -89,7 +89,7 @@ decision, not a move-only extraction.
 | PTC-003 | Complete | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
 | PTC-004 | Complete | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
 | PTC-005 | Complete | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
-| PTC-006 | Not started | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
+| PTC-006 | Complete | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
 | PTC-007 | Not started | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
 | PTC-008 | Not started | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
 
@@ -268,3 +268,24 @@ Append one note per landed slice using this shape:
   fake-Codex polling tests under intra-suite concurrency; all 2,661 assertions
   passed with one Vitest worker. Compiler orchestration remains in the façade
   for PTC-006.
+
+### PTC-006 — Finalize the internal compiler boundary (landed 2026-07-19, this commit)
+
+- Moved/changed: moved ordered compiler orchestration into
+  `transcriptProjection/compiler.ts`; reduced `preprocessMessages.ts` to cached
+  web compatibility behavior, debug injection, and historical re-exports.
+- Explicitly unchanged: compiler stage order, cache identity, semantic output,
+  debug flag and console payload, public helper imports, and web callers.
+- Dependency result: a new source-level tripwire scans every transcript
+  projection module for React, browser globals, lifecycle schedulers, web
+  application layers, transport, and reverse imports from the legacy façade.
+- Semantic/browser/private artifact result: all 82 focused boundary/cache/
+  compiler/preprocessor/helper assertions passed without expectation changes.
+- Performance result: fixed comparison remains at 1,003 items, constant-time
+  same-array cache identity, and 961/961 reusable prefix references.
+- Commands: focused semantic, boundary, and server parity tests, changed-file
+  Biome, root typecheck/lint, full client tests, console budget, and performance
+  comparison.
+- Follow-ups or surprises: an old streaming-debug `window` read was found in
+  per-message projection and preserved through an optional web-owned diagnostic
+  callback. The internal compiler directory is now browser-free.

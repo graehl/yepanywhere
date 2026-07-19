@@ -506,6 +506,9 @@ const CodexMcpToolCallEndEventSchema = z
 const CodexThreadNameUpdatedEventSchema = z
   .object({ type: z.literal("thread_name_updated") })
   .passthrough();
+const CodexThreadRolledBackEventSchema = z
+  .object({ type: z.literal("thread_rolled_back"), num_turns: z.number() })
+  .passthrough();
 const CodexErrorEventSchema = z
   .object({ type: z.literal("error") })
   .passthrough();
@@ -533,6 +536,7 @@ export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
   CodexThreadGoalUpdatedEventSchema,
   CodexMcpToolCallEndEventSchema,
   CodexThreadNameUpdatedEventSchema,
+  CodexThreadRolledBackEventSchema,
   CodexErrorEventSchema,
   CodexViewImageToolCallEventSchema,
 ]);

@@ -26,6 +26,71 @@ describe("Claude SDK schema", () => {
     expect(result.success).toBe(true);
   });
 
+  it.each([
+    {
+      type: "permission-mode",
+      permissionMode: "default",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+    },
+    {
+      type: "last-prompt",
+      leafUuid: "11111111-1111-4111-8111-111111111112",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+    },
+    {
+      type: "queue-operation",
+      operation: "popAll",
+      content: "queued prompt",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      timestamp: "2026-07-19T00:00:00.000Z",
+    },
+  ])("parses current Claude metadata entry %#", (entry) => {
+    expect(ClaudeSessionEntrySchema.safeParse(entry).success).toBe(true);
+  });
+
+  it.each([
+    {
+      type: "attachment",
+      attachment: { type: "deferred_tools_delta", addedNames: ["Read"] },
+    },
+    {
+      type: "system",
+      subtype: "turn_duration",
+      durationMs: 1234,
+      messageCount: 3,
+    },
+    {
+      type: "system",
+      subtype: "away_summary",
+      content: "Work continued while the client was away.",
+    },
+    {
+      type: "system",
+      subtype: "scheduled_task_fire",
+      content: "Scheduled task resumed.",
+    },
+    {
+      type: "system",
+      subtype: "local_command",
+      content: "<command-name>/model</command-name>",
+      level: "info",
+    },
+  ])("parses current Claude conversation entry %#", (entry) => {
+    const result = ClaudeSessionEntrySchema.safeParse({
+      ...entry,
+      isSidechain: false,
+      userType: "external",
+      cwd: "/repo",
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      version: "2.1.215",
+      uuid: "11111111-1111-4111-8111-111111111113",
+      timestamp: "2026-07-19T00:00:00.000Z",
+      parentUuid: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("parses AskUserQuestion results with multi-select answers", () => {
     const result = AskUserQuestionResultSchema.safeParse({
       questions: [

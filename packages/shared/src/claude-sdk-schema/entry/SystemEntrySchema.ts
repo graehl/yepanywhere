@@ -110,6 +110,32 @@ const BridgeStatusSystemEntrySchema = BaseEntrySchema.extend({
   isMeta: z.boolean().optional(),
 });
 
+const TurnDurationSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("turn_duration"),
+  durationMs: z.number(),
+  messageCount: z.number(),
+});
+
+const AwaySummarySystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("away_summary"),
+  content: z.string(),
+});
+
+const ScheduledTaskFireSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("scheduled_task_fire"),
+  content: z.string(),
+});
+
+const LocalCommandSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("local_command"),
+  content: z.string(),
+  level: z.string().optional(),
+});
+
 export const SystemEntrySchema = z.union([
   RegularSystemEntrySchema,
   CompactBoundarySystemEntrySchema,
@@ -120,6 +146,10 @@ export const SystemEntrySchema = z.union([
   ApiErrorSystemEntrySchema,
   StopHookSummarySystemEntrySchema,
   BridgeStatusSystemEntrySchema,
+  TurnDurationSystemEntrySchema,
+  AwaySummarySystemEntrySchema,
+  ScheduledTaskFireSystemEntrySchema,
+  LocalCommandSystemEntrySchema,
 ]);
 
 export type SystemEntry = z.infer<typeof SystemEntrySchema>;

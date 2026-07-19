@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CODEX_CLI_GPT55_MIN_VERSION,
   CODEX_CLI_GPT56_MIN_VERSION,
+  CODEX_CLI_GPT56_REDUCED_CATALOG_MIN_VERSION,
   compareSemver,
   getFallbackCodexModelsForCliVersion,
   normalizeCodexModelList,
@@ -66,6 +67,17 @@ describe("Codex model catalog", () => {
     expect(
       gpt56Models.filter((model) => model.isDefault).map((model) => model.id),
     ).toEqual(["gpt-5.6-sol"]);
+    expect(
+      getFallbackCodexModelsForCliVersion(
+        CODEX_CLI_GPT56_REDUCED_CATALOG_MIN_VERSION,
+      ).map((model) => model.id),
+    ).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.3-codex-spark",
+    ]);
     expect(getFallbackCodexModelsForCliVersion(null)[0]).toMatchObject({
       id: "gpt-5.6-sol",
       isDefault: true,
@@ -178,6 +190,7 @@ describe("Codex model catalog", () => {
         },
       ],
       inputModalities: ["text", "image"],
+      contextWindow: 272_000,
       supportsPersonality: false,
       serviceTiers: [
         {

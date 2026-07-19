@@ -63,11 +63,11 @@
   "yepAnywhere": {
     "codexCli": {
       "expectedVersion": "0.144.1",
-      "compatibleThroughVersion": "0.144.1"
+      "compatibleThroughVersion": "0.144.6"
     },
     "claudeCode": {
-      "compatibleThroughVersion": "2.1.205",
-      "claudeAgentSdkVersion": "0.3.205"
+      "compatibleThroughVersion": "2.1.215",
+      "claudeAgentSdkVersion": "0.3.215"
     }
   },
   "dependencies": {

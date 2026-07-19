@@ -14,10 +14,23 @@ const AiTitleEntrySchema = z.object({
   aiTitle: z.string(),
 });
 
-const LastPromptEntrySchema = z.object({
-  type: z.literal("last-prompt"),
+const LastPromptEntrySchema = z.union([
+  z.object({
+    type: z.literal("last-prompt"),
+    sessionId: SessionIdSchema,
+    lastPrompt: z.string(),
+  }),
+  z.object({
+    type: z.literal("last-prompt"),
+    sessionId: SessionIdSchema,
+    leafUuid: z.string().uuid(),
+  }),
+]);
+
+const PermissionModeEntrySchema = z.object({
+  type: z.literal("permission-mode"),
   sessionId: SessionIdSchema,
-  lastPrompt: z.string(),
+  permissionMode: z.string(),
 });
 
 const TaskSummaryEntrySchema = z.object({
@@ -147,6 +160,7 @@ export const MetadataEntrySchema = z.union([
   CustomTitleEntrySchema,
   AiTitleEntrySchema,
   LastPromptEntrySchema,
+  PermissionModeEntrySchema,
   TaskSummaryEntrySchema,
   TagEntrySchema,
   AgentNameEntrySchema,

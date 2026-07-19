@@ -124,6 +124,33 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-07-19:
+
+- Installed Codex and npm `@openai/codex` `latest` are `0.144.6`. The official
+  `rust-v0.144.1..rust-v0.144.6` source diff changes no generated app-server
+  protocol type, and `pnpm codex:protocol:check` remains clean. The no-op audit
+  advances `compatibleThroughVersion` to `0.144.6`; `expectedVersion` remains
+  `0.144.1` because the checked-in subset did not regenerate.
+- The no-token `model/list` catalog now contains Sol, Terra, Luna, GPT-5.5, and
+  GPT-5.3-Codex-Spark. GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex, and GPT-5.2 are no
+  longer advertised. YA keeps the original 0.144.0-0.144.5 fallback for those
+  executables and uses the reduced catalog from 0.144.6 onward. The real-turn
+  probe was also corrected to read the current paginated `data` response.
+- The official 0.144.6 hotfix corrects Sol, Terra, and Luna context windows to
+  272,000 tokens. YA now uses that value for live normalized and fallback
+  GPT-5.6 model metadata while retaining the older 258,000-token default for
+  earlier or unidentified Codex models.
+- The persisted transcript census found `thread_rolled_back`, an operational
+  event YA does not render but must retain in the schema. After adding it, all
+  983,521 lines across 467 local Codex rollouts validate.
+- Non-generated upstream drift preserves acknowledged model and reasoning
+  effort across thread resume. `ModelMessages` also gained optional
+  `auto_review.policy`; it is model-manager copy, not a new YA app-server event
+  or persisted transcript type.
+
+Status: Codex 0.144.6 runtime/catalog compatibility is refreshed. No new
+app-server control or user-visible message renderer is required.
+
 Current source refresh, 2026-07-10:
 
 - Installed Codex is `codex-cli 0.144.1`. Root `package.json` now records
@@ -333,6 +360,33 @@ Difference detectors:
   by `claude-sdk-schema` or visible normalization tests.
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
+
+Current source refresh, 2026-07-19:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.205` to `0.3.215`;
+  its bundled executable and the independently installed `claude` both report
+  Claude Code `2.1.215`. Root compatibility markers now record that pair.
+- The SDK retains every `SDKMessage` union member YA already knew; drift is
+  additive within existing messages. Notable fields include assistant
+  `aborted`, `timestamp`, and `resumed_from_incomplete_thinking`; tool-progress
+  heartbeats and subagent retry detail; expanded terminal reasons; permission
+  rationale fields; and `SessionStart` source `fork`.
+- Persisted transcript coverage added provider connector `attachment`,
+  `permission-mode`, leaf-based `last-prompt`, queue `popAll`, plus system
+  `turn_duration`, `away_summary`, `scheduled_task_fire`, and `local_command`.
+  All 104,553 lines across 200 local Claude transcripts now validate.
+- No existing Claude provider control call changed incompatibly, and the full
+  repository typecheck passes with SDK 0.3.215. The 2.1.215 release itself only
+  stops Claude from invoking `/verify` and `/code-review` autonomously.
+
+Optional follow-ups: render the new tool-progress heartbeat/subagent retry
+detail in activity UI; surface truncated `aborted` assistant frames distinctly;
+and use structured permission rationale to improve approval copy. These are
+additive UX work, not compatibility blockers, and should remain provider-native
+and default-preserving.
+
+Status: Claude Code 2.1.215 / SDK 0.3.215 runtime, type, and persisted-session
+compatibility is refreshed.
 
 Current source refresh, 2026-07-09:
 

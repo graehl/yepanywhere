@@ -26,6 +26,11 @@ describe("CodexSessionEntrySchema", () => {
     {
       timestamp: "2026-07-10T00:00:00Z",
       type: "event_msg",
+      payload: { type: "thread_rolled_back", num_turns: 1 },
+    },
+    {
+      timestamp: "2026-07-10T00:00:00Z",
+      type: "event_msg",
       payload: {
         type: "token_count",
         info: null,

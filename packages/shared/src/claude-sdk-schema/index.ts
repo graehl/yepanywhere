@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AttachmentEntrySchema } from "./entry/AttachmentEntrySchema.js";
 import {
   type AssistantEntry,
   AssistantEntrySchema,
@@ -17,6 +18,7 @@ import { type UserEntry, UserEntrySchema } from "./entry/UserEntrySchema.js";
 export const SessionEntrySchema = z.union([
   UserEntrySchema,
   AssistantEntrySchema,
+  AttachmentEntrySchema,
   ProgressEntrySchema,
   SummaryEntrySchema,
   SystemEntrySchema,
@@ -35,6 +37,7 @@ export type ClaudeSidechainEntry = SidechainEntry;
 
 // Re-export all schemas and types for convenience
 export * from "./entry/AssistantEntrySchema.js";
+export * from "./entry/AttachmentEntrySchema.js";
 export * from "./entry/BaseEntrySchema.js";
 export * from "./entry/FileHistorySnapshotEntrySchema.js";
 export * from "./entry/MetadataEntrySchema.js";

@@ -179,7 +179,7 @@ try {
   let model = MODEL;
   try {
     const modelList = await request("model/list", {});
-    const models = Array.isArray(modelList?.models) ? modelList.models : [];
+    const models = Array.isArray(modelList?.data) ? modelList.data : [];
     const ids = models
       .map((entry) => entry?.id)
       .filter((id) => typeof id === "string");

@@ -85,7 +85,7 @@ decision, not a move-only extraction.
 |---|---|---|---|---|
 | PTC-000 | Complete | Establish docs, surface census, semantic/browser/private-artifact tripwires, and performance baseline | No transcript production behavior changes | Full Phase 0 gates |
 | PTC-001 | Complete | Introduce `compileTranscriptProjection` as the explicit uncached pure façade while `preprocessMessages` retains current cached behavior | Characterization suite green; returned structures identical | Focused semantic + root Tier 2 |
-| PTC-002 | Not started | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
+| PTC-002 | Complete | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
 | PTC-003 | Not started | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
 | PTC-004 | Not started | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
 | PTC-005 | Not started | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
@@ -180,3 +180,23 @@ Append one note per landed slice using this shape:
   unrelated fake-process timeout flakes in two different server test files;
   both files passed alone and the complete workspace suite passed sequentially.
   No caller cutover is part of this seam-naming slice.
+
+### PTC-002 — Separate transcript projection cache (landed 2026-07-19, this commit)
+
+- Moved/changed: moved the message-array/augment identity WeakMap and its
+  three-variant eviction policy into `transcriptProjection/cache.ts`; moved the
+  platform-free augment input types beside it.
+- Explicitly unchanged: cache keys, capacity, eviction order, compiler output,
+  the `preprocessMessages` public API, and all caller imports.
+- Dependency result: the cache receives the compiler as an explicit dependency
+  and does not import the legacy façade; the façade re-exports its historical
+  input types for compatibility.
+- Semantic/browser/private artifact result: focused cache tests pin identity,
+  augment variants, and oldest-entry eviction; compiler characterization and
+  the 64-case preprocessor suite remain green.
+- Performance result: fixed benchmark comparison remains within tolerance and
+  preserves same-array identity.
+- Commands: focused cache/compiler/preprocessor tests, root lint/typecheck,
+  full sequential workspace tests, console budget, and performance comparison.
+- Follow-ups or surprises: none; the web selector still uses the compatibility
+  façade until PTC-007.

@@ -1,4 +1,3 @@
-import type { MarkdownAugment } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 import type {
   RenderItem,
@@ -29,31 +28,18 @@ import {
   isTaskNotificationMessage,
   parseTaskNotification,
 } from "./parseTaskNotification";
+import { getCachedTranscriptProjection } from "./transcriptProjection/cache";
+import type { PreprocessAugments } from "./transcriptProjection/types";
+
+export type {
+  ActiveToolApproval,
+  PreprocessAugments,
+} from "./transcriptProjection/types";
 
 const AWAY_SUMMARY_HINT_SUFFIX_RE = /\s*\(disable recaps in \/config\)\s*$/u;
 
 export function stripAwaySummaryHintSuffix(content: string): string {
   return content.replace(AWAY_SUMMARY_HINT_SUFFIX_RE, "");
-}
-
-/**
- * When true, indicates the session has active tool work or approval.
- * Orphaned tools in the current trailing user turn are treated as pending.
- *
- * This handles the case where multiple tools are queued for approval while
- * still allowing older orphaned tools from prior turns to render interrupted.
- */
-export type ActiveToolApproval = boolean;
-
-/**
- * Augments to embed into RenderItems during preprocessing.
- * These are pre-computed on the server for completed messages.
- */
-export interface PreprocessAugments {
-  /** Pre-rendered markdown HTML keyed by message ID */
-  markdown?: Record<string, MarkdownAugment>;
-  /** Active tool approval request - if present, matching tool_use won't be marked aborted */
-  activeToolApproval?: ActiveToolApproval;
 }
 
 /**
@@ -70,39 +56,15 @@ export interface PreprocessAugments {
  * (mergeJSONLMessages builds a new array; no-op filters return the same
  * one), and returned render items are treated as immutable downstream.
  */
-interface PreprocessCacheEntry {
-  markdown: PreprocessAugments["markdown"];
-  activeToolApproval: boolean | undefined;
-  items: RenderItem[];
-}
-
-const preprocessResultCache = new WeakMap<Message[], PreprocessCacheEntry[]>();
-const PREPROCESS_CACHE_VARIANTS_PER_ARRAY = 3;
-
 export function preprocessMessages(
   messages: Message[],
   augments?: PreprocessAugments,
 ): RenderItem[] {
-  const markdown = augments?.markdown;
-  const activeToolApproval = augments?.activeToolApproval;
-  const cachedVariants = preprocessResultCache.get(messages);
-  const cached = cachedVariants?.find(
-    (entry) =>
-      entry.markdown === markdown &&
-      entry.activeToolApproval === activeToolApproval,
+  return getCachedTranscriptProjection(
+    messages,
+    augments,
+    compileTranscriptProjection,
   );
-  if (cached) {
-    return cached.items;
-  }
-
-  const computed = compileTranscriptProjection(messages, augments);
-  const variants = cachedVariants ?? [];
-  variants.push({ markdown, activeToolApproval, items: computed });
-  if (variants.length > PREPROCESS_CACHE_VARIANTS_PER_ARRAY) {
-    variants.shift();
-  }
-  preprocessResultCache.set(messages, variants);
-  return computed;
 }
 
 /**

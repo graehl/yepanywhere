@@ -95,7 +95,7 @@ export function preprocessMessages(
     return cached.items;
   }
 
-  const computed = computePreprocessedMessages(messages, augments);
+  const computed = compileTranscriptProjection(messages, augments);
   const variants = cachedVariants ?? [];
   variants.push({ markdown, activeToolApproval, items: computed });
   if (variants.length > PREPROCESS_CACHE_VARIANTS_PER_ARRAY) {
@@ -105,7 +105,11 @@ export function preprocessMessages(
   return computed;
 }
 
-function computePreprocessedMessages(
+/**
+ * Compile normalized transcript messages into the current semantic render
+ * model without applying identity caching or web reference stabilization.
+ */
+export function compileTranscriptProjection(
   messages: Message[],
   augments?: PreprocessAugments,
 ): RenderItem[] {

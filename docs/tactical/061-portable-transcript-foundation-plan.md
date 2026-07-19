@@ -181,7 +181,7 @@ If a difference appears, classify it before continuing:
 | Phase | Status | Exit condition |
 |---|---|---|
 | 0. Baseline and surface census | Complete | Exact revision/toolchain recorded; semantic, browser, local-artifact, performance, and warning tripwires are runnable and green for their declared scope |
-| 1. Pure façade and cache split | Not started | Pure compilation can run without React/DOM/browser state; same-array cache and previous-item stabilization are separate named layers |
+| 1. Pure façade and cache split | In progress | Pure compilation can run without React/DOM/browser state; same-array cache and previous-item stabilization are separate named layers |
 | 2. Domain extraction | Not started | Cohesive postprocessing and message-projection stages live in narrow platform-free modules; current adapter stays behavior-identical |
 | 3. Web integration cutover | Not started | Session detail web rendering uses the new boundary; parity, artifact, browser, and performance gates pass |
 | 4. Closeout | Not started | Ledgers reconciled, temporary comparison path removed or explicitly retained, final evidence recorded, architecture topic points to completed checkpoint |

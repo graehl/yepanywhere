@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../../types";
 import type { RenderItem } from "../../types/renderItems";
-import { preprocessMessages } from "../preprocessMessages";
+import {
+  compileTranscriptProjection,
+  preprocessMessages,
+} from "../preprocessMessages";
 
 function sourceIds(item: RenderItem): string[] {
   return item.sourceMessages.map(
@@ -62,6 +65,30 @@ function characterize(item: RenderItem): Record<string, unknown> {
 }
 
 describe("transcript projection characterization", () => {
+  it("exposes an uncached pure compiler beneath the cached facade", () => {
+    const messages: Message[] = [
+      {
+        id: "facade-user",
+        role: "user",
+        content: "Compile the fixture",
+      },
+      {
+        id: "facade-assistant",
+        role: "assistant",
+        content: "The fixture is compiled.",
+      },
+    ];
+
+    const firstCompiled = compileTranscriptProjection(messages);
+    const secondCompiled = compileTranscriptProjection(messages);
+    const firstCached = preprocessMessages(messages);
+
+    expect(firstCompiled).toEqual(firstCached);
+    expect(secondCompiled).toEqual(firstCached);
+    expect(firstCompiled).not.toBe(secondCompiled);
+    expect(preprocessMessages(messages)).toBe(firstCached);
+  });
+
   it("pins setup, prose, thinking, tool pairing, compact, and error output", () => {
     const messages: Message[] = [
       {

@@ -84,7 +84,7 @@ decision, not a move-only extraction.
 | ID | Status | Intent | Risk / entry gate | Verification tier |
 |---|---|---|---|---|
 | PTC-000 | Complete | Establish docs, surface census, semantic/browser/private-artifact tripwires, and performance baseline | No transcript production behavior changes | Full Phase 0 gates |
-| PTC-001 | Not started | Introduce `compileTranscriptProjection` as the explicit uncached pure façade while `preprocessMessages` retains current cached behavior | Characterization suite green; returned structures identical | Focused semantic + root Tier 2 |
+| PTC-001 | Complete | Introduce `compileTranscriptProjection` as the explicit uncached pure façade while `preprocessMessages` retains current cached behavior | Characterization suite green; returned structures identical | Focused semantic + root Tier 2 |
 | PTC-002 | Not started | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
 | PTC-003 | Not started | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
 | PTC-004 | Not started | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
@@ -158,3 +158,25 @@ Append one note per landed slice using this shape:
   layer keeps fonts as same-origin files and tests that build policy. Existing
   Vite crypto/chunk and color-environment chatter remains classified global
   harness noise.
+
+### PTC-001 — Name the pure compiler façade (landed 2026-07-19, this commit)
+
+- Moved/changed: exported the existing uncached computation as
+  `compileTranscriptProjection`; the cached compatibility façade delegates to
+  it.
+- Explicitly unchanged: pipeline implementation, cache keys and eviction,
+  returned structures, callers, and web rendering.
+- Dependency result: the pure name is visible but remains in the legacy source
+  file until later move-only slices remove its internal dependencies.
+- Semantic/browser/private artifact result: the characterization test proves
+  fresh pure arrays are structurally equal to the cached façade and the façade
+  retains same-array identity; the full 64-case preprocessor suite remains
+  green.
+- Performance result: fixed benchmark comparison remains within tolerance.
+- Commands: focused compiler/preprocessor tests, client typecheck, root lint,
+  root typecheck, full sequential workspace tests, and fixed performance
+  comparison.
+- Follow-ups or surprises: the canonical concurrent workspace run exposed
+  unrelated fake-process timeout flakes in two different server test files;
+  both files passed alone and the complete workspace suite passed sequentially.
+  No caller cutover is part of this seam-naming slice.

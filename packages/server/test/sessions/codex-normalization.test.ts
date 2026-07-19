@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CodexSessionEntry } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
-import { preprocessMessages } from "../../../client/src/lib/preprocessMessages.ts";
+import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { LoadedSession } from "../../src/sessions/types.js";
 
@@ -228,7 +228,7 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages[0]?.orphanedToolUseIds).toEqual(["call-orphaned"]);
 
-    const renderItems = preprocessMessages(result.messages);
+    const renderItems = compileTranscriptProjection(result.messages);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "call-orphaned",
@@ -271,7 +271,7 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages[0]?.orphanedToolUseIds).toEqual(["call-bg"]);
 
-    const renderItems = preprocessMessages(result.messages);
+    const renderItems = compileTranscriptProjection(result.messages);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "call-bg",
@@ -318,7 +318,7 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages[0]?.orphanedToolUseIds).toBeUndefined();
 
-    const renderItems = preprocessMessages(result.messages);
+    const renderItems = compileTranscriptProjection(result.messages);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "call-bg",
@@ -371,7 +371,7 @@ describe("Codex Normalization", () => {
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const renderItems = preprocessMessages(result.messages);
+      const renderItems = compileTranscriptProjection(result.messages);
       expect(renderItems[0]).toMatchObject({
         type: "tool_call",
         id: "call-fast",
@@ -454,7 +454,7 @@ describe("Codex Normalization", () => {
     ).toBe(false);
     expect(result.messages[0]?.orphanedToolUseIds).toEqual(["call-sleep"]);
 
-    const renderItems = preprocessMessages(result.messages);
+    const renderItems = compileTranscriptProjection(result.messages);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "call-sleep",
@@ -480,7 +480,7 @@ describe("Codex Normalization", () => {
     const result = normalizeSession(buildLoadedSession(entries));
     expect(result.messages[0]?.orphanedToolUseIds).toBeUndefined();
 
-    const renderItems = preprocessMessages(result.messages);
+    const renderItems = compileTranscriptProjection(result.messages);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "call-pending",
@@ -1325,7 +1325,7 @@ describe("Codex Normalization", () => {
     const entries = loadCodexFixtureEntries("write-stdin-linked-command");
 
     const normalized = normalizeSession(buildLoadedSession(entries));
-    const renderItems = preprocessMessages(normalized.messages);
+    const renderItems = compileTranscriptProjection(normalized.messages);
 
     const writeStdinItem = renderItems.find(
       (item) =>

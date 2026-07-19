@@ -1368,7 +1368,7 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
       const rawContent = msg.message.content;
       // Both user and assistant messages can have string or array content.
       // User messages with tool_result blocks have array content that must be preserved.
-      // Assistant messages need ContentBlock[] format for preprocessMessages to render.
+      // Assistant messages need ContentBlock[] for transcript projection.
       let content: string | ContentBlock[];
       if (typeof rawContent === "string") {
         // String content: keep as-is for user messages, wrap in text block for assistant

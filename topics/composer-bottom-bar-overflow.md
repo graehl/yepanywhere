@@ -177,13 +177,26 @@ with slack**. Two latch/oscillation traps live here:
   presentation, and some Android keyboards still insert a newline for a
   send-looking key. The composer therefore requests an ordinary Return key and
   keeps newline behavior on coarse pointers.
-- While a focused coarse-pointer composer has materially contracted the visual
-  viewport (currently below 80% of its pre-keyboard height), the normal bottom
-  toolbar is temporarily replaced by a 48px-high action row. Single-action
-  sessions use one full-width primary control; when the composer has two
-  delivery actions, the alternate and configured primary share the row, with
-  the primary on the right as in the normal toolbar. These controls follow the
-  same Send/Queue/Steer/fork handlers and enabled state as the ordinary toolbar.
+- A contracted visual viewport does not by itself replace the normal bottom
+  toolbar. While a focused coarse-pointer composer is empty, the ordinary
+  toolbar remains visible so attachments and the rest of the configured
+  controls stay directly discoverable. Once the draft has submittable text or
+  attachments and the viewport is below 80% of its pre-keyboard height, the
+  normal toolbar yields to a 48px-high compact action row.
+- The compact row keeps a stable More affordance so attachments, Project Queue,
+  Stop, and the user's other enabled toolbar controls remain discoverable
+  without first knowing to dismiss the keyboard. Opening More must preserve
+  textarea focus; choosing a control may dismiss the keyboard when the invoked
+  platform UI naturally requires it (for example, the system file picker).
+- Clearing or submitting the draft immediately restores the ordinary toolbar.
+  This avoids the post-send jump from one enabled Send button to two disabled
+  Queue/Steer buttons when clearing the draft and starting the provider turn
+  happen together.
+- With submittable content, single-action sessions use one large primary
+  control; when the composer has two delivery actions, the alternate and
+  configured primary share the remaining row width, with the primary on the
+  right as in the normal toolbar. These controls follow the same
+  Send/Queue/Steer/fork handlers and enabled state as the ordinary toolbar.
   Restoring the viewport or leaving the textarea restores the normal measured
   toolbar; keyboard-open mode is not another overflow tier.
 - Formula/render controls and heartbeat/pulse controls are lower priority than

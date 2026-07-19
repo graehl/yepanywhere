@@ -85,7 +85,10 @@ import type {
   ProviderRuntimeStatus,
 } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
-import { MessageInputToolbar } from "./MessageInputToolbar";
+import {
+  MessageInputToolbar,
+  type MessageInputToolbarProps,
+} from "./MessageInputToolbar";
 import {
   VoiceInputButton,
   type SpeechPendingKind,
@@ -370,6 +373,7 @@ export function MessageInput({
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [textareaFocused, setTextareaFocused] = useState(false);
   const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
+  const [mobileKeyboardMoreOpen, setMobileKeyboardMoreOpen] = useState(false);
 
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
@@ -849,6 +853,7 @@ export function MessageInput({
     ) {
       keyboardViewportBaselineRef.current = null;
       setMobileKeyboardOpen(false);
+      setMobileKeyboardMoreOpen(false);
       return;
     }
 
@@ -864,9 +869,12 @@ export function MessageInput({
           ? viewportHeight
           : Math.max(previousBaseline, viewportHeight);
       keyboardViewportBaselineRef.current = baseline;
-      setMobileKeyboardOpen(
-        viewportHeight < baseline * MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO,
-      );
+      const nextKeyboardOpen =
+        viewportHeight < baseline * MOBILE_KEYBOARD_OPEN_VIEWPORT_RATIO;
+      setMobileKeyboardOpen(nextKeyboardOpen);
+      if (!nextKeyboardOpen) {
+        setMobileKeyboardMoreOpen(false);
+      }
     };
 
     updateKeyboardState();
@@ -880,6 +888,12 @@ export function MessageInput({
       );
     };
   }, [textareaFocused]);
+
+  useEffect(() => {
+    if (!canSubmit) {
+      setMobileKeyboardMoreOpen(false);
+    }
+  }, [canSubmit]);
 
   const handleSubmit = useCallback(
     (
@@ -1763,6 +1777,90 @@ export function MessageInput({
     [handleListeningStart, handleListeningStop],
   );
 
+  const toolbarProps: MessageInputToolbarProps = {
+    mode,
+    onModeChange,
+    modeChangesApplyNextTurn,
+    supportsPermissionMode,
+    supportsThinkingToggle,
+    canAttach,
+    attachmentCount: attachments.length,
+    onAttachClick: () => fileInputRef.current?.click(),
+    voiceButtonRef,
+    onVoiceTranscript: handleVoiceTranscript,
+    onInterimTranscript: handleInterimTranscript,
+    onListeningStart: handleListeningStart,
+    onListeningStop: handleListeningStop,
+    onPendingSpeechChange: handlePendingSpeechChange,
+    onTranscriptionSettled: handleTranscriptionSettled,
+    voiceDisabled: disabled,
+    getTranscriptionContext,
+    slashCommands,
+    onSelectSlashCommand: handleSlashCommand,
+    onBtwClick: onBtwShortcut ? handleBtwClick : undefined,
+    btwActive,
+    btwHasAsides,
+    btwToolbarMode,
+    thinkingProvider,
+    thinkingModel,
+    liveThinkingSelection,
+    contextRequestedModel,
+    heartbeatEnabled,
+    onToggleHeartbeat,
+    onConfigureHeartbeat,
+    contextUsage,
+    lastActivityAt,
+    positionTimestampMs,
+    sessionLiveness,
+    providerRuntimeStatus,
+    showSteerNowMode: supportsSteerNow && hasActiveDualActions,
+    steerNowEnabled,
+    onToggleSteerNow: () => setSteerNowOverride(!steerNowEnabled),
+    enterActionKind:
+      effectivePrimaryActionKind === "steer" ||
+      effectivePrimaryActionKind === "queue"
+        ? effectivePrimaryActionKind
+        : undefined,
+    canSwapEnterAction: hasActiveDualActions,
+    onSwapEnterAction: toggleEnterActionKind,
+    isRunning,
+    isThinking,
+    onStop,
+    onSend: forkSummaryMode
+      ? handleSubmit
+      : effectivePrimaryActionKind === "queue"
+        ? handleQueue
+        : handleSubmit,
+    onQueue: onQueue ? handleQueue : undefined,
+    onProjectQueue:
+      onProjectQueue && !forkSummaryMode ? handleProjectQueue : undefined,
+    onSteer: hasActiveDualActions ? handleSteer : undefined,
+    primaryActionKind: effectivePrimaryActionKind,
+    sendOverride: forkSummaryMode
+      ? {
+          label: forkSummaryMode.submitLabel,
+          tooltip: forkSummaryMode.tooltip,
+          icon: forkSummaryMode.icon,
+        }
+      : undefined,
+    sendAlternate: forkSummaryMode?.onSubmitWithoutSummary
+      ? {
+          label:
+            forkSummaryMode.noSummarySubmitLabel ??
+            t("forkSummaryNoSummarySubmit"),
+          tooltip:
+            forkSummaryMode.noSummaryTooltip ??
+            t("forkSummaryNoSummaryTooltip"),
+          icon: forkSummaryMode.noSummaryIcon ?? "↱",
+          onClick: handleForkWithoutSummary,
+        }
+      : undefined,
+    canForkAfterSummary: !!onForkSummaryShortcut,
+    canSend: canSubmit,
+    disabled,
+  };
+  const showMobileKeyboardCompact = mobileKeyboardOpen && canSubmit;
+
   return (
     <div
       className="message-input-wrapper"
@@ -2180,132 +2278,71 @@ export function MessageInput({
           </div>
         )}
 
-        {!collapsed && mobileKeyboardOpen && (
-          <div
-            className={`message-input-keyboard-actions${mobileKeyboardAlternateAction ? " has-alternate" : ""}`}
-          >
-            {mobileKeyboardAlternateAction && (
+        {!collapsed && showMobileKeyboardCompact && (
+          <div className="message-input-keyboard-compact">
+            {mobileKeyboardMoreOpen && (
+              <div
+                id="message-input-keyboard-more-controls"
+                className="message-input-keyboard-more-panel"
+                role="toolbar"
+                aria-label={t("toolbarOverflowMenu")}
+                onPointerDown={(event) => event.preventDefault()}
+              >
+                <MessageInputToolbar
+                  {...toolbarProps}
+                  hidePrimaryDeliveryActions
+                />
+              </div>
+            )}
+            <div
+              className={`message-input-keyboard-actions${canSubmit && mobileKeyboardAlternateAction ? " has-alternate" : ""}`}
+            >
               <button
                 type="button"
-                className={`message-input-keyboard-action message-input-keyboard-alternate ${mobileKeyboardAlternateAction.kind}-mode`}
+                className={`message-input-keyboard-more${mobileKeyboardMoreOpen ? " is-open" : ""}`}
                 onPointerDown={(event) => event.preventDefault()}
-                onClick={mobileKeyboardAlternateAction.onClick}
-                disabled={disabled || !canSubmit}
-                aria-label={mobileKeyboardAlternateAction.label}
+                onClick={() => setMobileKeyboardMoreOpen((open) => !open)}
+                aria-label={t("toolbarOverflowMenu")}
+                aria-expanded={mobileKeyboardMoreOpen}
+                aria-controls="message-input-keyboard-more-controls"
+                title={t("toolbarOverflowMenu")}
               >
-                <span>{mobileKeyboardAlternateAction.displayLabel}</span>
-                <span aria-hidden="true">
-                  {mobileKeyboardAlternateAction.icon}
-                </span>
+                <span aria-hidden="true">...</span>
               </button>
-            )}
-            <button
-              type="button"
-              className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={submitPrimaryAction}
-              disabled={disabled || !canSubmit}
-              aria-label={mobileKeyboardActionLabel}
-            >
-              <span>{mobileKeyboardActionDisplayLabel}</span>
-              <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
-            </button>
+              {canSubmit && mobileKeyboardAlternateAction && (
+                <button
+                  type="button"
+                  className={`message-input-keyboard-action message-input-keyboard-alternate ${mobileKeyboardAlternateAction.kind}-mode`}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={mobileKeyboardAlternateAction.onClick}
+                  disabled={disabled}
+                  aria-label={mobileKeyboardAlternateAction.label}
+                >
+                  <span>{mobileKeyboardAlternateAction.displayLabel}</span>
+                  <span aria-hidden="true">
+                    {mobileKeyboardAlternateAction.icon}
+                  </span>
+                </button>
+              )}
+              {canSubmit && (
+                <button
+                  type="button"
+                  className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={submitPrimaryAction}
+                  disabled={disabled}
+                  aria-label={mobileKeyboardActionLabel}
+                >
+                  <span>{mobileKeyboardActionDisplayLabel}</span>
+                  <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
-        {!collapsed && !mobileKeyboardOpen && (
-          <MessageInputToolbar
-            mode={mode}
-            onModeChange={onModeChange}
-            modeChangesApplyNextTurn={modeChangesApplyNextTurn}
-            supportsPermissionMode={supportsPermissionMode}
-            supportsThinkingToggle={supportsThinkingToggle}
-            canAttach={canAttach}
-            attachmentCount={attachments.length}
-            onAttachClick={() => fileInputRef.current?.click()}
-            voiceButtonRef={voiceButtonRef}
-            onVoiceTranscript={handleVoiceTranscript}
-            onInterimTranscript={handleInterimTranscript}
-            onListeningStart={handleListeningStart}
-            onListeningStop={handleListeningStop}
-            onPendingSpeechChange={handlePendingSpeechChange}
-            onTranscriptionSettled={handleTranscriptionSettled}
-            voiceDisabled={disabled}
-            getTranscriptionContext={getTranscriptionContext}
-            slashCommands={slashCommands}
-            onSelectSlashCommand={handleSlashCommand}
-            onBtwClick={onBtwShortcut ? handleBtwClick : undefined}
-            btwActive={btwActive}
-            btwHasAsides={btwHasAsides}
-            btwToolbarMode={btwToolbarMode}
-            thinkingProvider={thinkingProvider}
-            thinkingModel={thinkingModel}
-            liveThinkingSelection={liveThinkingSelection}
-            contextRequestedModel={contextRequestedModel}
-            heartbeatEnabled={heartbeatEnabled}
-            onToggleHeartbeat={onToggleHeartbeat}
-            onConfigureHeartbeat={onConfigureHeartbeat}
-            contextUsage={contextUsage}
-            lastActivityAt={lastActivityAt}
-            positionTimestampMs={positionTimestampMs}
-            sessionLiveness={sessionLiveness}
-            providerRuntimeStatus={providerRuntimeStatus}
-            showSteerNowMode={supportsSteerNow && hasActiveDualActions}
-            steerNowEnabled={steerNowEnabled}
-            onToggleSteerNow={() => setSteerNowOverride(!steerNowEnabled)}
-            enterActionKind={
-              effectivePrimaryActionKind === "steer" ||
-              effectivePrimaryActionKind === "queue"
-                ? effectivePrimaryActionKind
-                : undefined
-            }
-            canSwapEnterAction={hasActiveDualActions}
-            onSwapEnterAction={toggleEnterActionKind}
-            isRunning={isRunning}
-            isThinking={isThinking}
-            onStop={onStop}
-            onSend={
-              forkSummaryMode
-                ? handleSubmit
-                : effectivePrimaryActionKind === "queue"
-                  ? handleQueue
-                  : handleSubmit
-            }
-            onQueue={onQueue ? handleQueue : undefined}
-            onProjectQueue={
-              onProjectQueue && !forkSummaryMode
-                ? handleProjectQueue
-                : undefined
-            }
-            onSteer={hasActiveDualActions ? handleSteer : undefined}
-            primaryActionKind={effectivePrimaryActionKind}
-            sendOverride={
-              forkSummaryMode
-                ? {
-                    label: forkSummaryMode.submitLabel,
-                    tooltip: forkSummaryMode.tooltip,
-                    icon: forkSummaryMode.icon,
-                  }
-                : undefined
-            }
-            sendAlternate={
-              forkSummaryMode?.onSubmitWithoutSummary
-                ? {
-                    label:
-                      forkSummaryMode.noSummarySubmitLabel ??
-                      t("forkSummaryNoSummarySubmit"),
-                    tooltip:
-                      forkSummaryMode.noSummaryTooltip ??
-                      t("forkSummaryNoSummaryTooltip"),
-                    icon: forkSummaryMode.noSummaryIcon ?? "↱",
-                    onClick: handleForkWithoutSummary,
-                  }
-                : undefined
-            }
-            canForkAfterSummary={!!onForkSummaryShortcut}
-            canSend={canSubmit}
-            disabled={disabled}
-          />
+        {!collapsed && !showMobileKeyboardCompact && (
+          <MessageInputToolbar {...toolbarProps} />
         )}
       </div>
     </div>

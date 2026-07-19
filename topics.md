@@ -144,3 +144,6 @@
   actions for GPT-5.5 and GPT-5.6 command rendering and explored grouping.
 - windows-codex-cli-detection - Windows Codex auto-discovery across PATH
   shims, desktop binaries, and fallback installs.
+- portable-transcript-compiler - Stable server ingest, bounded transcript
+  envelopes, and a shared semantic projection compiler for web and native
+  renderers.

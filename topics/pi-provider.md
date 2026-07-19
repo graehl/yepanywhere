@@ -325,7 +325,7 @@ these pieces:
    metadata no longer says `PiSessionReader` is unwired, and
    `provider-read-edit-disciplines.md` records live/durable pi normalization.
 5. **Added regression fixtures.** `pi-tools.test.ts`, `pi-reader.test.ts`,
-   `preprocessMessages.test.ts`, and `ToolCallRow.test.tsx` cover canonical
+   `transcriptProjection.test.ts`, and `ToolCallRow.test.tsx` cover canonical
    names/fields/results, durable reload parity, duplicate live tool snapshots,
    and pending Bash preview rendering.
 

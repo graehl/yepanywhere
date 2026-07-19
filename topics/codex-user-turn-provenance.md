@@ -216,8 +216,9 @@ from concatenated text:
   turn-aborted text classifiers;
 - `packages/server/src/sessions/codex-reader.ts` independently filters title
   candidates and counts all response-role user messages;
-- `packages/client/src/lib/preprocessMessages.ts`, `SessionPage.tsx`, and
-  public-share helpers contain additional setup-prefix fallbacks.
+- `packages/client/src/lib/transcriptProjection/messageProjection.ts`,
+  `SessionPage.tsx`, and public-share helpers contain additional setup-prefix
+  fallbacks.
 
 This creates three kinds of drift:
 

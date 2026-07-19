@@ -63,6 +63,10 @@ section below for what would have to change at higher fan-out.
   between provider stream/REST inputs and transcript DOM rendering; see the
   linked tactical plan before reshaping `useSession`, `useSessionMessages`,
   transcript augments, subagents, or same-tab message caches.
+- [`topics/portable-transcript-compiler.md`](topics/portable-transcript-compiler.md)
+  — approved direction for a stable server ingest kernel, bounded transcript
+  windows with prefix facts, and a versioned presentation compiler shared by
+  web, Android, and iOS while platform renderers remain native to each surface.
 - [`topics/stream-persisted-render-parity.md`](topics/stream-persisted-render-parity.md)
   — graded convergence contract between the active live tail and the durable
   provider transcript: strong structural stability for paired tool calls,
@@ -270,6 +274,51 @@ does not bound subsequent live growth. The auto-trim policy is approved for
 implementation, default-on with a browser-local Performance setting to disable
 it. Defer row virtualization until the bounded-window implementation is measured
 and a remaining viewport-scaling problem is demonstrated.
+
+### Portable transcript compiler / native render boundary
+
+**Problem today.** Provider normalization, transcript reconciliation,
+presentation grouping, and React/DOM rendering are separated incompletely. The
+hosted client can update ahead of installed YA servers, while future Android and
+iOS clients would otherwise have to duplicate the same provider interpretation
+or embed the web UI. Moving all work to clients is also unacceptable because
+ordinary mobile rendering must never require a full provider transcript.
+
+**Proposal.** Keep a stable server ingest kernel responsible for provider
+storage/protocol access, identity, bounded window selection, and whole-history
+prefix facts. Put bounded transcript-to-presentation derivation in a versioned,
+platform-neutral compiler that may run server-side by preference or from a
+client bundle for compatibility. Web, Android, and iOS use separate renderers
+over the same semantic projection. See
+[`topics/portable-transcript-compiler.md`](topics/portable-transcript-compiler.md).
+
+**Cost.** High and cross-cutting: new envelope/projection schemas, compatibility
+negotiation, server/client parity fixtures, a web adapter migration, careful
+unknown-record filtering, and eventually native renderers. A whole-session
+rewrite would also duplicate the current session-detail migration, so work must
+land adapter-first in small parity-proven slices.
+
+**Benefit.** Provider presentation fixes can often ship with frequently updated
+clients; compatible servers can still do the expensive/history-aware work;
+mobile compilation remains bounded; and native clients can render real sessions
+without inheriting the DOM-heavy component tree.
+
+**Current checkpoint.** The conservative web-only foundation completed on
+2026-07-19: current `Message[]` input is transformed into the existing internal
+`RenderItem[]` by a browser-free TypeScript compiler, with cache, web
+diagnostics, display-object insertion, reference stabilization, and React
+rendering kept as explicit adapters. The primary session-detail path uses this
+boundary, protected by semantic, browser, private-artifact, and performance
+tripwires. See the completed
+[`foundation plan`](docs/tactical/061-portable-transcript-foundation-plan.md).
+This is useful web architecture but is not yet the versioned envelope or
+platform-neutral projection proposed above.
+
+**Next trigger.** Continue only after a human identifies a real second consumer
+and decides its bounded input, minimum projection contract, packaging/runtime,
+and compatibility policy. Do not add a public/versioned IR, projection
+transport, server/client negotiation, alternate runtime, or native live-session
+behavior implicitly from the successful web extraction.
 
 ### Disk-pressure degraded mode
 

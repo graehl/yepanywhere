@@ -25,8 +25,8 @@ A session reaches the UI two ways:
 - **Persisted** — the same session re-read from disk later (Codex rollout
   JSONL, Claude JSONL DAG, OpenCode SQLite, …).
 
-Both feed the same `preprocessMessages` → render-item pipeline, but equality is
-graded by whether the live item has a durable counterpart:
+Both feed the same `compileTranscriptProjection` → render-item pipeline, but
+equality is graded by whether the live item has a durable counterpart:
 
 - **Durable-corresponding items — strong convergence.** Tool calls, tool
   results, assistant messages, and other records present in both paths should

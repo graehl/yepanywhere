@@ -60,3 +60,5 @@
 - Module boundary refactor discipline (move-only slices, naming and
   coordination rules, tripwire matrix, and verification tiers for the
   large-file extraction campaign)
+- Portable transcript compiler (stable server ingest, bounded window + prefix
+  facts, and shared semantic projection for web/Android/iOS native renderers)

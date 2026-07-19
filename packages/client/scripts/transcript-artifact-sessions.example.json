@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "sessions": [
+    {
+      "name": "inactive-claude-example",
+      "url": "https://127.0.0.1:3400/projects/PROJECT_ID/sessions/SESSION_ID",
+      "minimumRenderRows": 2,
+      "theme": "verydark",
+      "viewports": ["desktop", "mobile"]
+    }
+  ]
+}

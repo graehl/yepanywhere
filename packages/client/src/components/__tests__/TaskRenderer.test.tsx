@@ -15,7 +15,7 @@ import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { ToastProvider } from "../../contexts/ToastContext";
 import type { AgentContent, AgentContentMap } from "../../hooks/useSession";
 import { I18nProvider } from "../../i18n";
-import { preprocessMessages } from "../../lib/preprocessMessages";
+import { compileTranscriptProjection } from "../../lib/transcriptProjection/compiler";
 import type { Message } from "../../types";
 import { RenderItemComponent } from "../RenderItemComponent";
 
@@ -282,7 +282,7 @@ describe("Task rendering", () => {
         ],
       },
     ];
-    const [item] = preprocessMessages(messages);
+    const [item] = compileTranscriptProjection(messages);
 
     expect(item?.type).toBe("tool_call");
     if (item?.type !== "tool_call") {
@@ -370,7 +370,7 @@ describe("Task rendering", () => {
         ],
       },
     ];
-    const [item] = preprocessMessages(messages);
+    const [item] = compileTranscriptProjection(messages);
 
     expect(item?.type).toBe("tool_call");
     if (item?.type !== "tool_call") {
@@ -454,7 +454,7 @@ describe("Codex spawn_agent rendering", () => {
         ],
       },
     ];
-    const [item] = preprocessMessages(messages);
+    const [item] = compileTranscriptProjection(messages);
 
     expect(item?.type).toBe("tool_call");
     if (item?.type !== "tool_call") {
@@ -514,7 +514,7 @@ describe("Codex spawn_agent rendering", () => {
         ],
       },
     ];
-    const [item] = preprocessMessages(messages);
+    const [item] = compileTranscriptProjection(messages);
 
     expect(item?.type).toBe("tool_call");
     if (item?.type !== "tool_call") {

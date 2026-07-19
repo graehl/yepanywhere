@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { preprocessMessages } from "../../preprocessMessages";
+import { compileTranscriptProjection } from "../../transcriptProjection/compiler";
 import type { Message, SessionMetadata } from "../../../types";
 import { createFinalMarkdownAugmentAction } from "../actionAdapters";
-import { selectSessionDetailPreprocessAugments } from "../selectors";
+import { selectSessionDetailProjectionAugments } from "../selectors";
 import {
   createInitialSessionDetailState,
   reduceSessionDetailActions,
@@ -35,9 +35,9 @@ function assistantMessage(uuid: string, text: string): Message {
 }
 
 function getFirstTextAugmentHtml(messages: Message[]) {
-  const items = preprocessMessages(
+  const items = compileTranscriptProjection(
     messages,
-    selectSessionDetailPreprocessAugments({
+    selectSessionDetailProjectionAugments({
       ...createInitialSessionDetailState(),
       messages,
       markdownAugments: {},
@@ -49,9 +49,9 @@ function getFirstTextAugmentHtml(messages: Message[]) {
 function getStateTextAugmentHtml(
   state: ReturnType<typeof createInitialSessionDetailState>,
 ) {
-  const items = preprocessMessages(
+  const items = compileTranscriptProjection(
     state.messages,
-    selectSessionDetailPreprocessAugments(state),
+    selectSessionDetailProjectionAugments(state),
   );
   return items.find((item) => item.type === "text")?.augmentHtml;
 }
@@ -181,7 +181,7 @@ describe("transcriptReducer markdown augments", () => {
       getFirstTextAugmentHtml([assistantMessage("assistant-1", "Plain.")]),
     ).toBeUndefined();
     expect(
-      selectSessionDetailPreprocessAugments(createInitialSessionDetailState()),
+      selectSessionDetailProjectionAugments(createInitialSessionDetailState()),
     ).toBeUndefined();
   });
 });

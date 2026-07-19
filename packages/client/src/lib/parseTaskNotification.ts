@@ -4,7 +4,7 @@ import type { Message } from "../types";
  * Parsed view of a Claude Code `<task-notification>` entry — the message the SDK
  * injects into the transcript (as a `type: "user"` entry) when a backgrounded
  * task changes state. We render these as a system/event chip rather than a user
- * bubble; see preprocessMessages + TaskNotificationBlock.
+ * bubble; see transcriptProjection/messageProjection + TaskNotificationBlock.
  */
 export interface TaskNotification {
   taskId?: string;

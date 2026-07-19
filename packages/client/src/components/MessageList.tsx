@@ -28,7 +28,7 @@ import {
   getLatestMessageTimestampMs,
   MESSAGE_STALE_THRESHOLD_MS,
 } from "../lib/messageAge";
-import type { ActiveToolApproval } from "../lib/preprocessMessages";
+import type { ActiveToolApproval } from "../lib/transcriptProjection/types";
 import type { SessionIsearchScope } from "../lib/sessionIsearchGuide";
 import {
   decideSessionScrollRestore,

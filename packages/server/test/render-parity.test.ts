@@ -9,7 +9,7 @@ import {
   mergeJSONLMessages,
   mergeStreamMessage,
 } from "../../client/src/lib/mergeMessages.ts";
-import { preprocessMessages } from "../../client/src/lib/preprocessMessages.ts";
+import { compileTranscriptProjection } from "../../client/src/lib/transcriptProjection/compiler.ts";
 import type { Message as ClientMessage } from "../../client/src/types.ts";
 import { CodexProvider } from "../src/sdk/providers/codex.js";
 import { normalizeSession } from "../src/sessions/normalization.js";
@@ -108,7 +108,7 @@ function runReconnectScenario(
     }
   }
 
-  return normalizeRenderItemsForComparison(preprocessMessages(state));
+  return normalizeRenderItemsForComparison(compileTranscriptProjection(state));
 }
 
 const EDIT_DIFF = [
@@ -992,7 +992,7 @@ describe("Render Parity Harness", () => {
       CLAUDE_SESSION_2E582BFB_FIXTURE,
     );
     const expected = normalizeRenderItemsForComparison(
-      preprocessMessages(authoritativeMessages),
+      compileTranscriptProjection(authoritativeMessages),
     );
 
     const replayOutOfOrder = buildReplayMessages(

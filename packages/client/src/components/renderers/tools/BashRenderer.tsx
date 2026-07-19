@@ -653,7 +653,7 @@ export const bashRenderer: ToolRenderer<BashInput, BashResult> = {
 
   // A backgrounded command's tool call completes while the process keeps
   // running, so the header verb stays present-tense until completion
-  // evidence arrives (see annotateBackgroundCommands in preprocessMessages).
+  // evidence arrives (see transcriptProjection/shellFolding).
   displayNameForCall(input, status) {
     if (status !== "complete") {
       return undefined;

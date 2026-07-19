@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ClaudeSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { preprocessMessages } from "../../../client/src/lib/preprocessMessages.ts";
+import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import {
   SessionReader,
@@ -917,7 +917,7 @@ describe("SessionReader", () => {
         "test-project" as UrlProjectId,
       );
       const session = loadedSession ? normalizeSession(loadedSession) : null;
-      const renderItems = session ? preprocessMessages(session.messages) : [];
+      const renderItems = session ? compileTranscriptProjection(session.messages) : [];
 
       expect(session?.messages.map((message) => message.uuid)).toEqual([
         "u1",
@@ -1179,7 +1179,7 @@ describe("SessionReader", () => {
         "agent-result",
       ]);
 
-      const renderItems = preprocessMessages(result.messages);
+      const renderItems = compileTranscriptProjection(result.messages);
       const editCalls = renderItems.filter(
         (item) => item.type === "tool_call" && item.toolName === "Edit",
       );

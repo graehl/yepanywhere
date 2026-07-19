@@ -4,12 +4,10 @@ import {
   parseTimestampMs,
 } from "../messageAge";
 import type { RenderItem } from "../../types/renderItems";
-import {
-  type ActiveToolApproval,
-  preprocessMessages,
-} from "../preprocessMessages";
 import { stabilizeRenderItems } from "../stableRenderItems";
 import { insertTranscriptDisplayObjects } from "../transcriptDisplayObjects";
+import type { ActiveToolApproval } from "../transcriptProjection/types";
+import { getCachedWebTranscriptProjection } from "../webTranscriptProjection";
 import type { Message } from "../../types";
 import type { MarkdownAugmentMap, SessionDetailState } from "./types";
 
@@ -56,7 +54,7 @@ export function buildSessionDetailRenderItems({
   transcriptDisplayObjects = [],
   previousRenderItems = [],
 }: SessionDetailRenderItemInput): RenderItem[] {
-  const preprocessed = preprocessMessages(messages, {
+  const preprocessed = getCachedWebTranscriptProjection(messages, {
     markdown: markdownAugments,
     activeToolApproval,
   });

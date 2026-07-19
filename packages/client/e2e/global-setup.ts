@@ -153,6 +153,81 @@ export default async function globalSetup() {
   );
   console.log(`[E2E] Created mock session at ${sessionFile}`);
 
+  // Deterministic transcript specimen for semantic-boundary browser gates.
+  // Keep it separate from mock-session-001 so transport/navigation tests that
+  // expect the historical one-row fixture retain their exact input.
+  const transcriptSpecimenFile = join(
+    mockSessionDir,
+    "transcript-specimen-001.jsonl",
+  );
+  const transcriptSpecimenMessages = [
+    {
+      type: "user",
+      cwd: mockProjectPath,
+      message: { role: "user", content: "Inspect the browser specimen" },
+      timestamp: "2026-01-01T00:00:00.000Z",
+      uuid: "specimen-user-1",
+    },
+    {
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "I should inspect the fixture." },
+          { type: "text", text: "I’ll read the file." },
+          {
+            type: "tool_use",
+            id: "specimen-tool-1",
+            name: "Read",
+            input: { file_path: "fixture.ts" },
+          },
+        ],
+      },
+      timestamp: "2026-01-01T00:00:01.000Z",
+      uuid: "specimen-assistant-1",
+      parentUuid: "specimen-user-1",
+    },
+    {
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "specimen-tool-1",
+            content: "export const fixture = true;",
+          },
+        ],
+      },
+      toolUseResult: { filePath: "fixture.ts", lineCount: 1 },
+      timestamp: "2026-01-01T00:00:02.000Z",
+      uuid: "specimen-result-1",
+      parentUuid: "specimen-assistant-1",
+    },
+    {
+      type: "system",
+      subtype: "compact_boundary",
+      content: "Context compacted",
+      timestamp: "2026-01-01T00:00:03.000Z",
+      uuid: "specimen-compact-1",
+      parentUuid: "specimen-result-1",
+    },
+    {
+      type: "assistant",
+      message: { role: "assistant", content: "The specimen is ready." },
+      timestamp: "2026-01-01T00:00:04.000Z",
+      uuid: "specimen-assistant-2",
+      parentUuid: "specimen-compact-1",
+    },
+  ];
+  writeFileSync(
+    transcriptSpecimenFile,
+    transcriptSpecimenMessages.map((message) => JSON.stringify(message)).join("\n"),
+  );
+  console.log(
+    `[E2E] Created transcript specimen at ${transcriptSpecimenFile}`,
+  );
+
   const repoRoot = join(__dirname, "..", "..", "..");
   const serverRoot = join(repoRoot, "packages", "server");
   const clientDist = join(repoRoot, "packages", "client", "dist");

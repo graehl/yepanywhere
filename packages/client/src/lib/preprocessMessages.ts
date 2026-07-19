@@ -4,10 +4,8 @@ import type { PreprocessAugments } from "./transcriptProjection/types";
 import { getCachedWebTranscriptProjection } from "./webTranscriptProjection";
 
 export { compileTranscriptProjection } from "./transcriptProjection/compiler";
-export {
-  parseAgentResultFromText,
-  stripAwaySummaryHintSuffix,
-} from "./transcriptProjection/messageProjection";
+export { parseAgentResultFromText } from "./transcriptProjection/agentResults";
+export { stripAwaySummaryHintSuffix } from "./transcriptProjection/messageProjection";
 export type {
   ActiveToolApproval,
   PreprocessAugments,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ContentBlock } from "../../types";
-import { parseAgentResultFromText } from "../preprocessMessages";
+import { parseAgentResultFromText } from "../transcriptProjection/agentResults";
 
 // parseAgentResultFromText handles both string and array content at runtime,
 // even though the ContentBlock type only declares string for tool_result.

@@ -94,7 +94,7 @@ decision, not a move-only extraction.
 | PTC-007 | Complete | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
 | PTC-008 | Complete | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
 | PTC-009 | Complete | Route every production web projection consumer through one canonical web adapter | Existing adapter and facade are behavior-identical delegates | Focused client + root lint/typecheck |
-| PTC-010 | Planned | Extract independently consumed agent-result parsing from the large message-projection module | Move-only; helper assertions unchanged | Focused semantic + root Tier 2 |
+| PTC-010 | Complete | Extract independently consumed agent-result parsing from the large message-projection module | Move-only; helper assertions unchanged | Focused semantic + root lint/typecheck |
 | PTC-011 | Planned | Migrate semantic tests, benchmark tooling, and server parity callers to their owning compiler/cache APIs | PTC-009/010 landed; no production facade consumers remain | Full client/server parity + performance |
 | PTC-012 | Planned | Delete the compatibility facade and enforce the final ownership map | No remaining imports or historical re-exports | Full final gates |
 
@@ -364,3 +364,22 @@ Landed 2026-07-19, this commit.
   `git diff --check`.
 - Follow-ups or surprises: none; tests and tooling still use the facade until
   PTC-011 so this slice remains independently revertible.
+
+### PTC-010 — Extract agent-result projection
+
+Landed 2026-07-19, this commit.
+
+- Moved/changed: moved Agent tool text-result parsing and display-content
+  cleanup verbatim from `messageProjection.ts` to `agentResults.ts`.
+- Explicitly unchanged: parsing expressions, result keys, content filtering,
+  tool-result attachment, compiler order, and compatibility exports.
+- Dependency result: the large message projector now consumes a narrow Agent
+  domain module; its focused test imports the owning module directly.
+- Semantic/browser/private artifact result: Agent parsing and full transcript
+  preprocessing assertions passed without expectation changes.
+- Performance result: no traversal or folding order changed; fixed-input
+  comparison retained all item, identity, and reference-reuse invariants.
+- Commands: focused client tests, client typecheck, changed-file Biome, root
+  lint/typecheck, fixed performance comparison, and `git diff --check`.
+- Follow-ups or surprises: none; the facade temporarily re-exports the moved
+  helper until its remaining consumers are migrated in PTC-011.

@@ -1,7 +1,7 @@
 # Portable Transcript Client Ledger
 
-Status: Web-only compiler checkpoint complete; no portability experiment is
-authorized.
+Status: Web-only compiler checkpoint complete; compatibility-facade retirement
+is in progress without expanding the portability contract.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -93,6 +93,10 @@ decision, not a move-only extraction.
 | PTC-006 | Complete | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
 | PTC-007 | Complete | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
 | PTC-008 | Complete | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
+| PTC-009 | Complete | Route every production web projection consumer through one canonical web adapter | Existing adapter and facade are behavior-identical delegates | Focused client + root lint/typecheck |
+| PTC-010 | Planned | Extract independently consumed agent-result parsing from the large message-projection module | Move-only; helper assertions unchanged | Focused semantic + root Tier 2 |
+| PTC-011 | Planned | Migrate semantic tests, benchmark tooling, and server parity callers to their owning compiler/cache APIs | PTC-009/010 landed; no production facade consumers remain | Full client/server parity + performance |
+| PTC-012 | Planned | Delete the compatibility facade and enforce the final ownership map | No remaining imports or historical re-exports | Full final gates |
 
 PTC-007 is intentionally one integration cutover row. It may gain preparation
 subtasks, but it must not be subdivided indefinitely merely to avoid making the
@@ -340,3 +344,23 @@ Append one note per landed slice using this shape:
 - Follow-ups or surprises: the public/versioned projection, bounded canonical
   envelope, prefix facts, server/client negotiation, alternate runtime, second
   consumer, and native renderer remain behind a new human decision.
+
+### PTC-009 — Canonicalize the web projection entry
+
+Landed 2026-07-19, this commit.
+
+- Moved/changed: routed session detail, session activity derivation, and nested
+  Task transcript rendering through `getCachedWebTranscriptProjection`.
+- Explicitly unchanged: compiler/cache implementation, cache identities,
+  augments, activity semantics, nested rendering, and primary transcript output.
+- Dependency result: production web code has one cached projection assembly
+  path; a source tripwire pins all three consumers to the web adapter.
+- Semantic/browser/private artifact result: focused compiler, selector,
+  activity, and Task renderer tests passed without expectation changes.
+- Performance result: no compiler or cache implementation changed; fixed-input
+  comparison retained all item, identity, and reference-reuse invariants.
+- Commands: focused client tests, client typecheck, changed-file Biome, root
+  lint/typecheck, console budget, fixed performance comparison, and
+  `git diff --check`.
+- Follow-ups or surprises: none; tests and tooling still use the facade until
+  PTC-011 so this slice remains independently revertible.

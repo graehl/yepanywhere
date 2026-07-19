@@ -6,9 +6,8 @@ import {
 import type { RenderItem } from "../../types/renderItems";
 import { stabilizeRenderItems } from "../stableRenderItems";
 import { insertTranscriptDisplayObjects } from "../transcriptDisplayObjects";
-import { getCachedTranscriptProjection } from "../transcriptProjection/cache";
 import type { ActiveToolApproval } from "../transcriptProjection/types";
-import { compileWebTranscriptProjection } from "../webTranscriptProjection";
+import { getCachedWebTranscriptProjection } from "../webTranscriptProjection";
 import type { Message } from "../../types";
 import type { MarkdownAugmentMap, SessionDetailState } from "./types";
 
@@ -55,14 +54,10 @@ export function buildSessionDetailRenderItems({
   transcriptDisplayObjects = [],
   previousRenderItems = [],
 }: SessionDetailRenderItemInput): RenderItem[] {
-  const preprocessed = getCachedTranscriptProjection(
-    messages,
-    {
-      markdown: markdownAugments,
-      activeToolApproval,
-    },
-    compileWebTranscriptProjection,
-  );
+  const preprocessed = getCachedWebTranscriptProjection(messages, {
+    markdown: markdownAugments,
+    activeToolApproval,
+  });
   const inserted = insertTranscriptDisplayObjects(
     preprocessed,
     transcriptDisplayObjects,

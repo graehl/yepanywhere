@@ -118,7 +118,9 @@ import {
   thinkingOptionFromProcess,
   thinkingOptionFromSelection,
 } from "../lib/liveThinkingConfig";
-import { preprocessMessages } from "../lib/preprocessMessages";
+import {
+  getCachedWebTranscriptProjection,
+} from "../lib/webTranscriptProjection";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
 import {
@@ -1372,7 +1374,7 @@ function SessionPageContent({
     [messages],
   );
   const activityRenderItems = useMemo(
-    () => preprocessMessages(messages),
+    () => getCachedWebTranscriptProjection(messages),
     [messages],
   );
   const sessionActivityUi = useMemo(

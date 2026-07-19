@@ -14,8 +14,10 @@ import {
   useSessionMetadata,
 } from "../../../contexts/SessionMetadataContext";
 import { classifyToolError } from "../../../lib/classifyToolError";
-import { preprocessMessages } from "../../../lib/preprocessMessages";
 import { validateToolResult } from "../../../lib/validateToolResult";
+import {
+  getCachedWebTranscriptProjection,
+} from "../../../lib/webTranscriptProjection";
 import type { Message } from "../../../types";
 import type { ToolCallItem } from "../../../types/renderItems";
 import { RenderItemComponent } from "../../RenderItemComponent";
@@ -143,7 +145,10 @@ export function TaskNestedContent({
     setThinkingExpanded((prev) => !prev);
   }, []);
 
-  const renderItems = useMemo(() => preprocessMessages(messages), [messages]);
+  const renderItems = useMemo(
+    () => getCachedWebTranscriptProjection(messages),
+    [messages],
+  );
 
   return (
     <div className="task-nested-content">

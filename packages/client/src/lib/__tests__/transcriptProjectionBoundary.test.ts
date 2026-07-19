@@ -6,10 +6,11 @@ const projectionDirectory = resolve(
   process.cwd(),
   "src/lib/transcriptProjection",
 );
-const sessionDetailRenderItemsFile = resolve(
-  process.cwd(),
+const canonicalWebConsumerFiles = [
+  "src/components/renderers/tools/TaskRenderer.tsx",
   "src/lib/sessionDetail/renderItems.ts",
-);
+  "src/pages/SessionPage.tsx",
+];
 
 const forbiddenDependencies = [
   {
@@ -56,11 +57,20 @@ describe("transcript projection module boundary", () => {
     }
   });
 
-  it("keeps session detail on the explicit compiler and cache path", () => {
-    const source = readFileSync(sessionDetailRenderItemsFile, "utf8");
+  it("routes production web consumers through the canonical adapter", () => {
+    for (const relativePath of canonicalWebConsumerFiles) {
+      const source = readFileSync(resolve(process.cwd(), relativePath), "utf8");
 
-    expect(source).toContain("getCachedTranscriptProjection");
-    expect(source).toContain("compileWebTranscriptProjection");
-    expect(source).not.toContain("preprocessMessages");
+      expect(source, relativePath).toContain(
+        "getCachedWebTranscriptProjection",
+      );
+      expect(source, relativePath).not.toContain("preprocessMessages");
+      expect(source, relativePath).not.toContain(
+        "getCachedTranscriptProjection",
+      );
+      expect(source, relativePath).not.toContain(
+        "compileWebTranscriptProjection",
+      );
+    }
   });
 });

@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { cspPlugin } from "./vite-plugin-csp";
+import { cspPlugin, shouldInlineClientAsset } from "./vite-plugin-csp";
 import { reloadNotify } from "./vite-plugin-reload-notify";
 
 // NO_FRONTEND_RELOAD: Disable HMR and use manual reload notifications instead
@@ -32,6 +32,9 @@ function getGitVersion(): string {
 }
 
 export default defineConfig({
+  build: {
+    assetsInlineLimit: shouldInlineClientAsset,
+  },
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(getGitVersion()),

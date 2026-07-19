@@ -27,7 +27,7 @@ function extractInlineScripts(html: string): string[] {
     /<script(?![^>]*\btype\s*=\s*["']module["'])(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
   for (const match of html.matchAll(scriptRegex)) {
     const content = match[1];
-    if (content.trim()) {
+    if (content?.trim()) {
       scripts.push(content);
     }
   }
@@ -40,6 +40,15 @@ interface CspPluginOptions {
    * Remote client needs different connect-src to allow arbitrary server connections.
    */
   isRemote?: boolean;
+}
+
+/**
+ * Keep fonts as same-origin files. Vite's default small-asset inlining can
+ * otherwise produce data: font URLs that the deliberately strict font-src
+ * policy rejects at runtime. Other asset types retain Vite's default limit.
+ */
+export function shouldInlineClientAsset(filePath: string): boolean | undefined {
+  return /\.(?:otf|ttf|woff2?)(?:$|\?)/i.test(filePath) ? false : undefined;
 }
 
 export function cspPlugin(options: CspPluginOptions = {}): Plugin {

@@ -7,7 +7,9 @@
 
 Topic: portable-transcript-compiler
 
-Status: Architecture direction approved; implementation has not started.
+Status: Architecture direction approved; web-only foundation preparation is
+tracked in
+[`docs/tactical/061-portable-transcript-foundation-plan.md`](../docs/tactical/061-portable-transcript-foundation-plan.md).
 
 See also:
 

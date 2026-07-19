@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { type Plugin, defineConfig } from "vite";
-import { cspPlugin } from "./vite-plugin-csp";
+import { cspPlugin, shouldInlineClientAsset } from "./vite-plugin-csp";
 
 function getGitVersion(): string {
   try {
@@ -81,6 +81,7 @@ export default defineConfig({
   },
   // Build configuration for static site
   build: {
+    assetsInlineLimit: shouldInlineClientAsset,
     outDir: "dist-remote",
     // Emit external .map files (+ sourceMappingURL comments) so production stack
     // traces in the hosted /remote bundle are debuggable. Safe to expose: the

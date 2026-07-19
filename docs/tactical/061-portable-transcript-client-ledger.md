@@ -1,0 +1,160 @@
+# Portable Transcript Client Ledger
+
+Status: Phase 0 complete; no production extraction landed.
+
+Topic: portable-transcript-compiler
+Topic: typescript-module-boundary-refactor
+
+This ledger owns client/compiler slices for
+[`061-portable-transcript-foundation-plan.md`](061-portable-transcript-foundation-plan.md).
+Read that plan, the
+[`baseline and corpus`](061-portable-transcript-baseline-and-corpus.md),
+[`topics/typescript-module-boundary-refactor.md`](../../topics/typescript-module-boundary-refactor.md),
+[`packages/client/RENDERING_PERFORMANCE.md`](../../packages/client/RENDERING_PERFORMANCE.md),
+and [`topics/scrollback-view-stability.md`](../../topics/scrollback-view-stability.md)
+before implementing a slice.
+
+## Slice Rules
+
+- Behavior is frozen. Assertion changes require a separately justified
+  harness correction or human decision.
+- Each row lands with its ledger update and a landing note in one commit.
+- Each commit is independently revertible and pushed after verification.
+- New modules use the existing `packages/client/src/lib/` and
+  `lib/sessionDetail/` conventions. Do not create a generic `utils` bucket.
+- A platform-free semantic module may import TypeScript data types and pure
+  transcript helpers. It may not import React, React DOM, browser globals,
+  components, hooks, CSS, timers, transport, session stores, or server-only
+  APIs.
+- The current `RenderItem` union remains an internal output model. Do not make
+  it a versioned/public portability contract in this series.
+- Preserve the `preprocessMessages` compatibility façade while server tests or
+  other callers import it directly. New web ownership should use the newly
+  named compiler/cache boundary rather than perpetuating ambiguous naming.
+
+## Standard Verification
+
+Every slice runs:
+
+```text
+pnpm --filter @yep-anywhere/shared build
+pnpm --filter @yep-anywhere/client exec tsc --noEmit
+pnpm --filter @yep-anywhere/client test -- <focused files>
+node scripts/biome.cjs lint <changed files>
+git diff --check
+```
+
+Client-visible or integration slices also run:
+
+```text
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm console:scan
+pnpm --filter client test:e2e --grep-invert "physical Android"
+```
+
+The focused transcript tests and artifact assertions must emit no runtime
+warnings. Known unrelated global-suite chatter is recorded in the baseline and
+must not increase.
+
+## Dependency Census
+
+| Concern | Current owner | Intended checkpoint owner |
+|---|---|---|
+| Same-array/augment identity cache | `preprocessMessages.ts` WeakMap | Named cache adapter outside pure compiler |
+| Orphan tool-id scan | `preprocessMessages.ts` | Pure compiler/message projection module |
+| Message/block to initial render items | `preprocessMessages.ts` | Pure message projection module |
+| Tool/result association | `preprocessMessages.ts` mutable local maps | Pure compile invocation state |
+| Compact and slash-command coalescing | `preprocessMessages.ts` | Narrow transcript projection module |
+| Shell/write/wait/background folding | `preprocessMessages.ts` | Narrow shell projection module |
+| Session setup run collapsing | `preprocessMessages.ts` | Narrow setup projection module |
+| Transcript display object insertion | `transcriptDisplayObjects.ts` | Web adapter after pure semantic compile for this checkpoint |
+| Previous-item object reuse | `stableRenderItems.ts` | Explicit web stabilization adapter |
+| Turn/timeline/search selectors | `lib/sessionDetail/*` | Existing web selector layer; not compiler work |
+| JSX/tool renderers | React components | Existing web renderer; unchanged |
+
+Transcript display objects remain outside the compiler in the first checkpoint
+because they are YA UI/session metadata rather than provider transcript
+normalization. Reconsidering that ownership would be a semantic architecture
+decision, not a move-only extraction.
+
+## Slice Ledger
+
+| ID | Status | Intent | Risk / entry gate | Verification tier |
+|---|---|---|---|---|
+| PTC-000 | Complete | Establish docs, surface census, semantic/browser/private-artifact tripwires, and performance baseline | No transcript production behavior changes | Full Phase 0 gates |
+| PTC-001 | Not started | Introduce `compileTranscriptProjection` as the explicit uncached pure façade while `preprocessMessages` retains current cached behavior | Characterization suite green; returned structures identical | Focused semantic + root Tier 2 |
+| PTC-002 | Not started | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
+| PTC-003 | Not started | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
+| PTC-004 | Not started | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
+| PTC-005 | Not started | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
+| PTC-006 | Not started | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
+| PTC-007 | Not started | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
+| PTC-008 | Not started | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
+
+PTC-007 is intentionally one integration cutover row. It may gain preparation
+subtasks, but it must not be subdivided indefinitely merely to avoid making the
+ownership change.
+
+## Landing Notes
+
+Append one note per landed slice using this shape:
+
+```text
+### PTC-NNN — Short title (landed YYYY-MM-DD, <commit>)
+
+- Moved/changed:
+- Explicitly unchanged:
+- Dependency result:
+- Semantic/browser/private artifact result:
+- Performance result:
+- Commands:
+- Follow-ups or surprises:
+```
+
+## Discovery Log
+
+### 2026-07-19 — Initial census
+
+- `buildSessionDetailRenderItems` already centralizes the web call sequence:
+  cached preprocessing, transcript display-object insertion, then previous-item
+  stabilization.
+- `preprocessMessages` already contains a private pure computation beneath its
+  WeakMap wrapper. PTC-001 should expose/name that seam before moving logic.
+- `MessageList` owns the previous-items ref and updates it in an effect; this
+  web lifecycle behavior stays outside the pure compiler.
+- Stable browser row attributes already exist on ordinary and explored rows.
+  The artifact harness should consume them instead of adding product-only test
+  markup.
+- The existing client Playwright suite has no transcript visual-regression
+  case. Its one mock session contains only a single user message.
+- The full repository suites pass at the starting revision but emit unrelated
+  negative-path/build chatter. Focused transcript gates must provide the clean
+  warning signal for this campaign.
+
+### PTC-000 — Establish the conformance baseline (landed 2026-07-19, this commit)
+
+- Moved/changed: added the coordinating documents, sanitized semantic
+  characterization, deterministic desktop/mobile browser specimen, ignored
+  local-session capture/compare harness, and fixed-input benchmark.
+- Explicitly unchanged: transcript projection, ids, ordering, grouping,
+  provider normalization, server protocol, stores, pagination, and React
+  renderer behavior.
+- Dependency result: the existing ownership and direct test consumers are now
+  recorded; no production compiler boundary moved in this slice.
+- Semantic/browser/private artifact result: 107 focused unit assertions and
+  two browser views passed cleanly; private Claude and Codex baselines replayed
+  with exact structural and screenshot hashes.
+- Performance result: the 683-message fixture produced 1,003 items; cache
+  identity and 961/961 eligible prefix-reference reuse passed. Baseline medians
+  were 0.2098 ms cold compile, 0.0001 ms cache hit, and 0.2588 ms changed-tail
+  stabilization on an Apple M4 Pro.
+- Commands: focused client Vitest, focused and full client Playwright, private
+  artifact baseline/compare, performance baseline/compare, `pnpm lint`,
+  `pnpm typecheck`, `pnpm test`, `pnpm console:scan`, and server E2E.
+- Follow-ups or surprises: the new browser specimen exposed an existing
+  production-build CSP mismatch when Vite inlined a small font. The preparation
+  layer keeps fonts as same-origin files and tests that build policy. Existing
+  Vite crypto/chunk and color-environment chatter remains classified global
+  harness noise.

@@ -3,6 +3,8 @@ import type {
   AgentContextHints,
   CacheMissBillingRecord,
   CacheMissBillingSettings,
+  BrowserSettingsBackupResponse,
+  BrowserSettingsBackupValues,
   ClientDefaults,
   ConnectionsResponse,
   CreateProjectWorkstreamRequest,
@@ -1256,6 +1258,18 @@ export const api = {
         // and empty string as "clear this value", but plain JSON drops undefined keys.
         (_key, value) => (value === undefined ? null : value),
       ),
+    }),
+
+  getBrowserSettingsBackup: () =>
+    fetchJSON<BrowserSettingsBackupResponse>("/settings/browser-backup"),
+
+  saveBrowserSettingsBackup: (input: {
+    version: number;
+    values: BrowserSettingsBackupValues;
+  }) =>
+    fetchJSON<BrowserSettingsBackupResponse>("/settings/browser-backup", {
+      method: "PUT",
+      body: JSON.stringify(input),
     }),
 
   // Read-only file-access info (env-pin state + resolved hint paths)

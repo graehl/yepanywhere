@@ -62,6 +62,7 @@ import { grokACPProvider } from "./sdk/providers/grok-acp.js";
 import { RealClaudeSDK } from "./sdk/real.js";
 import {
   BrowserProfileService,
+  BrowserSettingsBackupService,
   ConnectedBrowsersService,
   InstallService,
   ModelInfoService,
@@ -429,6 +430,9 @@ const connectedBrowsersService = new ConnectedBrowsersService(eventBus);
 const serverSettingsService = new ServerSettingsService({
   dataDir: config.dataDir,
 });
+const browserSettingsBackupService = new BrowserSettingsBackupService({
+  dataDir: config.dataDir,
+});
 const workstreamService = new WorkstreamService({
   dataDir: config.dataDir,
   eventBus,
@@ -529,6 +533,8 @@ async function startServer() {
   markStartup("modelInfoService initialized");
   await serverSettingsService.initialize();
   markStartup("serverSettingsService initialized");
+  await browserSettingsBackupService.initialize();
+  markStartup("browserSettingsBackupService initialized");
   await workstreamService.initialize();
   markStartup("workstreamService initialized");
   await sharingService.initialize();
@@ -724,6 +730,7 @@ async function startServer() {
     networkBindingCallbackHolder,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
+    browserSettingsBackupService,
     serverSettingsService,
     workstreamService,
     sharingService,
@@ -855,6 +862,7 @@ async function startServer() {
     const relayConfig = remoteAccessService.getRelayConfig();
     if (relayConfig?.url && relayConfig?.username) {
       const compatibility = await getServerCompatibilityInfo({
+        browserSettingsBackupAvailable: true,
         getDeviceBridgeState: () => {
           if (!deviceBridgeService) return "unavailable";
           return deviceBridgeService.hasBinary() ? "available" : "downloadable";

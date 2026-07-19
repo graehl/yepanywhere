@@ -41,6 +41,22 @@ Client state that must not collide across hosted/remote sources → (2).
 Session/server config that seeds new sessions or must survive on the server →
 (3).
 
+### Explicit browser-settings backup
+
+The Settings navigation exposes one server-stored Save/Load slot for portable
+browser preferences. This is a transfer mechanism layered over (1), not a
+fourth persistence scope: settings remain browser-local until the user presses
+Save, and Load replaces the allowlisted preference set before reloading the
+client. Server-persisted settings in (3) already survive and are not duplicated
+into the backup.
+
+The client owns an explicit allowlist. Browser identity, relay/auth and speech
+credentials, source-scoped state, drafts, cache contents and runtime
+measurements, hardware device ids, recent-project history, and legacy migration
+keys never enter the server copy. Hosted clients show the controls only when
+the connected server advertises `browser-settings-backup`; older servers retain
+the ordinary local settings behavior.
+
 ## Categories (what each is *for*)
 
 The category registry is `CATEGORY_COMPONENTS` in

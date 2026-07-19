@@ -61,6 +61,7 @@ import type {
 import { createRemoteAccessRoutes } from "./remote-access/index.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createBrowserProfilesRoutes } from "./routes/browser-profiles.js";
+import { createBrowserSettingsBackupRoutes } from "./routes/browser-settings-backup.js";
 import { createClientLogsRoutes } from "./routes/client-logs.js";
 import { createConnectionsRoutes } from "./routes/connections.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
@@ -119,6 +120,7 @@ import type {
 import type { PublicShareService } from "./services/PublicShareService.js";
 import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import type { BrowserProfileService } from "./services/BrowserProfileService.js";
+import type { BrowserSettingsBackupService } from "./services/BrowserSettingsBackupService.js";
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
@@ -258,6 +260,8 @@ export interface AppOptions {
   connectedBrowsers?: ConnectedBrowsersService;
   /** BrowserProfileService for tracking browser profile origins */
   browserProfileService?: BrowserProfileService;
+  /** Explicit server-stored backup of portable browser UI settings */
+  browserSettingsBackupService?: BrowserSettingsBackupService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
   /** WorkstreamService for experimental per-project checkout lanes */
@@ -961,6 +965,7 @@ export function createApp(options: AppOptions): AppResult {
   app.route(
     "/api/version",
     createVersionRoutes({
+      browserSettingsBackupAvailable: !!options.browserSettingsBackupService,
       getDeviceBridgeState: () => {
         if (!options.deviceBridgeService) return "unavailable";
         return options.deviceBridgeService.hasBinary()
@@ -1385,6 +1390,14 @@ export function createApp(options: AppOptions): AppResult {
           grokACPProvider.setUseAmbientXaiApiKey(enabled);
         },
         publicShareService: options.publicShareService,
+      }),
+    );
+  }
+  if (options.browserSettingsBackupService) {
+    app.route(
+      "/api/settings/browser-backup",
+      createBrowserSettingsBackupRoutes({
+        browserSettingsBackupService: options.browserSettingsBackupService,
       }),
     );
   }

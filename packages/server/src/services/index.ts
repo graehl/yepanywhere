@@ -31,6 +31,12 @@ export {
 } from "./BrowserProfileService.js";
 
 export {
+  BrowserSettingsBackupService,
+  BrowserSettingsBackupValidationError,
+  type BrowserSettingsBackupServiceOptions,
+} from "./BrowserSettingsBackupService.js";
+
+export {
   ServerSettingsService,
   type ServerSettings,
   type ServerSettingsServiceOptions,

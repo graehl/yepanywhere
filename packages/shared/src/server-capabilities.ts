@@ -24,6 +24,7 @@ export interface ServerCapabilityDefinition {
     | "gitStatus"
     | "localAccess"
     | "projectQueue"
+    | "settings"
     | "speech";
   description: string;
   introducedIn: string;
@@ -160,6 +161,26 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Older servers lack the configurable approval audit-log setting and should not receive writes for it.",
+    },
+  },
+  browserSettingsBackup: {
+    name: "browser-settings-backup",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.6.3",
+    description:
+      "Server stores one explicit backup of portable browser settings for save/load controls.",
+    clientFallback: "Hide browser settings save/load controls.",
+    serverContract: {
+      routes: [
+        "GET /api/settings/browser-backup",
+        "PUT /api/settings/browser-backup",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients must not offer server-backed browser settings controls to older servers without the storage route.",
     },
   },
   projectQueue: {
@@ -319,6 +340,9 @@ export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
 
 export const APPROVAL_AUDIT_LOG_CAPABILITY =
   SERVER_CAPABILITIES.approvalAuditLog.name;
+
+export const BROWSER_SETTINGS_BACKUP_CAPABILITY =
+  SERVER_CAPABILITIES.browserSettingsBackup.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

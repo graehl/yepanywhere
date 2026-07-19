@@ -240,6 +240,7 @@ export {
 } from "./project-queue.js";
 export {
   APPROVAL_AUDIT_LOG_CAPABILITY,
+  BROWSER_SETTINGS_BACKUP_CAPABILITY,
   DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
@@ -254,6 +255,13 @@ export {
   type ServerCapabilityName,
   type ServerCapabilitySource,
 } from "./server-capabilities.js";
+
+export {
+  BROWSER_SETTINGS_BACKUP_VERSION,
+  type BrowserSettingsBackup,
+  type BrowserSettingsBackupResponse,
+  type BrowserSettingsBackupValues,
+} from "./browser-settings-backup.js";
 
 export type {
   CreateProjectWorkstreamRequest,

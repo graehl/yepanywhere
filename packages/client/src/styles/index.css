@@ -12121,6 +12121,42 @@ a.linkified-url:hover {
   flex-shrink: 0;
 }
 
+.settings-backup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-backup-title {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.settings-backup-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.settings-backup-buttons .settings-button {
+  min-height: 44px;
+  width: 100%;
+}
+
+.settings-backup-status {
+  min-height: 1.2em;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.settings-backup-status.error {
+  color: var(--error-color);
+}
+
 /* Two-column layout when the settings container can support both panes */
 .settings-two-column {
   display: grid;

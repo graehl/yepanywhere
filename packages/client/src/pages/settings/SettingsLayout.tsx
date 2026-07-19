@@ -2,6 +2,7 @@ import {
   DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
+  BROWSER_SETTINGS_BACKUP_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
@@ -35,6 +36,7 @@ import { ProvidersSettings } from "./ProvidersSettings";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
 import { SettingsCategoryIcon } from "./SettingsCategoryIcons";
+import { SettingsBackupActions } from "./SettingsBackupActions";
 import {
   SettingsPaneTitleProvider,
   useSettingsPaneTitleRegistration,
@@ -194,6 +196,10 @@ export function SettingsLayout() {
   );
   const { isManualReloadMode } = useReloadNotifications();
   const { version: versionInfo } = useVersion();
+  const canBackUpBrowserSettings = serverHasCapability(
+    versionInfo,
+    BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  );
   const {
     registration: undoRegistration,
     setRegistration: setUndoRegistration,
@@ -368,6 +374,7 @@ export function SettingsLayout() {
                     onClick={() => handleCategoryClick(cat.id)}
                   />
                 ))}
+                {canBackUpBrowserSettings && <SettingsBackupActions />}
               </div>
             </div>
           </main>
@@ -428,6 +435,7 @@ export function SettingsLayout() {
                   onClick={() => handleCategoryClick(cat.id)}
                 />
               ))}
+              {canBackUpBrowserSettings && <SettingsBackupActions />}
             </div>
           </nav>
           <div className="settings-content-panel">

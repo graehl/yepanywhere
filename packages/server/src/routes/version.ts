@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
+  BROWSER_SETTINGS_BACKUP_CAPABILITY,
   DEVICE_BRIDGE_AVAILABLE_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
@@ -259,6 +260,8 @@ export interface DeviceBridgeStatus {
 }
 
 export interface VersionRouteOptions {
+  /** Whether the browser-settings backup storage route is mounted. */
+  browserSettingsBackupAvailable?: boolean;
   /** Dynamic device bridge state: available (binary exists), downloadable (ADB found, no binary), unavailable (no ADB). */
   getDeviceBridgeState?: () => DeviceBridgeState;
   /** Detailed device bridge status for version-aware update prompts. */
@@ -321,6 +324,9 @@ function getCapabilitiesForDeviceBridgeState(
 
 export function getServerCapabilities(options?: VersionRouteOptions): string[] {
   const capabilities: string[] = [...BASE_CAPABILITIES];
+  if (options?.browserSettingsBackupAvailable) {
+    capabilities.push(BROWSER_SETTINGS_BACKUP_CAPABILITY);
+  }
   if (options?.voiceInputEnabled !== false) {
     capabilities.push(VOICE_INPUT_CAPABILITY);
   }
@@ -375,12 +381,10 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
     const deviceBridgeStatus = options?.getDeviceBridgeStatus
       ? await options.getDeviceBridgeStatus({ forceRefresh: fresh })
       : { state: options?.getDeviceBridgeState?.() ?? "unavailable" };
-    const enabled = options?.isDeviceBridgeEnabled?.() ?? false;
-    const capabilities = [
-      ...BASE_CAPABILITIES,
-      ...(options?.voiceInputEnabled !== false ? [VOICE_INPUT_CAPABILITY] : []),
-      ...getCapabilitiesForDeviceBridgeState(deviceBridgeStatus.state, enabled),
-    ];
+    const capabilities = getServerCapabilities({
+      ...options,
+      getDeviceBridgeState: () => deviceBridgeStatus.state,
+    });
     const voiceBackends = getEnabledVoiceBackends(options);
     const voiceBackendStatuses = options?.getVoiceBackendStatuses?.() ?? [];
     const voiceBackendCapabilities = getVoiceBackendCapabilities(options);

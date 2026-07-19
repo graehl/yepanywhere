@@ -87,7 +87,7 @@ decision, not a move-only extraction.
 | PTC-001 | Complete | Introduce `compileTranscriptProjection` as the explicit uncached pure façade while `preprocessMessages` retains current cached behavior | Characterization suite green; returned structures identical | Focused semantic + root Tier 2 |
 | PTC-002 | Complete | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
 | PTC-003 | Complete | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
-| PTC-004 | Not started | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
+| PTC-004 | Complete | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
 | PTC-005 | Not started | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
 | PTC-006 | Not started | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
 | PTC-007 | Not started | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
@@ -223,3 +223,25 @@ Append one note per landed slice using this shape:
   polling timeouts in the workspace run, then passed alone and in the complete
   server rerun. The extracted stages remain in their original compiler
   positions.
+
+### PTC-004 — Extract shell continuation folding (landed 2026-07-19, this commit)
+
+- Moved/changed: moved shell session/cell linkage, detached-wait coalescing,
+  background completion annotation, and context-free empty-poll filtering into
+  one cohesive transcript projection module.
+- Explicitly unchanged: stage order, session/cell parsing, metadata precedence,
+  continuation consumption order, background evidence, filtering rules, ids,
+  and returned tool-result structures.
+- Dependency result: the shell module imports render-item types and the pure
+  shell-output parser only; it has no React, browser, store, transport, timer,
+  server, or compatibility-façade dependency.
+- Semantic/browser/private artifact result: 69 focused transcript assertions
+  and 16 focused server Codex normalization assertions passed. Exact private
+  replays passed at desktop and mobile for 564 Claude and 500 Codex rows.
+- Performance result: the fixed comparison preserved 1,003 items, cache
+  identity, and 961/961 reusable references within its configured tolerance.
+- Commands: focused client/server tests, changed-file Biome, root
+  typecheck/lint, workspace tests, console budget, private artifact comparison,
+  and performance comparison.
+- Follow-ups or surprises: none; the compiler still invokes the four stages in
+  their original order.

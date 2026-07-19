@@ -86,9 +86,9 @@ The realistic options, with the tensions each carries:
 
 ### Client-side reconstruction
 
-The client already builds an ordered `RenderItem[]` in `preprocessMessages`, a
-pure sequential pass. A running task map could be folded in there with no new
-data channel.
+The client already builds an ordered `RenderItem[]` in
+`compileTranscriptProjection`, a pure sequential pass. A running task map could
+be folded into that compiler with no new data channel.
 
 - *For:* no server changes, no new wire format, reconstruction happens exactly
   where render items are already assembled.

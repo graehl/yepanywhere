@@ -1,7 +1,7 @@
 # Portable Transcript Client Ledger
 
-Status: Web-only compiler checkpoint complete; compatibility-facade retirement
-is in progress without expanding the portability contract.
+Status: Web-only compiler checkpoint and compatibility-facade retirement
+complete. Further portability work requires a new human decision.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -29,9 +29,9 @@ before implementing a slice.
   APIs.
 - The current `RenderItem` union remains an internal output model. Do not make
   it a versioned/public portability contract in this series.
-- Preserve the `preprocessMessages` compatibility façade while server tests or
-  other callers import it directly. New web ownership should use the newly
-  named compiler/cache boundary rather than perpetuating ambiguous naming.
+- Do not restore the retired `preprocessMessages` compatibility facade. New
+  code imports its owning compiler/cache module, while production web consumers
+  route through the canonical web adapter.
 
 ## Standard Verification
 
@@ -61,7 +61,7 @@ must not increase.
 
 ## Dependency Census
 
-| Concern | Current owner | Intended checkpoint owner |
+| Concern | Starting owner | Completed checkpoint owner |
 |---|---|---|
 | Same-array/augment identity cache | `preprocessMessages.ts` WeakMap | Named cache adapter outside pure compiler |
 | Orphan tool-id scan | `preprocessMessages.ts` | Pure compiler/message projection module |
@@ -96,7 +96,7 @@ decision, not a move-only extraction.
 | PTC-009 | Complete | Route every production web projection consumer through one canonical web adapter | Existing adapter and facade are behavior-identical delegates | Focused client + root lint/typecheck |
 | PTC-010 | Complete | Extract independently consumed agent-result parsing from the large message-projection module | Move-only; helper assertions unchanged | Focused semantic + root lint/typecheck |
 | PTC-011 | Complete | Migrate semantic tests, benchmark tooling, and server parity callers to their owning compiler/cache APIs | PTC-009/010 landed; no production facade consumers remain | Full client/server parity + performance |
-| PTC-012 | Planned | Delete the compatibility facade and enforce the final ownership map | No remaining imports or historical re-exports | Full final gates |
+| PTC-012 | Complete | Delete the compatibility facade and enforce the final ownership map | No remaining imports or historical re-exports | Full final gates |
 
 PTC-007 is intentionally one integration cutover row. It may gain preparation
 subtasks, but it must not be subdivided indefinitely merely to avoid making the
@@ -405,3 +405,32 @@ Landed 2026-07-19, this commit.
   `git diff --check`.
 - Follow-ups or surprises: none; PTC-012 can now delete the facade without a
   compatibility shim or caller cutover.
+
+### PTC-012 — Retire the compatibility facade
+
+Landed 2026-07-19, this commit.
+
+- Moved/changed: deleted `preprocessMessages.ts`, documented the final module
+  ownership map beside the compiler, added source tripwires against facade
+  restoration or direct production compiler/cache assembly, and excluded the
+  transient reload overlay from transcript artifact pixels.
+- Explicitly unchanged: projection semantics, stage order, cache behavior,
+  diagnostics, render items, server runtime dependencies, and web output.
+- Dependency result: semantic code has one owning module per domain, cached web
+  production assembly has one adapter, and tests/parity tooling use explicit
+  browser-free APIs.
+- Semantic/browser/private artifact result: 2,149 client and 2,661 server
+  assertions passed, with six declared server skips. Playwright passed 58 cases
+  with three environment skips. Exact private desktop/mobile replay passed for
+  564 Claude and 500 Codex rows.
+- Performance result: 683 messages retained 1,003 items and 961/961 reusable
+  prefix references. Cold, cache, and stabilization medians were 0.1979 ms,
+  0.0001 ms, and 0.2495 ms, within the established tolerances.
+- Commands: focused and full workspace tests, root lint/typecheck, console
+  budget, non-device Playwright, exact private artifact comparison, fixed
+  performance comparison, and `git diff --check`.
+- Follow-ups or surprises: a concurrent Playwright build triggered YA's reload
+  overlay during the first mobile artifact capture. The harness now excludes
+  that transient non-transcript overlay, and the isolated exact replay passed.
+  Any public package, versioned projection, alternate runtime, or native
+  renderer remains behind a new human decision.

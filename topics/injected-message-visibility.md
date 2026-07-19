@@ -42,7 +42,8 @@ A YA-initiated compaction has two halves, both satisfied by reusing
 
 - **Result contract** — it drives a real `compact_boundary` system message,
   which the client renders as a collapsed "Context compacted" item
-  (`preprocessMessages.ts`, system-subtype branch). Same as native.
+  (`transcriptProjection/messageProjection.ts`, system-subtype branch). Same as
+  native.
 - **Visibility contract** — the `/compact` command itself is hidden (above), so
   no spurious user bubble. Same as native.
 

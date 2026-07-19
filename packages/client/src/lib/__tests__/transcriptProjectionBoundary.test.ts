@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -6,6 +6,16 @@ const projectionDirectory = resolve(
   process.cwd(),
   "src/lib/transcriptProjection",
 );
+const legacyFacadePath = resolve(
+  process.cwd(),
+  "src/lib/preprocessMessages.ts",
+);
+const sourceDirectories = [
+  resolve(process.cwd(), "src"),
+  resolve(process.cwd(), "scripts"),
+  resolve(process.cwd(), "../server/src"),
+  resolve(process.cwd(), "../server/test"),
+];
 const canonicalWebConsumerFiles = [
   "src/components/renderers/tools/TaskRenderer.tsx",
   "src/lib/sessionDetail/renderItems.ts",
@@ -36,6 +46,21 @@ const forbiddenDependencies = [
     pattern: /from\s+["'][^"']*preprocessMessages(?:\.[^"']*)?["']/u,
   },
 ];
+
+const legacyFacadeImport =
+  /from\s+["'][^"']*preprocessMessages(?:\.[^"']*)?["']/u;
+const directCompilerOrCacheImport =
+  /from\s+["'][^"']*transcriptProjection\/(?:compiler|cache)(?:\.[^"']*)?["']/u;
+
+function collectTypeScriptFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      return collectTypeScriptFiles(path);
+    }
+    return /\.tsx?$/u.test(entry.name) ? [path] : [];
+  });
+}
 
 describe("transcript projection module boundary", () => {
   it("stays independent of React, browser state, and the legacy façade", () => {
@@ -71,6 +96,45 @@ describe("transcript projection module boundary", () => {
       expect(source, relativePath).not.toContain(
         "compileWebTranscriptProjection",
       );
+    }
+  });
+
+  it("keeps web cache and compiler assembly in the canonical adapter", () => {
+    const adapterPath = resolve(
+      process.cwd(),
+      "src/lib/webTranscriptProjection.ts",
+    );
+    const source = readFileSync(adapterPath, "utf8");
+
+    expect(source).toContain("getCachedTranscriptProjection");
+    expect(source).toContain("compileTranscriptProjection");
+    expect(source).toContain("compileWebTranscriptProjection");
+    expect(source).toMatch(
+      /getCachedTranscriptProjection\(\s*messages,\s*augments,\s*compileWebTranscriptProjection,?\s*\)/u,
+    );
+
+    const productionFiles = collectTypeScriptFiles(
+      resolve(process.cwd(), "src"),
+    ).filter(
+      (filePath) =>
+        !filePath.includes("/__tests__/") &&
+        !filePath.startsWith(`${projectionDirectory}/`) &&
+        filePath !== adapterPath,
+    );
+    for (const filePath of productionFiles) {
+      const productionSource = readFileSync(filePath, "utf8");
+      expect(productionSource, filePath).not.toMatch(directCompilerOrCacheImport);
+    }
+  });
+
+  it("does not restore the legacy facade or imports", () => {
+    expect(existsSync(legacyFacadePath)).toBe(false);
+
+    for (const directory of sourceDirectories) {
+      for (const filePath of collectTypeScriptFiles(directory)) {
+        const source = readFileSync(filePath, "utf8");
+        expect(source, filePath).not.toMatch(legacyFacadeImport);
+      }
     }
   });
 });

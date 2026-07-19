@@ -39,8 +39,9 @@ This checkpoint deliberately does **not** implement the conceptual versioned
 envelope or presentation contract described below. There is no public package
 ABI, prefix-fact schema, server/client negotiation, Worker or alternate
 runtime, server execution path, second renderer, or native application. The
-legacy `preprocessMessages` facade remains for secondary and test consumers;
-there is no production dual-compile path.
+temporary `preprocessMessages` facade has been removed after all callers moved
+to their owning compiler, cache, or web-adapter API; there is no production
+dual-compile path.
 
 The completed extraction is independently valuable to the web application:
 semantic projection has a deterministic owner, cache and web lifecycle work
@@ -573,9 +574,9 @@ rewrite. Use adapter-first, parity-first slices:
    preprocessing, render selectors, and JSX ownership without moving behavior.
 2. **Define a minimal projection union.** Cover text, thinking, user prompt,
    generic tool, known tool, task snapshot, system/boundary, and fallback.
-3. **Extract the pure reference compiler.** Move suitable logic from
-   `preprocessMessages` and `sessionDetail` into a platform-free package while
-   keeping the existing web adapter as the sole production renderer.
+3. **Promote the pure reference compiler.** Move suitable internal
+   `transcriptProjection` and `sessionDetail` logic into a platform-free package
+   while keeping the existing web adapter as the sole production renderer.
 4. **Prove semantic sufficiency.** Add a second non-DOM consumer such as a
    deterministic text/static renderer over real sanitized Claude and Codex
    fixtures.

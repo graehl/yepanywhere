@@ -7,6 +7,7 @@ import type { PreprocessAugments } from "./transcriptProjection/types";
 
 const webProjectionDiagnostics: MessageProjectionDiagnostics = {
   onAssistantMessage(details) {
+    // Preserve the historical debug label across the structural refactor.
     console.log("[preprocessMessages] Processing assistant message:", details);
   },
 };

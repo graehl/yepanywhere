@@ -363,6 +363,7 @@ async function installStableCaptureStyle(page) {
         transition-delay: 0s !important;
       }
       .message-age,
+      .reload-banner,
       .user-turn-nav,
       .selection-quote-button {
         visibility: hidden !important;

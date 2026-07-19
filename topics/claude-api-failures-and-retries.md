@@ -232,12 +232,12 @@ The `api_retry` messages never reach the UI, for two stacked reasons:
   from any reload / catch-up / resume (all of which read the transcript).
 - **Dropped by the client even live.** The server forwards everything
   (`shouldEmitMessage()` is hardcoded `true`, Process.ts:159), so the client
-  does receive `api_retry` on the live stream. But `preprocessMessages`
-  (`packages/client/src/lib/preprocessMessages.ts`) renders only an allowlist of
-  `system` subtypes (`compact_boundary`, `turn_aborted`, `config_ack`,
-  `away_summary`, `subagent_activity`); all others hit "Skip other system
-  entries … they're internal" (~L300) and are discarded. `api_retry` is in that
-  dropped set.
+  does receive `api_retry` on the live stream. But `messageProjection.ts`
+  (`packages/client/src/lib/transcriptProjection/messageProjection.ts`) renders
+  only an allowlist of `system` subtypes (`compact_boundary`, `turn_aborted`,
+  `config_ack`, `away_summary`, `subagent_activity`); all others hit "Skip other
+  system entries … they're internal" (~L300) and are discarded. `api_retry` is
+  in that dropped set.
 
 The terminal error is visible only because it is an `assistant` message whose
 text content is literally `"API Error: 529 Overloaded…"` — ordinary assistant

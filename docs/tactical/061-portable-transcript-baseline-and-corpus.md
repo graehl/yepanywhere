@@ -143,7 +143,8 @@ Required assertions for every browser specimen:
 
 Pixel equality is supporting evidence, not the semantic oracle. Browser/font
 updates can legitimately change pixels while semantic row signatures remain
-stable.
+stable. Stable capture styles also hide transient message-age, navigation,
+selection, and reload-notification overlays that are not transcript output.
 
 ## Private Local-Session Corpus
 

@@ -185,7 +185,7 @@ If a difference appears, classify it before continuing:
 | 1. Pure façade and cache split | Complete | Pure compilation can run without React/DOM/browser state; same-array cache and previous-item stabilization are separate named layers |
 | 2. Domain extraction | Complete | Cohesive postprocessing and message-projection stages live in narrow platform-free modules; current adapter stays behavior-identical |
 | 3. Web integration cutover | Complete | Session detail web rendering uses the new boundary; parity, artifact, browser, and performance gates pass |
-| 4. Closeout | Complete | Ledgers reconciled, temporary comparison path removed or explicitly retained, final evidence recorded, architecture topic points to completed checkpoint |
+| 4. Closeout | Complete | Ledgers reconciled, temporary comparison path and compatibility facade removed, final evidence recorded, architecture topic points to completed checkpoint |
 
 ## Phase 0 Deliverables
 
@@ -235,12 +235,13 @@ current bounded client Message[] + augments + approval
 ```
 
 The compiler directory is source-audited to exclude React, browser globals,
-timers, stores, transport, server APIs, and reverse imports from the legacy
-facade. `preprocessMessages.ts` is deliberately retained as a compatibility
-facade for secondary callers and cross-package tests; the primary web path no
-longer imports it. There is no production shadow compiler, dual-render path,
-or temporary comparison wiring left to remove. Ignored private artifacts
-remain local evidence and are not runtime dependencies.
+timers, stores, transport, server APIs, and reverse imports. The temporary
+`preprocessMessages.ts` compatibility facade has been deleted after production,
+test, benchmark, and cross-package parity callers moved to their owning APIs.
+Source-level tripwires prevent restoring it or bypassing the canonical cached
+web adapter. There is no production shadow compiler, dual-render path, or
+temporary comparison wiring left to remove. Ignored private artifacts remain
+local evidence and are not runtime dependencies.
 
 ### Evidence at the checkpoint
 
@@ -248,18 +249,18 @@ remain local evidence and are not runtime dependencies.
   projection, tool/result ownership, setup and compact folding, shell/write and
   detached-poll folding, active approval, augments, retry fallback, cache
   identity, and row-reference stabilization.
-- Full client unit verification passed 2,147 assertions. Focused server
-  render-parity and Codex normalization verification passed 49 assertions.
+- Final client unit verification passed 2,149 assertions. The serialized server
+  suite passed 2,661 assertions with six declared skips; focused render-parity
+  and Codex normalization verification also remained green.
 - Non-device Playwright passed 58 cases with three environment-dependent
   skips, including exact desktop/mobile deterministic transcript specimens.
 - Private inactive-session replays were exactly equal at desktop and mobile:
   564 Claude rows and 500 Codex rows, with matching structural and screenshot
   digests and no page errors, console warnings, duplicate ids, or overflow.
-- The 683-message benchmark still emits 1,003 items. The final cutover measured
-  a 0.1960 ms cold median and an effectively constant-time cache. The closeout
-  rerun measured 0.1961 ms cold, 0.0001 ms cache, and 0.2552 ms stabilization
-  medians, with 961/961 reusable prefix references. These remain within the
-  recorded Phase 0 tolerances.
+- The 683-message benchmark still emits 1,003 items. The facade-retirement
+  closeout measured 0.1979 ms cold, 0.0001 ms cache, and 0.2495 ms
+  stabilization medians, with 961/961 reusable prefix references. These remain
+  within the recorded Phase 0 tolerances.
 - Lint, typecheck, console budget, focused transcript gates, full client gates,
   serialized full server gates, browser gates, artifact comparison, and fixed
   performance comparison were green. The known Vite build notices and
@@ -281,8 +282,8 @@ client library types and helpers. Provider storage parsing and upstream
 normalization remain server responsibilities. Display-object insertion,
 reference stabilization, grouping, action selection, React rendering, DOM
 behavior, and streaming lifecycle remain web responsibilities. Server parity
-tests still consume the compatibility facade; they do not make the compiler a
-server runtime dependency.
+tests import the pure compiler as test tooling; they do not make it a server
+runtime dependency.
 
 There is no canonical bounded envelope, prefix-fact schema, public or versioned
 projection ABI, package/runtime compatibility promise, server/client execution

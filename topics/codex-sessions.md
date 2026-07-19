@@ -35,6 +35,13 @@ This differs from Claude. Claude's local session path already encodes the
 project directory, so project discovery can start from directory names. Codex
 stores by date, so project discovery requires metadata.
 
+One deliberate exception to "YA never rewrites provider-owned rollouts": when
+the user explicitly Kills a Codex session, YA renames its rollout with a
+`.killed-<timestamp>` suffix so no resume path (YA or Codex app-server) can
+find it. The rename is reversible and the content untouched; see
+`topics/heartbeat.md` § Unowned Resume Exemptions and
+`packages/server/src/sessions/resume-exemption.ts`.
+
 ## Read Surfaces
 
 There are two main YA surfaces over the same rollout tree:

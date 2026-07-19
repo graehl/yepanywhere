@@ -15,6 +15,7 @@ import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { getProvider } from "../sdk/providers/index.js";
+import type { ResumeExemptionResult } from "../sessions/resume-exemption.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { ProcessInfo, Project } from "../supervisor/types.js";
@@ -29,6 +30,16 @@ export interface ProcessesDeps {
   ) => { reader: ISessionReader; sessionDir: string };
   sessionIndexService?: SessionIndexService;
   sessionMetadataService?: SessionMetadataService;
+  /**
+   * Exempt an explicitly killed session from every auto-resume path
+   * (heartbeat opt-in cleared; Codex rollout tombstoned). Invoked only when
+   * the abort request opts in via `blockResume` and only after the provider
+   * process shutdown has been verified.
+   */
+  blockSessionResume?: (args: {
+    sessionId: string;
+    provider: ProcessInfo["provider"];
+  }) => Promise<ResumeExemptionResult>;
 }
 
 /**
@@ -161,8 +172,28 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
   });
 
   // POST /api/processes/:processId/abort - Kill a process
+  // Optional JSON body: { blockResume?: boolean }. When true (the explicit
+  // Kill gesture), the session is also exempted from auto-resume after the
+  // shutdown is verified — see ProcessesDeps.blockSessionResume.
   routes.post("/:processId/abort", async (c) => {
     const processId = c.req.param("processId");
+    const body = await c.req
+      .json<{ blockResume?: unknown }>()
+      .catch(() => ({}) as { blockResume?: unknown });
+    const blockResume = body.blockResume === true;
+
+    // Capture identity before abort: the process is unregistered afterward.
+    // Prefer the durable session provider over the in-memory process provider,
+    // matching enrichProcessInfo.
+    let provider: ProcessInfo["provider"] | undefined;
+    if (blockResume) {
+      const liveProcess = deps.supervisor.getProcess(processId);
+      provider = liveProcess
+        ? ((deps.sessionMetadataService?.getProvider(liveProcess.sessionId) as
+            | ProcessInfo["provider"]
+            | undefined) ?? liveProcess.provider)
+        : undefined;
+    }
 
     try {
       const result =
@@ -171,7 +202,19 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
         return c.json({ error: "Process not found" }, 404);
       }
 
-      return c.json({ aborted: true, ...result });
+      let resumeExemption: ResumeExemptionResult | undefined;
+      if (blockResume && deps.blockSessionResume && provider) {
+        resumeExemption = await deps.blockSessionResume({
+          sessionId: result.sessionId,
+          provider,
+        });
+      }
+
+      return c.json({
+        aborted: true,
+        ...result,
+        ...(resumeExemption ? { resumeExemption } : {}),
+      });
     } catch (error) {
       return c.json(
         {

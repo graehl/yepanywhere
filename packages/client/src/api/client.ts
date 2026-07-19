@@ -962,7 +962,7 @@ export const api = {
       { method: "POST" },
     ),
 
-  abortProcess: (processId: string) =>
+  abortProcess: (processId: string, options?: { blockResume?: boolean }) =>
     fetchJSON<{
       aborted: true;
       processId: string;
@@ -970,7 +970,18 @@ export const api = {
       pid?: number;
       verifiedStopped: true;
       verification: "pid" | "provider" | "iterator";
-    }>(`/processes/${processId}/abort`, { method: "POST" }),
+      /** Present when the abort also exempted the session from auto-resume. */
+      resumeExemption?: {
+        heartbeatDisabled: boolean;
+        rolloutsRenamed: string[];
+        failures: Array<{ path: string; error: string }>;
+      };
+    }>(`/processes/${processId}/abort`, {
+      method: "POST",
+      ...(options?.blockResume
+        ? { body: JSON.stringify({ blockResume: true }) }
+        : {}),
+    }),
 
   interruptProcess: (processId: string) =>
     fetchJSON<{ interrupted: boolean; supported: boolean; aborted?: boolean }>(

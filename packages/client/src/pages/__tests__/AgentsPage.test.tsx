@@ -75,6 +75,7 @@ vi.mock("../../i18n", () => ({
         agentsKillConfirm: "Kill {title}?",
         agentsKillVerifiedPid:
           "Stopped PID {pid} and verified it is no longer running.",
+        agentsKillResumeBlocked: "Auto-resume disabled for the killed session.",
         agentsKillFailed: "Could not stop the agent: {message}",
       };
       return Object.entries(values ?? {}).reduce(
@@ -125,12 +126,43 @@ describe("AgentsPage process kill", () => {
     fireEvent.click(screen.getByRole("button", { name: "Kill" }));
 
     await waitFor(() => {
-      expect(abortProcess).toHaveBeenCalledWith("process-1");
+      expect(abortProcess).toHaveBeenCalledWith("process-1", {
+        blockResume: true,
+      });
     });
     expect((await screen.findByRole("status")).textContent).toContain(
       "Stopped PID 43210 and verified it is no longer running.",
     );
     expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("notes the resume exemption when the server reports one", async () => {
+    abortProcess.mockResolvedValue({
+      aborted: true,
+      processId: "process-1",
+      sessionId: "session-1",
+      pid: 43210,
+      verifiedStopped: true,
+      verification: "pid",
+      resumeExemption: {
+        heartbeatDisabled: true,
+        rolloutsRenamed: [
+          "/home/user/.codex/sessions/2026/07/05/rollout-x-session-1.jsonl.killed-20260719T164500Z",
+        ],
+        failures: [],
+      },
+    });
+    render(
+      <MemoryRouter>
+        <AgentsPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Kill" }));
+
+    expect((await screen.findByRole("status")).textContent).toContain(
+      "Auto-resume disabled for the killed session.",
+    );
   });
 
   it("surfaces a failed shutdown verification", async () => {

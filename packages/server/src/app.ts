@@ -145,6 +145,12 @@ import { findSessionSummaryAcrossProviders } from "./sessions/provider-resolutio
 import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import {
+  disableCodexRolloutsForKilledSession,
+  isCodexRolloutProvider,
+  isUnownedHeartbeatResumeEligible,
+  type ResumeExemptionResult,
+} from "./sessions/resume-exemption.js";
 import type { SummaryParserWorkerMode } from "./sessions/summary-parser-worker-protocol.js";
 import type {
   GetSessionSummaryOptions,
@@ -660,7 +666,7 @@ export function createApp(options: AppOptions): AppResult {
     }
 
     const heartbeatSessionIds = Object.entries(metadataBySession).filter(
-      ([, metadata]) => metadata.heartbeatTurnsEnabled,
+      ([, metadata]) => isUnownedHeartbeatResumeEligible(metadata),
     );
     if (heartbeatSessionIds.length === 0) {
       return [];
@@ -1208,6 +1214,40 @@ export function createApp(options: AppOptions): AppResult {
       },
       sessionIndexService: options.sessionIndexService,
       sessionMetadataService: options.sessionMetadataService,
+      // Explicit Kill: exempt the session from every auto-resume path.
+      // Clearing the heartbeat opt-in stops the unowned-pending-tool resume;
+      // tombstoning the Codex rollout hides the session from discovery and
+      // from Codex app-server thread/resume. See sessions/resume-exemption.ts.
+      blockSessionResume: async ({ sessionId, provider }) => {
+        const heartbeatWasEnabled =
+          options.sessionMetadataService?.getMetadata(sessionId)
+            ?.heartbeatTurnsEnabled === true;
+        if (heartbeatWasEnabled) {
+          await options.sessionMetadataService?.updateMetadata(sessionId, {
+            heartbeatTurnsEnabled: false,
+          });
+        }
+
+        const rollouts = isCodexRolloutProvider(provider)
+          ? await disableCodexRolloutsForKilledSession(
+              CODEX_SESSIONS_DIR,
+              sessionId,
+            )
+          : { renamed: [], failed: [] };
+
+        const result: ResumeExemptionResult = {
+          heartbeatDisabled: heartbeatWasEnabled,
+          rolloutsRenamed: rollouts.renamed.map((r) => r.to),
+          failures: rollouts.failed,
+        };
+        console.log(
+          `[Processes] Blocked auto-resume for killed session ${sessionId}` +
+            ` (provider=${provider}, heartbeatDisabled=${result.heartbeatDisabled},` +
+            ` rolloutsRenamed=${result.rolloutsRenamed.length},` +
+            ` failures=${result.failures.length})`,
+        );
+        return result;
+      },
     }),
   );
 

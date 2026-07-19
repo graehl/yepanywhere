@@ -71,6 +71,31 @@ language, but they do not share ownership or evidence semantics.
   session UI. It runs on the server supervisor interval and reads current
   heartbeat settings plus the process liveness snapshot.
 
+## Unowned Resume Exemptions
+
+The unowned-candidate heartbeat path (`Supervisor.queueHeartbeatTurnForCandidate`)
+can spawn a fresh provider process to resume a session with no live process when
+the session is heartbeat-opted-in and its transcript ends in a pending tool call.
+That power needs explicit exemptions, or a session the user has dismissed keeps
+being resurrected (observed 2026-07-19: a killed, archived Codex session was
+auto-resumed from its rollout three times in one day):
+
+- **Archived sessions are never candidates.** Archiving says the user is done;
+  the candidate filter uses `isUnownedHeartbeatResumeEligible`
+  (`sessions/resume-exemption.ts`), which excludes `isArchived` metadata.
+- **Explicit Kill blocks all auto-resume.** The Agents-page Kill button sends
+  `blockResume: true` on `POST /api/processes/:id/abort`. After the shutdown is
+  verified, the server clears the session's heartbeat opt-in and, for Codex
+  sessions, tombstones the rollout file by renaming it with a
+  `.killed-<timestamp>` suffix. The renamed file no longer matches
+  `isCodexRolloutFileName`, so YA discovery, YA resume, and a Codex app-server
+  `thread/resume` all stop seeing the session. The rename is reversible by
+  stripping the suffix; YA bookkeeping tolerates the disappearance (the watcher
+  emits a session delete; orphaned session metadata is inert).
+- The session-page Stop fallback abort, btw-aside cleanup aborts, and internal
+  process-rotation aborts do **not** block resume; only the explicit Kill
+  gesture opts in.
+
 ## Representative Change Types
 
 - Moving synthetic heartbeat turn generation between server and client.

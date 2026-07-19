@@ -787,7 +787,14 @@ export function RemoteConnectionProvider({ children }: Props) {
   }, []);
 
   const retryAutoResume = useCallback(() => {
-    // Clear error and allow another attempt
+    if (!storedRef.current?.session) {
+      setAutoResumeError(null);
+      setIsAutoResuming(false);
+      return;
+    }
+    // Enter the retry state immediately so route gates do not briefly treat
+    // the cleared error as a terminal auth failure before the effect starts.
+    setIsAutoResuming(true);
     setAutoResumeError(null);
     setAutoResumeAttempted(false);
   }, []);

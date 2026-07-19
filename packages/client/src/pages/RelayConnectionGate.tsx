@@ -97,6 +97,12 @@ export function RelayConnectionGate() {
 
   const [state, setState] = useState<ConnectionState>("checking");
   const [error, setError] = useState<AutoResumeError | null>(null);
+  const [lastConnectedRelayUsername, setLastConnectedRelayUsername] = useState<
+    string | null
+  >(null);
+  const [dismissedError, setDismissedError] = useState<AutoResumeError | null>(
+    null,
+  );
   const returnTo = useMemo(
     () => `${location.pathname}${location.search}${location.hash}`,
     [location.hash, location.pathname, location.search],
@@ -127,6 +133,8 @@ export function RelayConnectionGate() {
       const connectedRelayUsername = currentHost?.relayUsername;
 
       if (connectedRelayUsername === relayUsername) {
+        setLastConnectedRelayUsername(relayUsername);
+        setDismissedError(null);
         setState("connected");
         return;
       }
@@ -140,6 +148,8 @@ export function RelayConnectionGate() {
             `[RelayConnectionGate] Connection without hostId, setting to "${hostByUsername.id}" for "${relayUsername}"`,
           );
           setCurrentHostId(hostByUsername.id);
+          setLastConnectedRelayUsername(relayUsername);
+          setDismissedError(null);
           setState("connected");
           return;
         }
@@ -222,6 +232,8 @@ export function RelayConnectionGate() {
       session: host.session,
     })
       .then(() => {
+        setLastConnectedRelayUsername(relayUsername);
+        setDismissedError(null);
         setState("connected");
       })
       .catch((err) => {
@@ -238,6 +250,7 @@ export function RelayConnectionGate() {
           setState("no_session");
           return;
         }
+        setDismissedError(null);
         setError(autoResumeError);
         setState("error");
       });
@@ -252,6 +265,80 @@ export function RelayConnectionGate() {
     disconnect,
   ]);
 
+  const retryConnection = () => {
+    setState("connecting");
+    setError(null);
+    setDismissedError(null);
+    const host = getHostByRelayUsername(relayUsername ?? "");
+    if (host?.relayUrl && host.relayUsername && host.session) {
+      connectViaRelay({
+        relayUrl: host.relayUrl,
+        relayUsername: host.relayUsername,
+        srpUsername: host.srpUsername,
+        srpPassword: "", // Ignored when session is provided
+        rememberMe: true,
+        onStatusChange: () => {},
+        session: host.session,
+      })
+        .then(() => {
+          setCurrentHostId(host.id);
+          setLastConnectedRelayUsername(
+            relayUsername ?? host.relayUsername ?? null,
+          );
+          setDismissedError(null);
+          setState("connected");
+        })
+        .catch((err) => {
+          const autoResumeError = createAutoResumeError(
+            err,
+            host.relayUsername ?? relayUsername ?? "",
+            host.relayUrl,
+          );
+          if (
+            autoResumeError.reason === "resume_incompatible" ||
+            autoResumeError.reason === "auth_failed"
+          ) {
+            clearHostSession(host.id);
+            setState("no_session");
+            return;
+          }
+          setDismissedError(null);
+          setError(autoResumeError);
+          setState("error");
+        });
+    } else {
+      setState("no_session");
+    }
+  };
+
+  if (state === "no_host" || state === "no_session") {
+    return <Navigate to={relayLoginTarget} replace />;
+  }
+
+  // A route that connected successfully remains mounted through later network
+  // failures. The error is presented as a sibling portal so dismissing it
+  // reveals the exact in-memory page state that was already on screen.
+  if (lastConnectedRelayUsername === relayUsername) {
+    const visibleError =
+      state === "error" && error && dismissedError !== error ? error : null;
+
+    return (
+      <>
+        <ConnectedAppContent>
+          <Outlet />
+        </ConnectedAppContent>
+        {visibleError && (
+          <HostOfflineModal
+            error={visibleError}
+            onDismiss={() => setDismissedError(visibleError)}
+            onRetry={retryConnection}
+            onGoToLogin={() => setState("no_session")}
+          />
+        )}
+      </>
+    );
+  }
+
   switch (state) {
     case "checking":
     case "connecting":
@@ -261,10 +348,6 @@ export function RelayConnectionGate() {
           <p>Connecting to {relayUsername}...</p>
         </div>
       );
-
-    case "no_host":
-    case "no_session":
-      return <Navigate to={relayLoginTarget} replace />;
 
     case "error": {
       const defaultError: AutoResumeError = {
@@ -279,45 +362,8 @@ export function RelayConnectionGate() {
       return (
         <HostOfflineModal
           error={error ?? defaultError}
-          onRetry={() => {
-            setState("connecting");
-            setError(null);
-            const host = getHostByRelayUsername(relayUsername ?? "");
-            if (host?.relayUrl && host.relayUsername && host.session) {
-              connectViaRelay({
-                relayUrl: host.relayUrl,
-                relayUsername: host.relayUsername,
-                srpUsername: host.srpUsername,
-                srpPassword: "", // Ignored when session is provided
-                rememberMe: true,
-                onStatusChange: () => {},
-                session: host.session,
-              })
-                .then(() => {
-                  setCurrentHostId(host.id);
-                  setState("connected");
-                })
-                .catch((err) => {
-                  const autoResumeError = createAutoResumeError(
-                    err,
-                    host.relayUsername ?? relayUsername ?? "",
-                    host.relayUrl,
-                  );
-                  if (
-                    autoResumeError.reason === "resume_incompatible" ||
-                    autoResumeError.reason === "auth_failed"
-                  ) {
-                    clearHostSession(host.id);
-                    setState("no_session");
-                    return;
-                  }
-                  setError(autoResumeError);
-                  setState("error");
-                });
-            } else {
-              setState("no_session");
-            }
-          }}
+          onDismiss={() => setState("no_session")}
+          onRetry={retryConnection}
           onGoToLogin={() => setState("no_session")}
         />
       );

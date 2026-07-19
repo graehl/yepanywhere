@@ -16,6 +16,7 @@ type Translate = ReturnType<typeof useI18n>["t"];
 
 interface HostOfflineModalProps {
   error: AutoResumeError;
+  onDismiss: () => void;
   onRetry: () => void;
   onGoToLogin: () => void;
 }
@@ -76,6 +77,7 @@ function getErrorMessage(error: AutoResumeError, t: Translate): string {
 
 export function HostOfflineModal({
   error,
+  onDismiss,
   onRetry,
   onGoToLogin,
 }: HostOfflineModalProps) {
@@ -84,7 +86,7 @@ export function HostOfflineModal({
   const message = getErrorMessage(error, t);
 
   return (
-    <Modal title={title} onClose={onGoToLogin}>
+    <Modal title={title} onClose={onDismiss}>
       <div className="host-offline-modal-content">
         <p className="host-offline-message">{message}</p>
 

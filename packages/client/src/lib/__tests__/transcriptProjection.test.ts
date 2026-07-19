@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Message } from "../../types";
-import {
-  preprocessMessages,
-  stripAwaySummaryHintSuffix,
-} from "../preprocessMessages";
+import { compileTranscriptProjection } from "../transcriptProjection/compiler";
+import { stripAwaySummaryHintSuffix } from "../transcriptProjection/messageProjection";
 
-describe("preprocessMessages", () => {
+describe("compileTranscriptProjection", () => {
   it("pairs tool_use with tool_result", () => {
     const messages: Message[] = [
       {
@@ -35,7 +33,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -89,7 +87,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -133,7 +131,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -173,7 +171,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const toolCalls = items.filter((item) => item.type === "tool_call");
 
     expect(toolCalls).toHaveLength(1);
@@ -222,7 +220,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const call = items.find((item) => item.type === "tool_call");
 
     expect(call).toMatchObject({
@@ -283,7 +281,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const toolCalls = items.filter((item) => item.type === "tool_call");
 
     expect(toolCalls).toHaveLength(1);
@@ -326,7 +324,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     const item0 = items[0];
@@ -381,7 +379,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const writeStdinCall = items.find(
       (item) => item.type === "tool_call" && item.id === "stdin-1",
     );
@@ -438,7 +436,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const waitCall = items.find(
       (item) => item.type === "tool_call" && item.id === "wait-1",
     );
@@ -521,7 +519,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     // The wait on the detached cell folds into the originating poll row,
     // which keeps the linkage the wait inherited.
@@ -639,7 +637,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const byId = (id: string) =>
       items.find((item) => item.type === "tool_call" && item.id === id);
 
@@ -711,7 +709,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const tools = items.filter((item) => item.type === "tool_call");
     expect(tools).toHaveLength(1);
     const merged = tools[0];
@@ -756,7 +754,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const poll = items.find(
       (item) => item.type === "tool_call" && item.id === "poll-1",
     );
@@ -826,7 +824,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const ids = items
       .filter((item) => item.type === "tool_call")
       .map((item) => (item.type === "tool_call" ? item.id : ""));
@@ -883,7 +881,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const writeStdinCall = items.find(
       (item) => item.type === "tool_call" && item.id === "stdin-1",
     );
@@ -956,7 +954,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     const writeStdinCall = items.find(
       (item) => item.type === "tool_call" && item.id === "stdin-1",
     );
@@ -984,7 +982,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     expect(items[0]?.type).toBe("thinking");
@@ -997,7 +995,7 @@ describe("preprocessMessages", () => {
       { type: "text" as const, text: "My response." },
     ];
 
-    const streamingItems = preprocessMessages([
+    const streamingItems = compileTranscriptProjection([
       {
         id: "msg-1",
         role: "assistant",
@@ -1006,7 +1004,7 @@ describe("preprocessMessages", () => {
         _isStreaming: true,
       } as Message,
     ]);
-    const completeItems = preprocessMessages([
+    const completeItems = compileTranscriptProjection([
       {
         id: "msg-1",
         role: "assistant",
@@ -1038,7 +1036,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]?.type).toBe("text");
@@ -1054,7 +1052,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1079,7 +1077,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1101,7 +1099,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1123,7 +1121,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(0);
   });
@@ -1172,7 +1170,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
@@ -1249,7 +1247,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1285,7 +1283,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1313,7 +1311,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1347,7 +1345,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
@@ -1391,7 +1389,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
@@ -1421,7 +1419,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
@@ -1470,7 +1468,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
@@ -1496,7 +1494,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    expect(preprocessMessages(messages)).toMatchObject([
+    expect(compileTranscriptProjection(messages)).toMatchObject([
       { type: "user_prompt", content: literalPrompt },
     ]);
   });
@@ -1531,7 +1529,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(3);
     expect(items[0]).toMatchObject({
@@ -1563,7 +1561,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1584,7 +1582,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages, {
+    const items = compileTranscriptProjection(messages, {
       markdown: {
         "msg-1": { html: "<p>Hello <strong>world</strong></p>" },
       },
@@ -1629,7 +1627,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1653,7 +1651,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -1692,7 +1690,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
 
     expect(items).toHaveLength(1);
     const item = items[0];
@@ -1715,7 +1713,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "system",
@@ -1735,7 +1733,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "system",
@@ -1761,7 +1759,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "system",
@@ -1804,7 +1802,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(3);
     expect(items[0]).toMatchObject({
       type: "system",
@@ -1833,7 +1831,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "system",
@@ -1853,7 +1851,7 @@ describe("preprocessMessages", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "system",
@@ -1881,7 +1879,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -1928,7 +1926,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(2);
       const tool1 = items.find(
@@ -1960,7 +1958,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -2000,7 +1998,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -2041,7 +2039,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -2081,7 +2079,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -2135,7 +2133,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(warn).not.toHaveBeenCalled();
       expect(items).toHaveLength(1);
@@ -2168,7 +2166,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages, {
+      const items = compileTranscriptProjection(messages, {
         activeToolApproval: true,
       });
 
@@ -2198,7 +2196,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages, {
+      const items = compileTranscriptProjection(messages, {
         activeToolApproval: false,
       });
 
@@ -2241,7 +2239,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages, {
+      const items = compileTranscriptProjection(messages, {
         activeToolApproval: true,
       });
 
@@ -2293,7 +2291,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages, {
+      const items = compileTranscriptProjection(messages, {
         activeToolApproval: true,
       });
       const oldTool = items.find(
@@ -2329,7 +2327,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages, {
+      const items = compileTranscriptProjection(messages, {
         activeToolApproval: true,
       });
 
@@ -2374,14 +2372,14 @@ describe("preprocessMessages", () => {
       ];
     }
 
-    function findBashCall(items: ReturnType<typeof preprocessMessages>) {
+    function findBashCall(items: ReturnType<typeof compileTranscriptProjection>) {
       return items.find(
         (item) => item.type === "tool_call" && item.id === "bash-bg-1",
       );
     }
 
     it("marks a backgrounded run as running while no completion evidence exists", () => {
-      const items = preprocessMessages(backgroundLaunchMessages());
+      const items = compileTranscriptProjection(backgroundLaunchMessages());
       const call = findBashCall(items);
       expect(call?.type).toBe("tool_call");
       if (call?.type === "tool_call") {
@@ -2412,7 +2410,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const call = findBashCall(preprocessMessages(messages));
+      const call = findBashCall(compileTranscriptProjection(messages));
       expect(call?.type).toBe("tool_call");
       if (call?.type === "tool_call") {
         expect(call.toolInput).toMatchObject({
@@ -2453,7 +2451,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const call = findBashCall(preprocessMessages(messages));
+      const call = findBashCall(compileTranscriptProjection(messages));
       expect(call?.type).toBe("tool_call");
       if (call?.type === "tool_call") {
         expect(call.status).toBe("pending");
@@ -2493,7 +2491,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const runningCall = findBashCall(preprocessMessages(detachMessages));
+      const runningCall = findBashCall(compileTranscriptProjection(detachMessages));
       expect(runningCall?.type).toBe("tool_call");
       if (runningCall?.type === "tool_call") {
         expect(runningCall.toolInput).toMatchObject({
@@ -2502,7 +2500,7 @@ describe("preprocessMessages", () => {
       }
 
       const completedCall = findBashCall(
-        preprocessMessages([
+        compileTranscriptProjection([
           ...detachMessages,
           {
             id: "msg-wait-use",
@@ -2569,7 +2567,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const call = preprocessMessages(messages).find(
+      const call = compileTranscriptProjection(messages).find(
         (item) => item.type === "tool_call" && item.id === "bash-fg-1",
       );
       expect(call?.type).toBe("tool_call");
@@ -2603,7 +2601,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -2638,7 +2636,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
@@ -2664,7 +2662,7 @@ describe("preprocessMessages", () => {
         },
       ];
 
-      const items = preprocessMessages(messages);
+      const items = compileTranscriptProjection(messages);
 
       expect(items).toHaveLength(1);
       expect(items[0]?.type).toBe("user_prompt");

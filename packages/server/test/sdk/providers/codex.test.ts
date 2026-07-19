@@ -29,7 +29,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { preprocessMessages } from "../../../../client/src/lib/preprocessMessages.ts";
+import { compileTranscriptProjection } from "../../../../client/src/lib/transcriptProjection/compiler.ts";
 import { getCodexCommonPaths } from "../../../src/sdk/cli-detection.js";
 import { logSDKMessage } from "../../../src/sdk/messageLogger.js";
 import {
@@ -3036,8 +3036,8 @@ describe("CodexProvider Event Normalization", () => {
       messages.some((message) => message.subtype === "turn_complete"),
     ).toBe(false);
     expect(
-      preprocessMessages(
-        messages as Parameters<typeof preprocessMessages>[0],
+      compileTranscriptProjection(
+        messages as Parameters<typeof compileTranscriptProjection>[0],
       )[0],
     ).toMatchObject(codexInterruptedTurnFixtures.expectedRenderMessage);
   });
@@ -3136,10 +3136,10 @@ describe("CodexProvider Event Normalization", () => {
       codexTurnId: "turn-1",
     });
 
-    const renderItems = preprocessMessages([
+    const renderItems = compileTranscriptProjection([
       ...toolMessages,
       ...turnMessages,
-    ] as Parameters<typeof preprocessMessages>[0]);
+    ] as Parameters<typeof compileTranscriptProjection>[0]);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "cmd-1",
@@ -3247,12 +3247,12 @@ describe("CodexProvider Event Normalization", () => {
       orphanedToolUseIds: ["cmd-1"],
     });
 
-    const renderItems = preprocessMessages([
+    const renderItems = compileTranscriptProjection([
       ...toolUse,
       ...toolStarted,
       ...backgroundHandle,
       ...turnMessages,
-    ] as Parameters<typeof preprocessMessages>[0]);
+    ] as Parameters<typeof compileTranscriptProjection>[0]);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "cmd-1",
@@ -3334,11 +3334,11 @@ describe("CodexProvider Event Normalization", () => {
       turnMessages.some((message) => message.subtype === "codex_tool_orphans"),
     ).toBe(false);
 
-    const renderItems = preprocessMessages([
+    const renderItems = compileTranscriptProjection([
       ...toolStarted,
       ...toolCompleted,
       ...turnMessages,
-    ] as Parameters<typeof preprocessMessages>[0]);
+    ] as Parameters<typeof compileTranscriptProjection>[0]);
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "cmd-1",

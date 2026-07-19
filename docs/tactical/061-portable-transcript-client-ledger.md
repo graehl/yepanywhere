@@ -95,7 +95,7 @@ decision, not a move-only extraction.
 | PTC-008 | Complete | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
 | PTC-009 | Complete | Route every production web projection consumer through one canonical web adapter | Existing adapter and facade are behavior-identical delegates | Focused client + root lint/typecheck |
 | PTC-010 | Complete | Extract independently consumed agent-result parsing from the large message-projection module | Move-only; helper assertions unchanged | Focused semantic + root lint/typecheck |
-| PTC-011 | Planned | Migrate semantic tests, benchmark tooling, and server parity callers to their owning compiler/cache APIs | PTC-009/010 landed; no production facade consumers remain | Full client/server parity + performance |
+| PTC-011 | Complete | Migrate semantic tests, benchmark tooling, and server parity callers to their owning compiler/cache APIs | PTC-009/010 landed; no production facade consumers remain | Full client/server parity + performance |
 | PTC-012 | Planned | Delete the compatibility facade and enforce the final ownership map | No remaining imports or historical re-exports | Full final gates |
 
 PTC-007 is intentionally one integration cutover row. It may gain preparation
@@ -383,3 +383,25 @@ Landed 2026-07-19, this commit.
   lint/typecheck, fixed performance comparison, and `git diff --check`.
 - Follow-ups or surprises: none; the facade temporarily re-exports the moved
   helper until its remaining consumers are migrated in PTC-011.
+
+### PTC-011 — Migrate projection tests and parity tooling
+
+Landed 2026-07-19, this commit.
+
+- Moved/changed: pointed semantic tests and server render-parity callers at the
+  pure compiler, renamed the legacy semantic suite, and made the benchmark
+  measure compiler and cache APIs explicitly.
+- Explicitly unchanged: semantic expectations, server normalization inputs,
+  parity normalization, benchmark corpus/tolerances, and production code.
+- Dependency result: no production, test, script, or server file imports the
+  compatibility facade; only the facade definition and its boundary pattern
+  remain before deletion.
+- Semantic/browser/private artifact result: the full client suite and focused
+  server render/normalization parity passed without expectation changes.
+- Performance result: the fixed benchmark retained 1,003 items, cache identity,
+  and 961/961 reusable prefix references within baseline tolerance.
+- Commands: focused and full client tests, focused server parity tests, client
+  and root typecheck/lint, console budget, fixed performance comparison, and
+  `git diff --check`.
+- Follow-ups or surprises: none; PTC-012 can now delete the facade without a
+  compatibility shim or caller cutover.

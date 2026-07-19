@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { preprocessMessages } from "../../preprocessMessages";
+import { compileTranscriptProjection } from "../../transcriptProjection/compiler";
 import type { Message, SessionMetadata } from "../../../types";
 import { createFinalMarkdownAugmentAction } from "../actionAdapters";
 import { selectSessionDetailPreprocessAugments } from "../selectors";
@@ -35,7 +35,7 @@ function assistantMessage(uuid: string, text: string): Message {
 }
 
 function getFirstTextAugmentHtml(messages: Message[]) {
-  const items = preprocessMessages(
+  const items = compileTranscriptProjection(
     messages,
     selectSessionDetailPreprocessAugments({
       ...createInitialSessionDetailState(),
@@ -49,7 +49,7 @@ function getFirstTextAugmentHtml(messages: Message[]) {
 function getStateTextAugmentHtml(
   state: ReturnType<typeof createInitialSessionDetailState>,
 ) {
-  const items = preprocessMessages(
+  const items = compileTranscriptProjection(
     state.messages,
     selectSessionDetailPreprocessAugments(state),
   );

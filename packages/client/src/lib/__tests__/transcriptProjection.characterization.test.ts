@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../../types";
 import type { RenderItem } from "../../types/renderItems";
-import {
-  compileTranscriptProjection,
-  preprocessMessages,
-} from "../preprocessMessages";
+import { compileTranscriptProjection } from "../transcriptProjection/compiler";
+import { getCachedWebTranscriptProjection } from "../webTranscriptProjection";
 
 function sourceIds(item: RenderItem): string[] {
   return item.sourceMessages.map(
@@ -65,7 +63,7 @@ function characterize(item: RenderItem): Record<string, unknown> {
 }
 
 describe("transcript projection characterization", () => {
-  it("exposes an uncached pure compiler beneath the cached facade", () => {
+  it("keeps pure compilation separate from the cached web adapter", () => {
     const messages: Message[] = [
       {
         id: "facade-user",
@@ -81,12 +79,12 @@ describe("transcript projection characterization", () => {
 
     const firstCompiled = compileTranscriptProjection(messages);
     const secondCompiled = compileTranscriptProjection(messages);
-    const firstCached = preprocessMessages(messages);
+    const firstCached = getCachedWebTranscriptProjection(messages);
 
     expect(firstCompiled).toEqual(firstCached);
     expect(secondCompiled).toEqual(firstCached);
     expect(firstCompiled).not.toBe(secondCompiled);
-    expect(preprocessMessages(messages)).toBe(firstCached);
+    expect(getCachedWebTranscriptProjection(messages)).toBe(firstCached);
   });
 
   it("pins setup, prose, thinking, tool pairing, compact, and error output", () => {
@@ -156,7 +154,7 @@ describe("transcript projection characterization", () => {
     ];
 
     expect(
-      preprocessMessages(messages, {
+      getCachedWebTranscriptProjection(messages, {
         markdown: {
           "assistant-1": { html: "<p>I’ll inspect it.</p>" },
         },
@@ -285,7 +283,7 @@ describe("transcript projection characterization", () => {
       },
     ];
 
-    expect(preprocessMessages(messages).map(characterize)).toEqual([
+    expect(getCachedWebTranscriptProjection(messages).map(characterize)).toEqual([
       {
         type: "tool_call",
         id: "poll-1",

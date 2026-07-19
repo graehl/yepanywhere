@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../../types.js";
-import { preprocessMessages } from "../preprocessMessages.js";
+import { compileTranscriptProjection } from "../transcriptProjection/compiler.js";
 
 describe("tool display-action preprocessing", () => {
   it("carries derived actions without changing tool-call structure", () => {
@@ -52,7 +52,7 @@ describe("tool display-action preprocessing", () => {
       },
     ];
 
-    expect(preprocessMessages(messages)).toMatchObject([
+    expect(compileTranscriptProjection(messages)).toMatchObject([
       {
         type: "tool_call",
         id: "tool-1",
@@ -101,7 +101,7 @@ describe("tool display-action preprocessing", () => {
       },
     ];
 
-    const items = preprocessMessages(messages);
+    const items = compileTranscriptProjection(messages);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       type: "tool_call",

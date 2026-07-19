@@ -1,8 +1,6 @@
 import { inspect } from "node:util";
-import {
-  type PreprocessAugments,
-  preprocessMessages,
-} from "../../../client/src/lib/preprocessMessages.ts";
+import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
+import type { PreprocessAugments } from "../../../client/src/lib/transcriptProjection/types.ts";
 import type { Message as ClientMessage } from "../../../client/src/types.ts";
 import type { RenderItem } from "../../../client/src/types/renderItems.ts";
 import { createStreamAugmenter } from "../../src/augments/stream-augmenter.js";
@@ -251,7 +249,7 @@ export async function runPersistedPipeline(
   await augmentPersistedSessionMessages(
     normalizedSession.messages as unknown as ServerMessage[],
   );
-  const renderItems = preprocessMessages(
+  const renderItems = compileTranscriptProjection(
     normalizedSession.messages,
     preprocessAugments,
   );
@@ -300,7 +298,7 @@ export async function runStreamPipeline(
 
   await augmenter.flush();
 
-  const renderItems = preprocessMessages(
+  const renderItems = compileTranscriptProjection(
     collectedMessages,
     mergePreprocessAugments(preprocessAugments, markdownAugments),
   );

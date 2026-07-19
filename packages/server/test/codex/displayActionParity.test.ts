@@ -5,7 +5,7 @@ import {
   type UrlProjectId,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
-import { preprocessMessages } from "../../../client/src/lib/preprocessMessages.js";
+import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.js";
 import type { Message as ClientMessage } from "../../../client/src/types.js";
 import { CodexProvider } from "../../src/sdk/providers/codex.js";
 import { normalizeSession } from "../../src/sessions/normalization.js";
@@ -163,10 +163,10 @@ describe("Codex display-action propagation parity", () => {
       itemId: callId,
     });
 
-    const persistedItem = preprocessMessages(
+    const persistedItem = compileTranscriptProjection(
       persistedMessages as unknown as ClientMessage[],
     ).find((item) => item.type === "tool_call");
-    const liveItem = preprocessMessages(
+    const liveItem = compileTranscriptProjection(
       liveMessages as unknown as ClientMessage[],
     ).find((item) => item.type === "tool_call");
     expect(persistedItem).toMatchObject({

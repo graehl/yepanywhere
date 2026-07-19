@@ -3,11 +3,12 @@ import { cpus, platform, release } from "node:os";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Message } from "../src/types";
-import { preprocessMessages } from "../src/lib/preprocessMessages";
 import {
   canReuseRenderItem,
   stabilizeRenderItems,
 } from "../src/lib/stableRenderItems";
+import { getCachedTranscriptProjection } from "../src/lib/transcriptProjection/cache";
+import { compileTranscriptProjection } from "../src/lib/transcriptProjection/compiler";
 
 interface Metric {
   iterations: number;
@@ -44,6 +45,14 @@ interface Options {
 }
 
 const TURNS = 320;
+
+function getCachedProjection(messages: Message[]) {
+  return getCachedTranscriptProjection(
+    messages,
+    undefined,
+    compileTranscriptProjection,
+  );
+}
 
 function parseArgs(argv: string[]): Options {
   const options: Options = {};
@@ -172,14 +181,14 @@ function compileChangedTail(messages: Message[]): Message[] {
 function buildReport(): BenchmarkReport {
   const messages = buildCorpus();
   for (let index = 0; index < 15; index += 1) {
-    preprocessMessages(messages.slice());
+    compileTranscriptProjection(messages.slice());
   }
 
-  const cachedItems = preprocessMessages(messages);
+  const cachedItems = getCachedProjection(messages);
   const cachePreservesArrayIdentity =
-    preprocessMessages(messages) === cachedItems;
+    getCachedProjection(messages) === cachedItems;
 
-  const changedItems = preprocessMessages(compileChangedTail(messages));
+  const changedItems = compileTranscriptProjection(compileChangedTail(messages));
   const stabilized = stabilizeRenderItems(cachedItems, changedItems);
   const reusablePrefixIndexes = cachedItems
     .slice(0, -1)
@@ -195,12 +204,12 @@ function buildReport(): BenchmarkReport {
   const metrics = {
     coldSemanticCompile: roundMetric(
       measure(75, () => {
-        preprocessMessages(messages.slice());
+        compileTranscriptProjection(messages.slice());
       }),
     ),
     sameArrayCacheHit: roundMetric(
       measure(2_000, () => {
-        preprocessMessages(messages);
+        getCachedProjection(messages);
       }),
     ),
     changedTailStabilization: roundMetric(

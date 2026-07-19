@@ -728,7 +728,7 @@ describe("MessageInput", () => {
     }
   });
 
-  it("replaces the mobile toolbar with a large action while the keyboard is open", () => {
+  it("shows More while empty and a large action for keyboard-open content", () => {
     const viewport = installMobileKeyboardViewport();
     const onSend = vi.fn();
     const textarea = renderMessageInput(vi.fn(() => true), { onSend });
@@ -740,18 +740,31 @@ describe("MessageInput", () => {
       fireEvent.focus(textarea);
       act(() => viewport.setHeight(480));
 
+      expect(
+        screen.getByRole("button", { name: "More toolbar controls" }),
+      ).toBeTruthy();
+      expect(
+        document.querySelector(".message-input-keyboard-primary"),
+      ).toBeNull();
+      expect(document.querySelector(".message-input-toolbar")).toBeNull();
+
+      fireEvent.change(textarea, { target: { value: "mobile send" } });
       const keyboardAction = document.querySelector(
         ".message-input-keyboard-primary",
       ) as HTMLButtonElement | null;
       expect(keyboardAction).toBeTruthy();
       expect(keyboardAction?.textContent).toContain("toolbarSend");
-      expect(document.querySelector(".message-input-toolbar")).toBeNull();
 
-      fireEvent.change(textarea, { target: { value: "mobile send" } });
       fireEvent.pointerDown(keyboardAction as HTMLButtonElement);
       fireEvent.click(keyboardAction as HTMLButtonElement);
 
       expectSubmission(onSend, "mobile send", "direct");
+      expect(
+        document.querySelector(".message-input-keyboard-primary"),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "More toolbar controls" }),
+      ).toBeTruthy();
 
       act(() => viewport.setHeight(800));
       expect(
@@ -781,8 +794,9 @@ describe("MessageInput", () => {
     });
 
     try {
-      fireEvent.focus(textarea);
+      act(() => textarea.focus());
       act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, { target: { value: "wait until done" } });
 
       const actions = document.querySelectorAll(
         ".message-input-keyboard-action",
@@ -793,13 +807,110 @@ describe("MessageInput", () => {
       expect(actions[1]?.classList.contains("steer-mode")).toBe(true);
       expect(actions[1]?.textContent).toContain("Steer");
 
-      fireEvent.change(textarea, { target: { value: "wait until done" } });
       fireEvent.click(actions[0] as HTMLButtonElement);
       expectSubmission(onQueue, "wait until done", "patient");
 
       fireEvent.change(textarea, { target: { value: "steer now" } });
-      fireEvent.click(actions[1] as HTMLButtonElement);
+      fireEvent.click(
+        document.querySelector(
+          ".message-input-keyboard-primary",
+        ) as HTMLButtonElement,
+      );
       expectSubmission(onSend, "steer now", "steer");
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("keeps the keyboard-open row free of disabled actions after send starts a turn", () => {
+    const viewport = installMobileKeyboardViewport();
+    const onSend = vi.fn();
+    const onQueue = vi.fn();
+
+    function BusyAfterSendHarness() {
+      const [busy, setBusy] = useState(false);
+      return (
+        <MessageInput
+          onSend={(text, metadata) => {
+            onSend(text, metadata);
+            setBusy(true);
+          }}
+          onQueue={busy ? onQueue : undefined}
+          supportsSteering={busy}
+          primaryActionKind={busy ? "steer" : "send"}
+          draftKey="keyboard-transition-draft"
+          placeholder="Message"
+          supportsPermissionMode={false}
+          supportsThinkingToggle={false}
+        />
+      );
+    }
+
+    render(<BusyAfterSendHarness />);
+    const textarea = screen.getByPlaceholderText("Message");
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, { target: { value: "start the turn" } });
+      fireEvent.click(
+        document.querySelector(
+          ".message-input-keyboard-primary",
+        ) as HTMLButtonElement,
+      );
+
+      expectSubmission(onSend, "start the turn", "direct");
+      expect(
+        document.querySelectorAll(".message-input-keyboard-action"),
+      ).toHaveLength(0);
+      expect(
+        screen.getByRole("button", { name: "More toolbar controls" }),
+      ).toBeTruthy();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("keeps keyboard focus while More exposes attachments and Project Queue", () => {
+    const viewport = installMobileKeyboardViewport();
+    const onProjectQueue = vi.fn();
+    const onAttach = vi.fn();
+    const inputClick = vi
+      .spyOn(HTMLInputElement.prototype, "click")
+      .mockImplementation(() => {});
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onProjectQueue,
+        onAttach,
+        projectId: "project-1",
+        sessionId: "session-1",
+      },
+    );
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+
+      const more = screen.getByRole("button", {
+        name: "More toolbar controls",
+      });
+      fireEvent.pointerDown(more);
+      fireEvent.click(more);
+
+      expect(more.getAttribute("aria-expanded")).toBe("true");
+      expect(document.activeElement).toBe(textarea);
+
+      const attach = screen.getByTitle("toolbarAttachFiles");
+      fireEvent.pointerDown(attach);
+      fireEvent.click(attach);
+      expect(inputClick).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(textarea, { target: { value: "project later" } });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Queue for Project Queue" }),
+      );
+      expectSubmission(onProjectQueue, "project later", "deferred");
     } finally {
       viewport.restore();
     }
@@ -1074,7 +1185,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "replace this text" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange(8, 12);
 
     act(() => {
@@ -1306,7 +1417,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "replace this text" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange(8, 12);
 
     act(() => {
@@ -1325,7 +1436,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "replace this text" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange(8, 12);
 
     act(() => {
@@ -1347,7 +1458,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "replace this text" } });
-    textarea.focus();
+    act(() => textarea.focus());
 
     act(() => {
       voicePropsState.current?.onListeningStart?.();
@@ -1375,7 +1486,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "replace this text" } });
-    textarea.focus();
+    act(() => textarea.focus());
 
     act(() => {
       voicePropsState.current?.onListeningStart?.();
@@ -1401,7 +1512,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "hello world" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange(5, 5);
 
     act(() => {
@@ -1422,7 +1533,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "alpha beta gamma" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange(
       "alpha beta gamma".length,
       "alpha beta gamma".length,
@@ -1454,7 +1565,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "Ok, look again." } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange("Ok, ".length, "Ok, look".length);
 
     act(() => {
@@ -1531,7 +1642,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "prefix suffix" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange("prefix".length, "prefix".length);
 
     act(() => {
@@ -1556,7 +1667,7 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
     fireEvent.change(textarea, { target: { value: "prefix suffix" } });
-    textarea.focus();
+    act(() => textarea.focus());
     textarea.setSelectionRange("prefix".length, "prefix".length);
 
     act(() => {

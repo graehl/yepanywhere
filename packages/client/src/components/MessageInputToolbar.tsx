@@ -277,6 +277,8 @@ export interface MessageInputToolbarProps {
   canForkAfterSummary?: boolean;
   canSend?: boolean;
   disabled?: boolean;
+  /** Keep toolbar utilities/settings but omit the ordinary primary/alternate actions. */
+  hidePrimaryDeliveryActions?: boolean;
 
   // Pending approval indicator
   pendingApproval?: {
@@ -638,6 +640,7 @@ export interface MessageInputToolbarViewProps {
   pendingApproval?: MessageInputToolbarProps["pendingApproval"];
   shortcutsControl: ToolbarShortcutsControl;
   actionsControl: ToolbarActionsControl;
+  hidePrimaryDeliveryActions?: boolean;
 }
 
 function ToolbarMicrophoneIcon() {
@@ -840,6 +843,7 @@ export function MessageInputToolbarView({
   pendingApproval,
   shortcutsControl,
   actionsControl,
+  hidePrimaryDeliveryActions = false,
 }: MessageInputToolbarViewProps) {
   const controlPriority = priority ?? DEFAULT_SESSION_TOOLBAR_PRIORITY;
   // Inline copy always carries `-inline`; append the priority-derived tier (or
@@ -898,7 +902,9 @@ export function MessageInputToolbarView({
   // the composer; wide+enabled keeps the inline row's positioning context.
   const applyStatusFloats =
     isCompactStatusMode || (statusFloats && showToolbarStatus);
-  const showSendButton = !!actionsControl.send?.onSend;
+  const showSendButton = !!(
+    !hidePrimaryDeliveryActions && actionsControl.send?.onSend
+  );
   const showStopButton = !!actionsControl.stop;
   const showProjectQueueButton = !!(
     visibility.projectQueue && actionsControl.projectQueue?.onProjectQueue
@@ -1172,14 +1178,14 @@ export function MessageInputToolbarView({
     waveform: speechWaveformActive,
     send: showSendButton ? actionsControl.send?.primaryActionKind : "off",
     queue:
-      queueControl?.hasDualActions
+      !hidePrimaryDeliveryActions && queueControl?.hasDualActions
         ? [
             actionsControl.send?.primaryActionKind,
             !!queueControl.onQueue,
             !!queueControl.onSteer,
           ].join(":")
         : "off",
-    alternate: !!actionsControl.send?.alternate,
+    alternate: !hidePrimaryDeliveryActions && !!actionsControl.send?.alternate,
     stop: showStopButton,
     pending: pendingApproval?.type ?? "off",
   });
@@ -1971,7 +1977,8 @@ export function MessageInputToolbarView({
             {renderSteerNowToggle(
               inlineTierClass("steerNow", "steer-now-toggle"),
             )}
-            {queueControl?.hasDualActions &&
+            {!hidePrimaryDeliveryActions &&
+              queueControl?.hasDualActions &&
               actionsControl.send.primaryActionKind !== "queue" &&
               queueControl.onQueue && (
                 <button
@@ -1987,7 +1994,8 @@ export function MessageInputToolbarView({
                   <span className="send-icon queue-icon">→</span>
                 </button>
               )}
-            {queueControl?.hasDualActions &&
+            {!hidePrimaryDeliveryActions &&
+              queueControl?.hasDualActions &&
               actionsControl.send.primaryActionKind === "queue" &&
               queueControl.onSteer && (
                 <button
@@ -2003,7 +2011,7 @@ export function MessageInputToolbarView({
                   <span className="send-icon">↗</span>
                 </button>
               )}
-            {actionsControl.send.alternate && (
+            {!hidePrimaryDeliveryActions && actionsControl.send.alternate && (
               <button
                 type="button"
                 onClick={actionsControl.send.alternate.onClick}
@@ -2106,6 +2114,7 @@ export function MessageInputToolbar({
   canForkAfterSummary,
   canSend,
   disabled,
+  hidePrimaryDeliveryActions = false,
   pendingApproval,
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
@@ -2836,6 +2845,7 @@ export function MessageInputToolbar({
               }
             : null,
       }}
+      hidePrimaryDeliveryActions={hidePrimaryDeliveryActions}
     />
   );
 }

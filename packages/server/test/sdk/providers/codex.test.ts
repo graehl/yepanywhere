@@ -111,6 +111,7 @@ function isBashAvailable(): boolean {
 }
 
 const bashIt = process.platform !== "win32" && isBashAvailable() ? it : it.skip;
+const unixIt = process.platform !== "win32" ? it : it.skip;
 
 describe("CodexProvider", () => {
   let provider: CodexProvider;
@@ -313,6 +314,67 @@ describe("CodexProvider", () => {
 });
 
 describe("CodexProvider app-server lifecycle", () => {
+  unixIt(
+    "escalates shutdown when the Codex app-server ignores SIGTERM",
+    async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-kill-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-ignore-term",
+        `${buildFakeCodexAppServer(logPath)}\nprocess.on("SIGTERM", () => {});`,
+      );
+
+      let session:
+        | Awaited<ReturnType<CodexProvider["startSession"]>>
+        | undefined;
+      let consume: Promise<void> | undefined;
+      let pid: number | undefined;
+
+      try {
+        const testProvider = new CodexProvider({ codexPath });
+        session = await testProvider.startSession({
+          cwd: tempDir,
+          initialMessage: { text: "wait to be killed" },
+          effort: "low",
+        });
+        consume = (async () => {
+          for await (const _message of session?.iterator ?? []) {
+            // drain until the verified abort below closes the iterator
+          }
+        })();
+
+        await waitForFakeCodexRequest(logPath, "turn/start");
+        pid = typeof session.pid === "function" ? session.pid() : session.pid;
+        expect(pid).toBeTypeOf("number");
+        expect(session.isProcessAlive?.()).toBe(true);
+
+        await expect(session.abort()).resolves.toBeUndefined();
+        await consume.catch(() => undefined);
+        expect(session.isProcessAlive?.()).toBe(false);
+        expect(() => process.kill(pid as number, 0)).toThrow(
+          expect.objectContaining({ code: "ESRCH" }),
+        );
+      } finally {
+        try {
+          await session?.abort();
+        } catch {
+          // The assertions above report a failed verified shutdown.
+        }
+        await consume?.catch(() => undefined);
+        if (pid !== undefined) {
+          try {
+            process.kill(-pid, "SIGKILL");
+          } catch {
+            // The expected path already verified that the process group exited.
+          }
+        }
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    },
+    10_000,
+  );
+
   bashIt(
     "publishes the Codex thread id to later app-server tool shells",
     async () => {

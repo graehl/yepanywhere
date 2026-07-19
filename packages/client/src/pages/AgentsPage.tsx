@@ -125,6 +125,11 @@ interface ProcessCardProps {
   killing?: boolean;
 }
 
+interface KillFeedback {
+  tone: "success" | "error";
+  message: string;
+}
+
 function ProcessCard({
   process,
   basePath = "",
@@ -179,6 +184,11 @@ function ProcessCard({
         </div>
         <div className="agent-card-meta">
           <span className="agent-card-project">{process.projectName}</span>
+          {process.pid !== undefined && (
+            <span className="agent-card-pid">
+              {t("agentsPid" as never, { pid: process.pid })}
+            </span>
+          )}
           {!isTerminated && (
             <span className="agent-card-uptime">
               {formatUptime(process.startedAt)}
@@ -239,6 +249,7 @@ export function AgentsPage() {
   const [killingIds, setKillingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [killFeedback, setKillFeedback] = useState<KillFeedback | null>(null);
 
   // Forcibly abort a live (hung or otherwise) process. This is the manual
   // escape hatch for orphans the automatic stale sweep can't confirm dead
@@ -251,11 +262,23 @@ export function AgentsPage() {
         return;
       }
       setKillingIds((prev) => new Set(prev).add(process.id));
+      setKillFeedback(null);
       try {
-        await api.abortProcess(process.id);
-      } catch {
-        // Ignore: the refetch below reflects the real post-abort state, and a
-        // failed abort (e.g. already gone) needs no separate error surface.
+        const result = await api.abortProcess(process.id);
+        setKillFeedback({
+          tone: "success",
+          message:
+            result.pid === undefined
+              ? t("agentsKillVerified" as never)
+              : t("agentsKillVerifiedPid" as never, { pid: result.pid }),
+        });
+      } catch (error) {
+        setKillFeedback({
+          tone: "error",
+          message: t("agentsKillFailed" as never, {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        });
       } finally {
         await refetch();
         setKillingIds((prev) => {
@@ -288,6 +311,15 @@ export function AgentsPage() {
           {error && (
             <p className="error">
               {t("agentsError" as never, { message: error.message })}
+            </p>
+          )}
+
+          {killFeedback && (
+            <p
+              className={`agents-kill-feedback agents-kill-feedback-${killFeedback.tone}`}
+              role={killFeedback.tone === "error" ? "alert" : "status"}
+            >
+              {killFeedback.message}
             </p>
           )}
 

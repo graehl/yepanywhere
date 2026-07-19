@@ -437,6 +437,7 @@ document**, never as a side effect of a move.
 | 15 | Activity resubscribes on connected transition; connect is idempotent | `ActivityBus` stateChange listener (moves to managed stream) | `ReconnectSubscriptions.test.ts` |
 | 16 | `forceReconnect()` overlapping an in-flight `ensureConnected()` joins the in-flight recovery before deciding whether forced teardown is still needed | `SecureConnection.forceReconnect()` serialization | `SecureConnection.compatibility.test.ts` |
 | 17 | Terminal disconnected demand traffic fails fast without blocking reconnecting or empty-slot behavior | multiplex facade demand guard | `MultiplexSourceTransport.test.ts` |
+| 18 | Same-server API redirects remain fetch-compatible through relay: `Location` is forwarded and followed within `/api`; missing, external, or excessive redirect chains fail instead of returning a null success body | `ws-relay-handlers` + `RelayProtocol.fetch` | `ws-relay-request-concurrency.test.ts`, `RelayProtocol.hooks.test.ts` |
 
 Explicitly deferred semantic improvements (each its own future slice, opted
 into deliberately): per-source auth-required signaling replacing the global

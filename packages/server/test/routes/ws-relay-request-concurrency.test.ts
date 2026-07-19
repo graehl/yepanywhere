@@ -1,7 +1,7 @@
 import type { HttpBindings } from "@hono/node-server";
 import type { RelayResponse, YepMessage } from "@yep-anywhere/shared";
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RelayHandlerDeps } from "../../src/routes/ws-relay-handlers.js";
 import {
   createConnectionState,
@@ -85,5 +85,47 @@ describe("WS relay request concurrency", () => {
     });
     expect(responses().map((r) => r.id)).toEqual(["req-fast", "req-slow"]);
     expect(responses()[1]).toMatchObject({ status: 200, body: { which: "slow" } });
+  });
+
+  it("forwards Location so relay clients can follow API redirects", async () => {
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    app.get("/api/original", (c) => c.redirect("/api/redirected", 307));
+
+    const sent: YepMessage[] = [];
+    const connState = createConnectionState();
+    connState.connectionPolicy = "local_unrestricted";
+    connState.authState = "authenticated";
+    const deps = {
+      app,
+      baseUrl: "http://localhost",
+      supervisor: {},
+      eventBus: {},
+      uploadManager: {},
+    } as unknown as RelayHandlerDeps;
+
+    await handleMessage(
+      { send: () => {}, close: () => {} },
+      new Map(),
+      new Map(),
+      connState,
+      (message) => sent.push(message),
+      JSON.stringify({
+        type: "request",
+        id: "req-redirect",
+        method: "GET",
+        path: "/api/original",
+      }),
+      deps,
+      {},
+    );
+
+    await vi.waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]).toMatchObject({
+      type: "response",
+      status: 307,
+      headers: { location: "/api/redirected" },
+    });
   });
 });

@@ -262,6 +262,15 @@ export interface ProcessInfo {
   helperSideModel?: string;
 }
 
+export interface ProcessAbortResult {
+  processId: string;
+  sessionId: string;
+  /** PID captured before provider shutdown clears its child handle. */
+  pid?: number;
+  verifiedStopped: true;
+  verification: "pid" | "provider" | "iterator";
+}
+
 // Process events for subscribers
 export type ProcessEvent =
   | { type: "message"; message: SDKMessage }

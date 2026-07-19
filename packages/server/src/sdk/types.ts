@@ -199,7 +199,7 @@ export interface StartSessionOptions {
 export interface StartSessionResult {
   iterator: AsyncIterableIterator<SDKMessage>;
   queue: MessageQueue;
-  abort: () => void;
+  abort: () => void | Promise<void>;
   /** Check if the underlying CLI process is still alive (undefined = not available) */
   isProcessAlive?: () => boolean;
   /** OS PID of the spawned agent child process (undefined if not available) */

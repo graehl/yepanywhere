@@ -214,5 +214,60 @@ describe("Process", () => {
 
       expect(process.isTerminated).toBe(false);
     });
+
+    it("awaits provider shutdown and verifies provider liveness", async () => {
+      let resolveShutdown: (() => void) | undefined;
+      let alive = true;
+      const shutdown = new Promise<void>((resolve) => {
+        resolveShutdown = () => {
+          alive = false;
+          resolve();
+        };
+      });
+      const process = new Process(
+        createMockIterator([
+          { type: "system", subtype: "init", session_id: "sess-verified" },
+        ]),
+        {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-verified",
+          provider: "codex",
+          abortFn: () => shutdown,
+          isProcessAlive: () => alive,
+        },
+      );
+
+      const abortResult = process.abort();
+      await Promise.resolve();
+      expect(alive).toBe(true);
+
+      resolveShutdown?.();
+      await expect(abortResult).resolves.toMatchObject({
+        sessionId: "sess-verified",
+        verifiedStopped: true,
+        verification: "provider",
+      });
+    });
+
+    it("rejects an abort when the provider still reports a live process", async () => {
+      const process = new Process(
+        createMockIterator([
+          { type: "system", subtype: "init", session_id: "sess-still-live" },
+        ]),
+        {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-still-live",
+          provider: "codex",
+          abortFn: vi.fn(),
+          isProcessAlive: () => true,
+        },
+      );
+
+      await expect(process.abort()).rejects.toThrow(
+        "Provider still reports its process as running after abort",
+      );
+    });
   });
 });

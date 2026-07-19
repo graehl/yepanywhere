@@ -95,6 +95,20 @@ root cause of the interrupt is outside YA, because the user cannot distinguish
 4. Never hide or soften a known provider interruption behind generic running,
    stale-spinner, or reconnect copy.
 
+## Hard abort contract
+
+The Agents-page `Kill` action is a hard provider-process abort, not merely a
+request to stop the current turn. Success requires positive evidence that the
+target stopped: the recorded PID no longer exists, the provider liveness probe
+reports dead, or the provider iterator has ended. Sending a signal, setting a
+child-process `killed` flag, or waiting until a timeout is not success.
+
+The server retains the process row when termination cannot be verified and
+returns an actionable error. On verified success it reports the PID and the
+verification source, and stopped history contains at most one row for the
+canonical session id. Restarting and killing multiple process instances for the
+same provider session must replace that stopped record rather than duplicate it.
+
 ## Queue-state consistency edge case (provider desync)
 
 Claude and Codex sessions can report queued message state that diverges from

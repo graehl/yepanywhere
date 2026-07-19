@@ -391,7 +391,8 @@ export async function handleRequest(
       if (
         key.toLowerCase().startsWith("x-") ||
         key.toLowerCase() === "content-type" ||
-        key.toLowerCase() === "etag"
+        key.toLowerCase() === "etag" ||
+        key.toLowerCase() === "location"
       ) {
         responseHeaders[key] = value;
       }

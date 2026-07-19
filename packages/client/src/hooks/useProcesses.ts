@@ -36,6 +36,8 @@ export interface ProcessInfo {
   state: AgentActivity;
   startedAt: string;
   queueDepth: number;
+  /** OS PID of the spawned agent child process, when available. */
+  pid?: number;
   /** Session title from first user message */
   sessionTitle: string | null;
   /** Only present for terminated processes */

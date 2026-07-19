@@ -963,9 +963,14 @@ export const api = {
     ),
 
   abortProcess: (processId: string) =>
-    fetchJSON<{ aborted: boolean }>(`/processes/${processId}/abort`, {
-      method: "POST",
-    }),
+    fetchJSON<{
+      aborted: true;
+      processId: string;
+      sessionId: string;
+      pid?: number;
+      verifiedStopped: true;
+      verification: "pid" | "provider" | "iterator";
+    }>(`/processes/${processId}/abort`, { method: "POST" }),
 
   interruptProcess: (processId: string) =>
     fetchJSON<{ interrupted: boolean; supported: boolean; aborted?: boolean }>(

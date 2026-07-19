@@ -72,6 +72,7 @@ import {
 import type {
   AgentActivity,
   InputRequest,
+  ProcessAbortResult,
   ProcessEvent,
   ProcessInfo,
   ProcessOptions,
@@ -116,6 +117,66 @@ export interface RecapRequestResult {
 }
 
 const CLAUDE_UNBOUNDED_MAX_RETRIES = 2_147_483_647;
+const PROCESS_ABORT_TIMEOUT_MS = 5_000;
+const PID_EXIT_POLL_INTERVAL_MS = 25;
+
+function isLocalPidRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+      return false;
+    }
+    if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      return true;
+    }
+    throw error;
+  }
+}
+
+async function waitForLocalPidExit(
+  pid: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isLocalPidRunning(pid)) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return false;
+    }
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.min(PID_EXIT_POLL_INTERVAL_MS, remainingMs)),
+    );
+  }
+  return true;
+}
+
+async function waitUntilAbortDeadline<T>(
+  promise: Promise<T>,
+  deadline: number,
+  timeoutMessage: string,
+): Promise<T> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    throw new Error(timeoutMessage);
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(timeoutMessage)),
+          remainingMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
 
 /**
  * Whether a queued entry should ride the verified-idle "patient" path instead
@@ -622,7 +683,7 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   /** MessageQueue for real SDK, undefined for mock SDK */
   queue?: MessageQueue;
   /** Abort function from real SDK */
-  abortFn?: () => void;
+  abortFn?: () => void | Promise<void>;
   /** Check if underlying CLI process is still alive (for stale detection) */
   isProcessAlive?: () => boolean;
   /** Return true when an idle process should stay owned for an explicit feature. */
@@ -703,7 +764,7 @@ export class Process {
     | SessionQueuePersistenceService
     | undefined;
   private patientQueuePersistenceTail: Promise<void> = Promise.resolve();
-  private abortFn: (() => void) | null;
+  private abortFn: (() => void | Promise<void>) | null;
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
   private liveDeltaSubscriberCount = 0;
@@ -838,6 +899,7 @@ export class Process {
 
   /** OS PID of the spawned agent child process (supports deferred resolution) */
   private _pidResolver: number | (() => number | undefined) | undefined;
+  private _lastKnownPid: number | undefined;
 
   /** Resolved model name from the first assistant message (e.g., "claude-sonnet-4-5-20250929") */
   private _resolvedModel: string | undefined;
@@ -1046,10 +1108,14 @@ export class Process {
 
   /** OS PID of the spawned agent child process */
   get pid(): number | undefined {
-    if (typeof this._pidResolver === "function") {
-      return this._pidResolver();
+    const resolved =
+      typeof this._pidResolver === "function"
+        ? this._pidResolver()
+        : this._pidResolver;
+    if (resolved !== undefined) {
+      this._lastKnownPid = resolved;
     }
-    return this._pidResolver;
+    return resolved ?? this._lastKnownPid;
   }
 
   get queueDepth(): number {
@@ -3426,26 +3492,90 @@ export class Process {
   terminate(reason: string): void {
     // Kill the underlying CLI process first (if available), so it doesn't
     // continue running as an orphan after we unregister from the Supervisor.
-    if (this.abortFn) {
-      this.abortFn();
-    }
+    this.requestProviderAbortWithoutWaiting(reason);
     this.markTerminated(reason);
   }
 
-  async abort(): Promise<void> {
+  private async requestProviderAbort(): Promise<void> {
+    await this.abortFn?.();
+  }
+
+  private requestProviderAbortWithoutWaiting(reason: string): void {
+    void this.requestProviderAbort().catch((error) => {
+      getLogger().error(
+        {
+          event: "provider_abort_failed",
+          sessionId: this._sessionId,
+          processId: this.id,
+          projectId: this.projectId,
+          reason,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+        `Provider abort failed: ${this._sessionId}`,
+      );
+    });
+  }
+
+  async abort(): Promise<ProcessAbortResult> {
     this.clearIdleTimer();
     this.clearPromptCacheKeepaliveTimer();
     this.stopBucketSwapTimer();
     this.clearRetryingProviderRuntimeStatus();
+    const pid = this.pid;
+    const deadline = Date.now() + PROCESS_ABORT_TIMEOUT_MS;
+    const providerAbortOutcome = this.requestProviderAbort().then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
 
-    // Call the SDK's abort function if available
-    if (this.abortFn) {
-      this.abortFn();
+    let verification: ProcessAbortResult["verification"] | undefined;
+    if (pid !== undefined && this.executor === undefined) {
+      const remainingMs = Math.max(0, deadline - Date.now());
+      if (!(await waitForLocalPidExit(pid, remainingMs))) {
+        throw new Error(`Provider PID ${pid} is still running after abort`);
+      }
+      // A provider may own descendants in the same process group after its
+      // leader exits. When it exposes stronger liveness, let its shutdown
+      // promise finish and require that group-level check to agree.
+      const providerAliveAfterPidExit = this._isProcessAlive?.();
+      if (providerAliveAfterPidExit !== undefined && providerAliveAfterPidExit) {
+        const abortOutcome = await waitUntilAbortDeadline(
+          providerAbortOutcome,
+          deadline,
+          `Timed out waiting for provider process group ${pid} to stop`,
+        );
+        if (!abortOutcome.ok) throw abortOutcome.error;
+        if (this._isProcessAlive?.() !== false) {
+          throw new Error(
+            `Provider process group for PID ${pid} is still running after abort`,
+          );
+        }
+      }
+      verification = "pid";
+    } else {
+      const abortOutcome = await waitUntilAbortDeadline(
+        providerAbortOutcome,
+        deadline,
+        "Timed out waiting for provider shutdown",
+      );
+      if (!abortOutcome.ok) throw abortOutcome.error;
     }
 
-    // Wait for CLI process to fully exit (with timeout to avoid hanging)
-    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
-    await Promise.race([this._exitPromise, timeout]);
+    if (verification === undefined && this._isProcessAlive) {
+      if (this.isProcessAlive !== false) {
+        throw new Error(
+          "Provider still reports its process as running after abort",
+        );
+      }
+      verification = "provider";
+    } else if (verification === undefined) {
+      await waitUntilAbortDeadline(
+        this._exitPromise,
+        deadline,
+        "Timed out waiting for provider iterator to stop",
+      );
+      verification = "iterator";
+    }
 
     // Signal completion to subscribers (skip if already terminated —
     // markTerminated() already emitted "complete")
@@ -3453,6 +3583,14 @@ export class Process {
       this.emit({ type: "complete" });
     }
     this.listeners.clear();
+
+    return {
+      processId: this.id,
+      sessionId: this._sessionId,
+      ...(pid !== undefined ? { pid } : {}),
+      verifiedStopped: true,
+      verification,
+    };
   }
 
   private async processMessages(): Promise<void> {
@@ -3565,7 +3703,9 @@ export class Process {
         }
 
         if (isClaudeSdkApiErrorMessage(this.provider, message)) {
-          this.abortFn?.();
+          this.requestProviderAbortWithoutWaiting(
+            "Claude SDK API error; restart required",
+          );
           this.markTerminated(
             "Claude SDK API error; restart required",
             new Error(describeClaudeSdkApiError(message)),
@@ -4192,9 +4332,7 @@ export class Process {
 
     this.emit({ type: "idle-reap" });
 
-    if (this.abortFn) {
-      this.abortFn();
-    }
+    this.requestProviderAbortWithoutWaiting("idle reap");
 
     this.emit({ type: "complete" });
     this.listeners.clear();

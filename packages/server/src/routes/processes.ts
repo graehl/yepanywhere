@@ -164,12 +164,27 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
   routes.post("/:processId/abort", async (c) => {
     const processId = c.req.param("processId");
 
-    const aborted = await deps.supervisor.abortProcess(processId);
-    if (!aborted) {
-      return c.json({ error: "Process not found" }, 404);
-    }
+    try {
+      const result =
+        await deps.supervisor.abortProcessWithVerification(processId);
+      if (!result) {
+        return c.json({ error: "Process not found" }, 404);
+      }
 
-    return c.json({ aborted: true });
+      return c.json({ aborted: true, ...result });
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to verify provider process shutdown",
+          processId,
+          verifiedStopped: false,
+        },
+        500,
+      );
+    }
   });
 
   // POST /api/processes/:processId/interrupt - Interrupt current turn gracefully

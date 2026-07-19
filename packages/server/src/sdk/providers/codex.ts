@@ -176,6 +176,8 @@ const MODEL_LIST_TIMEOUT_MS = 8000;
 const APP_SERVER_INIT_REQUEST_ID = 1;
 const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
+const APP_SERVER_FORCE_KILL_WAIT_MS = 1000;
+const APP_SERVER_EXIT_POLL_MS = 25;
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
 const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
@@ -258,58 +260,91 @@ interface CodexTurnRuntimeState {
   backgroundToolCallIds: Set<string>;
 }
 
+function isProcessTargetRunning(target: number): boolean {
+  try {
+    process.kill(target, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+      return false;
+    }
+    if ((error as NodeJS.ErrnoException).code === "EPERM") {
+      return true;
+    }
+    throw error;
+  }
+}
+
+async function waitForProcessTargetExit(
+  target: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessTargetRunning(target)) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return false;
+    }
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.min(APP_SERVER_EXIT_POLL_MS, remainingMs)),
+    );
+  }
+  return true;
+}
+
 async function terminateChildProcess(
   child: ChildProcess | null | undefined,
   graceMs = APP_SERVER_SHUTDOWN_GRACE_MS,
 ): Promise<void> {
-  if (!child?.pid || child.killed || child.exitCode !== null) {
+  if (!child?.pid) {
+    return;
+  }
+  const pid = child.pid;
+  const killTarget = process.platform === "win32" ? pid : -pid;
+  if (!isProcessTargetRunning(killTarget)) {
     return;
   }
 
-  const exited = new Promise<void>((resolve) => {
-    child.once("exit", () => resolve());
-  });
-
   if (process.platform === "win32") {
     const taskkill = new Promise<void>((resolve) => {
-      execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], () =>
-        resolve(),
-      );
+      execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => resolve());
     });
     await Promise.race([
       taskkill,
       new Promise<void>((resolve) => setTimeout(resolve, graceMs)),
     ]);
-    await Promise.race([
-      exited,
-      new Promise<void>((resolve) => setTimeout(resolve, 100)),
-    ]);
+    if (!(await waitForProcessTargetExit(pid, APP_SERVER_FORCE_KILL_WAIT_MS))) {
+      throw new Error(`Failed to terminate Codex app-server PID ${pid}`);
+    }
     return;
   }
-
-  const killTarget = child.pid > 0 ? -child.pid : child.pid;
 
   try {
     process.kill(killTarget, "SIGTERM");
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+      return;
+    }
+    throw error;
+  }
+
+  if (await waitForProcessTargetExit(killTarget, graceMs)) {
     return;
   }
 
-  const timer = setTimeout(() => {
-    if (child.exitCode !== null || child.killed) {
+  try {
+    process.kill(killTarget, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {
       return;
     }
-    try {
-      process.kill(killTarget, "SIGKILL");
-    } catch {
-      // Ignore escalation failures during shutdown.
-    }
-  }, graceMs);
+    throw error;
+  }
 
-  try {
-    await exited;
-  } finally {
-    clearTimeout(timer);
+  if (
+    !(await waitForProcessTargetExit(killTarget, APP_SERVER_FORCE_KILL_WAIT_MS))
+  ) {
+    throw new Error(`Failed to terminate Codex app-server PID ${pid}`);
   }
 }
 
@@ -515,7 +550,9 @@ class CodexAppServerClient {
 
   isAlive(): boolean {
     const child = this.process;
-    return Boolean(child?.pid && child.exitCode === null && !child.killed);
+    if (!child?.pid) return false;
+    const target = process.platform === "win32" ? child.pid : -child.pid;
+    return isProcessTargetRunning(target);
   }
   private nextRequestId = 1;
   private readonly pendingRequests = new Map<
@@ -969,7 +1006,12 @@ export class CodexProvider implements AgentProvider {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutHandle);
-        void terminateChildProcess(child);
+        void terminateChildProcess(child).catch((error) => {
+          log.warn(
+            { error, pid: child.pid },
+            "Failed to terminate Codex model-list app-server",
+          );
+        });
         handler();
       };
 
@@ -1198,9 +1240,9 @@ export class CodexProvider implements AgentProvider {
     return {
       iterator,
       queue,
-      abort: () => {
+      abort: async () => {
         abortController.abort();
-        activeClient?.close();
+        await activeClient?.close();
       },
       isProcessAlive: () => activeClient?.isAlive() ?? false,
       getProviderActivity: () =>
@@ -1759,11 +1801,11 @@ export class CodexProvider implements AgentProvider {
       }
     } catch (error) {
       const codexFailureTrace = this.snapshotCodexFailureTrace(failureTrace);
-      log.error(
-        { error, codexFailureTrace },
-        "Error in codex app-server session",
-      );
       if (!signal.aborted) {
+        log.error(
+          { error, codexFailureTrace },
+          "Error in codex app-server session",
+        );
         const isProcessFailure = appServer.isClosed;
         yield {
           type: "error",

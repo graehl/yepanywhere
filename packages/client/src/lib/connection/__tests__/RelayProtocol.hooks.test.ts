@@ -123,4 +123,43 @@ describe("RelayProtocol hooks", () => {
       (sent.find((msg) => msg.type === "request") as RelayRequest | undefined),
     ).toBeUndefined();
   });
+
+  it("follows same-server API redirects", async () => {
+    const sent: RemoteClientMessage[] = [];
+    const protocol = new RelayProtocol({
+      sendMessage: (message) => sent.push(message),
+      sendUploadChunk: vi.fn(),
+      ensureConnected: vi.fn(async () => undefined),
+      isConnected: vi.fn(() => true),
+    });
+
+    const fetchPromise = protocol.fetch<{ messages: unknown[] }>(
+      "/sessions/session-1?projectId=wrong-project",
+    );
+    await flushUntil(() => sent.length === 1);
+    const first = sent[0] as RelayRequest;
+    protocol.routeMessage({
+      type: "response",
+      id: first.id,
+      status: 307,
+      headers: {
+        Location: "/api/sessions/session-1?projectId=correct-project",
+      },
+      body: null,
+    });
+
+    await flushUntil(() => sent.length === 2);
+    const redirected = sent[1] as RelayRequest;
+    expect(redirected.path).toBe(
+      "/api/sessions/session-1?projectId=correct-project",
+    );
+    protocol.routeMessage({
+      type: "response",
+      id: redirected.id,
+      status: 200,
+      body: { messages: [] },
+    });
+
+    await expect(fetchPromise).resolves.toEqual({ messages: [] });
+  });
 });

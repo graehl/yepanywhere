@@ -114,7 +114,7 @@ export interface AgentSession {
   /** Message queue for sending messages to the agent */
   queue: MessageQueue;
   /** Abort function to cancel the session */
-  abort: () => void;
+  abort: () => void | Promise<void>;
   /** Check if the underlying CLI process is still alive (undefined = not available) */
   isProcessAlive?: () => boolean;
   /** OS PID of the spawned agent child process (undefined if not available) */

@@ -729,6 +729,30 @@ describe("Supervisor", () => {
         supervisorWithRealSdk.getRecentlyTerminatedProcesses(),
       ).toHaveLength(1);
     });
+
+    it("keeps one canonical row when the same session is restarted", async () => {
+      mockSdk.addScenario(createMockScenario("sess-restarted", "First run"));
+      const first = await supervisor.resumeSession(
+        "sess-restarted",
+        "/tmp/test",
+        { text: "first" },
+      );
+      await supervisor.abortProcess(first.id);
+      expect(supervisor.getRecentlyTerminatedProcesses()).toHaveLength(1);
+
+      mockSdk.addScenario(createMockScenario("sess-restarted", "Second run"));
+      const second = await supervisor.resumeSession(
+        "sess-restarted",
+        "/tmp/test",
+        { text: "second" },
+      );
+      expect(supervisor.getRecentlyTerminatedProcesses()).toEqual([]);
+
+      await supervisor.abortProcess(second.id);
+      expect(supervisor.getRecentlyTerminatedProcesses()).toMatchObject([
+        { id: second.id, sessionId: "sess-restarted" },
+      ]);
+    });
   });
 
   describe("interruptProcess", () => {

@@ -112,6 +112,46 @@ function createRelayApiError(
   return error;
 }
 
+const RELAY_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_RELAY_REDIRECTS = 5;
+const RELAY_REDIRECT_ORIGIN = "https://yep-relay.invalid";
+
+function resolveRelayRedirectPath(
+  currentPath: string,
+  location: string | undefined,
+): string {
+  if (!location) {
+    throw new Error("Relay redirect response is missing a Location header");
+  }
+
+  const currentUrl = new URL(currentPath, RELAY_REDIRECT_ORIGIN);
+  const redirectUrl = new URL(location, currentUrl);
+  if (redirectUrl.origin !== RELAY_REDIRECT_ORIGIN) {
+    throw new Error("Relay refused a redirect to a different server");
+  }
+  if (
+    redirectUrl.pathname !== "/api" &&
+    !redirectUrl.pathname.startsWith("/api/")
+  ) {
+    throw new Error("Relay refused a redirect outside the API");
+  }
+  return `${redirectUrl.pathname}${redirectUrl.search}`;
+}
+
+function getRedirectedRequestInit(
+  status: number,
+  init: RequestInit | undefined,
+): RequestInit | undefined {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (
+    status === 303 ||
+    ((status === 301 || status === 302) && method === "POST")
+  ) {
+    return { ...init, method: "GET", body: undefined };
+  }
+  return init;
+}
+
 /** Default chunk size for file uploads (64KB) */
 const DEFAULT_CHUNK_SIZE = 64 * 1024;
 
@@ -400,6 +440,14 @@ export class RelayProtocol {
    * Make a JSON API request over the relay transport.
    */
   async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+    return await this.fetchWithRedirects<T>(path, init, 0);
+  }
+
+  private async fetchWithRedirects<T>(
+    path: string,
+    init: RequestInit | undefined,
+    redirectCount: number,
+  ): Promise<T> {
     await this.transport.ensureConnected();
 
     const id = generateId();
@@ -465,8 +513,42 @@ export class RelayProtocol {
 
       this.pendingRequests.set(id, {
         resolve: (response: RelayResponse) => {
+          if (RELAY_REDIRECT_STATUSES.has(response.status)) {
+            if (redirectCount >= MAX_RELAY_REDIRECTS) {
+              reject(
+                new Error(
+                  `Relay request exceeded ${MAX_RELAY_REDIRECTS} redirects`,
+                ),
+              );
+              return;
+            }
+            try {
+              const redirectPath = resolveRelayRedirectPath(
+                request.path,
+                getRelayHeader(response.headers, "Location"),
+              );
+              const redirectInit = getRedirectedRequestInit(
+                response.status,
+                init,
+              );
+              void this.fetchWithRedirects<T>(
+                redirectPath,
+                redirectInit,
+                redirectCount + 1,
+              ).then(resolve, reject);
+            } catch (error) {
+              reject(error instanceof Error ? error : new Error(String(error)));
+            }
+            return;
+          }
           if (response.status >= 400) {
             reject(createRelayApiError(response));
+          } else if (response.status >= 300) {
+            reject(
+              new Error(
+                `Unsupported relay response status: ${response.status}`,
+              ),
+            );
           } else {
             resolve(response.body as T);
           }

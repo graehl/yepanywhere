@@ -67,6 +67,7 @@ import {
 } from "./WorkerQueue.js";
 import {
   DEFAULT_IDLE_PREEMPT_THRESHOLD_MS,
+  type ProcessAbortResult,
   type ProcessInfo,
   type ProcessEvent,
   type ProcessOptions,
@@ -3202,8 +3203,14 @@ export class Supervisor {
   }
 
   async abortProcess(processId: string): Promise<boolean> {
+    return (await this.abortProcessWithVerification(processId)) !== null;
+  }
+
+  async abortProcessWithVerification(
+    processId: string,
+  ): Promise<ProcessAbortResult | null> {
     const process = this.processes.get(processId);
-    if (!process) return false;
+    if (!process) return null;
 
     const log = getLogger();
     log.info(
@@ -3221,9 +3228,21 @@ export class Supervisor {
     // can set up the grace period before any file changes arrive
     this.emitSessionAborted(process.sessionId, process.projectId);
 
-    await process.abort();
+    const result = await process.abort();
     this.unregisterProcess(process);
-    return true;
+    log.info(
+      {
+        event: "session_abort_verified",
+        sessionId: result.sessionId,
+        processId: result.processId,
+        pid: result.pid,
+        verification: result.verification,
+      },
+      result.pid === undefined
+        ? `Session abort verified: ${result.sessionId}`
+        : `Session abort verified: ${result.sessionId} (PID ${result.pid})`,
+    );
+    return result;
   }
 
   /**
@@ -3821,6 +3840,11 @@ export class Supervisor {
    * Prunes old entries and caps at MAX_TERMINATED_PROCESSES.
    */
   private addTerminatedProcess(info: ProcessInfo): void {
+    // A YA session has one canonical row. Restarting or reaping another
+    // provider process replaces its older stopped-process snapshot.
+    this.terminatedProcesses = this.terminatedProcesses.filter(
+      (existing) => existing.sessionId !== info.sessionId,
+    );
     this.terminatedProcesses.push(info);
 
     // Cap at max entries
@@ -3839,11 +3863,24 @@ export class Supervisor {
     const now = Date.now();
     const cutoff = now - TERMINATED_RETENTION_MS;
 
-    // Prune old entries
-    this.terminatedProcesses = this.terminatedProcesses.filter((p) => {
-      if (!p.terminatedAt) return false;
-      return new Date(p.terminatedAt).getTime() > cutoff;
-    });
+    const activeSessionIds = new Set(
+      [...this.processes.values()].map((process) => process.sessionId),
+    );
+    const seenSessionIds = new Set<string>();
+    const canonicalStopped: ProcessInfo[] = [];
+
+    // Walk newest-first so an already-populated history also heals to one
+    // stopped row per session. A currently active row always wins.
+    for (let index = this.terminatedProcesses.length - 1; index >= 0; index--) {
+      const process = this.terminatedProcesses[index];
+      if (!process?.terminatedAt) continue;
+      if (new Date(process.terminatedAt).getTime() <= cutoff) continue;
+      if (activeSessionIds.has(process.sessionId)) continue;
+      if (seenSessionIds.has(process.sessionId)) continue;
+      seenSessionIds.add(process.sessionId);
+      canonicalStopped.push(process);
+    }
+    this.terminatedProcesses = canonicalStopped.reverse();
 
     return [...this.terminatedProcesses];
   }

@@ -58,6 +58,60 @@ function createSummary(): SessionSummary {
 }
 
 describe("Processes Routes", () => {
+  it("returns PID shutdown verification for an aborted process", async () => {
+    const abortProcessWithVerification = vi.fn(async () => ({
+      processId: "proc-1",
+      sessionId: "sess-1",
+      pid: 43210,
+      verifiedStopped: true as const,
+      verification: "pid" as const,
+    }));
+    const routes = createProcessesRoutes({
+      supervisor: {
+        abortProcessWithVerification,
+      } as unknown as Supervisor,
+      scanner: {} as ProjectScanner,
+      readerFactory: vi.fn(),
+    });
+
+    const response = await routes.request("/proc-1/abort", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      aborted: true,
+      processId: "proc-1",
+      sessionId: "sess-1",
+      pid: 43210,
+      verifiedStopped: true,
+      verification: "pid",
+    });
+  });
+
+  it("reports a failed shutdown verification instead of claiming success", async () => {
+    const routes = createProcessesRoutes({
+      supervisor: {
+        abortProcessWithVerification: vi.fn(async () => {
+          throw new Error("Provider PID 43210 is still running after abort");
+        }),
+      } as unknown as Supervisor,
+      scanner: {} as ProjectScanner,
+      readerFactory: vi.fn(),
+    });
+
+    const response = await routes.request("/proc-1/abort", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Provider PID 43210 is still running after abort",
+      processId: "proc-1",
+      verifiedStopped: false,
+    });
+  });
+
   it("falls back to the live summary title when the index lookup misses", async () => {
     const project = createProject();
     const process = createProcessInfo();

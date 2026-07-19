@@ -1,10 +1,10 @@
-import type {
-  ActiveToolApproval,
-  PreprocessAugments,
-} from "../preprocessMessages";
 import type { PaginationInfo } from "../../api/client";
 import type { Message, SessionMetadata } from "../../types";
 import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
+import type {
+  ActiveToolApproval,
+  PreprocessAugments,
+} from "../transcriptProjection/types";
 import type { AgentContentMap, SessionDetailState } from "./types";
 
 export interface SessionDetailRuntimeSnapshot {

@@ -1,6 +1,6 @@
 # Portable Transcript Client Ledger
 
-Status: Phase 2 complete; web integration cutover is the next gate.
+Status: Phase 3 complete; final evidence reconciliation is in progress.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -90,7 +90,7 @@ decision, not a move-only extraction.
 | PTC-004 | Complete | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
 | PTC-005 | Complete | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
 | PTC-006 | Complete | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
-| PTC-007 | Not started | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
+| PTC-007 | Complete | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
 | PTC-008 | Not started | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
 
 PTC-007 is intentionally one integration cutover row. It may gain preparation
@@ -289,3 +289,28 @@ Append one note per landed slice using this shape:
 - Follow-ups or surprises: an old streaming-debug `window` read was found in
   per-message projection and preserved through an optional web-owned diagnostic
   callback. The internal compiler directory is now browser-free.
+
+### PTC-007 — Cut over web session detail (landed 2026-07-19, this commit)
+
+- Moved/changed: changed the primary session-detail render path to call the
+  named projection cache and web compiler directly before the existing display
+  object insertion and reference stabilization layers; moved web-only debug
+  injection into a named adapter.
+- Explicitly unchanged: semantic compiler, cache keys and eviction, display
+  object placement, stabilization, React rendering, stores, pagination,
+  transport, server contracts, and historical façade consumers.
+- Dependency result: the primary web path no longer imports
+  `preprocessMessages`; a source tripwire pins direct cache/compiler ownership.
+- Semantic/browser/private artifact result: 2,147 client assertions and 49
+  server parity assertions passed. Playwright passed 58 tests with three
+  environment-dependent skips, including deterministic desktop/mobile
+  transcript specimens. Exact private desktop/mobile replay passed for 564
+  Claude and 500 Codex rows.
+- Performance result: 683 messages still produce 1,003 items; cold median was
+  0.1960 ms, cache identity remained constant-time, and 961/961 reusable prefix
+  references were retained.
+- Commands: focused semantic/selector/boundary tests, full client unit and
+  non-device Playwright suites, focused server parity, exact private artifact
+  comparison, root typecheck/lint, console budget, and performance comparison.
+- Follow-ups or surprises: none; legacy consumers outside the primary
+  session-detail renderer deliberately retain the compatibility façade.

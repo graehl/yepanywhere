@@ -6,6 +6,10 @@ const projectionDirectory = resolve(
   process.cwd(),
   "src/lib/transcriptProjection",
 );
+const sessionDetailRenderItemsFile = resolve(
+  process.cwd(),
+  "src/lib/sessionDetail/renderItems.ts",
+);
 
 const forbiddenDependencies = [
   {
@@ -50,5 +54,13 @@ describe("transcript projection module boundary", () => {
         ).not.toMatch(forbidden.pattern);
       }
     }
+  });
+
+  it("keeps session detail on the explicit compiler and cache path", () => {
+    const source = readFileSync(sessionDetailRenderItemsFile, "utf8");
+
+    expect(source).toContain("getCachedTranscriptProjection");
+    expect(source).toContain("compileWebTranscriptProjection");
+    expect(source).not.toContain("preprocessMessages");
   });
 });

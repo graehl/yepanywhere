@@ -19,7 +19,7 @@ import {
 } from "../parseTaskNotification";
 import { parseAgentResultFromText } from "./agentResults";
 import { contentBlocksText } from "./slashCommandBodies";
-import type { PreprocessAugments } from "./types";
+import type { TranscriptProjectionAugments } from "./types";
 
 const AWAY_SUMMARY_HINT_SUFFIX_RE = /\s*\(disable recaps in \/config\)\s*$/u;
 
@@ -38,7 +38,7 @@ export function stripAwaySummaryHintSuffix(content: string): string {
 
 export function projectTranscriptMessages(
   messages: Message[],
-  augments?: PreprocessAugments,
+  augments?: TranscriptProjectionAugments,
   diagnostics?: MessageProjectionDiagnostics,
 ): RenderItem[] {
   const items: RenderItem[] = [];
@@ -237,7 +237,7 @@ function processMessage(
   pendingToolCalls: Map<string, number>,
   orphanedToolIds: Set<string>,
   configAckState: { lastSignature: string | null },
-  augments?: PreprocessAugments,
+  augments?: TranscriptProjectionAugments,
   diagnostics?: MessageProjectionDiagnostics,
 ): void {
   const msgId = getMessageId(msg);

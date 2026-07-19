@@ -97,6 +97,7 @@ decision, not a move-only extraction.
 | PTC-010 | Complete | Extract independently consumed agent-result parsing from the large message-projection module | Move-only; helper assertions unchanged | Focused semantic + root lint/typecheck |
 | PTC-011 | Complete | Migrate semantic tests, benchmark tooling, and server parity callers to their owning compiler/cache APIs | PTC-009/010 landed; no production facade consumers remain | Full client/server parity + performance |
 | PTC-012 | Complete | Delete the compatibility facade and enforce the final ownership map | No remaining imports or historical re-exports | Full final gates |
+| PTC-013 | Complete | Harden cache identity, augment-key exhaustiveness, and cross-platform ownership checks; retire final internal preprocess naming | PTC-012 complete; no behavior or public contract change | Full client + focused server parity + artifacts/performance |
 
 PTC-007 is intentionally one integration cutover row. It may gain preparation
 subtasks, but it must not be subdivided indefinitely merely to avoid making the
@@ -434,3 +435,34 @@ Landed 2026-07-19, this commit.
   that transient non-transcript overlay, and the isolated exact replay passed.
   Any public package, versioned projection, alternate runtime, or native
   renderer remains behind a new human decision.
+
+### PTC-013 — Harden the internal projection boundary
+
+Landed 2026-07-19, this commit.
+
+- Moved/changed: keyed cached projections by compiler identity, made the
+  augment cache-key list compile-time exhaustive, normalized ownership-test
+  paths across Windows and POSIX, and renamed the remaining internal
+  preprocess augment, selector, and parity-helper vocabulary to transcript
+  projection language.
+- Explicitly unchanged: semantic stage order and output, same-compiler cache
+  hits and three-variant eviction, the web adapter and its historical debug
+  label, server/client contracts, transport, and rendered UI.
+- Dependency result: alternate internal compilers cannot share a stale cached
+  result, and adding an augment without defining its cache identity now fails
+  typecheck. No package or runtime boundary was introduced.
+- Semantic/browser/private artifact result: all 2,151 client assertions and
+  165 focused server assertions passed, with one declared server skip. The
+  focused projection run was warning-free. Exact desktop/mobile replay passed
+  for 564 Claude and 500 Codex rows. The full client run also surfaced only
+  unrelated existing test diagnostics outside this slice.
+- Performance result: the 683-message fixture retained 1,003 render items and
+  all 961 reusable prefix references. Cold compile, same-array cache hit, and
+  changed-tail stabilization medians were 0.1977 ms, 0.0001 ms, and 0.2425 ms,
+  within the established tolerances.
+- Commands: focused and full client tests, focused server parity/provider
+  tests, root lint/typecheck, console budget, exact private artifact replay,
+  fixed performance comparison, and `git diff --check`.
+- Follow-ups or surprises: none. This is the deliberate web-only stopping
+  point; a public package, versioned protocol, alternate runtime, or native
+  renderer still requires a new human architecture decision.

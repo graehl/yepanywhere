@@ -33,6 +33,8 @@ a versioned mobile/server contract.
 - Route production web projection through
   `getCachedWebTranscriptProjection`. Tests and browser-free parity tooling may
   call the pure compiler directly when they are testing semantic output.
+- When adding a projection augment, define its identity semantics in
+  `cache.ts`; the exhaustive cache-key map makes an omission a type error.
 - Keep React, browser globals, stores, transport, timers, server APIs, layout,
   and interaction state outside this directory.
 - Import from the owning module. Do not restore `preprocessMessages.ts`, add a

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Message } from "../../types";
+import type { RenderItem } from "../../types/renderItems";
 import { getCachedTranscriptProjection } from "../transcriptProjection/cache";
 
 describe("transcript projection cache", () => {
@@ -17,8 +18,28 @@ describe("transcript projection cache", () => {
     expect(compile).toHaveBeenCalledWith(messages, augments);
   });
 
-  it("separates augment variants and evicts the oldest fourth variant", () => {
+  it("separates results produced by different compiler identities", () => {
     const messages: Message[] = [{ id: "user-2", role: "user", content: "Hi" }];
+    const firstItems: RenderItem[] = [];
+    const secondItems: RenderItem[] = [];
+    const firstCompiler = vi.fn(() => firstItems);
+    const secondCompiler = vi.fn(() => secondItems);
+
+    expect(
+      getCachedTranscriptProjection(messages, undefined, firstCompiler),
+    ).toBe(firstItems);
+    expect(
+      getCachedTranscriptProjection(messages, undefined, secondCompiler),
+    ).toBe(secondItems);
+    expect(
+      getCachedTranscriptProjection(messages, undefined, firstCompiler),
+    ).toBe(firstItems);
+    expect(firstCompiler).toHaveBeenCalledOnce();
+    expect(secondCompiler).toHaveBeenCalledOnce();
+  });
+
+  it("separates augment variants and evicts the oldest fourth variant", () => {
+    const messages: Message[] = [{ id: "user-3", role: "user", content: "Hi" }];
     const markdownA = {};
     const markdownB = {};
     const compile = vi.fn(() => []);

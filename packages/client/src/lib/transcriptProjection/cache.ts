@@ -1,16 +1,26 @@
 import type { Message } from "../../types";
 import type { RenderItem } from "../../types/renderItems";
-import type { PreprocessAugments } from "./types";
+import type { TranscriptProjectionAugments } from "./types";
 
 export type TranscriptProjectionCompiler = (
   messages: Message[],
-  augments?: PreprocessAugments,
+  augments?: TranscriptProjectionAugments,
 ) => RenderItem[];
+
+const AUGMENT_CACHE_KEY_FIELDS = {
+  activeToolApproval: true,
+  markdown: true,
+} as const satisfies Record<keyof TranscriptProjectionAugments, true>;
+
+const augmentCacheKeys = Object.keys(
+  AUGMENT_CACHE_KEY_FIELDS,
+) as Array<keyof TranscriptProjectionAugments>;
 
 interface TranscriptProjectionCacheEntry {
   activeToolApproval: boolean | undefined;
+  compiler: TranscriptProjectionCompiler;
   items: RenderItem[];
-  markdown: PreprocessAugments["markdown"];
+  markdown: TranscriptProjectionAugments["markdown"];
 }
 
 const resultCache = new WeakMap<Message[], TranscriptProjectionCacheEntry[]>();
@@ -23,24 +33,29 @@ const CACHE_VARIANTS_PER_MESSAGE_ARRAY = 3;
  */
 export function getCachedTranscriptProjection(
   messages: Message[],
-  augments: PreprocessAugments | undefined,
-  compile: TranscriptProjectionCompiler,
+  augments: TranscriptProjectionAugments | undefined,
+  compiler: TranscriptProjectionCompiler,
 ): RenderItem[] {
   const markdown = augments?.markdown;
   const activeToolApproval = augments?.activeToolApproval;
   const cachedVariants = resultCache.get(messages);
   const cached = cachedVariants?.find(
     (entry) =>
-      entry.markdown === markdown &&
-      entry.activeToolApproval === activeToolApproval,
+      entry.compiler === compiler &&
+      augmentCacheKeys.every((key) => entry[key] === augments?.[key]),
   );
   if (cached) {
     return cached.items;
   }
 
-  const items = compile(messages, augments);
+  const items = compiler(messages, augments);
   const variants = cachedVariants ?? [];
-  variants.push({ markdown, activeToolApproval, items });
+  variants.push({
+    activeToolApproval,
+    compiler,
+    items,
+    markdown,
+  });
   if (variants.length > CACHE_VARIANTS_PER_MESSAGE_ARRAY) {
     variants.shift();
   }

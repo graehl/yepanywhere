@@ -13,7 +13,7 @@ import {
   enrichWriteStdinWithCommand,
   hideContextFreeEmptyShellPolls,
 } from "./shellFolding";
-import type { PreprocessAugments } from "./types";
+import type { TranscriptProjectionAugments } from "./types";
 
 /**
  * Compile normalized transcript messages into the current semantic render
@@ -21,7 +21,7 @@ import type { PreprocessAugments } from "./types";
  */
 export function compileTranscriptProjection(
   messages: Message[],
-  augments?: PreprocessAugments,
+  augments?: TranscriptProjectionAugments,
   diagnostics?: MessageProjectionDiagnostics,
 ): RenderItem[] {
   const items = projectTranscriptMessages(messages, augments, diagnostics);

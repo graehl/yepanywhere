@@ -7,7 +7,7 @@ import type { MarkdownAugment } from "@yep-anywhere/shared";
 export type ActiveToolApproval = boolean;
 
 /** Inputs that accompany normalized messages during semantic projection. */
-export interface PreprocessAugments {
+export interface TranscriptProjectionAugments {
   /** Pre-rendered markdown HTML keyed by message ID. */
   markdown?: Record<string, MarkdownAugment>;
   /** Matching tool_use rows remain pending while approval is active. */

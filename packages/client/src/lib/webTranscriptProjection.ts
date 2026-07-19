@@ -3,7 +3,7 @@ import type { RenderItem } from "../types/renderItems";
 import { getCachedTranscriptProjection } from "./transcriptProjection/cache";
 import { compileTranscriptProjection } from "./transcriptProjection/compiler";
 import type { MessageProjectionDiagnostics } from "./transcriptProjection/messageProjection";
-import type { PreprocessAugments } from "./transcriptProjection/types";
+import type { TranscriptProjectionAugments } from "./transcriptProjection/types";
 
 const webProjectionDiagnostics: MessageProjectionDiagnostics = {
   onAssistantMessage(details) {
@@ -14,7 +14,7 @@ const webProjectionDiagnostics: MessageProjectionDiagnostics = {
 
 export function compileWebTranscriptProjection(
   messages: Message[],
-  augments?: PreprocessAugments,
+  augments?: TranscriptProjectionAugments,
 ): RenderItem[] {
   const diagnostics =
     typeof window !== "undefined" && window.__STREAMING_DEBUG__
@@ -25,7 +25,7 @@ export function compileWebTranscriptProjection(
 
 export function getCachedWebTranscriptProjection(
   messages: Message[],
-  augments?: PreprocessAugments,
+  augments?: TranscriptProjectionAugments,
 ): RenderItem[] {
   return getCachedTranscriptProjection(
     messages,

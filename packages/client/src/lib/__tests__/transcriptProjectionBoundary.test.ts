@@ -62,6 +62,20 @@ function collectTypeScriptFiles(directory: string): string[] {
   });
 }
 
+function normalizePathForComparison(filePath: string): string {
+  return filePath.replaceAll("\\", "/").replace(/\/+$/u, "");
+}
+
+function hasPathSegment(filePath: string, segment: string): boolean {
+  return normalizePathForComparison(filePath).split("/").includes(segment);
+}
+
+function isWithinDirectory(directory: string, filePath: string): boolean {
+  const normalizedDirectory = normalizePathForComparison(directory);
+  const normalizedFilePath = normalizePathForComparison(filePath);
+  return normalizedFilePath.startsWith(`${normalizedDirectory}/`);
+}
+
 describe("transcript projection module boundary", () => {
   it("stays independent of React, browser state, and the legacy façade", () => {
     const moduleFiles = readdirSync(projectionDirectory)
@@ -72,7 +86,7 @@ describe("transcript projection module boundary", () => {
     expect(moduleFiles).toContain("messageProjection.ts");
 
     for (const fileName of moduleFiles) {
-      const source = readFileSync(`${projectionDirectory}/${fileName}`, "utf8");
+      const source = readFileSync(resolve(projectionDirectory, fileName), "utf8");
       for (const forbidden of forbiddenDependencies) {
         expect(
           source,
@@ -117,8 +131,8 @@ describe("transcript projection module boundary", () => {
       resolve(process.cwd(), "src"),
     ).filter(
       (filePath) =>
-        !filePath.includes("/__tests__/") &&
-        !filePath.startsWith(`${projectionDirectory}/`) &&
+        !hasPathSegment(filePath, "__tests__") &&
+        !isWithinDirectory(projectionDirectory, filePath) &&
         filePath !== adapterPath,
     );
     for (const filePath of productionFiles) {
@@ -136,5 +150,22 @@ describe("transcript projection module boundary", () => {
         expect(source, filePath).not.toMatch(legacyFacadeImport);
       }
     }
+  });
+
+  it("classifies Windows and POSIX source paths consistently", () => {
+    expect(hasPathSegment("C:\\repo\\src\\__tests__\\cache.test.ts", "__tests__"))
+      .toBe(true);
+    expect(
+      isWithinDirectory(
+        "C:\\repo\\src\\lib\\transcriptProjection",
+        "C:\\repo\\src\\lib\\transcriptProjection\\compiler.ts",
+      ),
+    ).toBe(true);
+    expect(
+      isWithinDirectory(
+        "/repo/src/lib/transcriptProjection",
+        "/repo/src/lib/transcriptProjectionExtra/compiler.ts",
+      ),
+    ).toBe(false);
   });
 });

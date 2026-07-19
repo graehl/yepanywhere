@@ -3,7 +3,7 @@ import type { Message, SessionMetadata } from "../../types";
 import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
 import type {
   ActiveToolApproval,
-  PreprocessAugments,
+  TranscriptProjectionAugments,
 } from "../transcriptProjection/types";
 import type { AgentContentMap, SessionDetailState } from "./types";
 
@@ -74,10 +74,10 @@ export function selectSessionDetailLastMessageId(
   return state.lastMessageId;
 }
 
-export function selectSessionDetailPreprocessAugments(
+export function selectSessionDetailProjectionAugments(
   state: SessionDetailState,
   options: { activeToolApproval?: ActiveToolApproval } = {},
-): PreprocessAugments | undefined {
+): TranscriptProjectionAugments | undefined {
   const hasMarkdownAugments = Object.keys(state.markdownAugments).length > 0;
   if (!hasMarkdownAugments && options.activeToolApproval === undefined) {
     return undefined;

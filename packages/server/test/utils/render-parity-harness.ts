@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
-import type { PreprocessAugments } from "../../../client/src/lib/transcriptProjection/types.ts";
+import type { TranscriptProjectionAugments } from "../../../client/src/lib/transcriptProjection/types.ts";
 import type { Message as ClientMessage } from "../../../client/src/types.ts";
 import type { RenderItem } from "../../../client/src/types/renderItems.ts";
 import { createStreamAugmenter } from "../../src/augments/stream-augmenter.js";
@@ -223,10 +223,10 @@ function findFirstDifference(
   return { path, left, right };
 }
 
-function mergePreprocessAugments(
-  base: PreprocessAugments | undefined,
+function mergeProjectionAugments(
+  base: TranscriptProjectionAugments | undefined,
   markdown: Record<string, { html: string }>,
-): PreprocessAugments | undefined {
+): TranscriptProjectionAugments | undefined {
   if (Object.keys(markdown).length === 0) {
     return base;
   }
@@ -241,7 +241,7 @@ function mergePreprocessAugments(
 
 export async function runPersistedPipeline(
   loadedSession: LoadedSession,
-  preprocessAugments?: PreprocessAugments,
+  projectionAugments?: TranscriptProjectionAugments,
 ): Promise<PersistedPipelineResult> {
   const normalizedSession = normalizeSession(
     structuredClone(loadedSession),
@@ -251,7 +251,7 @@ export async function runPersistedPipeline(
   );
   const renderItems = compileTranscriptProjection(
     normalizedSession.messages,
-    preprocessAugments,
+    projectionAugments,
   );
   return {
     messages: normalizedSession.messages,
@@ -261,7 +261,7 @@ export async function runPersistedPipeline(
 
 export async function runStreamPipeline(
   streamMessages: Array<Record<string, unknown>>,
-  preprocessAugments?: PreprocessAugments,
+  projectionAugments?: TranscriptProjectionAugments,
 ): Promise<StreamPipelineResult> {
   const markdownAugments: Record<string, { html: string }> = {};
   const collectedMessages: ClientMessage[] = [];
@@ -300,7 +300,7 @@ export async function runStreamPipeline(
 
   const renderItems = compileTranscriptProjection(
     collectedMessages,
-    mergePreprocessAugments(preprocessAugments, markdownAugments),
+    mergeProjectionAugments(projectionAugments, markdownAugments),
   );
 
   return {

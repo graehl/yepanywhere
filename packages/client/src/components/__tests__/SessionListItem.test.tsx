@@ -658,4 +658,34 @@ describe("SessionListItem links", () => {
 
     refreshSpy.mockRestore();
   });
+
+  it("shows provider child work inside its parent session row", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-parent"
+              projectId="project-1"
+              title="Parent session"
+              provider="claude"
+              mode="card"
+              providerChildren={[
+                {
+                  id: "child-native-1",
+                  parentSessionId: "session-parent",
+                  title: "Audit the child-session API",
+                  agentType: "general-purpose",
+                  updatedAt: "2026-07-19T12:00:00.000Z",
+                },
+              ]}
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("Audit the child-session API")).toBeTruthy();
+    expect(screen.getByText("general-purpose")).toBeTruthy();
+  });
 });

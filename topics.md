@@ -147,3 +147,5 @@
 - portable-transcript-compiler - Stable server ingest, bounded transcript
   envelopes, and a shared semantic projection compiler for web and native
   renderers.
+- provider-child-sessions - Provider-launched delegated work discovered from
+  provider persistence and nested beneath its canonical YA parent session.

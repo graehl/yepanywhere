@@ -133,6 +133,13 @@ async function enrichProcessInfo(
       enriched.contextUsage = summary.contextUsage;
     }
 
+    const providerChildren = await reader.listProviderChildSessions?.(
+      process.sessionId,
+    );
+    if (providerChildren?.length) {
+      enriched.providerChildren = providerChildren;
+    }
+
     return enriched;
   } catch {
     // Ignore errors - just return process without enrichment

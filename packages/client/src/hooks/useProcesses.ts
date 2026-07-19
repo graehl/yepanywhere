@@ -18,6 +18,7 @@ import type {
   AgentActivity,
   ContextUsage,
   ProviderName,
+  ProviderChildSessionSummary,
   ProviderRuntimeStatus,
   SessionLivenessSnapshot,
   UrlProjectId,
@@ -54,6 +55,8 @@ export interface ProcessInfo {
   providerRuntimeStatus?: ProviderRuntimeStatus;
   /** Browser-away duration before YA asks this process for a recap. */
   recapAfterSeconds?: number;
+  /** Provider-native child work attached to this canonical YA session. */
+  providerChildren?: ProviderChildSessionSummary[];
 }
 
 interface ProcessesResponse {
@@ -252,6 +255,17 @@ export function useProcesses() {
       unsubscribeMetadata();
     };
   }, [sourceKey]);
+
+  useEffect(() => {
+    return activityBus.on("file-change", (event) => {
+      if (
+        event.fileType === "agent-session" &&
+        event.changeType === "create"
+      ) {
+        void refetch();
+      }
+    });
+  }, [refetch]);
 
   const processes = snapshot.processes;
   const terminatedProcesses = snapshot.terminatedProcesses;

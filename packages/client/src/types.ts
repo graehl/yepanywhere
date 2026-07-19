@@ -45,6 +45,7 @@ export type {
   AppSessionSummary,
   AppSession,
   AgentStatus,
+  ProviderChildSessionSummary,
   UserQuestionAnswer,
   UserQuestionAnswers,
   InputRequest,

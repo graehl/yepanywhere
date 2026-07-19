@@ -356,6 +356,7 @@ export type {
   // Agent session types
   AgentStatus,
   AgentSession,
+  ProviderChildSessionSummary,
   // Input request types
   UserQuestionAnswer,
   UserQuestionAnswers,

@@ -8,6 +8,7 @@ import type {
   PermissionRules,
   PromptSuggestionMode,
   ProviderRuntimeStatus,
+  ProviderChildSessionSummary,
   ProviderName,
   RecapMode,
   ThinkingConfig,
@@ -258,6 +259,8 @@ export interface ProcessInfo {
   recapAfterSeconds?: number;
   /** Current prompt-suggestion behavior for this live process. */
   promptSuggestionMode?: PromptSuggestionMode;
+  /** Provider-native child work attached to this canonical YA session. */
+  providerChildren?: ProviderChildSessionSummary[];
   /** Session-level helper side model for simulated helper features. */
   helperSideModel?: string;
 }

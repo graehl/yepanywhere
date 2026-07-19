@@ -138,6 +138,7 @@ function ProcessCard({
   killing = false,
 }: ProcessCardProps) {
   const { t } = useI18n();
+  const providerChildren = process.providerChildren ?? [];
   return (
     <Link
       to={`${basePath}/projects/${process.projectId}/sessions/${process.sessionId}`}
@@ -232,6 +233,45 @@ function ProcessCard({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {providerChildren.length > 0 && (
+        <div
+          className="agent-provider-children"
+          role="list"
+          aria-label={t(
+            (providerChildren.length === 1
+              ? "providerChildrenCountOne"
+              : "providerChildrenCountMany") as never,
+            { count: providerChildren.length },
+          )}
+        >
+          {providerChildren.map((child) => {
+            const childTitle =
+              child.title ||
+              child.agentType ||
+              t("providerChildFallback" as never);
+            return (
+              <div
+                className="agent-provider-child"
+                key={child.id}
+                role="listitem"
+              >
+                <span className="agent-provider-child-branch" aria-hidden>
+                  ↳
+                </span>
+                <span className="agent-provider-child-title">
+                  {childTitle}
+                </span>
+                {child.agentType && child.agentType !== childTitle && (
+                  <span className="agent-provider-child-type">
+                    {child.agentType}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </Link>

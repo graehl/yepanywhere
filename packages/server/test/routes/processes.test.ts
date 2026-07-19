@@ -241,6 +241,56 @@ describe("Processes Routes", () => {
     expect(getSessionSummary).toHaveBeenCalledWith("sess-1", "proj-1");
   });
 
+  it("attaches provider child work to its canonical parent process", async () => {
+    const project = createProject();
+    const process = createProcessInfo();
+    const summary = createSummary();
+    const listProviderChildSessions = vi.fn(async () => [
+      {
+        id: "child-native-1",
+        parentSessionId: "sess-1",
+        title: "Review the restart guard",
+        agentType: "reviewer",
+        toolUseId: "call-spawn-1",
+        updatedAt: "2026-03-10T09:46:30.000Z",
+      },
+    ]);
+
+    const routes = createProcessesRoutes({
+      supervisor: {
+        getProcessInfoList: vi.fn(() => [process]),
+      } as unknown as Supervisor,
+      scanner: {
+        getProject: vi.fn(async () => project),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => summary),
+            listProviderChildSessions,
+          }) as unknown as ISessionReader,
+      ),
+    });
+
+    const response = await routes.request("/");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      processes: [
+        {
+          sessionId: "sess-1",
+          providerChildren: [
+            {
+              id: "child-native-1",
+              parentSessionId: "sess-1",
+              title: "Review the restart guard",
+            },
+          ],
+        },
+      ],
+    });
+    expect(listProviderChildSessions).toHaveBeenCalledWith("sess-1");
+  });
+
   it("prefers persisted custom titles over generated session titles", async () => {
     const project = createProject();
     const process = createProcessInfo();

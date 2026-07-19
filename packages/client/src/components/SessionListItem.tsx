@@ -15,6 +15,7 @@ import type {
   ContextUsage,
   PendingInputType,
   ProviderName,
+  ProviderChildSessionSummary,
   SessionStatus,
 } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
@@ -58,6 +59,8 @@ interface SessionListItemProps {
   executor?: string;
   /** Parent session when this item is a YA-owned /btw aside. */
   parentSessionId?: string;
+  /** Provider-native child work attached to this canonical YA session. */
+  providerChildren?: ProviderChildSessionSummary[];
 
   // Feature toggles
   mode: "card" | "compact";
@@ -156,6 +159,7 @@ export function SessionListItem({
   model,
   executor,
   parentSessionId,
+  providerChildren = [],
   // Feature toggles
   mode,
   showProjectName = false,
@@ -857,6 +861,40 @@ export function SessionListItem({
                   />
                 )}
               </span>
+              {providerChildren.length > 0 && (
+                <span
+                  className="session-list-item__provider-children"
+                  role="list"
+                  aria-label={t(
+                    providerChildren.length === 1
+                      ? "providerChildrenCountOne"
+                      : "providerChildrenCountMany",
+                    {
+                      count: providerChildren.length,
+                    },
+                  )}
+                >
+                  {providerChildren.map((child) => (
+                    <span
+                      className="session-list-item__provider-child"
+                      key={child.id}
+                      role="listitem"
+                    >
+                      <span aria-hidden>↳</span>
+                      <span className="session-list-item__provider-child-title">
+                        {child.title ||
+                          child.agentType ||
+                          t("providerChildFallback")}
+                      </span>
+                      {child.agentType && child.agentType !== child.title && (
+                        <span className="session-list-item__provider-child-type">
+                          {child.agentType}
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </span>
+              )}
             </>
           ) : (
             // Compact mode: single line with badges
@@ -891,6 +929,30 @@ export function SessionListItem({
                     title={t("projectQueueSidebarBadge")}
                   >
                     Q
+                  </span>
+                )}
+                {providerChildren.length > 0 && (
+                  <span
+                    className="session-provider-children-badge"
+                    role="img"
+                    title={providerChildren
+                      .map(
+                        (child) =>
+                          child.title ||
+                          child.agentType ||
+                          t("providerChildFallback"),
+                      )
+                      .join("\n")}
+                    aria-label={t(
+                      providerChildren.length === 1
+                        ? "providerChildrenCountOne"
+                        : "providerChildrenCountMany",
+                      {
+                        count: providerChildren.length,
+                      },
+                    )}
+                  >
+                    ↳{providerChildren.length}
                   </span>
                 )}
               </span>

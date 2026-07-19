@@ -18,6 +18,7 @@ import {
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
   type CodexTurnContextEntry,
+  type ProviderChildSessionSummary,
   type UrlProjectId,
   getModelContextWindow,
   parseCodexSessionEntry,
@@ -704,12 +705,17 @@ export class CodexSessionReader implements ISessionReader {
     }
   }
 
-  async getAgentMappings(): Promise<{ toolUseId: string; agentId: string }[]> {
+  async getAgentMappings(
+    parentSessionId?: string,
+  ): Promise<{ toolUseId: string; agentId: string }[]> {
     const sessions = await this.scanSessions();
     const mappings: { toolUseId: string; agentId: string }[] = [];
     const seenToolUseIds = new Set<string>();
 
     for (const session of sessions) {
+      if (parentSessionId && session.id !== parentSessionId) {
+        continue;
+      }
       if (
         this.projectIdentityKey &&
         getProjectIdentityKey(session.cwd) !== this.projectIdentityKey
@@ -804,6 +810,67 @@ export class CodexSessionReader implements ISessionReader {
       })),
       status: inferCodexAgentStatus(entries),
     };
+  }
+
+  async listProviderChildSessions(
+    parentSessionId: string,
+  ): Promise<ProviderChildSessionSummary[]> {
+    const parentSession = (await this.scanSessions()).find(
+      (session) => session.id === parentSessionId,
+    );
+    if (!parentSession) return [];
+
+    const entries = await this.readEntries(
+      parentSession.id,
+      parentSession.filePath,
+      { purpose: "agent-mapping", cache: false },
+    );
+    const launches = new Map<
+      string,
+      { title?: string; agentType?: string }
+    >();
+    const children: ProviderChildSessionSummary[] = [];
+
+    for (const entry of entries) {
+      if (entry.type !== "response_item") continue;
+      const payload = entry.payload;
+
+      if (payload.type === "function_call" && payload.name === "spawn_agent") {
+        const args = parseJsonRecord(payload.arguments);
+        const prompt = stringField(args, "prompt");
+        const agentType =
+          stringField(args, "role") ?? stringField(args, "agent_type");
+        launches.set(payload.call_id, {
+          ...(prompt && { title: truncateSessionTitle(prompt) }),
+          ...(agentType && { agentType }),
+        });
+        continue;
+      }
+
+      if (payload.type !== "function_call_output") continue;
+      const launch = launches.get(payload.call_id);
+      if (!launch) continue;
+      const child = parseCodexSpawnAgentDetails(payload.output);
+      if (!child) continue;
+      const childFile = await this.findSessionFile(child.agentId);
+      children.push({
+        id: child.agentId,
+        parentSessionId,
+        ...(child.nickname
+          ? { title: child.nickname }
+          : launch.title
+            ? { title: launch.title }
+            : {}),
+        ...(launch.agentType && { agentType: launch.agentType }),
+        toolUseId: payload.call_id,
+        updatedAt: childFile?.timestamp ?? parentSession.timestamp,
+      });
+    }
+
+    return children.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
   }
 
   /**
@@ -2023,7 +2090,9 @@ function codexSessionSourceLabel(source: unknown): string | undefined {
   return undefined;
 }
 
-function parseCodexSpawnAgentOutput(output: unknown): string | null {
+function parseCodexSpawnAgentDetails(
+  output: unknown,
+): { agentId: string; nickname?: string } | null {
   const text = codexToolOutputText(output);
   if (!text) {
     return null;
@@ -2033,14 +2102,19 @@ function parseCodexSpawnAgentOutput(output: unknown): string | null {
   const agentId =
     stringField(parsed, "agent_id") ?? stringField(parsed, "agentId");
   if (agentId) {
-    return agentId;
+    const nickname = stringField(parsed, "nickname");
+    return { agentId, ...(nickname && { nickname }) };
   }
 
-  return (
+  const fallbackAgentId =
     text.match(/"agent_id"\s*:\s*"([^"]+)"/)?.[1] ??
     text.match(/"agentId"\s*:\s*"([^"]+)"/)?.[1] ??
-    null
-  );
+    null;
+  return fallbackAgentId ? { agentId: fallbackAgentId } : null;
+}
+
+function parseCodexSpawnAgentOutput(output: unknown): string | null {
+  return parseCodexSpawnAgentDetails(output)?.agentId ?? null;
 }
 
 function codexToolOutputText(output: unknown): string {

@@ -2010,7 +2010,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sessionId: c.req.param("sessionId"),
       projectId: routing.transcriptProjectId,
     });
-    const mappings = await reader.getAgentMappings();
+    const mappings = await reader.getAgentMappings(c.req.param("sessionId"));
 
     return c.json({ mappings });
   });
@@ -2053,7 +2053,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sessionId: c.req.param("sessionId"),
         projectId: routing.transcriptProjectId,
       });
-      const agentSession = await reader.getAgentSession(agentId);
+      const agentSession = await reader.getAgentSession(
+        agentId,
+        c.req.param("sessionId"),
+      );
 
       if (!agentSession) {
         return c.json({ error: "Agent session not found" }, 404);

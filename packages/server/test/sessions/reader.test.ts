@@ -1330,6 +1330,68 @@ describe("SessionReader", () => {
   });
 
   describe("getAgentMappings — SDK 0.2.76+ (subagents/ dir)", () => {
+    it("finds current SDK children under their parent session", async () => {
+      const parentSessionId = "parent-session";
+      const subagentsDir = join(
+        testDir,
+        parentSessionId,
+        "subagents",
+      );
+      const otherSubagentsDir = join(
+        testDir,
+        "other-parent",
+        "subagents",
+      );
+      await mkdir(subagentsDir, { recursive: true });
+      await mkdir(otherSubagentsDir, { recursive: true });
+
+      const agent = JSON.stringify({
+        type: "user",
+        uuid: "msg-current",
+        agentId: "current1",
+        isSidechain: true,
+        sessionId: parentSessionId,
+        message: { content: "Investigate the bug" },
+      });
+      await writeFile(join(subagentsDir, "agent-current1.jsonl"), agent);
+      await writeFile(
+        join(subagentsDir, "agent-current1.meta.json"),
+        JSON.stringify({
+          agentType: "general-purpose",
+          description: "Audit the restart guard",
+          toolUseId: "toolu-launch-current",
+          spawnDepth: 1,
+        }),
+      );
+      await writeFile(
+        join(otherSubagentsDir, "agent-other1.jsonl"),
+        agent.replaceAll("current1", "other1"),
+      );
+
+      await expect(reader.getAgentMappings(parentSessionId)).resolves.toEqual([
+        {
+          toolUseId: "toolu-launch-current",
+          agentId: "current1",
+          agentType: "general-purpose",
+          description: "Audit the restart guard",
+          spawnDepth: 1,
+        },
+      ]);
+      await expect(
+        reader.listProviderChildSessions(parentSessionId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: "current1",
+          parentSessionId,
+          title: "Audit the restart guard",
+          agentType: "general-purpose",
+          toolUseId: "toolu-launch-current",
+          spawnDepth: 1,
+          updatedAt: expect.any(String),
+        }),
+      ]);
+    });
+
     it("finds agent files in subagents/ directory", async () => {
       const subagentsDir = join(testDir, "subagents");
       await mkdir(subagentsDir, { recursive: true });
@@ -1432,6 +1494,41 @@ describe("SessionReader", () => {
   });
 
   describe("getAgentSession — SDK 0.2.76+ (subagents/ dir)", () => {
+    it("loads a current SDK child from its parent session directory", async () => {
+      const parentSessionId = "parent-session";
+      const subagentsDir = join(
+        testDir,
+        parentSessionId,
+        "subagents",
+      );
+      await mkdir(subagentsDir, { recursive: true });
+      await writeFile(
+        join(subagentsDir, "agent-current1.jsonl"),
+        [
+          JSON.stringify({
+            type: "user",
+            uuid: "msg-1",
+            agentId: "current1",
+            isSidechain: true,
+            sessionId: parentSessionId,
+            message: { content: "Research task" },
+          }),
+          JSON.stringify({
+            type: "result",
+            uuid: "msg-2",
+            parentUuid: "msg-1",
+          }),
+        ].join("\n"),
+      );
+
+      const session = await reader.getAgentSession(
+        "current1",
+        parentSessionId,
+      );
+      expect(session.messages).toHaveLength(2);
+      expect(session.status).toBe("completed");
+    });
+
     it("loads agent from subagents/ directory", async () => {
       const subagentsDir = join(testDir, "subagents");
       await mkdir(subagentsDir, { recursive: true });

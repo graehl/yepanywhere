@@ -423,14 +423,50 @@ describe("useStreamingContent", () => {
         });
       });
 
-      // Should use agentId as the routing key
-      expect(onToolUseMapping).toHaveBeenCalledWith(
-        "a1dd713c82c78b9ed",
-        "a1dd713c82c78b9ed",
-      );
+      // The provider child ID is a content-routing key, not a Task tool-call ID.
+      expect(onToolUseMapping).not.toHaveBeenCalled();
       expect(onUpdateMessage).toHaveBeenCalledWith(
         expect.objectContaining({ _isStreaming: true }),
         "a1dd713c82c78b9ed",
+      );
+    });
+
+    it("maps a parent tool call to the provider child ID when both are present", () => {
+      const { result } = renderHook(() =>
+        useStreamingContent(defaultOptions()),
+      );
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          isSubagent: true,
+          parentToolUseId: "toolu-parent",
+          agentId: "provider-child",
+          event: {
+            type: "message_start",
+            message: { id: "msg-current-sdk" },
+          },
+        });
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          isSubagent: true,
+          parentToolUseId: "toolu-parent",
+          agentId: "provider-child",
+          event: {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          },
+        });
+      });
+
+      expect(onToolUseMapping).toHaveBeenCalledWith(
+        "toolu-parent",
+        "provider-child",
+      );
+      expect(onUpdateMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ _isStreaming: true }),
+        "provider-child",
       );
     });
 

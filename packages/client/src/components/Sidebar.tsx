@@ -12,6 +12,7 @@ import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext
 import { useNewSessionDraft } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
+import { useProcesses } from "../hooks/useProcesses";
 import {
   getProjectIdFromLocation,
   resolvePreferredProjectId,
@@ -353,6 +354,16 @@ export function Sidebar({
     poll: publicSharesEnabled,
   });
   const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
+  const { processes, terminatedProcesses } = useProcesses();
+  const providerChildrenBySessionId = useMemo(
+    () =>
+      new Map(
+        [...processes, ...terminatedProcesses]
+          .filter((process) => process.providerChildren?.length)
+          .map((process) => [process.sessionId, process.providerChildren]),
+      ),
+    [processes, terminatedProcesses],
+  );
 
   const {
     globalQuery,
@@ -898,6 +909,7 @@ export function Sidebar({
         createdAt={session.createdAt}
         updatedAt={session.updatedAt}
         parentSessionId={session.parentSessionId}
+        providerChildren={providerChildrenBySessionId.get(session.id)}
         status={session.ownership}
         pendingInputType={session.pendingInputType}
         hasUnread={session.hasUnread}

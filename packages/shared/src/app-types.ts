@@ -577,6 +577,27 @@ export type AgentStatus = "pending" | "running" | "completed" | "failed";
 export interface AgentSession {
   messages: AppMessage[];
   status: AgentStatus;
+  agentType?: string;
+  description?: string;
+  spawnDepth?: number;
+}
+
+/**
+ * Provider-launched child work attached to a canonical YA parent session.
+ * `id` is provider-native and must not be used as a YA session URL ID.
+ */
+export interface ProviderChildSessionSummary {
+  id: string;
+  parentSessionId: string;
+  /** Provider-supplied task description or child name. */
+  title?: string;
+  /** Provider role/type, such as general-purpose, Explore, or reviewer. */
+  agentType?: string;
+  /** Parent transcript tool call that launched this child, when available. */
+  toolUseId?: string;
+  /** Provider-reported nesting depth, when available. */
+  spawnDepth?: number;
+  updatedAt: string;
 }
 
 // =============================================================================

@@ -110,6 +110,13 @@ vi.mock("../../hooks/useProjects", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useProcesses", () => ({
+  useProcesses: () => ({
+    processes: [],
+    terminatedProcesses: [],
+  }),
+}));
+
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
   SIDEBAR_SESSION_FEED_LIMIT: 50,
   useSidebarSessionFeeds: () => ({

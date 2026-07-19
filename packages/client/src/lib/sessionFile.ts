@@ -23,3 +23,21 @@ export function extractSessionIdFromFileEvent(
 
   return base;
 }
+
+/**
+ * Current Claude child transcripts live below
+ * `{parentSessionId}/subagents/agent-*.{jsonl,meta.json}`. Recover the
+ * canonical YA parent session without treating the provider child ID as a YA
+ * session ID.
+ */
+export function extractParentSessionIdFromAgentFileEvent(
+  event: SessionFileEvent,
+): string | null {
+  if (event.provider !== "claude") return null;
+
+  const parts = event.relativePath.split(/[\\/]/);
+  const subagentsIndex = parts.lastIndexOf("subagents");
+  if (subagentsIndex <= 1) return null;
+
+  return parts[subagentsIndex - 1] || null;
+}

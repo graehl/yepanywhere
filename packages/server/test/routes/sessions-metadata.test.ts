@@ -979,8 +979,12 @@ describe("Sessions metadata route", () => {
     expect(vi.mocked(claudeReader.getAgentMappings)).not.toHaveBeenCalled();
     expect(vi.mocked(claudeReader.getAgentSession)).not.toHaveBeenCalled();
     expect(vi.mocked(codexReader.getAgentMappings)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(codexReader.getAgentMappings)).toHaveBeenCalledWith(
+      "sess-1",
+    );
     expect(vi.mocked(codexReader.getAgentSession)).toHaveBeenCalledWith(
       "child-thread",
+      "sess-1",
     );
   });
 

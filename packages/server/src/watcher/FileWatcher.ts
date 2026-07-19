@@ -549,10 +549,14 @@ export class FileWatcher {
     relativePath: string,
   ): FileChangeEvent["fileType"] {
     // Watching ~/.claude/projects - relativePath is {hash}/{session}.jsonl
+    const basename = path.basename(relativePath);
+    if (
+      basename.startsWith("agent-") &&
+      (basename.endsWith(".jsonl") || basename.endsWith(".meta.json"))
+    ) {
+      return "agent-session";
+    }
     if (relativePath.endsWith(".jsonl")) {
-      if (path.basename(relativePath).startsWith("agent-")) {
-        return "agent-session";
-      }
       return "session";
     }
     return "other";

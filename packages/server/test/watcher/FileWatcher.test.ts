@@ -98,6 +98,39 @@ describe("FileWatcher", () => {
     expect(metrics?.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("classifies current Claude child transcripts and metadata together", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    const subagentsDir = join(
+      watchDir,
+      "project-hash",
+      "parent-session",
+      "subagents",
+    );
+    await mkdir(subagentsDir, { recursive: true });
+    await writeFile(join(subagentsDir, "agent-child.jsonl"), "{}\n");
+    await writeFile(join(subagentsDir, "agent-child.meta.json"), "{}\n");
+
+    const events: FileChangeEvent[] = [];
+    const eventBus = new EventBus();
+    eventBus.subscribe((event) => {
+      if (event.type === "file-change") events.push(event);
+    });
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "claude",
+      eventBus,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+
+    forceRescan(watcher);
+
+    expect(events).toHaveLength(2);
+    expect(events.every((event) => event.fileType === "agent-session")).toBe(
+      true,
+    );
+  });
+
   it("records overlap skips on the next completed rescan", async () => {
     const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
     tempDirs.push(watchDir);

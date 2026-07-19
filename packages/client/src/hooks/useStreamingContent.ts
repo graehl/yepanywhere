@@ -240,17 +240,23 @@ export function useStreamingContent(
       // Check if this is a subagent stream (marked by server via markSubagent)
       // Legacy SDK: uses parentToolUseId as routing key
       // SDK 0.2.76+: uses agentId directly (no parentToolUseId)
+      const parentToolUseId =
+        typeof data.parentToolUseId === "string"
+          ? data.parentToolUseId
+          : undefined;
+      const providerAgentId =
+        typeof data.agentId === "string" ? data.agentId : undefined;
       const isSubagentStream =
-        data.isSubagent &&
-        (typeof data.parentToolUseId === "string" ||
-          typeof data.agentId === "string");
+        data.isSubagent && (parentToolUseId || providerAgentId);
       const streamAgentId = isSubagentStream
-        ? ((data.parentToolUseId as string) ?? (data.agentId as string))
+        ? (providerAgentId ?? parentToolUseId)
         : undefined;
 
-      // Set toolUseToAgent mapping for subagent streams so TaskRenderer can find content
-      if (streamAgentId && onToolUseMapping) {
-        onToolUseMapping(streamAgentId, streamAgentId);
+      // Legacy streams use the parent tool call as their child key. Current
+      // streams carry the provider child ID; only register a Task mapping when
+      // the stream also identifies the parent tool call.
+      if (parentToolUseId && streamAgentId && onToolUseMapping) {
+        onToolUseMapping(parentToolUseId, streamAgentId);
       }
 
       // Handle message_start to capture the message ID for this streaming response

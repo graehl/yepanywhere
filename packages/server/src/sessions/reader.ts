@@ -3,6 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AgentStatus,
+  type ProviderChildSessionSummary,
   type ProviderName,
   type UrlProjectId,
   getModelContextWindow,
@@ -66,6 +67,10 @@ export interface AgentSession {
   status: AgentStatus;
   /** Agent type from meta.json (SDK 0.2.76+), e.g. "Explore", "Plan" */
   agentType?: string;
+  /** Provider description of the delegated task. */
+  description?: string;
+  /** Nesting depth reported by the provider. */
+  spawnDepth?: number;
 }
 
 /**
@@ -77,6 +82,17 @@ export interface AgentMapping {
   agentId: string;
   /** Agent type from meta.json (SDK 0.2.76+), e.g. "Explore", "Plan" */
   agentType?: string;
+  /** Provider description of the delegated task. */
+  description?: string;
+  /** Nesting depth reported by the provider. */
+  spawnDepth?: number;
+}
+
+interface AgentMeta {
+  agentType?: string;
+  description?: string;
+  toolUseId?: string;
+  spawnDepth?: number;
 }
 
 type UsageFields = {
@@ -353,30 +369,29 @@ export class ClaudeSessionReader implements ISessionReader {
    * Get agent session content for lazy-loading completed Tasks/Agents.
    *
    * Agent JSONL files are stored at:
+   * - Current SDK: {sessionDir}/{parentSessionId}/subagents/agent-{agentId}.jsonl
    * - SDK 0.2.76+: {sessionDir}/subagents/agent-{agentId}.jsonl
    * - Legacy: {sessionDir}/agent-{agentId}.jsonl
    *
    * @param agentId - The agent session ID (used as filename: agent-{agentId}.jsonl)
    * @returns Agent session with messages and inferred status
    */
-  async getAgentSession(agentId: string): Promise<AgentSession> {
+  async getAgentSession(
+    agentId: string,
+    parentSessionId?: string,
+  ): Promise<AgentSession> {
     // Find the agent file across all dirs, checking subagents/ subdir first (new SDK),
     // then root (legacy)
     let filePath: string | null = null;
-    for (const dir of this.allSessionDirs) {
-      for (const candidate of [
-        join(dir, "subagents", `agent-${agentId}.jsonl`),
-        join(dir, `agent-${agentId}.jsonl`),
-      ]) {
-        try {
-          await stat(candidate);
-          filePath = candidate;
-          break;
-        } catch {
-          // Not here
-        }
+    for (const dir of this.getAgentDirectories(parentSessionId)) {
+      const candidate = join(dir, `agent-${agentId}.jsonl`);
+      try {
+        await stat(candidate);
+        filePath = candidate;
+        break;
+      } catch {
+        // Not here
       }
-      if (filePath) break;
     }
     if (!filePath) return { messages: [], status: "pending" };
 
@@ -426,88 +441,135 @@ export class ClaudeSessionReader implements ISessionReader {
    *
    * This is used to find agent sessions for pending Tasks/Agents on page reload.
    * Scans agent-*.jsonl files in both:
+   * - {sessionDir}/{parentSessionId}/subagents/ (current SDK)
    * - {sessionDir}/subagents/ (SDK 0.2.76+)
    * - {sessionDir}/ (legacy)
    *
    * For legacy sessions, extracts parent_tool_use_id from first few lines.
-   * For new SDK sessions, parent_tool_use_id is no longer present in subagent
-   * messages — mapping is done at the caller level via agentId in tool result text.
+   * For current SDK sessions, parent_tool_use_id is no longer present in
+   * subagent messages; the metadata sidecar carries the launch tool call ID.
    *
    * @returns Array of toolUseId → agentId mappings
    */
-  async getAgentMappings(): Promise<AgentMapping[]> {
+  async getAgentMappings(parentSessionId?: string): Promise<AgentMapping[]> {
     const mappings: AgentMapping[] = [];
     const seenAgentIds = new Set<string>();
 
-    for (const dir of this.allSessionDirs) {
-      // Check both subagents/ subdir (new SDK) and root dir (legacy)
-      const dirsToScan = [join(dir, "subagents"), dir];
+    for (const scanDir of this.getAgentDirectories(parentSessionId)) {
+      try {
+        const files = await readdir(scanDir);
+        const agentFiles = files.filter(
+          (f) => f.startsWith("agent-") && f.endsWith(".jsonl"),
+        );
 
-      for (const scanDir of dirsToScan) {
-        try {
-          const files = await readdir(scanDir);
-          const agentFiles = files.filter(
-            (f) => f.startsWith("agent-") && f.endsWith(".jsonl"),
-          );
+        for (const file of agentFiles) {
+          // Extract agentId from filename: agent-{agentId}.jsonl
+          const agentId = file.slice(6, -6); // Remove "agent-" prefix and ".jsonl" suffix
+          if (seenAgentIds.has(agentId)) continue;
+          seenAgentIds.add(agentId);
+          const filePath = join(scanDir, file);
 
-          for (const file of agentFiles) {
-            // Extract agentId from filename: agent-{agentId}.jsonl
-            const agentId = file.slice(6, -6); // Remove "agent-" prefix and ".jsonl" suffix
-            if (seenAgentIds.has(agentId)) continue;
-            seenAgentIds.add(agentId);
-            const filePath = join(scanDir, file);
+          // Read agent metadata (agentType from meta.json, SDK 0.2.76+)
+          const meta = await this.readAgentMeta(filePath);
 
-            // Read agent metadata (agentType from meta.json, SDK 0.2.76+)
-            const meta = await this.readAgentMeta(filePath);
+          try {
+            const content = await readFile(filePath, "utf-8");
+            const trimmed = content.trim();
+            if (!trimmed) continue;
 
-            try {
-              const content = await readFile(filePath, "utf-8");
-              const trimmed = content.trim();
-              if (!trimmed) continue;
-
-              // Check first few lines for parent_tool_use_id (legacy format)
-              const lines = trimmed.split("\n").slice(0, 5);
-              let foundToolUseId = false;
-              for (const line of lines) {
-                try {
-                  const msg = JSON.parse(line) as ClaudeSessionEntry & {
-                    parent_tool_use_id?: string;
-                  };
-                  if (msg.parent_tool_use_id) {
-                    mappings.push({
-                      toolUseId: msg.parent_tool_use_id,
-                      agentId,
-                      ...meta,
-                    });
-                    foundToolUseId = true;
-                    break;
-                  }
-                } catch {
-                  // Skip malformed lines
+            // Check first few lines for parent_tool_use_id (legacy format)
+            const lines = trimmed.split("\n").slice(0, 5);
+            let foundToolUseId = false;
+            for (const line of lines) {
+              try {
+                const msg = JSON.parse(line) as ClaudeSessionEntry & {
+                  parent_tool_use_id?: string;
+                };
+                if (msg.parent_tool_use_id) {
+                  mappings.push({
+                    ...meta,
+                    toolUseId: msg.parent_tool_use_id,
+                    agentId,
+                  });
+                  foundToolUseId = true;
+                  break;
                 }
+              } catch {
+                // Skip malformed lines
               }
-
-              // SDK 0.2.76+: no parent_tool_use_id in subagent files.
-              // Still register the agent so callers know it exists.
-              // The toolUseId mapping comes from the main session's tool result text.
-              if (!foundToolUseId) {
-                mappings.push({
-                  toolUseId: agentId, // Use agentId as placeholder
-                  agentId,
-                  ...meta,
-                });
-              }
-            } catch {
-              // Skip unreadable files
             }
+
+            // Current SDK metadata carries the launch tool call ID. Older
+            // sidecars did not, so keep the agent-ID fallback for those files.
+            if (!foundToolUseId) {
+              mappings.push({
+                ...meta,
+                toolUseId: meta.toolUseId ?? agentId,
+                agentId,
+              });
+            }
+          } catch {
+            // Skip unreadable files
           }
-        } catch {
-          // Directory doesn't exist or not readable
         }
+      } catch {
+        // Directory doesn't exist or not readable
       }
     }
 
     return mappings;
+  }
+
+  async listProviderChildSessions(
+    parentSessionId: string,
+  ): Promise<ProviderChildSessionSummary[]> {
+    const children: ProviderChildSessionSummary[] = [];
+    const seenAgentIds = new Set<string>();
+
+    for (const dir of this.allSessionDirs) {
+      const childDir = join(dir, parentSessionId, "subagents");
+      let files: string[];
+      try {
+        files = await readdir(childDir);
+      } catch {
+        continue;
+      }
+
+      for (const file of files) {
+        if (!file.startsWith("agent-") || !file.endsWith(".jsonl")) {
+          continue;
+        }
+        const agentId = file.slice(6, -6);
+        if (seenAgentIds.has(agentId)) continue;
+
+        const filePath = join(childDir, file);
+        try {
+          const [fileStat, meta] = await Promise.all([
+            stat(filePath),
+            this.readAgentMeta(filePath),
+          ]);
+          seenAgentIds.add(agentId);
+          children.push({
+            id: agentId,
+            parentSessionId,
+            ...(meta.description && { title: meta.description }),
+            ...(meta.agentType && { agentType: meta.agentType }),
+            ...(meta.toolUseId && { toolUseId: meta.toolUseId }),
+            ...(meta.spawnDepth !== undefined && {
+              spawnDepth: meta.spawnDepth,
+            }),
+            updatedAt: fileStat.mtime.toISOString(),
+          });
+        } catch {
+          // The child disappeared or became unreadable during enumeration.
+        }
+      }
+    }
+
+    return children.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
   }
 
   /**
@@ -544,20 +606,46 @@ export class ClaudeSessionReader implements ISessionReader {
   }
 
   /**
-   * Read agent metadata from meta.json file (SDK 0.2.76+).
-   * Returns agentType if available, e.g. "Explore", "Plan".
+   * Read provider child metadata from the JSON sidecar when available.
    */
-  private async readAgentMeta(
-    agentFilePath: string,
-  ): Promise<{ agentType?: string }> {
+  private async readAgentMeta(agentFilePath: string): Promise<AgentMeta> {
     const metaPath = agentFilePath.replace(/\.jsonl$/, ".meta.json");
     try {
       const raw = await readFile(metaPath, "utf-8");
-      const meta = JSON.parse(raw) as { agentType?: string };
-      return { agentType: meta.agentType };
+      const meta = JSON.parse(raw) as Record<string, unknown>;
+      return {
+        ...(typeof meta.agentType === "string" && {
+          agentType: meta.agentType,
+        }),
+        ...(typeof meta.description === "string" && {
+          description: meta.description,
+        }),
+        ...(typeof meta.toolUseId === "string" && {
+          toolUseId: meta.toolUseId,
+        }),
+        ...(typeof meta.spawnDepth === "number" && {
+          spawnDepth: meta.spawnDepth,
+        }),
+      };
     } catch {
       return {};
     }
+  }
+
+  /**
+   * Candidate directories for provider child transcripts, newest layout first.
+   * Parent scoping excludes other current-layout session directories while the
+   * project-level candidates preserve compatibility with older SDK layouts.
+   */
+  private getAgentDirectories(parentSessionId?: string): string[] {
+    const directories: string[] = [];
+    for (const dir of this.allSessionDirs) {
+      if (parentSessionId) {
+        directories.push(join(dir, parentSessionId, "subagents"));
+      }
+      directories.push(join(dir, "subagents"), dir);
+    }
+    return [...new Set(directories)];
   }
 
   /** Find the session file across all session dirs, returning the first match. */

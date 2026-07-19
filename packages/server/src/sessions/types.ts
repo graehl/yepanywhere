@@ -5,7 +5,11 @@
  * but all readers implement this interface to provide a common API.
  */
 
-import type { UnifiedSession, UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  ProviderChildSessionSummary,
+  UnifiedSession,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import type { Message, SessionSummary } from "../supervisor/types.js";
 
 /**
@@ -106,7 +110,9 @@ export interface ISessionReader {
    * Used for Claude's Task tool to link tool_use to subagent sessions.
    * Non-Claude providers should return an empty array.
    */
-  getAgentMappings(): Promise<{ toolUseId: string; agentId: string }[]>;
+  getAgentMappings(
+    parentSessionId?: string,
+  ): Promise<{ toolUseId: string; agentId: string }[]>;
 
   /**
    * Get an agent (subagent) session by ID.
@@ -115,7 +121,16 @@ export interface ISessionReader {
    */
   getAgentSession(
     agentId: string,
+    parentSessionId?: string,
   ): Promise<{ messages: Message[]; status: string } | null>;
+
+  /**
+   * List provider-native child work attached to one canonical YA session.
+   * Readers without provider child sessions omit this method.
+   */
+  listProviderChildSessions?(
+    parentSessionId: string,
+  ): Promise<ProviderChildSessionSummary[]>;
 
   /**
    * Get the file path for a session by ID.

@@ -153,8 +153,18 @@ describe("Codex subagent sessions", () => {
     const summaries = await reader.listSessions(projectId);
     expect(summaries.map((summary) => summary.id)).toEqual([parentId]);
 
-    await expect(reader.getAgentMappings()).resolves.toEqual([
+    await expect(reader.getAgentMappings(parentId)).resolves.toEqual([
       { toolUseId: callId, agentId: childId },
+    ]);
+    await expect(reader.listProviderChildSessions(parentId)).resolves.toEqual([
+      {
+        id: childId,
+        parentSessionId: parentId,
+        title: "Parfit",
+        agentType: "reviewer",
+        toolUseId: callId,
+        updatedAt: now,
+      },
     ]);
 
     const agentSession = await reader.getAgentSession(childId);

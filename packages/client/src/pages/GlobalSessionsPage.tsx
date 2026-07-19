@@ -12,6 +12,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useGlobalSessionsFeed } from "../hooks/useGlobalSessionsFeed";
 import { useProjectQueues } from "../hooks/useProjectQueues";
+import { useProcesses } from "../hooks/useProcesses";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -139,6 +140,16 @@ export function GlobalSessionsPage() {
     poll: publicSharesEnabled,
   });
   const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
+  const { processes, terminatedProcesses } = useProcesses();
+  const providerChildrenBySessionId = useMemo(
+    () =>
+      new Map(
+        [...processes, ...terminatedProcesses]
+          .filter((process) => process.providerChildren?.length)
+          .map((process) => [process.sessionId, process.providerChildren]),
+      ),
+    [processes, terminatedProcesses],
+  );
 
   // Get filter params from URL
   const searchQuery = searchParams.get("q") || "";
@@ -1018,6 +1029,9 @@ export function GlobalSessionsPage() {
                       provider={session.provider}
                       model={session.model}
                       parentSessionId={session.parentSessionId}
+                      providerChildren={providerChildrenBySessionId.get(
+                        session.id,
+                      )}
                       executor={session.executor}
                       isStarred={session.isStarred}
                       isArchived={session.isArchived}
@@ -1099,6 +1113,9 @@ export function GlobalSessionsPage() {
                             provider={session.provider}
                             model={session.model}
                             parentSessionId={session.parentSessionId}
+                            providerChildren={providerChildrenBySessionId.get(
+                              session.id,
+                            )}
                             executor={session.executor}
                             isStarred={session.isStarred}
                             isArchived={session.isArchived}

@@ -156,6 +156,29 @@ describe("useProcesses", () => {
     expect(mocks.fetchJSON).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes when a provider child session is created", async () => {
+    const hook = renderHook(() => useProcesses());
+    await settle();
+    expect(hook.result.current.loading).toBe(false);
+
+    await act(async () => {
+      mocks.activityBus.emit("file-change", {
+        type: "file-change",
+        provider: "claude",
+        relativePath:
+          "project/parent/subagents/agent-child.meta.json",
+        path: "/tmp/agent-child.meta.json",
+        fileType: "agent-session",
+        changeType: "create",
+        timestamp: "2026-06-29T00:00:01.000Z",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await settle();
+
+    expect(mocks.fetchJSON).toHaveBeenCalledTimes(2);
+  });
+
   it("patches custom titles from metadata events before refetching", async () => {
     mocks.fetchJSON.mockResolvedValue(
       processesResponse([

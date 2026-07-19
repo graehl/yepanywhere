@@ -29,6 +29,15 @@ const { abortProcess, processesState, refetch } = vi.hoisted(() => ({
         sessionTitle: "Codex session",
         provider: "codex" as const,
         pid: 43210,
+        providerChildren: [
+          {
+            id: "child-native-1",
+            parentSessionId: "session-1",
+            title: "Review the restart guard",
+            agentType: "reviewer",
+            updatedAt: "2026-07-19T12:01:00.000Z",
+          },
+        ],
       },
     ],
     terminatedProcesses: [],
@@ -77,6 +86,9 @@ vi.mock("../../i18n", () => ({
           "Stopped PID {pid} and verified it is no longer running.",
         agentsKillResumeBlocked: "Auto-resume disabled for the killed session.",
         agentsKillFailed: "Could not stop the agent: {message}",
+        providerChildrenCountOne: "{count} provider subagent",
+        providerChildrenCountMany: "{count} provider subagents",
+        providerChildFallback: "Provider subagent",
       };
       return Object.entries(values ?? {}).reduce(
         (text, [name, value]) => text.replace(`{${name}}`, String(value)),
@@ -106,6 +118,20 @@ describe("AgentsPage process kill", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("nests provider-launched child work under its parent process", () => {
+    render(
+      <MemoryRouter>
+        <AgentsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Review the restart guard")).toBeTruthy();
+    expect(screen.getByText("reviewer")).toBeTruthy();
+    expect(
+      screen.getByRole("list", { name: "1 provider subagent" }),
+    ).toBeTruthy();
   });
 
   it("reports the PID after shutdown is verified", async () => {

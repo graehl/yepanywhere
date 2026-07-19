@@ -1,6 +1,6 @@
 # Portable Transcript Client Ledger
 
-Status: Phase 0 complete; no production extraction landed.
+Status: Phase 2 domain extraction in progress; behavior remains frozen.
 
 Topic: portable-transcript-compiler
 Topic: typescript-module-boundary-refactor
@@ -86,7 +86,7 @@ decision, not a move-only extraction.
 | PTC-000 | Complete | Establish docs, surface census, semantic/browser/private-artifact tripwires, and performance baseline | No transcript production behavior changes | Full Phase 0 gates |
 | PTC-001 | Complete | Introduce `compileTranscriptProjection` as the explicit uncached pure façade while `preprocessMessages` retains current cached behavior | Characterization suite green; returned structures identical | Focused semantic + root Tier 2 |
 | PTC-002 | Complete | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
-| PTC-003 | Not started | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
+| PTC-003 | Complete | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
 | PTC-004 | Not started | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
 | PTC-005 | Not started | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
 | PTC-006 | Not started | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
@@ -200,3 +200,26 @@ Append one note per landed slice using this shape:
   full sequential workspace tests, console budget, and performance comparison.
 - Follow-ups or surprises: none; the web selector still uses the compatibility
   façade until PTC-007.
+
+### PTC-003 — Extract semantic folding stages (landed 2026-07-19, this commit)
+
+- Moved/changed: moved compact-boundary coalescing, slash-command skill-body
+  folding, and legacy session-setup run collapsing into three named transcript
+  projection modules.
+- Explicitly unchanged: stage order, compact source preference, slash-command
+  linkage fallbacks, setup timing threshold, ids, content, and source-message
+  aggregation.
+- Dependency result: each extracted module imports only transcript data types
+  and the narrow pure helper it needs; none imports React, browser state,
+  transport, stores, timers, or the compatibility façade.
+- Semantic/browser/private artifact result: all 69 focused cache/compiler/
+  preprocessor assertions remain green without changed expectations.
+- Performance result: the fixed 683-message comparison passed, preserving
+  1,003 items, constant-time cache identity, and all 961 reusable references.
+- Commands: focused transcript tests, changed-file Biome, root typecheck/lint,
+  workspace tests plus a clean server rerun, console budget, and performance
+  comparison.
+- Follow-ups or surprises: the untouched fake-Codex lifecycle test hit four
+  polling timeouts in the workspace run, then passed alone and in the complete
+  server rerun. The extracted stages remain in their original compiler
+  positions.

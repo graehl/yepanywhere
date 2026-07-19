@@ -1,11 +1,9 @@
 import type { ContentBlock, Message } from "../types";
 import type {
   RenderItem,
-  SessionSetupItem,
   SystemItem,
   ToolCallItem,
   ToolResultData,
-  UserPromptItem,
 } from "../types/renderItems";
 import {
   formatCommandTurn,
@@ -14,10 +12,6 @@ import {
   parseCommandTurn,
   parseLocalCommandStdout,
 } from "./commandTurn";
-import {
-  isLegacyCodexEnvironmentContextText,
-  isLegacyCodexSetupText,
-} from "./codexLegacySetup";
 import { getMessageId } from "./mergeMessages";
 import {
   extractDetachedCellId,
@@ -29,6 +23,12 @@ import {
   parseTaskNotification,
 } from "./parseTaskNotification";
 import { getCachedTranscriptProjection } from "./transcriptProjection/cache";
+import { coalesceCompactBoundaryItems } from "./transcriptProjection/compactBoundaries";
+import { collapseSessionSetupRuns } from "./transcriptProjection/sessionSetup";
+import {
+  coalesceSlashCommandSkillBodies,
+  contentBlocksText,
+} from "./transcriptProjection/slashCommandBodies";
 import type { PreprocessAugments } from "./transcriptProjection/types";
 
 export type {
@@ -149,22 +149,7 @@ function findLastUserPromptMessageIndex(messages: Message[]): number {
   return 0;
 }
 
-const RESUME_ENVIRONMENT_CONTEXT_MAX_GAP_MS = 5_000;
-
 const INTERNAL_REASONING_PLACEHOLDER = "Reasoning [internal]";
-
-function getPromptText(content: string | ContentBlock[]): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  return content
-    .filter(
-      (block): block is ContentBlock & { type: "text"; text: string } =>
-        block.type === "text" && typeof block.text === "string",
-    )
-    .map((block) => block.text)
-    .join("\n");
-}
 
 function getPreprocessMessageContent(
   msg: Message,
@@ -237,182 +222,6 @@ function compactSummaryDetails(
   return content === undefined ? [] : [content];
 }
 
-function contentBlocksText(content: string | ContentBlock[]): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  return content
-    .map((block) =>
-      block.type === "text" && typeof block.text === "string" ? block.text : "",
-    )
-    .filter(Boolean)
-    .join("\n");
-}
-
-function isCompactBoundaryItem(
-  item: RenderItem,
-): item is SystemItem & { subtype: "compact_boundary" } {
-  return item.type === "system" && item.subtype === "compact_boundary";
-}
-
-function hasSystemCompactBoundarySource(item: SystemItem): boolean {
-  return item.sourceMessages.some(
-    (source) =>
-      source.type === "system" &&
-      (source as { subtype?: string }).subtype === "compact_boundary",
-  );
-}
-
-function mergeCompactBoundaryRun(
-  run: Array<SystemItem & { subtype: "compact_boundary" }>,
-): SystemItem {
-  const first = run[0];
-  if (!first) {
-    throw new Error("Cannot merge an empty compact boundary run");
-  }
-  const preferred = run.find(hasSystemCompactBoundarySource) ?? first;
-  const sourceMessages = run.flatMap((item) => item.sourceMessages);
-  const details = run.flatMap((item) => item.details ?? []);
-  return {
-    type: "system",
-    id: preferred.id,
-    subtype: "compact_boundary",
-    content: preferred.content,
-    status: preferred.status,
-    configChanged: preferred.configChanged,
-    isSubagent: preferred.isSubagent,
-    sourceMessages,
-    details: details.length > 0 ? details : undefined,
-  };
-}
-
-function coalesceCompactBoundaryItems(items: RenderItem[]): RenderItem[] {
-  const coalesced: RenderItem[] = [];
-  let index = 0;
-
-  while (index < items.length) {
-    const item = items[index];
-    if (!item || !isCompactBoundaryItem(item)) {
-      if (item) {
-        coalesced.push(item);
-      }
-      index += 1;
-      continue;
-    }
-
-    const run: Array<SystemItem & { subtype: "compact_boundary" }> = [item];
-    let runIndex = index + 1;
-    while (runIndex < items.length) {
-      const runItem = items[runIndex];
-      if (!runItem || !isCompactBoundaryItem(runItem)) {
-        break;
-      }
-      run.push(runItem);
-      runIndex += 1;
-    }
-    coalesced.push(mergeCompactBoundaryRun(run));
-    index = runIndex;
-  }
-
-  return coalesced;
-}
-
-function isLocalCommandItem(
-  item: RenderItem,
-): item is SystemItem & { subtype: "local_command" } {
-  return item.type === "system" && item.subtype === "local_command";
-}
-
-function isSlashCommandSkillBodyItem(item: RenderItem): item is UserPromptItem {
-  if (item.type !== "user_prompt") {
-    return false;
-  }
-  if (!item.sourceMessages.some((message) => message.isMeta === true)) {
-    return false;
-  }
-  return contentBlocksText(item.content)
-    .trimStart()
-    .startsWith("Base directory for this skill:");
-}
-
-function messagePromptId(message: Message): string | null {
-  const promptId = (message as { promptId?: unknown }).promptId;
-  return typeof promptId === "string" && promptId ? promptId : null;
-}
-
-function isLinkedSlashCommandSkillBody(
-  commandItem: SystemItem,
-  skillItem: UserPromptItem,
-): boolean {
-  const commandIds = new Set(
-    commandItem.sourceMessages.map(getMessageId).filter(Boolean),
-  );
-  const skillParentUuids = skillItem.sourceMessages
-    .map((message) =>
-      typeof message.parentUuid === "string" ? message.parentUuid : null,
-    )
-    .filter((parentUuid): parentUuid is string => parentUuid !== null);
-  if (skillParentUuids.length > 0 && commandIds.size > 0) {
-    return skillParentUuids.some((parentUuid) => commandIds.has(parentUuid));
-  }
-
-  const commandPromptIds = new Set(
-    commandItem.sourceMessages
-      .map(messagePromptId)
-      .filter((promptId): promptId is string => promptId !== null),
-  );
-  const skillPromptIds = skillItem.sourceMessages
-    .map(messagePromptId)
-    .filter((promptId): promptId is string => promptId !== null);
-  if (skillPromptIds.length > 0 && commandPromptIds.size > 0) {
-    return skillPromptIds.some((promptId) => commandPromptIds.has(promptId));
-  }
-
-  return true;
-}
-
-function mergeSlashCommandSkillBody(
-  commandItem: SystemItem & { subtype: "local_command" },
-  skillItem: UserPromptItem,
-): SystemItem {
-  return {
-    ...commandItem,
-    sourceMessages: [
-      ...commandItem.sourceMessages,
-      ...skillItem.sourceMessages,
-    ],
-    details: [...(commandItem.details ?? []), skillItem.content],
-  };
-}
-
-function coalesceSlashCommandSkillBodies(items: RenderItem[]): RenderItem[] {
-  const coalesced: RenderItem[] = [];
-  let index = 0;
-
-  while (index < items.length) {
-    const item = items[index];
-    const nextItem = items[index + 1];
-    if (
-      item &&
-      nextItem &&
-      isLocalCommandItem(item) &&
-      isSlashCommandSkillBodyItem(nextItem) &&
-      isLinkedSlashCommandSkillBody(item, nextItem)
-    ) {
-      coalesced.push(mergeSlashCommandSkillBody(item, nextItem));
-      index += 2;
-      continue;
-    }
-
-    if (item) {
-      coalesced.push(item);
-    }
-    index += 1;
-  }
-
-  return coalesced;
-}
-
 function isSlashCommandSkillBodyMessage(msg: Message): boolean {
   const content = getPreprocessMessageContent(msg);
   return (
@@ -464,116 +273,6 @@ function isDisplayableThinking(
 ): thinking is string {
   const trimmed = thinking?.trim();
   return !!trimmed && trimmed !== INTERNAL_REASONING_PLACEHOLDER;
-}
-
-function isSessionSetupPrompt(item: UserPromptItem): boolean {
-  const text = getPromptText(item.content).trimStart();
-  return isLegacyCodexSetupText(text, item.sourceMessages);
-}
-
-function isEnvironmentContextSetupPrompt(item: UserPromptItem): boolean {
-  return isLegacyCodexEnvironmentContextText(
-    getPromptText(item.content),
-    item.sourceMessages,
-  );
-}
-
-function itemTimestampMs(item: RenderItem): number | null {
-  const timestamp = item.sourceMessages
-    .map((message) =>
-      typeof message.timestamp === "string"
-        ? Date.parse(message.timestamp)
-        : NaN,
-    )
-    .find(Number.isFinite);
-  return timestamp === undefined ? null : timestamp;
-}
-
-function isImmediateResumeEnvironmentContext(
-  setupItem: UserPromptItem,
-  nextItem: RenderItem | undefined,
-): boolean {
-  if (
-    !isEnvironmentContextSetupPrompt(setupItem) ||
-    nextItem?.type !== "user_prompt" ||
-    isSessionSetupPrompt(nextItem)
-  ) {
-    return false;
-  }
-
-  const setupMs = itemTimestampMs(setupItem);
-  const nextMs = itemTimestampMs(nextItem);
-  if (setupMs === null || nextMs === null) {
-    return false;
-  }
-
-  const gapMs = nextMs - setupMs;
-  return gapMs >= 0 && gapMs <= RESUME_ENVIRONMENT_CONTEXT_MAX_GAP_MS;
-}
-
-function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
-  const result: RenderItem[] = [];
-  let index = 0;
-
-  while (index < items.length) {
-    const item = items[index];
-    if (item?.type !== "user_prompt" || !isSessionSetupPrompt(item)) {
-      result.push(item as RenderItem);
-      index += 1;
-      continue;
-    }
-
-    const setupItems: UserPromptItem[] = [];
-    let runIndex = index;
-    while (runIndex < items.length) {
-      const runItem = items[runIndex];
-      if (runItem?.type !== "user_prompt" || !isSessionSetupPrompt(runItem)) {
-        break;
-      }
-      setupItems.push(runItem);
-      runIndex += 1;
-    }
-
-    const singleSetupItem = setupItems.length === 1 ? setupItems[0] : undefined;
-    const shouldSuppressSingleSetupItem =
-      singleSetupItem !== undefined &&
-      isImmediateResumeEnvironmentContext(singleSetupItem, items[runIndex]);
-
-    if (shouldSuppressSingleSetupItem) {
-      index = runIndex;
-      continue;
-    }
-
-    // Preserve likely user-authored single setup-like messages mid-session.
-    // Collapse any run at session start and any multi-item run (typical resume preamble).
-    if (setupItems.length > 1 || index === 0) {
-      const firstSetupItem = setupItems[0];
-      if (!firstSetupItem) {
-        index = runIndex;
-        continue;
-      }
-
-      const collapsedItem: SessionSetupItem = {
-        type: "session_setup",
-        id: `session-setup-${firstSetupItem.id}`,
-        title: "Session setup",
-        prompts: setupItems.map((setupItem) => setupItem.content),
-        sourceMessages: setupItems.flatMap(
-          (setupItem) => setupItem.sourceMessages,
-        ),
-      };
-      result.push(collapsedItem);
-    } else {
-      const singleSetupItem = setupItems[0];
-      if (singleSetupItem) {
-        result.push(singleSetupItem);
-      }
-    }
-
-    index = runIndex;
-  }
-
-  return result;
 }
 
 function processMessage(
@@ -1313,10 +1012,7 @@ const PROCESS_EXITED_RE = /(?:^|\n)\s*Process exited with code \d+/i;
 const BACKGROUND_ENDED_STATUS_RE =
   /^(completed|failed|killed|stopped|success|error|done)/i;
 
-function getRecordField(
-  value: unknown,
-  field: string,
-): unknown {
+function getRecordField(value: unknown, field: string): unknown {
   return isRecord(value) ? value[field] : undefined;
 }
 
@@ -1370,8 +1066,7 @@ function annotateBackgroundCommands(items: RenderItem[]): RenderItem[] {
       if (status === "completed" || status === "failed") {
         addEnded(
           coerceSessionId(
-            getRecordField(task, "task_id") ??
-              getRecordField(input, "task_id"),
+            getRecordField(task, "task_id") ?? getRecordField(input, "task_id"),
           ),
         );
       }
@@ -1678,8 +1373,11 @@ function hideContextFreeEmptyShellPolls(items: RenderItem[]): RenderItem[] {
     const chars = typeof input.chars === "string" ? input.chars : "";
     const hasContext =
       chars.length > 0 ||
-      [input.linked_command, input.linked_file_path, input.linked_tool_name]
-        .some((value) => typeof value === "string" && value.trim().length > 0);
+      [
+        input.linked_command,
+        input.linked_file_path,
+        input.linked_tool_name,
+      ].some((value) => typeof value === "string" && value.trim().length > 0);
     if (hasContext) {
       return true;
     }

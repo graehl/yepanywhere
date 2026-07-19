@@ -88,7 +88,7 @@ decision, not a move-only extraction.
 | PTC-002 | Complete | Move same-array/augment WeakMap ownership into a named cache adapter and test cache identity/variant eviction independently | PTC-001 landed; no caller cutover yet | Focused cache/semantic + root Tier 2 |
 | PTC-003 | Complete | Extract compact-boundary, slash-command body, and session-setup folding into narrow platform-free modules | Move-only; no changed assertions | Focused semantic + root Tier 2 |
 | PTC-004 | Complete | Extract shell/write/wait linkage, detached-poll folding, background annotation, and empty-poll filtering | Private Codex artifact baseline captured; shell fixtures green | Focused semantic/server Codex + root Tier 2 |
-| PTC-005 | Not started | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
+| PTC-005 | Complete | Extract per-message projection and invocation-local tool/result association so the pure compiler no longer lives in the legacy adapter file | PTC-003/004 landed; import graph remains acyclic | Full semantic/server parity + root Tier 2 |
 | PTC-006 | Not started | Move compiler orchestration into its final internal module and reduce `preprocessMessages` to the documented compatibility façade | Pure module dependency audit passes | Full semantic + client tests |
 | PTC-007 | Not started | Cut the web session-detail selector over to the explicit compiler/cache/stabilization layers | Integration entry gate in master plan satisfied | Full client unit/E2E, artifacts, screenshots, performance |
 | PTC-008 | Not started | Remove temporary comparison wiring, reconcile docs, and record final web-only checkpoint | Cutover has clean evidence and revert story | Full final gates |
@@ -245,3 +245,26 @@ Append one note per landed slice using this shape:
   and performance comparison.
 - Follow-ups or surprises: none; the compiler still invokes the four stages in
   their original order.
+
+### PTC-005 — Extract per-message projection (landed 2026-07-19, this commit)
+
+- Moved/changed: moved the orphan scan, invocation-local tool maps, message and
+  content-block projection, tool snapshot updates, tool-result association,
+  and agent-result parsing into `messageProjection.ts`.
+- Explicitly unchanged: message traversal order, orphan handling, pending/tool
+  map semantics, generated ids, streaming flags, augments, tool status rules,
+  source-message provenance, and postprocessing order.
+- Dependency result: per-message projection no longer lives in or imports the
+  legacy façade. Historical helper exports remain available through façade
+  re-exports, and the resulting import graph is acyclic.
+- Semantic/browser/private artifact result: 81 focused client assertions and
+  49 server render-parity/Codex assertions passed without expectation changes.
+- Performance result: the fixed comparison preserved its item-count, cache,
+  and reference-reuse invariants within configured tolerance.
+- Commands: focused client semantic tests, focused server parity tests,
+  changed-file Biome, root typecheck/lint, workspace tests, single-worker full
+  server tests, console budget, and performance comparison.
+- Follow-ups or surprises: the default server run again starved the untouched
+  fake-Codex polling tests under intra-suite concurrency; all 2,661 assertions
+  passed with one Vitest worker. Compiler orchestration remains in the façade
+  for PTC-006.

@@ -178,23 +178,24 @@ async function waitUntilAbortDeadline<T>(
   }
 }
 
+/** Whether the user chose durable patient queue intent for this entry. */
+function hasPatientQueueIntent(entry: DeferredQueueEntry): boolean {
+  return entry.message.metadata?.deliveryIntent === "patient";
+}
+
 /**
- * Whether a queued entry should ride the verified-idle "patient" path instead
- * of the plain turn-end deferred path. Patient delivery only differs from
- * deferred on Claude — the only provider that reports background-work retention
- * (session crons, background/live tasks), which is what lets YA wait for
- * genuine completion. On other providers it would add nothing but a brief
- * sleep, so a "patient"-tagged entry is treated as an ordinary deferred one: it
- * promotes at turn end and never engages the patient machinery.
+ * Whether a queued entry should ride the verified-idle patient delivery path
+ * instead of the plain turn-end deferred path. Patient timing only differs
+ * from deferred on Claude — the only provider that reports background-work
+ * retention (session crons, background/live tasks), which is what lets YA wait
+ * for genuine completion. Other providers still preserve patient intent across
+ * restart, but promote it at the ordinary turn-end boundary.
  */
-function isPatientDeferredEntry(
+function usesPatientDeliveryPath(
   entry: DeferredQueueEntry,
   provider: ProviderName,
 ): boolean {
-  return (
-    entry.message.metadata?.deliveryIntent === "patient" &&
-    isClaudeSdkProvider(provider)
-  );
+  return hasPatientQueueIntent(entry) && isClaudeSdkProvider(provider);
 }
 
 /** Quiet milliseconds this patient entry waits for after verified idle. */
@@ -1131,14 +1132,12 @@ export class Process {
 
   hasPatientDeferredMessages(): boolean {
     return this.deferredQueue.some((entry) =>
-      isPatientDeferredEntry(entry, this.provider),
+      usesPatientDeliveryPath(entry, this.provider),
     );
   }
 
   hasVolatileDeferredMessages(): boolean {
-    return this.deferredQueue.some(
-      (entry) => !isPatientDeferredEntry(entry, this.provider),
-    );
+    return this.deferredQueue.some((entry) => !hasPatientQueueIntent(entry));
   }
 
   async waitForPatientQueuePersistenceIdle(): Promise<void> {
@@ -2683,7 +2682,7 @@ export class Process {
   private persistPatientDeferredEntry(entry: DeferredQueueEntry): void {
     if (
       !this.sessionQueuePersistenceService ||
-      !isPatientDeferredEntry(entry, this.provider)
+      !hasPatientQueueIntent(entry)
     ) {
       return;
     }
@@ -2706,7 +2705,7 @@ export class Process {
   ): PersistedSessionQueuedMessage | null {
     if (
       !this.sessionQueuePersistenceService ||
-      !isPatientDeferredEntry(entry, this.provider)
+      !hasPatientQueueIntent(entry)
     ) {
       return null;
     }
@@ -2747,7 +2746,7 @@ export class Process {
       return;
     }
     const ids = entries
-      .filter((entry) => isPatientDeferredEntry(entry, this.provider))
+      .filter(hasPatientQueueIntent)
       .map((entry) => entry.persistedQueueId)
       .filter((id): id is string => Boolean(id));
     if (ids.length === 0) {
@@ -2769,9 +2768,7 @@ export class Process {
       return 0;
     }
 
-    const entries = this.deferredQueue.filter((entry) =>
-      isPatientDeferredEntry(entry, this.provider),
-    );
+    const entries = this.deferredQueue.filter(hasPatientQueueIntent);
     if (entries.length === 0) {
       return 0;
     }
@@ -2851,10 +2848,10 @@ export class Process {
     const canPromoteIfReady = !!(
       options?.promoteIfReady &&
       this.messageQueue &&
-      // Only a "real" patient entry (Claude) waits for the verified-idle path;
-      // elsewhere a patient-tagged message is an ordinary deferred one and
+      // Only Claude waits for the verified-idle patient delivery path;
+      // elsewhere durable patient intent uses ordinary deferred timing and
       // promotes immediately like any other deferred turn.
-      !isPatientDeferredEntry(
+      !usesPatientDeliveryPath(
         { message, timestamp: new Date().toISOString() },
         this.provider,
       ) &&
@@ -4007,7 +4004,7 @@ export class Process {
     }
 
     const eligible = this.deferredQueue.filter(
-      (entry) => !isPatientDeferredEntry(entry, this.provider),
+      (entry) => !usesPatientDeliveryPath(entry, this.provider),
     );
     if (eligible.length === 0) {
       return false;
@@ -4036,6 +4033,7 @@ export class Process {
     this.deferredQueue = this.deferredQueue.filter(
       (entry) => !promotedEntries.has(entry),
     );
+    this.deletePersistedPatientDeferredEntries(group, "promoted");
     this.emitDeferredQueueChange(
       "promoted",
       group.length === 1 ? group[0]!.message.tempId : undefined,
@@ -4069,7 +4067,7 @@ export class Process {
     }
 
     const patientEntries = this.deferredQueue.filter((entry) =>
-      isPatientDeferredEntry(entry, this.provider),
+      usesPatientDeliveryPath(entry, this.provider),
     );
     if (patientEntries.length === 0) {
       return { promoted: false, nextPatienceMsRemaining: null };

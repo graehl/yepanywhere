@@ -47,10 +47,13 @@ minutes.
    never collapsed, matched, or de-duplicated by their content.
 4. **Patient persistence only.** Short-term deferred and direct queues live in
    the Process and die when the process restarts or the session stops. Patient
-   entries are durable server state while queued. Restart-loaded patient entries
-   surface as `paused-after-restart` queue chips and require an explicit action:
-   resume (rejoin the patient queue and wait for verified quiet), steer (deliver
-   now), or delete.
+   entries are durable server state while queued on every provider. Delivery
+   timing remains provider-specific: providers without verified background-work
+   retention promote patient intent at the ordinary turn-end boundary, but must
+   not weaken its restart durability. Restart-loaded patient entries surface as
+   `paused-after-restart` queue chips and require an explicit action: resume
+   (rejoin the provider's patient/deferred delivery path), steer (deliver now),
+   or delete.
 5. **No optimism.** Queuing and cancelling behave exactly like sending a normal
    session message: the composer disables, the request goes to the server, and
    the UI only changes when confirmed server state comes back. No optimistic
@@ -122,8 +125,9 @@ not rejected. The point of this note is to ship a correct minimum first.
 `docs/tactical/037-session-queue-persistence-prep.md` tracks the planned
 revision. The agreed live persistence shape is intentionally narrow:
 
-- persist only `deliveryIntent: "patient"` entries, the long-lived visible queue
-  that waits for verified idle;
+- persist every `deliveryIntent: "patient"` entry, independently of whether the
+  provider can wait for verified background quiet or uses ordinary turn-end
+  delivery;
 - load persisted patient entries after server restart as paused-after-restart,
   never auto-send them on startup;
 - continue rendering queue state from server-owned state, not browser storage;
@@ -133,10 +137,11 @@ revision. The agreed live persistence shape is intentionally narrow:
 - keep direct `MessageQueue` entries ephemeral for the same restart semantics;
 - do not use text matching to recover, deduplicate, or remove entries.
 
-Status as of 2026-06-30 (revised 2026-07-03): live patient queue write/delete
+Status as of 2026-06-30 (revised 2026-07-20): live patient queue write/delete
 is wired into `Process`/Supervisor. A queued patient entry is written to the
-server persistence service, and cancel/promotion/drain removes it — including
-the promote-straight-through path, which consumes the entry's durable row even
+server persistence service for every provider, and cancel/promotion/drain
+removes it — including Codex's ordinary turn-end promotion and the
+promote-straight-through path, which consumes the entry's durable row even
 though no queue entry exists to drain later. Startup-loaded paused entries are
 surfaced through session detail/metadata responses and can be deleted by
 durable queue id. Per-entry resume resumes *through* the clicked entry: a

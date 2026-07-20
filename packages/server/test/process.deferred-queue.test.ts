@@ -164,6 +164,54 @@ describe("Process", () => {
       });
     });
 
+    it("persists Codex patient entries until turn-end promotion", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const controller = createControllableIterator();
+        const queue = new MessageQueue();
+        const process = new Process(controller.iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          idleTimeoutMs: 100,
+          queue,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage(
+          {
+            text: "patient follow-up",
+            tempId: "temp-patient-codex",
+            metadata: { deliveryIntent: "patient" },
+          },
+          { promoteIfReady: true },
+        );
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toMatchObject([
+          {
+            sessionId: "sess-1",
+            provider: "codex",
+            kind: "patient",
+            status: "queued",
+            message: {
+              text: "patient follow-up",
+              tempId: "temp-patient-codex",
+              metadata: { deliveryIntent: "patient" },
+            },
+          },
+        ]);
+
+        controller.push({ type: "result", session_id: "sess-1" });
+        await waitFor(() => expect(queue.depth).toBe(1));
+        await process.waitForPatientQueuePersistenceIdle();
+        expect(service.list()).toEqual([]);
+
+        controller.finish();
+        await process.abort();
+      });
+    });
+
     it("deletes persisted patient entries when they promote", async () => {
       await withSessionQueuePersistence(async ({ service, projectId }) => {
         const controller = createControllableIterator();

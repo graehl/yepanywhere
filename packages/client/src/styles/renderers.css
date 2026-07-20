@@ -5523,6 +5523,7 @@ pre.code-highlighter-plain code {
 
 .markdown-preview .markdown-rendered code {
   background: var(--bg-code);
+  color: var(--text-primary);
   padding: 0.125rem 0.25rem;
   border-radius: 3px;
   font-size: 0.9em;
@@ -5530,6 +5531,7 @@ pre.code-highlighter-plain code {
 
 .markdown-preview .markdown-rendered pre {
   background: var(--bg-code);
+  color: var(--text-primary);
   padding: 0.75rem;
   border-radius: 6px;
   overflow-x: auto;
@@ -5572,6 +5574,8 @@ pre.code-highlighter-plain code {
 
 .markdown-preview .markdown-rendered th {
   background: var(--bg-secondary);
+  /* Chromium copies a local background but omits an inherited foreground. */
+  color: var(--text-primary);
 }
 
 .markdown-preview .markdown-rendered img {

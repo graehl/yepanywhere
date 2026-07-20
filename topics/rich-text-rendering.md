@@ -81,6 +81,14 @@ file links should therefore inherit the same source/preview controls,
 large-file windowing, hline span markers, scrollbars, copy affordance, media
 hydration, and public-share capability scoping.
 
+Native rich-text copy from a rendered Markdown preview must keep foreground and
+background styling paired on the same element, or omit both. Chromium includes
+an element's local background in its HTML clipboard payload but omits a
+foreground inherited from the preview container; destination editors can then
+render their default dark text against YA's copied dark background. Table
+headers and inline/block code therefore declare their themed foregrounds
+explicitly even though inheritance produces the same appearance inside YA.
+
 ## Toggleable transforms (sigma Σ button)
 
 `FixedFontMathToggle` wraps a source view and, if `rendered.changed = true`, shows

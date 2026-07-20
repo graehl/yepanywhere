@@ -92,6 +92,15 @@ pair into editors such as Jira. Table headers and inline/block code still
 declare paired themed colors for correct rendering inside YA; those
 declarations never enter the explicit clipboard HTML.
 
+Edit diff previews remain expansion targets even when the click completes a
+text-selection gesture. Before opening the full-diff modal, the shared tap
+target records the selected text offsets inside the fixed-font view; after the
+complete view mounts, it recreates the browser range against the corresponding
+modal text. Thus truncation can expand without making the user reselect the text
+they intended to copy. If the preview range cannot be captured inside the
+fixed-font content, the preview selection stays in place and the modal does not
+open.
+
 ## Toggleable transforms (sigma Σ button)
 
 `FixedFontMathToggle` wraps a source view and, if `rendered.changed = true`, shows

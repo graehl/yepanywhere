@@ -713,7 +713,7 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(container.textContent).toContain("Recent MT Adapter Progress");
   });
 
-  it("preserves a diff selection instead of opening the full modal", () => {
+  it("transfers a diff selection into the full modal", async () => {
     const structuredPatch = [
       {
         oldStart: 1,
@@ -725,14 +725,22 @@ describe("EditRenderer collapsed preview fallback", () => {
     ];
 
     render(
-      <div>
-        {renderCollapsedPreview(
-          { _structuredPatch: structuredPatch } as never,
-          { filePath: "notes.md", structuredPatch } as never,
-          false,
-          renderContext,
-        )}
-      </div>,
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        <I18nProvider>
+          <div>
+            {renderCollapsedPreview(
+              { _structuredPatch: structuredPatch } as never,
+              { filePath: "notes.md", structuredPatch } as never,
+              false,
+              renderContext,
+            )}
+          </div>
+        </I18nProvider>
+      </SessionMetadataProvider>,
     );
 
     const selectedText = screen.getByText("+selected replacement text");
@@ -747,7 +755,14 @@ describe("EditRenderer collapsed preview fallback", () => {
 
     fireEvent.click(selectedText);
 
-    expect(document.getSelection()?.toString()).toBe("selected replacement");
-    expect(document.body.querySelector(".modal")).toBeNull();
+    await waitFor(() => {
+      const modal = document.body.querySelector(".modal");
+      const selection = document.getSelection();
+      expect(modal).not.toBeNull();
+      expect(selection?.toString()).toBe("selected replacement");
+      expect(
+        selection?.anchorNode ? modal?.contains(selection.anchorNode) : false,
+      ).toBe(true);
+    });
   });
 });

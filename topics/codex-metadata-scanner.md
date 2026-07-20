@@ -46,7 +46,7 @@ index:
   filtering, discovery-index behavior, first-line reads by representation,
   skipped metadata files, and subagent sessions filtered from ordinary lists.
 - `.jsonl.zst` support is a runtime capability. YA still declares Node
-  `>=20`; Node 20 does not expose native `node:zlib` zstd APIs, so compressed
+  `>=20.12`; Node 20 does not expose native `node:zlib` zstd APIs, so compressed
   rollouts are skipped cleanly and counted as unsupported on those runtimes.
 - `SessionDiscoveryIndex` persists normalized provider head metadata under
   `{dataDir}/indexes/session-discovery/<provider>/<source-root-hash>/...`.

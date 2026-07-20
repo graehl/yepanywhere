@@ -304,9 +304,8 @@ export function AgentsPage() {
       setKillingIds((prev) => new Set(prev).add(process.id));
       setKillFeedback(null);
       try {
-        // Explicit Kill: also exempt the session from auto-resume (heartbeat
-        // opt-in cleared; Codex rollout tombstoned server-side) so a killed
-        // session cannot be resurrected by an app-server resume.
+        // Explicit Kill also persists a YA-owned auto-resume exemption. The
+        // provider transcript remains available for deliberate continuation.
         const result = await api.abortProcess(process.id, {
           blockResume: true,
         });
@@ -315,15 +314,24 @@ export function AgentsPage() {
             ? t("agentsKillVerified" as never)
             : t("agentsKillVerifiedPid" as never, { pid: result.pid });
         const exemption = result.resumeExemption;
-        const resumeBlocked =
-          exemption !== undefined &&
-          (exemption.heartbeatDisabled || exemption.rolloutsRenamed.length > 0)
+        if (exemption?.error || exemption?.autoResumeDisabled === false) {
+          setKillFeedback({
+            tone: "error",
+            message: `${stopped} ${t("agentsKillResumeBlockFailed" as never, {
+              message:
+                exemption.error ??
+                t("agentsKillResumeBlockUnknown" as never),
+            })}`,
+          });
+        } else {
+          const resumeBlocked = exemption?.autoResumeDisabled
             ? ` ${t("agentsKillResumeBlocked" as never)}`
             : "";
-        setKillFeedback({
-          tone: "success",
-          message: `${stopped}${resumeBlocked}`,
-        });
+          setKillFeedback({
+            tone: "success",
+            message: `${stopped}${resumeBlocked}`,
+          });
+        }
       } catch (error) {
         setKillFeedback({
           tone: "error",

@@ -975,8 +975,8 @@ export const api = {
       /** Present when the abort also exempted the session from auto-resume. */
       resumeExemption?: {
         heartbeatDisabled: boolean;
-        rolloutsRenamed: string[];
-        failures: Array<{ path: string; error: string }>;
+        autoResumeDisabled: boolean;
+        error?: string;
       };
     }>(`/processes/${processId}/abort`, {
       method: "POST",

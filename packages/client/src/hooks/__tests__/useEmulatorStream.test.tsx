@@ -122,4 +122,56 @@ describe("useEmulatorStream", () => {
       "Device streaming is not available for this source",
     );
   });
+
+  it("stops an active stream through its original channel when the source changes", async () => {
+    const unsubscribeA = vi.fn();
+    const sendA = vi.fn(async (_msg: RemoteClientMessage) => {});
+    const sendB = vi.fn(async (_msg: RemoteClientMessage) => {});
+    const transportA = new FakeSourceTransport({
+      capabilities: {
+        sameOriginUrls: true,
+        device: {
+          send: sendA,
+          onMessage: () => unsubscribeA,
+        },
+      },
+    });
+    const transportB = new FakeSourceTransport({
+      capabilities: {
+        sameOriginUrls: true,
+        device: {
+          send: sendB,
+          onMessage: () => vi.fn(),
+        },
+      },
+    });
+    let runtime = createRuntime(transportA);
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <SourceRuntimeProvider runtime={runtime}>
+        {children}
+      </SourceRuntimeProvider>
+    );
+    const hook = renderHook(() => useEmulatorStream(), { wrapper: Wrapper });
+
+    act(() => {
+      hook.result.current.connect({ id: "emulator-5554", type: "emulator" });
+    });
+    await waitFor(() => {
+      expect(sendA).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "device_stream_start" }),
+      );
+    });
+
+    runtime = createRuntime(transportB);
+    hook.rerender();
+
+    await waitFor(() => {
+      expect(sendA).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "device_stream_stop" }),
+      );
+    });
+    expect(sendB).not.toHaveBeenCalled();
+    expect(unsubscribeA).toHaveBeenCalledOnce();
+    expect(hook.result.current.connectionState).toBe("idle");
+  });
 });

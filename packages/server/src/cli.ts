@@ -181,7 +181,7 @@ DATA DIRECTORY:
   Contains: logs/, indexes/, uploads/, session metadata, push subscriptions
 
 REQUIREMENTS:
-  - Node.js >= 20
+  - Node.js >= 20.12
   - Claude CLI installed (curl -fsSL https://claude.ai/install.sh | bash)
 `);
 }

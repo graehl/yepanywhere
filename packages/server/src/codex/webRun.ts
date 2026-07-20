@@ -41,7 +41,7 @@ const PAGE_MARKER_RE = new RegExp(
   `^${MARK_OPEN}cite${MARK_SEP}([^${MARK_CLOSE}†]+)${MARK_CLOSE}` +
     `(?:\\s*\\[wordlim: (\\d+)\\])?\\s?`,
 );
-const TITLE_URL_RE = /^(.*?)\s*\((https?:\/\/[^\s()]+)\)$/;
+const TITLE_URL_RE = /^(.*?)\s*\((https?:\/\/\S+)\)$/;
 const INLINE_MARK_RE = new RegExp(
   `${MARK_OPEN}cite${MARK_SEP}([^${MARK_CLOSE}]*)${MARK_CLOSE}`,
   "g",

@@ -148,8 +148,6 @@ import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import {
-  disableCodexRolloutsForKilledSession,
-  isCodexRolloutProvider,
   isUnownedHeartbeatResumeEligible,
   type ResumeExemptionResult,
 } from "./sessions/resume-exemption.js";
@@ -173,6 +171,7 @@ export interface AppOptions {
   /** Real SDK interface with full features */
   realSdk?: RealClaudeSDKInterface;
   projectsDir?: string; // override for testing
+  codexSessionsDir?: string; // override for testing
   idleTimeoutMs?: number;
   defaultPermissionMode?: PermissionMode;
   /** EventBus for file change events */
@@ -353,6 +352,7 @@ function getPreservedRestartWork(
 
 export function createApp(options: AppOptions): AppResult {
   configureProviderRuntime({ codexCliPath: options.codexCliPath });
+  const codexSessionsDir = options.codexSessionsDir ?? CODEX_SESSIONS_DIR;
 
   const app = new Hono<{ Bindings: HttpBindings }>();
   const attachmentStagingService =
@@ -444,9 +444,11 @@ export function createApp(options: AppOptions): AppResult {
     }
     return created;
   };
-  const codexDiscoveryIndex = getCodexDiscoveryIndex(CODEX_SESSIONS_DIR);
+  const codexDiscoveryIndex = getCodexDiscoveryIndex(codexSessionsDir);
   const codexScanner = new CodexSessionScanner(
-    codexDiscoveryIndex ? { discoveryIndex: codexDiscoveryIndex } : {},
+    codexDiscoveryIndex
+      ? { sessionsDir: codexSessionsDir, discoveryIndex: codexDiscoveryIndex }
+      : { sessionsDir: codexSessionsDir },
   );
   const geminiScanner = new GeminiSessionScanner();
   const projectScanCachePath = options.dataDir
@@ -586,11 +588,11 @@ export function createApp(options: AppOptions): AppResult {
   };
   const codexReaderFactory = (projectPath: string): CodexSessionReader =>
     getOrCreateReader(
-      `codex-extra::${CODEX_SESSIONS_DIR}::${projectPath}`,
+      `codex-extra::${codexSessionsDir}::${projectPath}`,
       () => {
-        const discoveryIndex = getCodexDiscoveryIndex(CODEX_SESSIONS_DIR);
+        const discoveryIndex = getCodexDiscoveryIndex(codexSessionsDir);
         return new CodexSessionReader({
-          sessionsDir: CODEX_SESSIONS_DIR,
+          sessionsDir: codexSessionsDir,
           projectPath,
           summaryParserWorkerMode: options.codexSummaryParserWorkerMode,
           ...(discoveryIndex ? { discoveryIndex } : {}),
@@ -638,7 +640,7 @@ export function createApp(options: AppOptions): AppResult {
       project.id,
       {
         readerFactory,
-        codexSessionsDir: CODEX_SESSIONS_DIR,
+        codexSessionsDir,
         codexReaderFactory,
         codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
         geminiSessionsDir: GEMINI_TMP_DIR,
@@ -680,7 +682,7 @@ export function createApp(options: AppOptions): AppResult {
     const candidates: HeartbeatTurnCandidate[] = [];
     const providerResolutionDeps = {
       readerFactory,
-      codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexSessionsDir,
       codexReaderFactory,
       codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
       geminiSessionsDir: GEMINI_TMP_DIR,
@@ -1098,7 +1100,7 @@ export function createApp(options: AppOptions): AppResult {
       projectQueueService: options.projectQueueService,
       sessionIndexService: options.sessionIndexService,
       codexScanner,
-      codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
@@ -1119,7 +1121,7 @@ export function createApp(options: AppOptions): AppResult {
         projectQueueService: options.projectQueueService,
         projectQueueScheduler,
         sessionIndexService: options.sessionIndexService,
-        codexSessionsDir: CODEX_SESSIONS_DIR,
+        codexSessionsDir,
         codexReaderFactory,
         geminiSessionsDir: GEMINI_TMP_DIR,
         geminiReaderFactory,
@@ -1139,7 +1141,7 @@ export function createApp(options: AppOptions): AppResult {
         projectQueueService: options.projectQueueService,
         projectQueueScheduler,
         sessionIndexService: options.sessionIndexService,
-        codexSessionsDir: CODEX_SESSIONS_DIR,
+        codexSessionsDir,
         codexReaderFactory,
         geminiSessionsDir: GEMINI_TMP_DIR,
         geminiReaderFactory,
@@ -1164,7 +1166,7 @@ export function createApp(options: AppOptions): AppResult {
       sessionMetadataService: options.sessionMetadataService,
       eventBus: options.eventBus,
       codexScanner,
-      codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
@@ -1197,7 +1199,7 @@ export function createApp(options: AppOptions): AppResult {
           case "codex-oss":
             return {
               reader: codexReaderFactory(project.path),
-              sessionDir: CODEX_SESSIONS_DIR,
+              sessionDir: codexSessionsDir,
             };
           case "gemini":
           case "gemini-acp":
@@ -1219,37 +1221,27 @@ export function createApp(options: AppOptions): AppResult {
       },
       sessionIndexService: options.sessionIndexService,
       sessionMetadataService: options.sessionMetadataService,
-      // Explicit Kill: exempt the session from every auto-resume path.
-      // Clearing the heartbeat opt-in stops the unowned-pending-tool resume;
-      // tombstoning the Codex rollout hides the session from discovery and
-      // from Codex app-server thread/resume. See sessions/resume-exemption.ts.
-      blockSessionResume: async ({ sessionId, provider }) => {
-        const heartbeatWasEnabled =
-          options.sessionMetadataService?.getMetadata(sessionId)
-            ?.heartbeatTurnsEnabled === true;
-        if (heartbeatWasEnabled) {
-          await options.sessionMetadataService?.updateMetadata(sessionId, {
-            heartbeatTurnsEnabled: false,
-          });
+      // Explicit Kill blocks YA's automatic resume gate while preserving the
+      // provider transcript for history and deliberate manual continuation.
+      blockSessionResume: async ({ sessionId }) => {
+        const metadata = options.sessionMetadataService;
+        if (!metadata) {
+          throw new Error("Session metadata service is unavailable");
         }
-
-        const rollouts = isCodexRolloutProvider(provider)
-          ? await disableCodexRolloutsForKilledSession(
-              CODEX_SESSIONS_DIR,
-              sessionId,
-            )
-          : { renamed: [], failed: [] };
+        const heartbeatWasEnabled =
+          metadata.getMetadata(sessionId)?.heartbeatTurnsEnabled === true;
+        await metadata.updateMetadata(sessionId, {
+          heartbeatTurnsEnabled: false,
+          autoResumeDisabled: true,
+        });
 
         const result: ResumeExemptionResult = {
           heartbeatDisabled: heartbeatWasEnabled,
-          rolloutsRenamed: rollouts.renamed.map((r) => r.to),
-          failures: rollouts.failed,
+          autoResumeDisabled: true,
         };
         console.log(
           `[Processes] Blocked auto-resume for killed session ${sessionId}` +
-            ` (provider=${provider}, heartbeatDisabled=${result.heartbeatDisabled},` +
-            ` rolloutsRenamed=${result.rolloutsRenamed.length},` +
-            ` failures=${result.failures.length})`,
+            ` (heartbeatDisabled=${result.heartbeatDisabled})`,
         );
         return result;
       },
@@ -1268,7 +1260,7 @@ export function createApp(options: AppOptions): AppResult {
       sessionMetadataService: options.sessionMetadataService,
       projectQueueService: options.projectQueueService,
       codexScanner,
-      codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
@@ -1293,7 +1285,7 @@ export function createApp(options: AppOptions): AppResult {
       sessionIndexService: options.sessionIndexService,
       sessionMetadataService: options.sessionMetadataService,
       codexScanner,
-      codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexSessionsDir,
       codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
@@ -1342,7 +1334,7 @@ export function createApp(options: AppOptions): AppResult {
         readerFactory,
         sessionIndexService: options.sessionIndexService,
         codexScanner,
-        codexSessionsDir: CODEX_SESSIONS_DIR,
+        codexSessionsDir,
         codexReaderFactory,
         geminiScanner,
         geminiSessionsDir: GEMINI_TMP_DIR,

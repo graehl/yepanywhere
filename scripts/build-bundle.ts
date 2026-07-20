@@ -282,7 +282,7 @@ step("Generate package.json for npm", () => {
     keywords: ["claude", "ai", "agent", "supervisor", "mobile"],
     license: "MIT",
     engines: {
-      node: ">=20",
+      node: ">=20.12",
     },
   };
 

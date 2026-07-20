@@ -43,6 +43,12 @@ vi.mock("../../api/client", () => ({
 vi.mock("../../lib/activityBus", () => ({
   activityBus: {
     on: mocks.activityBus.on,
+    onSource: (
+      _sourceKey: string,
+      event: string,
+      handler: (data: unknown) => void,
+    ) => mocks.activityBus.on(event, handler),
+    retainSourceStream: vi.fn(() => () => {}),
   },
 }));
 

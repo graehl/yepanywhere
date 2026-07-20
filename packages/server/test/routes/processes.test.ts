@@ -99,10 +99,7 @@ describe("Processes Routes", () => {
     }));
     const blockSessionResume = vi.fn(async () => ({
       heartbeatDisabled: true,
-      rolloutsRenamed: [
-        "/sessions/2026/07/05/rollout-x-sess-1.jsonl.killed-20260719T164500Z",
-      ],
-      failures: [],
+      autoResumeDisabled: true,
     }));
     const routes = createProcessesRoutes({
       supervisor: {
@@ -126,16 +123,48 @@ describe("Processes Routes", () => {
     expect(response.status).toBe(200);
     expect(blockSessionResume).toHaveBeenCalledWith({
       sessionId: "sess-1",
-      provider: "codex",
     });
     await expect(response.json()).resolves.toMatchObject({
       aborted: true,
       resumeExemption: {
         heartbeatDisabled: true,
-        rolloutsRenamed: [
-          "/sessions/2026/07/05/rollout-x-sess-1.jsonl.killed-20260719T164500Z",
-        ],
-        failures: [],
+        autoResumeDisabled: true,
+      },
+    });
+  });
+
+  it("reports when shutdown succeeds but the resume exemption fails", async () => {
+    const routes = createProcessesRoutes({
+      supervisor: {
+        abortProcessWithVerification: vi.fn(async () => ({
+          processId: "proc-1",
+          sessionId: "sess-1",
+          pid: 43210,
+          verifiedStopped: true as const,
+          verification: "pid" as const,
+        })),
+      } as unknown as Supervisor,
+      scanner: {} as ProjectScanner,
+      readerFactory: vi.fn(),
+      blockSessionResume: vi.fn(async () => {
+        throw new Error("metadata is read-only");
+      }),
+    });
+
+    const response = await routes.request("/proc-1/abort", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blockResume: true }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      aborted: true,
+      verifiedStopped: true,
+      resumeExemption: {
+        heartbeatDisabled: false,
+        autoResumeDisabled: false,
+        error: "metadata is read-only",
       },
     });
   });

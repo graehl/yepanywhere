@@ -85,13 +85,13 @@ auto-resumed from its rollout three times in one day):
   (`sessions/resume-exemption.ts`), which excludes `isArchived` metadata.
 - **Explicit Kill blocks all auto-resume.** The Agents-page Kill button sends
   `blockResume: true` on `POST /api/processes/:id/abort`. After the shutdown is
-  verified, the server clears the session's heartbeat opt-in and, for Codex
-  sessions, tombstones the rollout file by renaming it with a
-  `.killed-<timestamp>` suffix. The renamed file no longer matches
-  `isCodexRolloutFileName`, so YA discovery, YA resume, and a Codex app-server
-  `thread/resume` all stop seeing the session. The rename is reversible by
-  stripping the suffix; YA bookkeeping tolerates the disappearance (the watcher
-  emits a session delete; orphaned session metadata is inert).
+  verified, the server clears the session's heartbeat opt-in and persists an
+  `autoResumeDisabled` YA metadata marker checked by the unowned-candidate gate.
+  Provider transcripts are never renamed or hidden: the session remains in
+  history and can be deliberately continued. Explicitly re-enabling heartbeat
+  turns clears the marker because that fresh opt-in authorizes automatic turns.
+  If persisting the exemption fails, the abort response and Agents page report
+  that the process stopped but automatic resume was not disabled.
 - The session-page Stop fallback abort, btw-aside cleanup aborts, and internal
   process-rotation aborts do **not** block resume; only the explicit Kill
   gesture opts in.

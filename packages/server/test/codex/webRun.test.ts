@@ -126,6 +126,22 @@ describe("parseCodexWebRunOutput", () => {
     expect(page?.lines).toHaveLength(2);
   });
 
+  it("keeps balanced parentheses inside page URLs", () => {
+    const output = [
+      "Script completed",
+      "Wall time 0.4 seconds",
+      "Output:",
+      "Function (mathematics) (https://en.wikipedia.org/wiki/Function_(mathematics))",
+      `${O}cite${S}turn0view0${C} [wordlim: 200] Content type: text/html; Total lines: 1`,
+      "L0: A function maps inputs to outputs.",
+    ].join("\n");
+
+    expect(parseCodexWebRunOutput(output)?.result.pages[0]).toMatchObject({
+      title: "Function (mathematics)",
+      url: "https://en.wikipedia.org/wiki/Function_(mathematics)",
+    });
+  });
+
   it("splits dash-divided page blocks and keeps error pages honest", () => {
     const output = [
       "Script completed",

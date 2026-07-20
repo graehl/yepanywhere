@@ -151,8 +151,8 @@ export function canonicalizeProjectPath(path: string): string {
   });
 }
 
-function isWindowsDriveProjectPath(path: string): boolean {
-  return /^[a-zA-Z]:\//.test(path);
+function isWindowsProjectPath(path: string): boolean {
+  return /^[a-zA-Z]:\//.test(path) || /^\/\/[^/]+\/[^/]+(?:\/|$)/.test(path);
 }
 
 /**
@@ -164,7 +164,7 @@ function isWindowsDriveProjectPath(path: string): boolean {
  */
 export function getProjectIdentityKey(path: string): string {
   const normalized = canonicalizeProjectPath(path);
-  return isWindowsDriveProjectPath(normalized)
+  return isWindowsProjectPath(normalized)
     ? normalized.toLowerCase()
     : normalized;
 }
@@ -183,7 +183,7 @@ export function getProjectIdentityKey(path: string): string {
  */
 export function normalizeProjectPathForDedup(path: string): string {
   const normalized = canonicalizeProjectPath(path);
-  const caseInsensitive = isWindowsDriveProjectPath(normalized);
+  const caseInsensitive = isWindowsProjectPath(normalized);
   // Unix: /Users/kgraehl/dotfiles or /home/kgraehl/dotfiles
   const unixMatch = normalized.match(/^\/(?:Users|home)\/(.+)$/);
   if (unixMatch?.[1]) return unixMatch[1];

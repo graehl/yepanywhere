@@ -223,7 +223,7 @@ verbatim (`scripts/build-bundle.ts`) and advertises zero external deps, so
 GLIBCXX friction. The DB reader is an *optimization with a working fallback*, so
 a dependency-free builtin fits better. It is loaded via `createRequire("node:sqlite")`
 (not a static/dynamic `import`): that degrades to null on Node < 22.5 (engines is
-`>=20`) instead of crashing at module load, and sidesteps vitest's module runner,
+`>=20.12`) instead of crashing at module load, and sidesteps vitest's module runner,
 which can't transform this newer-than-vite builtin. On old runtimes the reader
 returns null and the export/file-tree fallbacks run exactly as before. One-time
 `ExperimentalWarning` on first use is left intact (reliable suppression needs a
@@ -246,7 +246,7 @@ every OpenCode session path falls back to CLI export / file tree, exactly as
 before the reader existed. The check sits at the single `ensureDb` choke point,
 so the whole sqlite dependency is conditional and switchable per environment.
 This keeps the builtin off any path that doesn't want it (and is what lets CI
-run on Node 20 without exercising it).
+run on Node 20.12 without exercising it).
 
 **Detail route had to be taught the `ses_*` shape, not just metadata.** The
 reader is necessary but not sufficient: the session-detail route
@@ -261,7 +261,7 @@ shape; the shape gate keeps non-opencode UUIDs from triggering a wasted
 summary/list path's `getSessionSources` resolution and could gap again for other
 providers.)
 
-**CI runs Node 20; the reader is exercised locally on Node 24.** node:sqlite
+**CI runs Node 20.12; the reader is exercised locally on Node 24.** node:sqlite
 needs Node >=22.5, so a Node-24 CI run was tried to execute the reader's test —
 but the server suite then hung for >1h in CI's environment (a channel/handle
 that resolves locally in ~30s but not on the runner). Since the reader is opt-in

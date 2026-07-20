@@ -90,6 +90,12 @@ describe("getSafeRemoteReturnTarget", () => {
     );
   });
 
+  it("rejects backslash authority return targets", () => {
+    expect(
+      getSafeRemoteReturnTarget("/\\evil.example/projects", null),
+    ).toBe(null);
+  });
+
   it("rejects login return targets", () => {
     expect(getSafeRemoteReturnTarget("/login?returnTo=/projects", "macbook"))
       .toBe(null);

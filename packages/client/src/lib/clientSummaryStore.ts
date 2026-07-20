@@ -303,24 +303,14 @@ function onActivityBusSource<K extends ActivityEventType>(
   eventType: K,
   callback: (event: ActivityEventMap[K]) => void,
 ): BusUnsubscribe {
-  const bus = activityBus as typeof activityBus & {
-    onSource?: typeof activityBus.onSource;
-  };
-  return bus.onSource
-    ? bus.onSource(sourceKey, eventType, callback)
-    : activityBus.on(eventType, callback);
+  return activityBus.onSource(sourceKey, eventType, callback);
 }
 
 function retainActivityBusSourceStream(
   sourceKey: ClientSummarySourceKey,
   transport: SourceTransport,
 ): ReleaseSubscription {
-  const bus = activityBus as typeof activityBus & {
-    retainSourceStream?: typeof activityBus.retainSourceStream;
-  };
-  return bus.retainSourceStream
-    ? bus.retainSourceStream(sourceKey, transport)
-    : () => {};
+  return activityBus.retainSourceStream(sourceKey, transport);
 }
 
 function startActivityBusSubscription(

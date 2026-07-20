@@ -68,6 +68,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("useReloadNotifications URL helpers", () => {
@@ -127,6 +128,47 @@ describe("getVisibleReloadBanners", () => {
 });
 
 describe("useReloadNotifications dismissal", () => {
+  it("retries a transient backend safety sync failure", async () => {
+    vi.useFakeTimers();
+    let workerAttempts = 0;
+    mockFetchJSON.mockImplementation(async (url) => {
+      if (url === "/dev/status") {
+        return {
+          noBackendReload: true,
+          noFrontendReload: true,
+          backendDirty: true,
+        } as never;
+      }
+      if (url === "/status/workers") {
+        workerAttempts += 1;
+        if (workerAttempts === 1) throw new Error("transient worker failure");
+        return workerActivity as never;
+      }
+      if (url === "/dev/safe-restart") {
+        return idleSafeRestartState as never;
+      }
+      return {} as never;
+    });
+
+    const hook = renderHook(() => useReloadNotifications());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(hook.result.current.backendReloadSafetyKnown).toBe(false);
+
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(workerAttempts).toBe(2);
+    expect(hook.result.current.backendReloadSafetyKnown).toBe(true);
+  });
+
   it("keeps backend reload safety unknown until worker and safe restart sync finish", async () => {
     const workerActivityResult = deferred<typeof workerActivity>();
     const safeRestartResult = deferred<typeof idleSafeRestartState>();

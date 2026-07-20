@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SafeRestartState } from "@yep-anywhere/shared";
 import { fetchJSON } from "../api/client";
 import {
@@ -33,6 +33,8 @@ const IDLE_SAFE_RESTART_STATE: SafeRestartState = {
   canRestartNow: true,
   updatedAt: "",
 };
+const SAFETY_SYNC_RETRY_DELAY_MS = 1_000;
+const MAX_SAFETY_SYNC_RETRIES = 3;
 
 export function getVisibleReloadBanners(
   isManualReloadMode: boolean,
@@ -106,6 +108,9 @@ export function useReloadNotifications() {
     hasActiveWork: false,
     timestamp: "",
   });
+  const safetySyncRetryTimerRef = useRef<number | null>(null);
+  const safetySyncRetryCountRef = useRef(0);
+  const syncFromServerRef = useRef<(retrying?: boolean) => void>(() => {});
 
   const showReloadIfNotDismissed = useCallback(
     (target: "backend" | "frontend") => {
@@ -118,9 +123,12 @@ export function useReloadNotifications() {
   );
 
   // Sync dev status and worker activity from server
-  const syncFromServer = useCallback(() => {
+  const syncFromServer = useCallback((retrying = false) => {
     if (window.location.pathname === "/login") {
       return;
+    }
+    if (!retrying) {
+      safetySyncRetryCountRef.current = 0;
     }
 
     // Sync dev status
@@ -137,29 +145,58 @@ export function useReloadNotifications() {
       });
 
     // Sync worker activity
-    fetchJSON<WorkerActivityEvent>("/status/workers")
+    const workerActivityRequest = fetchJSON<WorkerActivityEvent>(
+      "/status/workers",
+    )
       .then((data) => {
-        if (!data) return;
+        if (!data) throw new Error("Missing worker activity state");
         setWorkerActivity(data);
         setWorkerActivityLoaded(true);
-      })
-      .catch(() => {
-        // Ignore errors
       });
 
-    fetchJSON<SafeRestartState>("/dev/safe-restart")
+    const safeRestartRequest = fetchJSON<SafeRestartState>(
+      "/dev/safe-restart",
+    )
       .then((data) => {
-        if (!data) return;
+        if (!data) throw new Error("Missing safe restart state");
         setSafeRestartState(data);
         setSafeRestartLoaded(true);
         if (data.status !== "idle") {
           showReloadIfNotDismissed("backend");
         }
-      })
-      .catch(() => {
-        // Ignore errors
       });
+
+    void Promise.allSettled([workerActivityRequest, safeRestartRequest]).then(
+      (results) => {
+        const failed = results.some((result) => result.status === "rejected");
+        if (!failed) {
+          safetySyncRetryCountRef.current = 0;
+          return;
+        }
+        if (
+          safetySyncRetryTimerRef.current !== null ||
+          safetySyncRetryCountRef.current >= MAX_SAFETY_SYNC_RETRIES
+        ) {
+          return;
+        }
+        safetySyncRetryCountRef.current += 1;
+        safetySyncRetryTimerRef.current = window.setTimeout(() => {
+          safetySyncRetryTimerRef.current = null;
+          syncFromServerRef.current(true);
+        }, SAFETY_SYNC_RETRY_DELAY_MS);
+      },
+    );
   }, [showReloadIfNotDismissed]);
+  syncFromServerRef.current = syncFromServer;
+
+  useEffect(
+    () => () => {
+      if (safetySyncRetryTimerRef.current !== null) {
+        window.clearTimeout(safetySyncRetryTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // Check if server is in dev mode and get persisted dirty state
   useEffect(() => {

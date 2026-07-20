@@ -115,7 +115,7 @@ current shape has important scale and representation gaps:
   centers on the configured active sessions directory.
 - Compression is a representation detail, but YA must not pay whole-transcript
   decompression cost just to rediscover head metadata. Because YA still
-  declares Node `>=20`, `.jsonl.zst` rollouts are supported only when the
+  declares Node `>=20.12`, `.jsonl.zst` rollouts are supported only when the
   active Node runtime exposes native `node:zlib` zstd APIs; older runtimes skip
   compressed rollouts cleanly.
 - The session id visible in YA must remain explicit. Provider-native resume

@@ -14,7 +14,7 @@ The author's pitch: *"I kept thinking: 'I want to do quick Claude Code sessions 
 
 | Layer | Technology |
 |-------|------------|
-| Backend | Express.js 5, Node.js 20+, TypeScript |
+| Backend | Express.js 5, Node.js 20.12+, TypeScript |
 | Frontend | React 19, Vite 7, Tailwind CSS 4, xterm.js 6 |
 | Claude Integration | `@anthropic-ai/claude-agent-sdk` ^0.2.29 |
 | Terminal | `@lydell/node-pty`, xterm.js with fit/unicode11 addons |

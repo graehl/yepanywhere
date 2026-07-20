@@ -367,6 +367,27 @@ describe("SessionMetadataService", () => {
       });
     });
 
+    it("persists an automatic-resume block until heartbeat is re-enabled", async () => {
+      await service.initialize();
+      await service.updateMetadata("session-1", {
+        heartbeatTurnsEnabled: false,
+        autoResumeDisabled: true,
+      });
+
+      const reloaded = new SessionMetadataService({ dataDir: testDir });
+      await reloaded.initialize();
+      expect(reloaded.getMetadata("session-1")).toEqual({
+        autoResumeDisabled: true,
+      });
+
+      await reloaded.updateMetadata("session-1", {
+        heartbeatTurnsEnabled: true,
+      });
+      expect(reloaded.getMetadata("session-1")).toEqual({
+        heartbeatTurnsEnabled: true,
+      });
+    });
+
     it("stores and clears a parent session link", async () => {
       await service.initialize();
 

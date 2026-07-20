@@ -11,11 +11,14 @@ describe("session detail compact-tail pagination", () => {
   const projectPath = "/home/user/myproject";
   const projectId = encodeProjectId(projectPath);
   let testDir: string;
+  let codexSessionsDir: string;
 
   beforeEach(async () => {
     testDir = join(tmpdir(), `compact-tail-test-${randomUUID()}`);
+    codexSessionsDir = join(testDir, "codex-sessions");
     const encodedPath = projectPath.replace(/[/\\:]/g, "-");
     await mkdir(join(testDir, "localhost", encodedPath), { recursive: true });
+    await mkdir(codexSessionsDir, { recursive: true });
   });
 
   afterEach(async () => {
@@ -106,6 +109,7 @@ describe("session detail compact-tail pagination", () => {
     const { app } = createApp({
       sdk: new MockClaudeSDK(),
       projectsDir: testDir,
+      codexSessionsDir,
     });
 
     const res = await app.request(

@@ -31,14 +31,12 @@ export interface ProcessesDeps {
   sessionIndexService?: SessionIndexService;
   sessionMetadataService?: SessionMetadataService;
   /**
-   * Exempt an explicitly killed session from every auto-resume path
-   * (heartbeat opt-in cleared; Codex rollout tombstoned). Invoked only when
-   * the abort request opts in via `blockResume` and only after the provider
-   * process shutdown has been verified.
+   * Exempt an explicitly killed session from YA-owned auto-resume. Invoked
+   * only when the abort request opts in via `blockResume` and only after the
+   * provider process shutdown has been verified.
    */
   blockSessionResume?: (args: {
     sessionId: string;
-    provider: ProcessInfo["provider"];
   }) => Promise<ResumeExemptionResult>;
 }
 
@@ -189,19 +187,6 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       .catch(() => ({}) as { blockResume?: unknown });
     const blockResume = body.blockResume === true;
 
-    // Capture identity before abort: the process is unregistered afterward.
-    // Prefer the durable session provider over the in-memory process provider,
-    // matching enrichProcessInfo.
-    let provider: ProcessInfo["provider"] | undefined;
-    if (blockResume) {
-      const liveProcess = deps.supervisor.getProcess(processId);
-      provider = liveProcess
-        ? ((deps.sessionMetadataService?.getProvider(liveProcess.sessionId) as
-            | ProcessInfo["provider"]
-            | undefined) ?? liveProcess.provider)
-        : undefined;
-    }
-
     try {
       const result =
         await deps.supervisor.abortProcessWithVerification(processId);
@@ -210,11 +195,18 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       }
 
       let resumeExemption: ResumeExemptionResult | undefined;
-      if (blockResume && deps.blockSessionResume && provider) {
-        resumeExemption = await deps.blockSessionResume({
-          sessionId: result.sessionId,
-          provider,
-        });
+      if (blockResume && deps.blockSessionResume) {
+        try {
+          resumeExemption = await deps.blockSessionResume({
+            sessionId: result.sessionId,
+          });
+        } catch (error) {
+          resumeExemption = {
+            heartbeatDisabled: false,
+            autoResumeDisabled: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
       }
 
       return c.json({

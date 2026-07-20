@@ -106,14 +106,8 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const sessionChannelRef = useRef<DeviceSignalingChannel | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
-  const deviceChannelRef = useRef<DeviceSignalingChannel | undefined>(
-    deviceChannel,
-  );
-
-  useEffect(() => {
-    deviceChannelRef.current = deviceChannel;
-  }, [deviceChannel]);
 
   const disconnect = useCallback(() => {
     const sid = sessionIdRef.current;
@@ -121,7 +115,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
 
     // Send stop message
     if (sid) {
-      const channel = deviceChannelRef.current;
+      const channel = sessionChannelRef.current;
       if (channel) {
         void sendDeviceMessage(channel, {
           type: "device_stream_stop",
@@ -149,6 +143,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
     }
 
     sessionIdRef.current = null;
+    sessionChannelRef.current = null;
     setRemoteStream(null);
     setDataChannel(null);
     setConnectionState("idle");
@@ -171,6 +166,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
 
       const sessionId = generateUUID();
       sessionIdRef.current = sessionId;
+      sessionChannelRef.current = channel;
       const sid = sessionId.slice(0, 8);
       console.log(
         `${LOG_PREFIX} connect(deviceId=${device.id}, type=${device.type ?? "unknown"}, session=${sid})`,
@@ -427,6 +423,16 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
     [deviceChannel, disconnect, transport],
   );
 
+  // A stream belongs to the source channel that created it. Tear it down
+  // before adopting a replacement channel so the stop message and
+  // subscription cleanup cannot leak across source boundaries.
+  useEffect(() => {
+    const activeChannel = sessionChannelRef.current;
+    if (activeChannel && activeChannel !== deviceChannel) {
+      disconnect();
+    }
+  }, [deviceChannel, disconnect]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -440,7 +446,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       }
       // Send stop if we have a session
       if (sessionIdRef.current) {
-        const channel = deviceChannelRef.current;
+        const channel = sessionChannelRef.current;
         if (channel) {
           void sendDeviceMessage(channel, {
             type: "device_stream_stop",

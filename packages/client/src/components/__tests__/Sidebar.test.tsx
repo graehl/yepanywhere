@@ -1218,7 +1218,7 @@ describe("Sidebar collapsed toggle", () => {
       );
     });
 
-    it("collapses active duplicates to one representative, rest hidden", () => {
+    it("keeps every active same-title session visible", () => {
       const shared = "Repeated session";
       globalSessionsState.sessions = [
         makeSession("active-thin", ago(60_000), {
@@ -1237,13 +1237,10 @@ describe("Sidebar collapsed toggle", () => {
 
       renderExpanded();
 
-      // Rotated session ids for one conversation flood the pinned list, so
-      // active duplicates collapse to the best-ranked representative; the rest
-      // stay reachable under the hidden-duplicates expander rather than being
-      // dropped.
+      // Same titles do not prove that two live rows are interchangeable.
       expect(screen.getByTestId("session-active-fat")).toBeDefined();
-      expect(screen.queryByTestId("session-active-thin")).toBeNull();
-      expect(screen.getByText(/hidden \(duplicate titles\)/)).toBeDefined();
+      expect(screen.getByTestId("session-active-thin")).toBeDefined();
+      expect(screen.queryByText(/hidden \(duplicate titles\)/)).toBeNull();
     });
 
     it("renders the section for an active-only recent list", () => {
@@ -1261,7 +1258,7 @@ describe("Sidebar collapsed toggle", () => {
       expect(screen.queryByText("sidebarNoSessions")).toBeNull();
     });
 
-    it("collapses both active and idle duplicate groups", () => {
+    it("keeps active duplicates visible while collapsing idle duplicates", () => {
       const activeTitle = "Active dup";
       const idleTitle = "Idle dup";
       globalSessionsState.sessions = [
@@ -1291,14 +1288,14 @@ describe("Sidebar collapsed toggle", () => {
 
       const { container } = renderExpanded();
 
-      // The higher-message row survives in each group; the lower-message active
-      // and idle duplicates fold into the shared hidden-duplicates expander. The
-      // surviving active row still pins above the surviving idle row.
+      // Live rows stay visible; only the lower-ranked idle duplicate folds into
+      // the hidden-duplicates expander.
       expect(screen.getByTestId("session-active-dup-2")).toBeDefined();
-      expect(screen.queryByTestId("session-active-dup-1")).toBeNull();
+      expect(screen.getByTestId("session-active-dup-1")).toBeDefined();
       expect(screen.getByTestId("session-idle-dup-keep")).toBeDefined();
       expect(screen.queryByTestId("session-idle-dup-hide")).toBeNull();
       expect(last24HourIds(container)).toEqual([
+        "active-dup-1",
         "active-dup-2",
         "idle-dup-keep",
       ]);

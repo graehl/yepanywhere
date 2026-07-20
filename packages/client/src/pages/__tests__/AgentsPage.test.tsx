@@ -85,6 +85,9 @@ vi.mock("../../i18n", () => ({
         agentsKillVerifiedPid:
           "Stopped PID {pid} and verified it is no longer running.",
         agentsKillResumeBlocked: "Auto-resume disabled for the killed session.",
+        agentsKillResumeBlockFailed:
+          "The process stopped, but auto-resume could not be disabled: {message}",
+        agentsKillResumeBlockUnknown: "Unknown exemption error",
         agentsKillFailed: "Could not stop the agent: {message}",
         providerChildrenCountOne: "{count} provider subagent",
         providerChildrenCountMany: "{count} provider subagents",
@@ -172,10 +175,7 @@ describe("AgentsPage process kill", () => {
       verification: "pid",
       resumeExemption: {
         heartbeatDisabled: true,
-        rolloutsRenamed: [
-          "/home/user/.codex/sessions/2026/07/05/rollout-x-session-1.jsonl.killed-20260719T164500Z",
-        ],
-        failures: [],
+        autoResumeDisabled: true,
       },
     });
     render(
@@ -188,6 +188,33 @@ describe("AgentsPage process kill", () => {
 
     expect((await screen.findByRole("status")).textContent).toContain(
       "Auto-resume disabled for the killed session.",
+    );
+  });
+
+  it("reports a resume exemption failure after verified shutdown", async () => {
+    abortProcess.mockResolvedValue({
+      aborted: true,
+      processId: "process-1",
+      sessionId: "session-1",
+      pid: 43210,
+      verifiedStopped: true,
+      verification: "pid",
+      resumeExemption: {
+        heartbeatDisabled: false,
+        autoResumeDisabled: false,
+        error: "metadata is read-only",
+      },
+    });
+    render(
+      <MemoryRouter>
+        <AgentsPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Kill" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The process stopped, but auto-resume could not be disabled: metadata is read-only",
     );
   });
 

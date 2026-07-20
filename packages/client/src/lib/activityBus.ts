@@ -343,17 +343,6 @@ class ActivityBus {
     };
   }
 
-  /**
-   * Deprecated compatibility no-op. Connection hooks should retain a source
-   * stream instead of asking the bus to choose a transport.
-   */
-  connect(): void {}
-
-  /**
-   * Deprecated compatibility no-op. Releasing the retain closes streams.
-   */
-  disconnect(): void {}
-
   private getOrCreateStreamRecord(
     sourceKey: SourceKey,
     transport: SourceTransport,

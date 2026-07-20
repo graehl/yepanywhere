@@ -23,6 +23,8 @@ import { Sidebar } from "../Sidebar";
 vi.mock("../../lib/activityBus", () => ({
   activityBus: {
     on: vi.fn(() => () => {}),
+    onSource: vi.fn(() => () => {}),
+    retainSourceStream: vi.fn(() => () => {}),
   },
 }));
 

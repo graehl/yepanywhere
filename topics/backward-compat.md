@@ -53,3 +53,10 @@ Only `fullHistory=1` authorizes those selectors to reach across older compact
 boundaries. This closes a regression where the client's implicit
 `tailTurns=20` safety cap disabled the two-compaction REST default and could
 return a full Codex transcript with fewer than twenty user turns.
+
+2026-07-20 process-abort `resumeExemption` response — replace the
+`rolloutsRenamed` / `failures` fields with `autoResumeDisabled` / `error` and
+stop renaming provider rollout files; the short-lived former contract made an
+explicit Kill hide history and prevent deliberate continuation, so preserving
+that response shape would preserve the wrong mechanism. YA's co-deployed
+client now distinguishes verified shutdown from exemption persistence failure.

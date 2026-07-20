@@ -50,6 +50,8 @@ export interface SessionMetadata {
   initialPrompt?: string;
   /** Whether this session is opted in to heartbeat turns */
   heartbeatTurnsEnabled?: boolean;
+  /** Explicit Kill blocks YA-owned automatic resume without hiding history. */
+  autoResumeDisabled?: boolean;
   /** Optional per-session idle threshold override in minutes */
   heartbeatTurnsAfterMinutes?: number;
   /** Optional per-session heartbeat text override */
@@ -502,6 +504,7 @@ export class SessionMetadataService {
       starred?: boolean;
       parentSessionId?: string | null;
       heartbeatTurnsEnabled?: boolean;
+      autoResumeDisabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
       heartbeatForceAfterMinutes?: number | null;
@@ -536,6 +539,13 @@ export class SessionMetadataService {
       if (updates.heartbeatTurnsEnabled !== undefined) {
         result.heartbeatTurnsEnabled =
           updates.heartbeatTurnsEnabled || undefined;
+        if (updates.heartbeatTurnsEnabled) {
+          result.autoResumeDisabled = undefined;
+        }
+      }
+
+      if (updates.autoResumeDisabled !== undefined) {
+        result.autoResumeDisabled = updates.autoResumeDisabled || undefined;
       }
 
       if (updates.heartbeatTurnsAfterMinutes !== undefined) {
@@ -609,6 +619,9 @@ export class SessionMetadataService {
     if (updated.initialPrompt) cleaned.initialPrompt = updated.initialPrompt;
     if (updated.heartbeatTurnsEnabled) {
       cleaned.heartbeatTurnsEnabled = updated.heartbeatTurnsEnabled;
+    }
+    if (updated.autoResumeDisabled) {
+      cleaned.autoResumeDisabled = updated.autoResumeDisabled;
     }
     if (updated.heartbeatTurnsAfterMinutes !== undefined) {
       cleaned.heartbeatTurnsAfterMinutes = updated.heartbeatTurnsAfterMinutes;

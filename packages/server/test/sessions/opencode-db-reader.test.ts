@@ -15,7 +15,7 @@ const PROJECT_HASH = "8e8fabade65fcb7be147f1c1f44eeb5f36a09680";
 // node:sqlite postdates vite's builtin list, so vitest's module runner can't
 // transform an `import` of it; require it natively (the reader does the same).
 // It needs Node >=22.5; the reader degrades to null on older runtimes (package
-// engines is >=20), so when the builtin is absent (e.g. CI on Node 20) skip
+// engines is >=20.12), so when the builtin is absent (e.g. CI on Node 20.12) skip
 // this suite instead of throwing at import time.
 const nodeRequire = createRequire(import.meta.url);
 type DatabaseSyncCtor = typeof import("node:sqlite").DatabaseSync;

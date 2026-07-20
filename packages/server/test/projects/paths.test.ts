@@ -234,6 +234,12 @@ describe("Project Path Utilities", () => {
       expect(backslash).toBe(forwardSlash);
     });
 
+    it("case-folds UNC project paths", () => {
+      expect(normalizeProjectPathForDedup("\\\\Server\\Share\\Repo")).toBe(
+        "//server/share/repo",
+      );
+    });
+
     it("matches Windows drive paths that differ only by segment case", () => {
       const upper = normalizeProjectPathForDedup(
         "C:/Users/sox/Documents/code/mclone",
@@ -259,6 +265,12 @@ describe("Project Path Utilities", () => {
     it("case-folds Windows drive paths", () => {
       expect(getProjectIdentityKey("C:/Users/sox/Documents/code/mclone")).toBe(
         getProjectIdentityKey("c:\\users\\sox\\documents\\code\\mclone"),
+      );
+    });
+
+    it("case-folds UNC paths", () => {
+      expect(getProjectIdentityKey("\\\\Server\\Share\\Repo")).toBe(
+        getProjectIdentityKey("//server/share/repo"),
       );
     });
 

@@ -51,6 +51,8 @@ list data, and `messageCount` is not a safe proxy for "main session".
   resolution, not the truncated `title` field used for compact row text. Sharing
   the first 120 displayed characters is not enough.
 - The current route session must never be hidden by duplicate grouping.
+- Active and queued sessions must never be hidden by duplicate grouping. Their
+  rows represent actionable live state; a shared title does not prove identity.
 - A session owned by this YA server must not be hidden merely because it is
   idle. `ownership.owner === "self"` is live supervision state even when
   `activity` is neither `in-turn` nor `waiting-input`.
@@ -132,36 +134,20 @@ same-title parent/fork pair visible until YA has explicit helper-purpose
 metadata; a visible extra row is preferable to hiding the source/current
 session behind a duplicate affordance.
 
-### Active/pinned rows now collapse too
+### Active/pinned rows stay visible
 
-Originally the sidebar's active/queued "pinned" set (rows where `activity` is
-`in-turn`/`waiting-input`, or the row is a project-queue target) was exempt
-from duplicate collapsing entirely — the idle collapser only ran over the idle
-recent set and the older set. That exemption produced a live-only flood: when a
-conversation's SDK session id rotates (each resume/fork mints a new id under the
-same title), the stale ids linger in the client collection store carrying a
-live activity from when each was momentarily the active id. Every such ghost
-counted as "active", so a single logical conversation showed one pinned row per
-rotated id. A reload collapsed it back to one row, because the REST snapshot
-reports the stale ids as idle (`owner: "none"`, no activity) and the idle
-collapser then folds them under the hidden-duplicates expander.
+The sidebar's active/queued "pinned" set (rows where `activity` is
+`in-turn`/`waiting-input`, or the row is a project-queue target) bypasses title
+deduplication. A previous mitigation collapsed same-title pinned rows to hide
+stale activity left behind when a provider session id rotated. That crossed the
+contract boundary: title equality cannot establish that two independently live
+or queued rows are interchangeable, so it could hide a real active session.
 
-The pinned set now runs through the same conservative `groupDuplicateSessions`
-collapser. This honors every protection above unchanged — the current route
-session, `ownership.owner === "self"` (the one live-supervised id), and lineage
-rows stay visible — so only ghosts with no live ownership fold away. The pinned
-ordering is preserved by filtering the original list rather than adopting the
-collapser's recency sort, and collapsed pinned rows share the recent section's
-single hidden-duplicates disclosure. Gated by the existing
-`sidebarDuplicateHidingEnabled` setting (default on); disabling it restores the
-raw per-id rows. A dev-only (`import.meta.env.DEV`) console log in `Sidebar`
-reports duplicate-title groups and any truly repeated id, to distinguish
-id-rotation fan-out from a store-level repeated-id bug.
-
-This is a client-render mitigation. The deeper cause — stale rotated session-id
-records retaining a live activity in the collection store — is not addressed
-here; if that ghost-retention is fixed upstream, the flood stops at the source
-and this collapse becomes a no-op for it.
+Stale rotated activity must instead be expired or remapped at the collection
+store/source-event boundary once the replacement identity is known. Until that
+upstream proof exists, the fail-open behavior is to show the extra pinned row.
+A dev-only (`import.meta.env.DEV`) console log in `Sidebar` reports duplicate-
+title groups and any truly repeated id to keep that upstream defect observable.
 
 ## Non-Goals
 

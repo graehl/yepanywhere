@@ -92,14 +92,22 @@ pair into editors such as Jira. Table headers and inline/block code still
 declare paired themed colors for correct rendering inside YA; those
 declarations never enter the explicit clipboard HTML.
 
-Edit diff previews remain expansion targets even when the click completes a
-text-selection gesture. Before opening the full-diff modal, the shared tap
-target records the selected text offsets inside the fixed-font view; after the
-complete view mounts, it recreates the browser range against the corresponding
-modal text. Thus truncation can expand without making the user reselect the text
-they intended to copy. If the preview range cannot be captured inside the
-fixed-font content, the preview selection stays in place and the modal does not
-open.
+### Edit preview expansion and truncation
+
+Edit diff previews expose the following interaction contract:
+
+- An ordinary click on the diff, or Enter/Space on its keyboard tap target,
+  opens the complete diff modal. Buttons and links inside the preview retain
+  their own actions and do not open that modal.
+- Completing a non-collapsed text selection inside the fixed-font diff also
+  opens the complete modal. The same text remains selected by a live browser
+  range owned by the modal, so the user's next copy command copies from the
+  expanded view without requiring another selection gesture.
+- If the preview range cannot be captured wholly inside the fixed-font content,
+  the modal stays closed and the original preview selection remains intact.
+- A truncated preview shows both its existing fade and a `+N` badge whose count
+  is the number of hidden diff lines. The fade is a visual cue, not the only
+  disclosure that content is omitted.
 
 ## Toggleable transforms (sigma Σ button)
 

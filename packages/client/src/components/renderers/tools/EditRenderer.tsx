@@ -1406,7 +1406,7 @@ function EditToolResult({
   const totalLines = useMemo(() => {
     if (!result?.structuredPatch) return 0;
     return result.structuredPatch.reduce(
-      (sum, hunk) => sum + hunk.lines.length + 1, // +1 for hunk header
+      (sum, hunk) => sum + hunk.lines.length,
       0,
     );
   }, [result?.structuredPatch]);

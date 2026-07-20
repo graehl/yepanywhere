@@ -713,6 +713,31 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(container.textContent).toContain("Recent MT Adapter Progress");
   });
 
+  it("counts only hidden rendered diff lines in the +N badge", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 0,
+        newStart: 1,
+        newLines: 13,
+        lines: Array.from({ length: 13 }, (_, index) => `+line ${index + 1}`),
+      },
+    ];
+
+    render(
+      <div>
+        {editRenderer.renderToolResult(
+          { filePath: "notes.md", structuredPatch } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText("+1")).toBeDefined();
+    expect(screen.queryByText("+2")).toBeNull();
+  });
+
   it("transfers a diff selection into the full modal", async () => {
     const structuredPatch = [
       {

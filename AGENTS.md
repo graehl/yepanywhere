@@ -58,6 +58,15 @@ Novel features remain welcome; do not assume first-party harnesses already
 cover all useful behavior. Read the topic before adding or enabling any
 user-visible feature that is not configurable default-off.
 
+## Observable Behavior Contracts
+
+Before an implementation is complete, verify that every intentional observable
+behavior it adds or changes is covered by a contract in the owning
+`topics/*.md`; update or create that contract when it is not. State externally
+testable outcomes and constraints, including deliberate failure or fallback
+behavior, rather than implementation narration. Tests and commit messages are
+evidence and history, not substitutes for the product contract.
+
 ## Hard Development Rules
 
 Follow `topics/hard-development-rules.md` for binding upstream-facing

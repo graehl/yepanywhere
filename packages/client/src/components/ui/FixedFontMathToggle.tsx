@@ -1,5 +1,6 @@
 import katex from "katex";
 import {
+  type ClipboardEventHandler,
   type ReactNode,
   useCallback,
   useEffect,
@@ -17,8 +18,12 @@ import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContex
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { toBrowserAppHref } from "../../lib/appHref";
 import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
-import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
+import {
+  extractMarkdownSnippetsFromSelection,
+  registerMarkdownCopySource,
+} from "../../lib/markdownSelectionCopy";
 import { useScrollPreservingToggle } from "../../lib/scrollAnchor";
+import { copySemanticHtmlSelectionToClipboard } from "../../lib/semanticHtmlClipboard";
 import { makeDisplayPath } from "../../lib/text";
 import { FileViewerModal } from "../FilePathLink";
 import { createPublicShareFileViewerSource } from "../publicShareFileViewerSource";
@@ -854,6 +859,24 @@ export function FixedFontMathToggle({
     },
     [],
   );
+  const handleRenderedCopy: ClipboardEventHandler<HTMLDivElement> = useCallback(
+    (event) => {
+      const sourceRoot = copySourceRef.current;
+      const markdown = sourceRoot
+        ? extractMarkdownSnippetsFromSelection(sourceRoot)
+            .map((snippet) => snippet.markdown)
+            .join("\n\n")
+        : "";
+      const copied = copySemanticHtmlSelectionToClipboard(
+        event.nativeEvent,
+        event.currentTarget,
+      );
+      if (copied && markdown) {
+        event.clipboardData.setData("text/plain", markdown);
+      }
+    },
+    [],
+  );
   const viewerProjectId =
     sessionMetadata?.projectId ?? publicShare?.projectId ?? "";
 
@@ -862,7 +885,7 @@ export function FixedFontMathToggle({
       {showRendered && rendered.changed ? (
         // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to rendered file links inside the HTML
         // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links
-        <div onClick={handleRenderedClick}>
+        <div onClick={handleRenderedClick} onCopy={handleRenderedCopy}>
           {renderRenderedView(rendered.html)}
         </div>
       ) : (

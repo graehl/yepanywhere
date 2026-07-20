@@ -81,14 +81,16 @@ file links should therefore inherit the same source/preview controls,
 large-file windowing, hline span markers, scrollbars, copy affordance, media
 hydration, and public-share capability scoping.
 
-Native rich-text copy from a rendered Markdown preview must not carry YA's
-active display theme into the destination. During the native `copy` event, the
-preview temporarily overrides its palette with fixed light-theme colors, then
-restores the display theme on the next task. This keeps browser-native table
-selection and HTML structure while avoiding dark-theme styling in editors such
-as Jira. Background-bearing table headers and inline/block code still declare
-their foreground explicitly: Chromium serializes a local background but can
-omit an inherited foreground, and destination editors may preserve only one.
+Native rich-text copy from rendered Markdown—both full previews and
+Σ-rendered fixed-font/diff views—must not carry YA's display presentation into
+the destination. The `copy` handler serializes the selected rendered fragment
+as semantic HTML, stripping CSS classes, inline styles, stylesheet elements,
+and legacy color attributes. Fixed-font views keep the existing source-aware
+`text/plain` fallback. Neither path relies on Chromium's default computed-style
+clipboard payload, which can transfer only part of a foreground/background
+pair into editors such as Jira. Table headers and inline/block code still
+declare paired themed colors for correct rendering inside YA; those
+declarations never enter the explicit clipboard HTML.
 
 ## Toggleable transforms (sigma Σ button)
 

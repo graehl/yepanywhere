@@ -32,6 +32,7 @@ const renderCollapsedPreview = editRenderer.renderCollapsedPreview;
 
 describe("EditRenderer collapsed preview fallback", () => {
   afterEach(() => {
+    document.getSelection()?.removeAllRanges();
     cleanup();
     vi.unstubAllGlobals();
   });
@@ -685,6 +686,7 @@ describe("EditRenderer collapsed preview fallback", () => {
       </SessionMetadataProvider>,
     );
 
+    expect(screen.getByText("+1")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Show full diff" }));
 
     const modal = document.body.querySelector(".modal");
@@ -709,5 +711,43 @@ describe("EditRenderer collapsed preview fallback", () => {
 
     fireEvent.click(modalToggle as Element);
     expect(container.textContent).toContain("Recent MT Adapter Progress");
+  });
+
+  it("preserves a diff selection instead of opening the full modal", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-old text", "+selected replacement text"],
+      },
+    ];
+
+    render(
+      <div>
+        {renderCollapsedPreview(
+          { _structuredPatch: structuredPatch } as never,
+          { filePath: "notes.md", structuredPatch } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    const selectedText = screen.getByText("+selected replacement text");
+    const textNode = selectedText.firstChild;
+    if (!textNode) {
+      throw new Error("Expected selectable diff text");
+    }
+    const range = document.createRange();
+    range.setStart(textNode, 1);
+    range.setEnd(textNode, "selected replacement".length + 1);
+    document.getSelection()?.addRange(range);
+
+    fireEvent.click(selectedText);
+
+    expect(document.getSelection()?.toString()).toBe("selected replacement");
+    expect(document.body.querySelector(".modal")).toBeNull();
   });
 });

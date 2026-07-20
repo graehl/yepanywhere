@@ -26,6 +26,7 @@ import {
   FixedFontMathToggle,
   type FixedFontRenderMode,
 } from "../../ui/FixedFontMathToggle";
+import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
 import { Modal } from "../../ui/Modal";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
 
@@ -265,12 +266,13 @@ function diffTextToNewSide(diffText: string): string {
 function truncateByLines(
   text: string,
   maxLines: number,
-): { text: string; truncated: boolean } {
+): { hiddenLineCount: number; text: string; truncated: boolean } {
   const lines = text.split("\n");
   if (lines.length <= maxLines) {
-    return { text, truncated: false };
+    return { hiddenLineCount: 0, text, truncated: false };
   }
   return {
+    hiddenLineCount: lines.length - maxLines,
     text: lines.slice(0, maxLines).join("\n"),
     truncated: true,
   };
@@ -361,6 +363,7 @@ function DiffMathView({
   baseFilePath,
   renderMode,
   copyText,
+  hiddenLineCount = 0,
 }: {
   sourceText: string;
   sourceView: ReactNode;
@@ -369,6 +372,7 @@ function DiffMathView({
   baseFilePath?: string;
   renderMode?: FixedFontRenderMode;
   copyText?: string;
+  hiddenLineCount?: number;
 }) {
   const effectiveCopyText =
     copyText ?? (diffAware ? diffTextToNewSide(sourceText) : sourceText);
@@ -385,6 +389,12 @@ function DiffMathView({
           <div className="diff-view">{sourceView}</div>
           {effectiveCopyText && <DiffCopyButton text={effectiveCopyText} />}
           {truncated && <div className="diff-fade-overlay" />}
+          {hiddenLineCount > 0 && (
+            <HiddenContentBadge
+              className="edit-preview-more"
+              count={hiddenLineCount}
+            />
+          )}
         </div>
       }
       renderRenderedView={(html) => (
@@ -394,6 +404,12 @@ function DiffMathView({
           </div>
           {effectiveCopyText && <DiffCopyButton text={effectiveCopyText} />}
           {truncated && <div className="diff-fade-overlay" />}
+          {hiddenLineCount > 0 && (
+            <HiddenContentBadge
+              className="edit-preview-more"
+              count={hiddenLineCount}
+            />
+          )}
         </div>
       )}
     />
@@ -415,6 +431,25 @@ function DiffTapTarget({
   onOpen: () => void;
   children: ReactNode;
 }) {
+  const hasSelectionWithin = (element: HTMLElement): boolean => {
+    const selection = element.ownerDocument.getSelection();
+    if (!selection || selection.isCollapsed) {
+      return false;
+    }
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      const range = selection.getRangeAt(index);
+      if (
+        range.startContainer === element ||
+        element.contains(range.startContainer) ||
+        range.endContainer === element ||
+        element.contains(range.endContainer)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   return (
     // A native <button> cannot wrap the diff's inner buttons/links, so this
     // mirrors the bash-collapsed-preview role="button" container pattern.
@@ -424,6 +459,10 @@ function DiffTapTarget({
       aria-label={label}
       className="diff-tap-target"
       onClick={(event) => {
+        if (hasSelectionWithin(event.currentTarget)) {
+          event.stopPropagation();
+          return;
+        }
         const target = event.target as Element | null;
         if (target?.closest?.("button,a")) {
           return;
@@ -568,7 +607,7 @@ function RawPatchPreview({
   );
   const preview = useMemo(() => {
     if (!truncateLines) {
-      return { text: rawPatch, truncated: false };
+      return { hiddenLineCount: 0, text: rawPatch, truncated: false };
     }
     return truncateByLines(rawPatch, truncateLines);
   }, [rawPatch, truncateLines]);
@@ -589,6 +628,12 @@ function RawPatchPreview({
             </pre>
           </div>
           {preview.truncated && <div className="diff-fade-overlay" />}
+          {preview.hiddenLineCount > 0 && (
+            <HiddenContentBadge
+              className="edit-preview-more"
+              count={preview.hiddenLineCount}
+            />
+          )}
         </div>
       }
       renderRenderedView={(html) => (
@@ -599,6 +644,12 @@ function RawPatchPreview({
             {renderFixedFontMathPanel(html, "code-block")}
           </div>
           {preview.truncated && <div className="diff-fade-overlay" />}
+          {preview.hiddenLineCount > 0 && (
+            <HiddenContentBadge
+              className="edit-preview-more"
+              count={preview.hiddenLineCount}
+            />
+          )}
         </div>
       )}
     />
@@ -681,6 +732,7 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
         baseFilePath={filePath}
         renderMode={renderMode}
         truncated={isTruncated}
+        hiddenLineCount={Math.max(0, diffLines.length - MAX_VISIBLE_LINES)}
         sourceView={
           input._diffHtml ? (
             <HighlightedDiff
@@ -963,6 +1015,10 @@ function EditCollapsedPreview({
                 baseFilePath={filePath}
                 renderMode={renderMode}
                 truncated={proposedDiffTruncated}
+                hiddenLineCount={Math.max(
+                  0,
+                  proposedDiffLines.length - MAX_VISIBLE_LINES,
+                )}
                 sourceView={
                   input._diffHtml ? (
                     <HighlightedDiff
@@ -1067,12 +1123,16 @@ function EditCollapsedPreview({
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Edit" errors={validationErrors} />
         )}
-        <DiffTapTarget label="Show full diff" onOpen={() => setIsModalOpen(true)}>
+        <DiffTapTarget
+          label="Show full diff"
+          onOpen={() => setIsModalOpen(true)}
+        >
           <DiffMathView
             sourceText={diffLines.join("\n")}
             baseFilePath={filePath}
             renderMode={renderMode}
             truncated={isTruncated}
+            hiddenLineCount={Math.max(0, diffLines.length - MAX_VISIBLE_LINES)}
             sourceView={
               diffHtml ? (
                 <HighlightedDiff
@@ -1408,6 +1468,10 @@ function EditToolResult({
                 baseFilePath={filePath}
                 renderMode={renderMode}
                 truncated={proposedDiffTruncated}
+                hiddenLineCount={Math.max(
+                  0,
+                  proposedDiffLines.length - MAX_VISIBLE_LINES,
+                )}
                 sourceView={
                   inputWithAugment?._diffHtml ? (
                     <HighlightedDiff
@@ -1508,6 +1572,7 @@ function EditToolResult({
             baseFilePath={result.filePath}
             renderMode={getEditRenderMode(extractEditFilePaths(input, result))}
             truncated={isTruncated}
+            hiddenLineCount={Math.max(0, totalLines - MAX_VISIBLE_LINES)}
             sourceView={result.structuredPatch.map((hunk, i) => (
               <DiffHunk key={`hunk-${hunk.oldStart}-${i}`} hunk={hunk} />
             ))}

@@ -192,6 +192,43 @@ describe("RenderModeProvider", () => {
     );
   });
 
+  it("copies rendered diff tables without renderer presentation", () => {
+    const sourceText = [
+      " | name | value |",
+      " | --- | --- |",
+      "-| old | 1 |",
+      "+| new | 2 |",
+    ].join("\n");
+
+    render(
+      <RenderModeProvider>
+        <MathPane id="copy-diff-table" sourceText={sourceText} />
+      </RenderModeProvider>,
+    );
+
+    const table = screen.getByRole("table");
+    const range = document.createRange();
+    range.selectNodeContents(table);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+    const copied = new Map<string, string>();
+
+    fireEvent.copy(table, {
+      clipboardData: {
+        setData: (type: string, value: string) => copied.set(type, value),
+      },
+    });
+
+    const html = copied.get("text/html") ?? "";
+    expect(html).toContain("<table>");
+    expect(html).toContain("<th>name</th>");
+    expect(html).not.toMatch(
+      /\s(?:background|bgcolor|class|color|fill|style|stroke)=/i,
+    );
+    expect(copied.get("text/plain")).toContain("old");
+    document.getSelection()?.removeAllRanges();
+  });
+
   it("detects markdown tables in ANSI-colored unified diffs", () => {
     const sourceText = [
       "\u001b[1mdiff --git a/notes.md b/notes.md\u001b[0m",

@@ -9,26 +9,38 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const stylesheetUrl = new URL("../renderers.css", import.meta.url);
+const semanticClipboardUrl = new URL(
+  "../../lib/semanticHtmlClipboard.ts",
+  import.meta.url,
+);
 
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
 let server: Server;
 
-function stylesFor(html: string, tag: string): string[] {
-  return Array.from(
-    html.matchAll(new RegExp(`<${tag}[^>]*style="([^"]*)"`, "g")),
-    (match) => match[1] ?? "",
-  );
-}
-
 describe("Markdown preview rich-text copy", () => {
   beforeAll(async () => {
     const css = await readFile(stylesheetUrl, "utf8");
-    server = createServer((_request, response) => {
+    const semanticClipboardJs = transpileModule(
+      await readFile(semanticClipboardUrl, "utf8"),
+      {
+        compilerOptions: {
+          module: ModuleKind.ES2022,
+          target: ScriptTarget.ES2022,
+        },
+      },
+    ).outputText;
+    server = createServer((request, response) => {
+      if (request.url === "/semantic-html-clipboard.js") {
+        response.setHeader("Content-Type", "text/javascript; charset=utf-8");
+        response.end(semanticClipboardJs);
+        return;
+      }
       response.setHeader("Content-Type", "text/html; charset=utf-8");
       response.end(`<!doctype html>
         <style>
@@ -55,12 +67,26 @@ describe("Markdown preview rich-text copy", () => {
             <pre><code>block code</code></pre>
           </div>
         </div>
-        <script>
+        <div class="fixed-font-render-toggle">
+          <div class="fixed-font-rendered__content">
+            <table class="fixed-font-markdown-table">
+              <thead><tr class="fixed-font-diff-added"><th class="fixed-font-diff-gutter-cell">+</th><th>name</th><th>value</th></tr></thead>
+              <tbody><tr class="fixed-font-diff-added"><td class="fixed-font-diff-gutter-cell">+</td><td>new</td><td>2</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="paste-target" contenteditable="true"></div>
+        <script type="module">
+          import { copySemanticHtmlSelectionToClipboard } from "/semantic-html-clipboard.js";
           const preview = document.querySelector(".markdown-preview");
-          preview.addEventListener("copy", () => {
-            preview.classList.add("markdown-preview-copy-light");
-            setTimeout(() => preview.classList.remove("markdown-preview-copy-light"), 0);
+          const renderedDiff = document.querySelector(".fixed-font-render-toggle");
+          preview.addEventListener("copy", (event) => {
+            copySemanticHtmlSelectionToClipboard(event, preview);
           });
+          renderedDiff.addEventListener("copy", (event) => {
+            copySemanticHtmlSelectionToClipboard(event, renderedDiff);
+          });
+          window.semanticCopyReady = true;
         </script>`);
     });
     await new Promise<void>((resolve, reject) => {
@@ -75,6 +101,9 @@ describe("Markdown preview rich-text copy", () => {
     });
     page = await context.newPage();
     await page.goto(`http://127.0.0.1:${port}`);
+    await page.waitForFunction(() =>
+      Boolean((window as typeof window & { semanticCopyReady?: boolean }).semanticCopyReady),
+    );
   }, 30_000);
 
   afterAll(async () => {
@@ -85,7 +114,7 @@ describe("Markdown preview rich-text copy", () => {
     });
   });
 
-  it("copies a light palette without changing the displayed dark theme", async () => {
+  it("copies semantic HTML without changing the displayed dark theme", async () => {
     const displayedHeader = await page
       .locator("th")
       .first()
@@ -100,35 +129,32 @@ describe("Markdown preview rich-text copy", () => {
 
     await page.locator(".markdown-rendered").selectText();
     await page.keyboard.press("Control+c");
-    const html = await page.evaluate(async () => {
+    const copied = await page.evaluate(async () => {
       const item = (await navigator.clipboard.read())[0];
       if (!item) {
         throw new Error("Browser clipboard did not contain an item");
       }
-      return (await item.getType("text/html")).text();
+      return {
+        html: await (await item.getType("text/html")).text(),
+        text: await (await item.getType("text/plain")).text(),
+      };
     });
 
-    const headerStyles = stylesFor(html, "th");
-    expect(headerStyles).toHaveLength(2);
-    for (const style of headerStyles) {
-      expect(style).toContain("rgb(246, 248, 250)");
-      expect(style).toContain("color: rgb(31, 35, 40)");
-    }
-
-    const inlineCodeStyle = stylesFor(html, "code").find((style) =>
-      style.includes("rgb(246, 248, 250)"),
+    expect(copied.html).toContain("<table>");
+    expect(copied.html).toContain("<th>model</th>");
+    expect(copied.html).not.toMatch(
+      /\s(?:background|bgcolor|class|color|fill|style|stroke)=/i,
     );
-    expect(inlineCodeStyle).toContain("color: rgb(31, 35, 40)");
+    expect(copied.text).toContain("model");
 
-    const blockCodeStyle = stylesFor(html, "pre")[0];
-    expect(blockCodeStyle).toContain("rgb(246, 248, 250)");
-    expect(blockCodeStyle).toContain("color: rgb(31, 35, 40)");
+    await page.locator("#paste-target").click();
+    await page.keyboard.press("Control+v");
+    const pastedHtml = await page.locator("#paste-target").innerHTML();
+    expect(pastedHtml).toContain("<table>");
+    expect(pastedHtml).not.toMatch(
+      /\s(?:background|bgcolor|class|color|fill|style|stroke)=/i,
+    );
 
-    await expect
-      .poll(() =>
-        page.locator(".markdown-preview").evaluate((node) => node.className),
-      )
-      .not.toContain("markdown-preview-copy-light");
     const restoredHeader = await page
       .locator("th")
       .first()
@@ -137,5 +163,35 @@ describe("Markdown preview rich-text copy", () => {
         return { background: style.backgroundColor, color: style.color };
       });
     expect(restoredHeader).toEqual(displayedHeader);
+  });
+
+  it("removes diff row and cell presentation from rendered table copies", async () => {
+    await page.locator("#paste-target").evaluate((node) => {
+      node.replaceChildren();
+    });
+    await page.locator(".fixed-font-markdown-table").selectText();
+    await page.keyboard.press("Control+c");
+    const html = await page.evaluate(async () => {
+      const item = (await navigator.clipboard.read())[0];
+      if (!item) {
+        throw new Error("Browser clipboard did not contain an item");
+      }
+      return (await item.getType("text/html")).text();
+    });
+
+    expect(html).toContain("<table>");
+    expect(html).toContain("<th>name</th>");
+    expect(html).toContain("<td>new</td>");
+    expect(html).not.toMatch(
+      /\s(?:background|bgcolor|class|color|fill|style|stroke)=/i,
+    );
+
+    await page.locator("#paste-target").click();
+    await page.keyboard.press("Control+v");
+    const pastedHtml = await page.locator("#paste-target").innerHTML();
+    expect(pastedHtml).toContain("<table>");
+    expect(pastedHtml).not.toMatch(
+      /\s(?:background|bgcolor|class|color|fill|style|stroke)=/i,
+    );
   });
 });

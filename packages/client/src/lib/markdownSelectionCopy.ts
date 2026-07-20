@@ -89,9 +89,10 @@ export function extractMarkdownSnippetsFromSelection(
   }
 
   const snippets: MarkdownSelectionSnippet[] = [];
-  const sourceElements = Array.from(
-    root.querySelectorAll<HTMLElement>(`[${MARKDOWN_COPY_SOURCE_ATTR}]`),
-  );
+  const sourceElements = [
+    ...(root.hasAttribute(MARKDOWN_COPY_SOURCE_ATTR) ? [root] : []),
+    ...root.querySelectorAll<HTMLElement>(`[${MARKDOWN_COPY_SOURCE_ATTR}]`),
+  ];
 
   for (let rangeIndex = 0; rangeIndex < selection.rangeCount; rangeIndex += 1) {
     const range = selection.getRangeAt(rangeIndex);

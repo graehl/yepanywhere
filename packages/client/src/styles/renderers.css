@@ -2165,6 +2165,14 @@ details[open] .collapsible__icon {
   pointer-events: none;
 }
 
+.edit-preview-more {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  z-index: 1;
+  pointer-events: none;
+}
+
 /* Always show the copy button on mobile (no hover on touch devices) */
 @media (max-width: 600px) {
   .diff-copy-button {
@@ -5452,16 +5460,6 @@ pre.code-highlighter-plain code {
   );
 
   overflow: auto;
-}
-
-/* Native copy serializes this palette, while the displayed theme stays put. */
-.markdown-preview.markdown-preview-copy-light {
-  --bg-code: #f6f8fa;
-  --bg-secondary: #f6f8fa;
-  --border-color: #d0d7de;
-  --link-color: #0969da;
-  --text-muted: #59636e;
-  --text-primary: #1f2328;
 }
 
 .markdown-preview .markdown-rendered {

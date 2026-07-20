@@ -28,6 +28,7 @@ const testState = vi.hoisted(() => ({
     connection: {} as object | null,
     connectViaRelay: vi.fn(),
     currentHostId: "host-1" as string | null,
+    currentRelayUsername: "macbook" as string | null,
     disconnect: vi.fn(),
     isAutoResuming: false,
     isIntentionalDisconnect: false,
@@ -125,6 +126,7 @@ describe("RelayConnectionGate", () => {
       connection: {},
       connectViaRelay: testState.connectViaRelay,
       currentHostId: "host-1",
+      currentRelayUsername: "macbook",
       disconnect: testState.disconnect,
       isAutoResuming: false,
       isIntentionalDisconnect: false,
@@ -136,6 +138,21 @@ describe("RelayConnectionGate", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("keeps an unsaved active relay host connected", async () => {
+    testState.remote = {
+      ...testState.remote,
+      currentHostId: null,
+      currentRelayUsername: "macbook",
+    };
+
+    render(<TestRoutes />);
+
+    expect(
+      await screen.findByRole("button", { name: "Loaded document" }),
+    ).toBeTruthy();
+    expect(testState.disconnect).not.toHaveBeenCalled();
   });
 
   it("dismisses a post-connect relay error without unmounting cached content", async () => {

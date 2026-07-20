@@ -77,8 +77,19 @@ export function getSafeRemoteReturnTarget(
     return null;
   }
 
-  return (
-    getRelayCanonicalRedirectTarget(target, relayUsername) ??
-    formatRouteTarget(target)
+  const relayCanonicalTarget = getRelayCanonicalRedirectTarget(
+    target,
+    relayUsername,
   );
+  if (relayCanonicalTarget) return relayCanonicalTarget;
+
+  if (relayUsername) {
+    const relayPrefix = `/${encodeURIComponent(relayUsername)}`;
+    const isActiveRelayTarget =
+      target.pathname === relayPrefix ||
+      target.pathname.startsWith(`${relayPrefix}/`);
+    if (!isActiveRelayTarget) return null;
+  }
+
+  return formatRouteTarget(target);
 }

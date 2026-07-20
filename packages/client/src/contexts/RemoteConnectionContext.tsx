@@ -20,7 +20,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -39,6 +38,7 @@ import {
   clearRelayHostSession,
   getHostByDirectWsUrl,
   getHostById,
+  getHostByRelayUsername,
   updateHostSession,
   upsertRelayHost,
 } from "../lib/hostStorage";
@@ -116,7 +116,7 @@ interface RemoteConnectionState {
   autoResumeError: AutoResumeError | null;
   /** Current host ID from hostStorage (for multi-host tracking) */
   currentHostId: string | null;
-  /** Relay username of the current host (derived from currentHostId) */
+  /** Relay username of the active connection, including unsaved hosts */
   currentRelayUsername: string | null;
   /** Direct WebSocket URL for direct connections without a saved host */
   currentDirectUrl: string | null;
@@ -319,6 +319,15 @@ export function RemoteConnectionProvider({ children }: Props) {
     useState<AutoResumeError | null>(null);
   // Track current host ID for multi-host support
   const [currentHostId, setCurrentHostIdState] = useState<string | null>(null);
+  // Keep the live relay identity separate because "Remember me" may leave the
+  // active connection without a persisted SavedHost record.
+  const [currentRelayUsername, setCurrentRelayUsername] = useState<
+    string | null
+  >(() =>
+    initialStored?.mode === "relay"
+      ? (initialStored.relayUsername ?? null)
+      : null,
+  );
   const [currentDirectUrl, setCurrentDirectUrlState] = useState<string | null>(
     null,
   );
@@ -511,6 +520,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       setIsConnecting(true);
       setError(null);
       setIsIntentionalDisconnect(false);
+      setCurrentRelayUsername(null);
       setCurrentDirectUrl(wsUrl);
       rememberMeRef.current = rememberMe;
 
@@ -564,6 +574,7 @@ export function RemoteConnectionProvider({ children }: Props) {
 
       setIsConnecting(true);
       setError(null);
+      setCurrentRelayUsername(null);
       setCurrentDirectUrl(currentStored.wsUrl);
       rememberMeRef.current = true; // If resuming, we want to keep remembering
 
@@ -617,7 +628,17 @@ export function RemoteConnectionProvider({ children }: Props) {
       setIsConnecting(true);
       setError(null);
       setIsIntentionalDisconnect(false);
+      setCurrentRelayUsername(relayUsername);
       setCurrentDirectUrl(null);
+      const currentHost = currentHostIdRef.current
+        ? getHostById(currentHostIdRef.current)
+        : undefined;
+      if (
+        currentHost?.mode !== "relay" ||
+        currentHost.relayUsername !== relayUsername
+      ) {
+        setCurrentHostId(getHostByRelayUsername(relayUsername)?.id ?? null);
+      }
       rememberMeRef.current = rememberMe;
       onStatusChange?.("connecting_relay");
 
@@ -753,6 +774,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       handleSessionEstablished,
       handleDisconnect,
       publishConnection,
+      setCurrentHostId,
       setCurrentDirectUrl,
     ],
   );
@@ -775,6 +797,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Clear host ID and optionally mark as intentional disconnect
         // Use isIntentional=false for programmatic host switches (e.g., browser back/forward)
         setCurrentHostId(null);
+        setCurrentRelayUsername(null);
         setCurrentDirectUrl(null);
         setIsIntentionalDisconnect(isIntentional);
       });
@@ -836,6 +859,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           if (!relayUrl || !relayUsername) {
             throw new Error("Missing relay credentials for auto-resume");
           }
+          setCurrentRelayUsername(relayUsername);
 
           // 1. Connect to relay server
           const ws = new WebSocket(relayUrl);
@@ -910,6 +934,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             { relayUrl, relayUsername },
           );
         } else {
+          setCurrentRelayUsername(null);
           setCurrentDirectUrl(currentStored.wsUrl);
           // Direct mode: just create connection and resume
           conn = SecureConnection.forResumeOnly(storedSession, {
@@ -1001,14 +1026,6 @@ export function RemoteConnectionProvider({ children }: Props) {
       detachTransport();
     };
   }, [detachTransport]);
-
-  const currentRelayUsername = useMemo(
-    () =>
-      currentHostId
-        ? (getHostById(currentHostId)?.relayUsername ?? null)
-        : null,
-    [currentHostId],
-  );
 
   const value: RemoteConnectionState = {
     connection,

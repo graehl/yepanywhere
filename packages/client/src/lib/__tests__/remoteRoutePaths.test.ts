@@ -71,6 +71,15 @@ describe("getSafeRemoteReturnTarget", () => {
     );
   });
 
+  it("rejects a return target scoped to a different relay host", () => {
+    expect(
+      getSafeRemoteReturnTarget(
+        "/macbook/projects/project-1/sessions/session-1?from=login#turn",
+        "laptop",
+      ),
+    ).toBe(null);
+  });
+
   it("preserves direct return targets when no relay host is active", () => {
     expect(getSafeRemoteReturnTarget("/projects", null)).toBe("/projects");
   });

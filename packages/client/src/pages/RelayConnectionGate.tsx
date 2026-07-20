@@ -91,6 +91,7 @@ export function RelayConnectionGate() {
     isAutoResuming,
     setCurrentHostId,
     currentHostId,
+    currentRelayUsername,
     isIntentionalDisconnect,
     disconnect,
   } = useRemoteConnection();
@@ -130,7 +131,8 @@ export function RelayConnectionGate() {
     // If already connected, check if it's to the right host
     if (connection) {
       const currentHost = currentHostId ? getHostById(currentHostId) : null;
-      const connectedRelayUsername = currentHost?.relayUsername;
+      const connectedRelayUsername =
+        currentRelayUsername ?? currentHost?.relayUsername;
 
       if (connectedRelayUsername === relayUsername) {
         setLastConnectedRelayUsername(relayUsername);
@@ -261,6 +263,7 @@ export function RelayConnectionGate() {
     isAutoResuming,
     setCurrentHostId,
     currentHostId,
+    currentRelayUsername,
     isIntentionalDisconnect,
     disconnect,
   ]);

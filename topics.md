@@ -149,3 +149,5 @@
   renderers.
 - provider-child-sessions - Provider-launched delegated work discovered from
   provider persistence and nested beneath its canonical YA parent session.
+- host-awake - Server-owned, process-lifetime idle-sleep inhibition with an
+  optional macOS closed-lid-on-external-power strategy.

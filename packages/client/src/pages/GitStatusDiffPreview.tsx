@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { MarkdownPreview } from "../components/MarkdownPreview";
 import { Modal } from "../components/ui/Modal";
 
 const GIT_DIFF_MAX_RENDERED_HTML_CHARS = 1_000_000;
@@ -355,13 +356,7 @@ function GitDiffContent({
       </div>
 
       {showMarkdownPreview && markdownHtml ? (
-        <div className="markdown-preview">
-          <div
-            className="markdown-rendered"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: markdownHtml }}
-          />
-        </div>
+        <MarkdownPreview html={markdownHtml} />
       ) : previewSkipped ? (
         <GitDiffPreviewSkippedState
           file={file}

@@ -1,4 +1,5 @@
 import {
+  type ClipboardEventHandler,
   type CSSProperties,
   forwardRef,
   type KeyboardEventHandler,
@@ -13,6 +14,17 @@ const FILE_VIEWER_DENSITY_MIN = -4;
 const FILE_VIEWER_DENSITY_MAX = 6;
 const FILE_VIEWER_FONT_STEP_PX = 0.5;
 const FILE_VIEWER_VSPACE_STEP_PX = 1;
+const MARKDOWN_PREVIEW_COPY_THEME_CLASS = "markdown-preview-copy-light";
+
+const handleMarkdownPreviewCopy: ClipboardEventHandler<HTMLDivElement> = (
+  event,
+) => {
+  const preview = event.currentTarget;
+  preview.classList.add(MARKDOWN_PREVIEW_COPY_THEME_CLASS);
+  preview.ownerDocument.defaultView?.setTimeout(() => {
+    preview.classList.remove(MARKDOWN_PREVIEW_COPY_THEME_CLASS);
+  }, 0);
+};
 
 export interface MarkdownPreviewDensityOffsets {
   fontSizeOffsetPx?: number;
@@ -152,6 +164,7 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
         role="region"
         aria-label={ariaLabel ?? "Markdown preview"}
         onClick={onClick}
+        onCopy={handleMarkdownPreviewCopy}
         onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
         ref={ref}

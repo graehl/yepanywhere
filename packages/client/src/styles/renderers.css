@@ -5454,6 +5454,16 @@ pre.code-highlighter-plain code {
   overflow: auto;
 }
 
+/* Native copy serializes this palette, while the displayed theme stays put. */
+.markdown-preview.markdown-preview-copy-light {
+  --bg-code: #f6f8fa;
+  --bg-secondary: #f6f8fa;
+  --border-color: #d0d7de;
+  --link-color: #0969da;
+  --text-muted: #59636e;
+  --text-primary: #1f2328;
+}
+
 .markdown-preview .markdown-rendered {
   padding: max(0.5rem, calc(1rem + var(--markdown-preview-vspace-offset)));
   font-size: calc(

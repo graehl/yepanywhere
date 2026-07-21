@@ -1,9 +1,14 @@
 import {
   buildYaClientPublicShareBaseUrl,
+  DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_YA_CLIENT_BASE_URL,
+  HOST_AWAKE_CONTROL_CAPABILITY,
+  type HostAwakeStatus,
   type HostIdentity,
   MAX_HOST_IDENTITY_ICON_CODE_UNITS,
+  isHostAwakeBatteryFloorPercent,
   normalizeHostIdentityIcon,
+  serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -12,7 +17,9 @@ import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
 import { useHostIdentity } from "../../contexts/HostIdentityContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { usePublicShareStatus } from "../../hooks/usePublicShareStatus";
+import { useHostAwakeStatus } from "../../hooks/useHostAwakeStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { getHostById } from "../../lib/hostStorage";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
@@ -144,13 +151,203 @@ function HostIdentitySettings({
   );
 }
 
+interface HostAwakeSettingsProps {
+  status: HostAwakeStatus | null;
+  statusError: Error | null;
+  statusLoading: boolean;
+  settingsLoading: boolean;
+  mode: "off" | "idle" | "idle-and-closed-lid-on-external-power";
+  batteryFloorPercent: number;
+  onUpdate: (updates: {
+    hostAwakeMode?: "off" | "idle";
+    hostAwakeBatteryFloorPercent?: number;
+  }) => Promise<void>;
+  onRefresh: () => Promise<void>;
+}
+
+function HostAwakeSettings({
+  status,
+  statusError,
+  statusLoading,
+  settingsLoading,
+  mode,
+  batteryFloorPercent,
+  onUpdate,
+  onRefresh,
+}: HostAwakeSettingsProps) {
+  const { t } = useI18n();
+  const [floorDraft, setFloorDraft] = useState(String(batteryFloorPercent));
+  const [saving, setSaving] = useState(false);
+  const enabled = mode !== "off";
+  const unavailable =
+    status?.state === "unsupported" ||
+    status?.support.idleSleepPrevention === false;
+  const parsedFloor = Number(floorDraft);
+  const validFloor = isHostAwakeBatteryFloorPercent(parsedFloor);
+
+  useEffect(() => {
+    setFloorDraft(String(batteryFloorPercent));
+  }, [batteryFloorPercent]);
+
+  const update = async (updates: Parameters<typeof onUpdate>[0]) => {
+    setSaving(true);
+    try {
+      await onUpdate(updates);
+      await onRefresh();
+    } catch {
+      setFloorDraft(String(batteryFloorPercent));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusText = (() => {
+    if (statusError) return t("hostAwakeStatusFetchError");
+    if (!status) return t("hostAwakeStatusLoading");
+    switch (status.state) {
+      case "active":
+        return t("hostAwakeStatusActive");
+      case "paused-low-battery":
+        return t("hostAwakeStatusPaused", {
+          percent: status.batteryFloorPercent,
+        });
+      case "unsupported":
+        return t("hostAwakeStatusUnavailable");
+      case "error":
+        return t("hostAwakeStatusError", {
+          reason: status.reason ?? t("hostAwakeStatusUnknownError"),
+        });
+      default:
+        return t("hostAwakeStatusDisabled");
+    }
+  })();
+
+  return (
+    <div className="settings-group">
+      <div className="settings-item">
+        <div className="settings-item-info">
+          <strong>{t("hostAwakeTitle")}</strong>
+          <p>{t("hostAwakeDescription")}</p>
+          <p
+            className={
+              status?.state === "error" || unavailable
+                ? "settings-warning"
+                : "settings-hint"
+            }
+          >
+            {statusText}
+          </p>
+          {status?.batteryPercent !== undefined && (
+            <p className="settings-hint">
+              {t("hostAwakeBatteryObserved", {
+                percent: status.batteryPercent,
+                time: status.powerObservedAt
+                  ? new Date(status.powerObservedAt).toLocaleString()
+                  : t("hostAwakeBatteryObservedUnknownTime"),
+              })}
+            </p>
+          )}
+          <button
+            type="button"
+            className="settings-button settings-button-secondary"
+            disabled={statusLoading || saving}
+            onClick={() => void onRefresh()}
+          >
+            {t("hostAwakeRefresh")}
+          </button>
+        </div>
+        <label className="toggle-switch">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={
+              settingsLoading ||
+              statusLoading ||
+              saving ||
+              !status ||
+              (unavailable && !enabled)
+            }
+            onChange={(event) =>
+              void update({
+                hostAwakeMode: event.target.checked ? "idle" : "off",
+              })
+            }
+          />
+          <span className="toggle-slider" />
+        </label>
+      </div>
+
+      {enabled &&
+        status?.hasInternalBattery === true &&
+        status.support.batteryFloor && (
+          <div className="settings-item settings-item--wide-control">
+            <div className="settings-item-info">
+              <strong>{t("hostAwakeBatteryFloorTitle")}</strong>
+              <p>{t("hostAwakeBatteryFloorDescription")}</p>
+            </div>
+            <form
+              className="host-awake-floor-controls"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (validFloor) {
+                  void update({ hostAwakeBatteryFloorPercent: parsedFloor });
+                }
+              }}
+            >
+              <input
+                type="number"
+                className="settings-input settings-input-small"
+                min={1}
+                max={100}
+                step={1}
+                value={floorDraft}
+                aria-label={t("hostAwakeBatteryFloorInput")}
+                disabled={saving}
+                onChange={(event) => setFloorDraft(event.target.value)}
+              />
+              <span aria-hidden="true">%</span>
+              <button
+                type="submit"
+                className="settings-button"
+                disabled={
+                  saving ||
+                  !validFloor ||
+                  parsedFloor === batteryFloorPercent
+                }
+              >
+                {t("hostAwakeBatteryFloorSave")}
+              </button>
+            </form>
+            {!validFloor && (
+              <p className="settings-warning">
+                {t("hostAwakeBatteryFloorInvalid")}
+              </p>
+            )}
+          </div>
+        )}
+    </div>
+  );
+}
+
 export function RemoteAccessSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("settingsRemoteTitle"));
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
   const { supported: hostIdentitySupported } = useHostIdentity();
-  const { settings, isLoading, error, updateSetting } = useServerSettings();
+  const { version } = useVersion();
+  const hostAwakeSupported = serverHasCapability(
+    version,
+    HOST_AWAKE_CONTROL_CAPABILITY,
+  );
+  const {
+    status: hostAwakeStatus,
+    isLoading: hostAwakeStatusLoading,
+    error: hostAwakeStatusError,
+    refetch: refetchHostAwakeStatus,
+  } = useHostAwakeStatus(hostAwakeSupported);
+  const { settings, isLoading, error, updateSetting, updateSettings } =
+    useServerSettings();
   const publicSharesEnabled = settings?.publicSharesEnabled ?? false;
   const { status: publicShareStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
@@ -210,6 +407,21 @@ export function RemoteAccessSettings() {
       currentIcon={settings?.hostIdentity?.icon ?? ""}
       disabled={isLoading}
       onChange={(identity) => updateSetting("hostIdentity", identity)}
+    />
+  ) : null;
+  const hostAwakeConfig = hostAwakeSupported ? (
+    <HostAwakeSettings
+      status={hostAwakeStatus}
+      statusError={hostAwakeStatusError}
+      statusLoading={hostAwakeStatusLoading}
+      settingsLoading={isLoading}
+      mode={settings?.hostAwakeMode ?? "off"}
+      batteryFloorPercent={
+        settings?.hostAwakeBatteryFloorPercent ??
+        DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT
+      }
+      onUpdate={updateSettings}
+      onRefresh={() => refetchHostAwakeStatus(true)}
     />
   ) : null;
 
@@ -326,6 +538,7 @@ export function RemoteAccessSettings() {
         <p className="settings-section-description">
           {t("remoteAccessConnectedDescription")}
         </p>
+        {hostAwakeConfig}
         {publicShareConfig}
         <div className="settings-group">
           <div className="settings-item">
@@ -367,6 +580,7 @@ export function RemoteAccessSettings() {
       {hostIdentityItem && (
         <div className="settings-group">{hostIdentityItem}</div>
       )}
+      {hostAwakeConfig}
       {publicShareConfig}
       <RemoteAccessSetup
         title={t("remoteAccessConnectedTitle")}

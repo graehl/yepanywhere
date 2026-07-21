@@ -32,6 +32,35 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("keeps host-awake default-off with a ten-percent reserve", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("hostAwakeMode")).toBe("off");
+    expect(service.getSetting("hostAwakeBatteryFloorPercent")).toBe(10);
+  });
+
+  it("normalizes invalid persisted host-awake values to safe defaults", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          hostAwakeMode: "always",
+          hostAwakeBatteryFloorPercent: 0,
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("hostAwakeMode")).toBe("off");
+    expect(service.getSetting("hostAwakeBatteryFloorPercent")).toBe(10);
+  });
+
   it("persists host identity across service instances", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

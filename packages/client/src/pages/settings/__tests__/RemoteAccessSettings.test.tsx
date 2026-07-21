@@ -1,11 +1,31 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HostAwakeStatus } from "@yep-anywhere/shared";
 import type { ServerSettings } from "../../../api/client";
 import { RemoteAccessSettings } from "../RemoteAccessSettings";
 
-const { hostIdentityState, hookState, mockUpdateSetting } = vi.hoisted(() => ({
+const {
+  hostAwakeState,
+  hostIdentityState,
+  hookState,
+  mockHostAwakeRefetch,
+  mockUpdateSetting,
+  mockUpdateSettings,
+} = vi.hoisted(() => ({
+  hostAwakeState: {
+    supported: false,
+    status: null as HostAwakeStatus | null,
+    error: null as Error | null,
+  },
   hostIdentityState: { supported: true },
   hookState: {
     settings: {
@@ -15,7 +35,9 @@ const { hostIdentityState, hookState, mockUpdateSetting } = vi.hoisted(() => ({
     isLoading: false,
     error: null as string | null,
   },
+  mockHostAwakeRefetch: vi.fn(),
   mockUpdateSetting: vi.fn(),
+  mockUpdateSettings: vi.fn(),
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -44,10 +66,28 @@ vi.mock("../../../hooks/usePublicShareStatus", () => ({
   usePublicShareStatus: () => ({ status: null }),
 }));
 
+vi.mock("../../../hooks/useHostAwakeStatus", () => ({
+  useHostAwakeStatus: () => ({
+    status: hostAwakeState.status,
+    isLoading: false,
+    error: hostAwakeState.error,
+    refetch: mockHostAwakeRefetch,
+  }),
+}));
+
 vi.mock("../../../hooks/useServerSettings", () => ({
   useServerSettings: () => ({
     ...hookState,
     updateSetting: mockUpdateSetting,
+    updateSettings: mockUpdateSettings,
+  }),
+}));
+
+vi.mock("../../../hooks/useVersion", () => ({
+  useVersion: () => ({
+    version: {
+      capabilities: hostAwakeState.supported ? ["host-awake-control"] : [],
+    },
   }),
 }));
 
@@ -71,7 +111,12 @@ describe("RemoteAccessSettings host identity", () => {
     };
     hookState.isLoading = false;
     hookState.error = null;
+    hostAwakeState.supported = false;
+    hostAwakeState.status = null;
+    hostAwakeState.error = null;
+    mockHostAwakeRefetch.mockResolvedValue(undefined);
     mockUpdateSetting.mockResolvedValue(undefined);
+    mockUpdateSettings.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -137,6 +182,81 @@ describe("RemoteAccessSettings host identity", () => {
         "hostIdentity",
         undefined,
       ),
+    );
+  });
+
+  it("hides host-awake controls against servers without the capability", () => {
+    render(<RemoteAccessSettings />);
+
+    expect(screen.queryByText("hostAwakeTitle")).toBeNull();
+  });
+
+  it("enables host-awake through server settings and refreshes status", async () => {
+    hostAwakeState.supported = true;
+    hostAwakeState.status = {
+      requestedMode: "off",
+      state: "disabled",
+      platform: "win32",
+      support: {
+        idleSleepPrevention: true,
+        batteryFloor: true,
+        closedLidOnExternalPower: false,
+      },
+      hasInternalBattery: false,
+      powerSource: "external",
+      powerObservedAt: 123,
+      batteryFloorPercent: 10,
+    };
+    render(<RemoteAccessSettings />);
+    const item = screen.getByText("hostAwakeTitle").closest(".settings-item");
+    expect(item).not.toBeNull();
+
+    fireEvent.click(within(item as HTMLElement).getByRole("checkbox"));
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith({
+        hostAwakeMode: "idle",
+      }),
+    );
+    expect(mockHostAwakeRefetch).toHaveBeenCalledWith(true);
+  });
+
+  it("shows and saves the battery floor only for a detected battery", async () => {
+    hostAwakeState.supported = true;
+    hostAwakeState.status = {
+      requestedMode: "idle",
+      state: "active",
+      platform: "darwin",
+      support: {
+        idleSleepPrevention: true,
+        batteryFloor: true,
+        closedLidOnExternalPower: false,
+      },
+      hasInternalBattery: true,
+      powerSource: "battery",
+      batteryPercent: 75,
+      powerObservedAt: 123,
+      batteryFloorPercent: 10,
+    };
+    hookState.settings = {
+      ...hookState.settings,
+      hostAwakeMode: "idle",
+      hostAwakeBatteryFloorPercent: 10,
+    };
+    render(<RemoteAccessSettings />);
+
+    const input = screen.getByRole("spinbutton", {
+      name: "hostAwakeBatteryFloorInput",
+    });
+    fireEvent.change(input, { target: { value: "15" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "hostAwakeBatteryFloorSave" }),
+    );
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith({
+        hostAwakeBatteryFloorPercent: 15,
+      }),
     );
   });
 });

@@ -8,6 +8,8 @@ import {
   MAX_PROJECT_QUEUE_QUIET_SECONDS,
   PROMPT_CACHE_KEEPALIVE_MODES,
   clampProjectQueueQuietSeconds,
+  isHostAwakeBatteryFloorPercent,
+  isHostAwakeMode,
   normalizeYaClientBaseUrl,
   normalizeYaClientBaseUrlFromShareViewerUrl,
 } from "@yep-anywhere/shared";
@@ -16,6 +18,7 @@ import { type FileAccessSettings, getFileAccessInfo } from "../middleware/file-a
 import type { SessionMetadataService } from "../metadata/index.js";
 import { testSSHConnection } from "../sdk/remote-spawn.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
+import type { HostAwakeService } from "../services/host-awake/HostAwakeService.js";
 import type {
   CodexUpdatePolicy,
   ServerSettings,
@@ -68,6 +71,8 @@ export interface SettingsRoutesDeps {
   onGrokBuildUseXaiApiKeyChanged?: (enabled: boolean) => void;
   /** Public share storage, used to revoke existing shares when disabled */
   publicShareService?: PublicShareService;
+  /** Process-global host-awake policy and status owner. */
+  hostAwakeService?: HostAwakeService;
 }
 
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
@@ -83,6 +88,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onOllamaUseFullSystemPromptChanged,
     onGrokBuildUseXaiApiKeyChanged,
     publicShareService,
+    hostAwakeService,
   } = deps;
 
   /**
@@ -92,6 +98,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   app.get("/", (c) => {
     const settings = serverSettingsService.getSettings();
     return c.json({ settings });
+  });
+
+  app.get("/host-awake/status", async (c) => {
+    if (!hostAwakeService) {
+      return c.json({ error: "Host-awake status is unavailable" }, 404);
+    }
+    const status = await hostAwakeService.getStatus({
+      forceRefresh: c.req.query("refresh") === "1",
+    });
+    return c.json({ status });
   });
 
   /**
@@ -148,6 +164,31 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if (typeof body.composeAnchorsEnabled === "boolean") {
       updates.composeAnchorsEnabled = body.composeAnchorsEnabled;
+    }
+    if ("hostAwakeMode" in body) {
+      if (!isHostAwakeMode(body.hostAwakeMode)) {
+        return c.json(
+          {
+            error:
+              "hostAwakeMode must be one of: off, idle, idle-and-closed-lid-on-external-power",
+          },
+          400,
+        );
+      }
+      updates.hostAwakeMode = body.hostAwakeMode;
+    }
+    if ("hostAwakeBatteryFloorPercent" in body) {
+      if (!isHostAwakeBatteryFloorPercent(body.hostAwakeBatteryFloorPercent)) {
+        return c.json(
+          {
+            error:
+              "hostAwakeBatteryFloorPercent must be a whole number from 1 through 100",
+          },
+          400,
+        );
+      }
+      updates.hostAwakeBatteryFloorPercent =
+        body.hostAwakeBatteryFloorPercent;
     }
     if ("deferredJoinWindowSeconds" in body) {
       if (
@@ -539,7 +580,43 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
 
+    const currentSettings = serverSettingsService.getSettings();
+    const nextHostAwakeMode =
+      updates.hostAwakeMode ?? currentSettings.hostAwakeMode;
+    const hasHostAwakeUpdate =
+      "hostAwakeMode" in updates ||
+      "hostAwakeBatteryFloorPercent" in updates;
+    if (hasHostAwakeUpdate && !hostAwakeService) {
+      return c.json({ error: "Host-awake control is unavailable" }, 503);
+    }
+    if (
+      hostAwakeService &&
+      updates.hostAwakeMode &&
+      updates.hostAwakeMode !== "off" &&
+      updates.hostAwakeMode !== currentSettings.hostAwakeMode
+    ) {
+      const check = await hostAwakeService.checkSupport(updates.hostAwakeMode);
+      if (!check.ok) {
+        return c.json(
+          {
+            error:
+              check.status.reason ??
+              "The requested host-awake mode is unavailable",
+            status: check.status,
+          },
+          409,
+        );
+      }
+    }
+
     const settings = await serverSettingsService.updateSettings(updates);
+    const hostAwakeStatus =
+      hasHostAwakeUpdate && hostAwakeService
+        ? await hostAwakeService.apply(
+            nextHostAwakeMode,
+            settings.hostAwakeBatteryFloorPercent,
+          )
+        : undefined;
 
     // Apply allowedHosts change to middleware at runtime
     if ("allowedHosts" in updates && onAllowedHostsChanged) {
@@ -577,7 +654,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       await publicShareService.revokeAllShares();
     }
 
-    return c.json({ settings });
+    return c.json({
+      settings,
+      ...(hostAwakeStatus ? { hostAwakeStatus } : {}),
+    });
   });
 
   /**

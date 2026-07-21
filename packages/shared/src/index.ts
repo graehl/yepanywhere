@@ -252,6 +252,7 @@ export {
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
+  HOST_AWAKE_CONTROL_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   SERVER_CAPABILITIES,
   VOICE_INPUT_CAPABILITY,
@@ -262,6 +263,20 @@ export {
   type ServerCapabilityName,
   type ServerCapabilitySource,
 } from "./server-capabilities.js";
+
+export {
+  DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
+  HOST_AWAKE_MODES,
+  MAX_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
+  MIN_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
+  isHostAwakeBatteryFloorPercent,
+  isHostAwakeMode,
+  type HostAwakeFeatureSupport,
+  type HostAwakeMode,
+  type HostAwakePowerSource,
+  type HostAwakeState,
+  type HostAwakeStatus,
+} from "./host-awake.js";
 
 export {
   BROWSER_SETTINGS_BACKUP_VERSION,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   BROWSER_SETTINGS_BACKUP_CAPABILITY,
+  HOST_AWAKE_CONTROL_CAPABILITY,
   HOST_IDENTITY_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { getServerCapabilities } from "../../src/routes/version.js";
@@ -22,5 +23,9 @@ describe("Version Routes", () => {
 
   it("advertises host identity persistence", () => {
     expect(getServerCapabilities()).toContain(HOST_IDENTITY_CAPABILITY);
+  });
+
+  it("advertises host-awake settings and status", () => {
+    expect(getServerCapabilities()).toContain(HOST_AWAKE_CONTROL_CAPABILITY);
   });
 });

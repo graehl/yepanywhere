@@ -64,6 +64,7 @@ import {
   BrowserProfileService,
   BrowserSettingsBackupService,
   ConnectedBrowsersService,
+  HostAwakeService,
   InstallService,
   ModelInfoService,
   NetworkBindingService,
@@ -134,6 +135,7 @@ let disposeAppForShutdown:
   | Awaited<ReturnType<typeof createApp>>["disposeSessionReaders"]
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
+let hostAwakeForShutdown: HostAwakeService | null = null;
 let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
 
@@ -153,6 +155,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
   if (attachmentStagingCleanupTimer) {
     clearInterval(attachmentStagingCleanupTimer);
     attachmentStagingCleanupTimer = null;
+  }
+
+  if (hostAwakeForShutdown) {
+    try {
+      await hostAwakeForShutdown.shutdown();
+      console.log("[Shutdown] Host-awake assertion released");
+    } catch (error) {
+      console.error("[Shutdown] Error releasing host-awake assertion:", error);
+    }
   }
 
   if (supervisorForShutdown) {
@@ -430,6 +441,8 @@ const connectedBrowsersService = new ConnectedBrowsersService(eventBus);
 const serverSettingsService = new ServerSettingsService({
   dataDir: config.dataDir,
 });
+const hostAwakeService = new HostAwakeService();
+hostAwakeForShutdown = hostAwakeService;
 const browserSettingsBackupService = new BrowserSettingsBackupService({
   dataDir: config.dataDir,
 });
@@ -533,6 +546,13 @@ async function startServer() {
   markStartup("modelInfoService initialized");
   await serverSettingsService.initialize();
   markStartup("serverSettingsService initialized");
+  await hostAwakeService.initialize({
+    mode: serverSettingsService.getSetting("hostAwakeMode"),
+    batteryFloorPercent: serverSettingsService.getSetting(
+      "hostAwakeBatteryFloorPercent",
+    ),
+  });
+  markStartup("hostAwakeService initialized");
   await browserSettingsBackupService.initialize();
   markStartup("browserSettingsBackupService initialized");
   await workstreamService.initialize();
@@ -732,6 +752,7 @@ async function startServer() {
     browserProfileService,
     browserSettingsBackupService,
     serverSettingsService,
+    hostAwakeService,
     workstreamService,
     sharingService,
     publicShareService,

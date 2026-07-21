@@ -123,6 +123,7 @@ import type { BrowserProfileService } from "./services/BrowserProfileService.js"
 import type { BrowserSettingsBackupService } from "./services/BrowserSettingsBackupService.js";
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
+import type { HostAwakeService } from "./services/host-awake/HostAwakeService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
 import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
@@ -263,6 +264,8 @@ export interface AppOptions {
   browserSettingsBackupService?: BrowserSettingsBackupService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
+  /** Process-global operating-system sleep assertion policy. */
+  hostAwakeService?: HostAwakeService;
   /** WorkstreamService for experimental per-project checkout lanes */
   workstreamService?: WorkstreamService;
   /** ModelInfoService for cached model metadata (context windows, etc.) */
@@ -1362,6 +1365,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/settings",
       createSettingsRoutes({
         serverSettingsService: options.serverSettingsService,
+        hostAwakeService: options.hostAwakeService,
         sessionMetadataService: options.sessionMetadataService,
         onAllowedHostsChanged: updateAllowedHosts,
         onFileAccessChanged: updateFileAccess,

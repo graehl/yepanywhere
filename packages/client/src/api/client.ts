@@ -15,6 +15,8 @@ import type {
   DeviceInfo,
   FreezePublicSessionLiveSharesResponse,
   HelperTargetConfig,
+  HostAwakeMode,
+  HostAwakeStatus,
   HostIdentity,
   ModelInfo,
   NewSessionDefaults,
@@ -1250,6 +1252,11 @@ export const api = {
   // Server settings API (persistent server configuration)
   getServerSettings: () => fetchJSON<{ settings: ServerSettings }>("/settings"),
 
+  getHostAwakeStatus: (forceRefresh = false) =>
+    fetchJSON<{ status: HostAwakeStatus }>(
+      `/settings/host-awake/status${forceRefresh ? "?refresh=1" : ""}`,
+    ),
+
   updateServerSettings: (settings: Partial<ServerSettings>) =>
     fetchJSON<{ settings: ServerSettings }>("/settings", {
       method: "PUT",
@@ -1494,6 +1501,10 @@ export interface ServerSettings {
   yaClientBaseUrl?: string | null;
   /** Optional visual marker identifying the connected YA host. */
   hostIdentity?: HostIdentity;
+  /** Process-lifetime operating-system idle-sleep assertion mode. */
+  hostAwakeMode?: HostAwakeMode;
+  /** Battery level at or below which the host-awake assertion is released. */
+  hostAwakeBatteryFloorPercent?: number;
   /** @deprecated Use yaClientBaseUrl. */
   publicShareViewerBaseUrl?: string | null;
   /** SSH host aliases for remote executors */

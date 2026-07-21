@@ -202,6 +202,34 @@ export const SERVER_CAPABILITIES = {
         "Hosted clients may remain compatible with older servers that cannot persist host identity.",
     },
   },
+  hostAwakeControl: {
+    name: "host-awake-control",
+    kind: "transitional",
+    area: "remoteAccess",
+    introducedIn: "0.6.3",
+    description:
+      "Server supports process-lifetime host-awake settings and status discovery.",
+    clientFallback: "Hide host-awake settings.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "GET /api/settings/host-awake/status",
+      ],
+      responseFields: [
+        "settings.hostAwakeMode",
+        "settings.hostAwakeBatteryFloorPercent",
+      ],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-10-21",
+      removeClientGateWhen:
+        "The hosted-client compatibility floor excludes servers older than the host-awake settings/status API.",
+      removeServerAdvertisementWhen:
+        "No maintained client still branches on host-awake-control.",
+    },
+  },
   projectQueue: {
     name: "projectQueue",
     kind: "permanent",
@@ -365,6 +393,9 @@ export const BROWSER_SETTINGS_BACKUP_CAPABILITY =
 
 export const HOST_IDENTITY_CAPABILITY =
   SERVER_CAPABILITIES.hostIdentity.name;
+
+export const HOST_AWAKE_CONTROL_CAPABILITY =
+  SERVER_CAPABILITIES.hostAwakeControl.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

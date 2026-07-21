@@ -44,6 +44,13 @@ export {
 } from "./ServerSettingsService.js";
 
 export {
+  HostAwakeService,
+  createHostAwakeBackend,
+  type HostAwakeServiceOptions,
+  type HostAwakeSupportCheck,
+} from "./host-awake/HostAwakeService.js";
+
+export {
   ProjectQueueService,
   ProjectQueueValidationError,
   type ProjectQueueServiceOptions,

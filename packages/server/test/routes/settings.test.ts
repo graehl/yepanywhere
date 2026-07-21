@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
 import { createSettingsRoutes } from "../../src/routes/settings.js";
 import type { PublicShareService } from "../../src/services/PublicShareService.js";
+import type { HostAwakeService } from "../../src/services/host-awake/HostAwakeService.js";
 import type {
   ServerSettings,
   ServerSettingsService,
@@ -21,6 +22,8 @@ describe("Settings Routes", () => {
       speechAudioRetention: DEFAULT_SERVER_SETTINGS.speechAudioRetention,
       publicSharesEnabled: false,
       workstreamsEnabled: false,
+      hostAwakeMode: "off",
+      hostAwakeBatteryFloorPercent: 10,
     };
 
     mockServerSettingsService = {
@@ -83,6 +86,105 @@ describe("Settings Routes", () => {
   });
 
   describe("PUT /", () => {
+    it.each([
+      [{ hostAwakeMode: "always" }, "hostAwakeMode"],
+      [
+        { hostAwakeBatteryFloorPercent: 10.5 },
+        "hostAwakeBatteryFloorPercent",
+      ],
+      [{ hostAwakeBatteryFloorPercent: 0 }, "hostAwakeBatteryFloorPercent"],
+    ])("rejects invalid host-awake settings %j", async (body, errorField) => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        hostAwakeService: {} as HostAwakeService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain(errorField);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("does not persist an unsupported host-awake enable request", async () => {
+      const status = {
+        requestedMode: "off" as const,
+        state: "unsupported" as const,
+        platform: "linux",
+        support: {
+          idleSleepPrevention: false,
+          batteryFloor: false,
+          closedLidOnExternalPower: false,
+        },
+        hasInternalBattery: "unknown" as const,
+        batteryFloorPercent: 10,
+        reason: "Host-awake control is unavailable on this server",
+      };
+      const hostAwakeService = {
+        checkSupport: vi.fn(async () => ({ ok: false, status })),
+      } as unknown as HostAwakeService;
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        hostAwakeService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostAwakeMode: "idle" }),
+      });
+
+      expect(response.status).toBe(409);
+      expect((await response.json()).status).toEqual(status);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("persists and applies a supported host-awake request live", async () => {
+      const activeStatus = {
+        requestedMode: "idle" as const,
+        state: "active" as const,
+        platform: "darwin",
+        support: {
+          idleSleepPrevention: true,
+          batteryFloor: true,
+          closedLidOnExternalPower: false,
+        },
+        hasInternalBattery: true,
+        powerSource: "external" as const,
+        batteryPercent: 80,
+        powerObservedAt: 123,
+        batteryFloorPercent: 15,
+      };
+      const hostAwakeService = {
+        checkSupport: vi.fn(async () => ({
+          ok: true,
+          status: { ...activeStatus, requestedMode: "off", state: "disabled" },
+        })),
+        apply: vi.fn(async () => activeStatus),
+      } as unknown as HostAwakeService;
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        hostAwakeService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hostAwakeMode: "idle",
+          hostAwakeBatteryFloorPercent: 15,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(hostAwakeService.apply).toHaveBeenCalledWith("idle", 15);
+      expect((await response.json()).hostAwakeStatus).toEqual(activeStatus);
+    });
+
     it("accepts and normalizes a host identity marker", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
@@ -1094,6 +1196,40 @@ describe("Settings Routes", () => {
       const json = await response.json();
       expect(json.error).toBe("Invalid helperTargets setting");
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("GET /host-awake/status", () => {
+    it("returns the process-global host status", async () => {
+      const status = {
+        requestedMode: "off" as const,
+        state: "disabled" as const,
+        platform: "win32",
+        support: {
+          idleSleepPrevention: true,
+          batteryFloor: true,
+          closedLidOnExternalPower: false,
+        },
+        hasInternalBattery: false,
+        powerSource: "external" as const,
+        powerObservedAt: 123,
+        batteryFloorPercent: 10,
+      };
+      const hostAwakeService = {
+        getStatus: vi.fn(async () => status),
+      } as unknown as HostAwakeService;
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        hostAwakeService,
+      });
+
+      const response = await routes.request("/host-awake/status?refresh=1");
+
+      expect(response.status).toBe(200);
+      expect(hostAwakeService.getStatus).toHaveBeenCalledWith({
+        forceRefresh: true,
+      });
+      expect(await response.json()).toEqual({ status });
     });
   });
 

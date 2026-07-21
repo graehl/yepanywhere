@@ -13,6 +13,7 @@ import type {
   ClientDefaults,
   HelperTargetConfig,
   HostIdentity,
+  HostAwakeMode,
   NewSessionDefaults,
   PromptCacheKeepaliveSettings,
   SessionToolbarPresenceClientDefaults,
@@ -20,9 +21,12 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   clampProjectQueueQuietSeconds,
   normalizeYaClientBaseUrlFromShareViewerUrl,
+  isHostAwakeBatteryFloorPercent,
+  isHostAwakeMode,
 } from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
@@ -66,6 +70,10 @@ export interface ServerSettings {
   yaClientBaseUrl?: string;
   /** Optional visual marker identifying this YA host in connected clients. */
   hostIdentity?: HostIdentity;
+  /** Process-lifetime operating-system idle-sleep assertion mode. */
+  hostAwakeMode: HostAwakeMode;
+  /** Battery percentage at or below which YA releases its sleep assertion. */
+  hostAwakeBatteryFloorPercent: number;
   /** @deprecated Use yaClientBaseUrl. Kept to migrate older settings files. */
   publicShareViewerBaseUrl?: string;
   /** SSH host aliases for remote executors (from ~/.ssh/config) */
@@ -157,6 +165,9 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   publicSharesEnabled: false,
   workstreamsEnabled: false,
+  hostAwakeMode: "off",
+  hostAwakeBatteryFloorPercent:
+    DEFAULT_HOST_AWAKE_BATTERY_FLOOR_PERCENT,
   heartbeatTurnsAfterMinutes: 15,
   heartbeatTurnText: DEFAULT_HEARTBEAT_TURN_TEXT,
   speechAudioRetention: {
@@ -268,6 +279,13 @@ function mergeLoadedClientDefaults(
 
 function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   const normalized = { ...DEFAULT_SERVER_SETTINGS, ...settings };
+  normalized.hostAwakeMode = isHostAwakeMode(settings.hostAwakeMode)
+    ? settings.hostAwakeMode
+    : DEFAULT_SERVER_SETTINGS.hostAwakeMode;
+  normalized.hostAwakeBatteryFloorPercent =
+    isHostAwakeBatteryFloorPercent(settings.hostAwakeBatteryFloorPercent)
+      ? settings.hostAwakeBatteryFloorPercent
+      : DEFAULT_SERVER_SETTINGS.hostAwakeBatteryFloorPercent;
   normalized.clientDefaults = mergeLoadedClientDefaults(
     settings.clientDefaults,
   );

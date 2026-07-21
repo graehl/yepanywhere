@@ -1,26 +1,155 @@
 import {
   buildYaClientPublicShareBaseUrl,
   DEFAULT_YA_CLIENT_BASE_URL,
+  type HostIdentity,
+  MAX_HOST_IDENTITY_ICON_CODE_UNITS,
+  normalizeHostIdentityIcon,
 } from "@yep-anywhere/shared";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PublicShareStatusResponse } from "../../api/client";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
+import { useHostIdentity } from "../../contexts/HostIdentityContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { usePublicShareStatus } from "../../hooks/usePublicShareStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
-import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { getHostById } from "../../lib/hostStorage";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 
 const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL = buildYaClientPublicShareBaseUrl(
   DEFAULT_YA_CLIENT_BASE_URL,
 );
+
+const HOST_IDENTITY_PRESETS = [
+  "💻",
+  "🖥️",
+  "🗄️",
+  "🏠",
+  "☁️",
+  "❤️",
+  "⭐",
+  "🔵",
+] as const;
+
+interface HostIdentitySettingsProps {
+  currentIcon: string;
+  disabled: boolean;
+  onChange: (identity: HostIdentity | undefined) => Promise<void>;
+}
+
+function HostIdentitySettings({
+  currentIcon,
+  disabled,
+  onChange,
+}: HostIdentitySettingsProps) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(currentIcon);
+  const [saving, setSaving] = useState(false);
+  const normalizedDraft = normalizeHostIdentityIcon(draft);
+  const draftInvalid = draft.trim().length > 0 && normalizedDraft === null;
+
+  useEffect(() => setDraft(currentIcon), [currentIcon]);
+
+  const save = async (identity: HostIdentity | undefined) => {
+    setSaving(true);
+    try {
+      await onChange(identity);
+    } catch {
+      // useServerSettings owns the visible mutation error.
+      setDraft(currentIcon);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="settings-item settings-item--wide-control host-identity-settings">
+      <div className="settings-item-info">
+        <strong>{t("hostIdentityTitle")}</strong>
+        <p>{t("hostIdentityDescription")}</p>
+      </div>
+      <div className="host-identity-controls">
+        <div
+          className="host-identity-presets"
+          role="group"
+          aria-label={t("hostIdentityPresetsAria")}
+        >
+          {HOST_IDENTITY_PRESETS.map((icon) => (
+            <button
+              key={icon}
+              type="button"
+              className={`host-identity-preset${currentIcon === icon ? " active" : ""}`}
+              aria-label={t("hostIdentityUsePreset", { icon })}
+              aria-pressed={currentIcon === icon}
+              disabled={disabled || saving}
+              onClick={() => {
+                setDraft(icon);
+                void save({ icon });
+              }}
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
+        <form
+          className="host-identity-custom"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (normalizedDraft) void save({ icon: normalizedDraft });
+          }}
+        >
+          <input
+            className="settings-input host-identity-input"
+            value={draft}
+            maxLength={MAX_HOST_IDENTITY_ICON_CODE_UNITS}
+            aria-label={t("hostIdentityCustomLabel")}
+            placeholder={t("hostIdentityCustomPlaceholder")}
+            disabled={disabled || saving}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button
+            type="submit"
+            className="settings-button"
+            disabled={
+              disabled ||
+              saving ||
+              normalizedDraft === null ||
+              normalizedDraft === currentIcon
+            }
+          >
+            {t("hostIdentitySave")}
+          </button>
+          {currentIcon && (
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              disabled={disabled || saving}
+              onClick={() => {
+                setDraft("");
+                void save(undefined);
+              }}
+            >
+              {t("hostIdentityClear")}
+            </button>
+          )}
+        </form>
+        {draftInvalid && (
+          <p className="settings-warning host-identity-validation">
+            {t("hostIdentityInvalid")}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function RemoteAccessSettings() {
   const { t } = useI18n();
   useSettingsPaneTitle(t("settingsRemoteTitle"));
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
+  const { supported: hostIdentitySupported } = useHostIdentity();
   const { settings, isLoading, error, updateSetting } = useServerSettings();
   const publicSharesEnabled = settings?.publicSharesEnabled ?? false;
   const { status: publicShareStatus } = usePublicShareStatus({
@@ -76,6 +205,13 @@ export function RemoteAccessSettings() {
   };
 
   const shareReadinessMessage = getShareReadinessMessage(publicShareStatus);
+  const hostIdentityItem = hostIdentitySupported ? (
+    <HostIdentitySettings
+      currentIcon={settings?.hostIdentity?.icon ?? ""}
+      disabled={isLoading}
+      onChange={(identity) => updateSetting("hostIdentity", identity)}
+    />
+  ) : null;
 
   // Public read-only share only works once Remote Access (relay) is configured,
   // so its controls live at the top of this tab.
@@ -205,6 +341,7 @@ export function RemoteAccessSettings() {
               {t("sidebarSwitchHost")}
             </button>
           </div>
+          {hostIdentityItem}
           <div className="settings-item">
             <div className="settings-item-info">
               <strong>{t("remoteAccessLogoutTitle")}</strong>
@@ -227,6 +364,9 @@ export function RemoteAccessSettings() {
   // Server-side: show relay configuration
   return (
     <section className="settings-section">
+      {hostIdentityItem && (
+        <div className="settings-group">{hostIdentityItem}</div>
+      )}
       {publicShareConfig}
       <RemoteAccessSetup
         title={t("remoteAccessConnectedTitle")}

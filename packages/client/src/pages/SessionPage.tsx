@@ -23,6 +23,7 @@ import { BtwAsidePane } from "../components/BtwAsidePane";
 import { BtwAsideStickyCards } from "../components/BtwAsideStickyCards";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
 import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
+import { HostIdentityMarker } from "../components/HostIdentityMarker";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
 import {
@@ -3929,6 +3930,7 @@ function SessionPageContent({
                 <SidebarIcon />
               </button>
             )}
+            <HostIdentityMarker />
             {/* Project breadcrumb */}
             {project?.name && (
               <div className="project-breadcrumb-wrapper">

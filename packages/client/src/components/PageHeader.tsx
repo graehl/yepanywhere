@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useI18n } from "../i18n";
 import { truncateText } from "../lib/text";
+import { HostIdentityMarker } from "./HostIdentityMarker";
 
 interface PageHeaderProps {
   title: string;
@@ -108,6 +109,7 @@ export function PageHeader({
               </button>
             )
           )}
+          <HostIdentityMarker />
           {titleElement ??
             (onTitleClick ? (
               <button

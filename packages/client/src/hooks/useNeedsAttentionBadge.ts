@@ -8,23 +8,32 @@ const ACTIVITY_PREFIX_REGEX = /^\((?:●|○|\*| )\)\s*/u;
 const ACTIVITY_FRAMES = ["(●)", "(○)"] as const;
 export const TAB_TITLE_ACTIVITY_CADENCE_MS = 1500;
 
-export function stripTabTitlePrefixes(title: string): string {
+export function stripTabTitlePrefixes(
+  title: string,
+  hostIdentityIcon?: string,
+): string {
   let next = title;
   for (;;) {
     const stripped = next
       .replace(BADGE_PREFIX_REGEX, "")
       .replace(ACTIVITY_PREFIX_REGEX, "");
     if (stripped === next) {
-      return next;
+      break;
     }
     next = stripped;
   }
+
+  const hostPrefix = hostIdentityIcon ? `${hostIdentityIcon} ` : "";
+  return hostPrefix && next.startsWith(hostPrefix)
+    ? next.slice(hostPrefix.length)
+    : next;
 }
 
 export function composeTabTitle(
   baseTitle: string,
   count: number,
   activityFrame?: string,
+  hostIdentityIcon?: string,
 ): string {
   const prefixes: string[] = [];
   if (count > 0) {
@@ -32,6 +41,9 @@ export function composeTabTitle(
   }
   if (activityFrame) {
     prefixes.push(activityFrame);
+  }
+  if (hostIdentityIcon) {
+    prefixes.push(hostIdentityIcon);
   }
   return prefixes.length > 0 ? `${prefixes.join(" ")} ${baseTitle}` : baseTitle;
 }
@@ -56,7 +68,7 @@ export function getTabTitleActivityFrame(
  *
  * Uses client summary inbox counts - no independent fetching.
  */
-export function useNeedsAttentionBadge() {
+export function useNeedsAttentionBadge(hostIdentityIcon?: string) {
   const activityStartedAtRef = useRef<number | null>(null);
   const { needsAttention: count, active } = useInboxCounts();
   const { tabTitleActivityEnabled } = useTabTitleActivityPreference();
@@ -64,9 +76,12 @@ export function useNeedsAttentionBadge() {
 
   useEffect(() => {
     return () => {
-      document.title = stripTabTitlePrefixes(document.title);
+      document.title = stripTabTitlePrefixes(
+        document.title,
+        hostIdentityIcon,
+      );
     };
-  }, []);
+  }, [hostIdentityIcon]);
 
   // Update document title when count or configured activity changes.
   useEffect(() => {
@@ -83,14 +98,22 @@ export function useNeedsAttentionBadge() {
     const updateTitle = () => {
       isUpdating = true;
       // Strip existing indicator prefixes before composing the next title.
-      const baseTitle = stripTabTitlePrefixes(document.title);
+      const baseTitle = stripTabTitlePrefixes(
+        document.title,
+        hostIdentityIcon,
+      );
       const activityStartedAt = activityStartedAtRef.current;
       const activityFrame =
         showSessionActivity && activityStartedAt !== null
           ? getTabTitleActivityFrame(activityStartedAt)
           : undefined;
 
-      document.title = composeTabTitle(baseTitle, count, activityFrame);
+      document.title = composeTabTitle(
+        baseTitle,
+        count,
+        activityFrame,
+        hostIdentityIcon,
+      );
       // Use setTimeout to reset flag after current mutation cycle completes
       setTimeout(() => {
         isUpdating = false;
@@ -112,13 +135,21 @@ export function useNeedsAttentionBadge() {
 
       // Check if the indicators need to be (re)applied
       const currentTitle = document.title;
-      const baseTitle = stripTabTitlePrefixes(currentTitle);
+      const baseTitle = stripTabTitlePrefixes(
+        currentTitle,
+        hostIdentityIcon,
+      );
       const activityStartedAt = activityStartedAtRef.current;
       const activityFrame =
         showSessionActivity && activityStartedAt !== null
           ? getTabTitleActivityFrame(activityStartedAt)
           : undefined;
-      const expectedTitle = composeTabTitle(baseTitle, count, activityFrame);
+      const expectedTitle = composeTabTitle(
+        baseTitle,
+        count,
+        activityFrame,
+        hostIdentityIcon,
+      );
 
       if (currentTitle !== expectedTitle) {
         updateTitle();
@@ -140,7 +171,7 @@ export function useNeedsAttentionBadge() {
         clearInterval(activityTimer);
       }
     };
-  }, [count, showSessionActivity]);
+  }, [count, hostIdentityIcon, showSessionActivity]);
 
   return count;
 }

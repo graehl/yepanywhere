@@ -11,6 +11,7 @@ import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   type HelperTargetConfig,
+  type HostIdentity,
   type ModelInfo,
   type NewSessionDefaults,
   type PermissionMode,
@@ -29,6 +30,7 @@ import {
   type SpeechSmartTurnClientDefault,
   type ThinkingMode,
   type ToolbarControlPresence,
+  normalizeHostIdentityIcon,
 } from "@yep-anywhere/shared";
 import {
   type FileAccessSettings,
@@ -374,6 +376,21 @@ export function parseAgentContextHints(
   }
 
   return parsed;
+}
+
+export function parseHostIdentity(
+  raw: unknown,
+): HostIdentity | undefined | null {
+  if (raw === null || raw === "") return undefined;
+  if (!isRecord(raw)) return null;
+  for (const key of Object.keys(raw)) {
+    if (key !== "icon") return null;
+  }
+  if (raw.icon === undefined || raw.icon === null || raw.icon === "") {
+    return undefined;
+  }
+  const icon = normalizeHostIdentityIcon(raw.icon);
+  return icon ? { icon } : null;
 }
 
 export async function discoverOpenAiCompatibleModels(

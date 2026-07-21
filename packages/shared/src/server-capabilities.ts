@@ -24,6 +24,7 @@ export interface ServerCapabilityDefinition {
     | "gitStatus"
     | "localAccess"
     | "projectQueue"
+    | "remoteAccess"
     | "settings"
     | "speech";
   description: string;
@@ -181,6 +182,24 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Hosted clients must not offer server-backed browser settings controls to older servers without the storage route.",
+    },
+  },
+  hostIdentity: {
+    name: "host-identity",
+    kind: "permanent",
+    area: "remoteAccess",
+    introducedIn: "0.6.3",
+    description:
+      "Server persists an optional visual marker identifying the current YA host.",
+    clientFallback: "Hide host identity settings and render no host marker.",
+    serverContract: {
+      routes: ["GET /api/settings", "PUT /api/settings"],
+      responseFields: ["settings.hostIdentity"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients may remain compatible with older servers that cannot persist host identity.",
     },
   },
   projectQueue: {
@@ -343,6 +362,9 @@ export const APPROVAL_AUDIT_LOG_CAPABILITY =
 
 export const BROWSER_SETTINGS_BACKUP_CAPABILITY =
   SERVER_CAPABILITIES.browserSettingsBackup.name;
+
+export const HOST_IDENTITY_CAPABILITY =
+  SERVER_CAPABILITIES.hostIdentity.name;
 
 export const VOICE_INPUT_CAPABILITY = SERVER_CAPABILITIES.voiceInput.name;
 

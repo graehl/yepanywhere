@@ -33,6 +33,7 @@ const testState = vi.hoisted(() => ({
 vi.mock("../../contexts/RemoteConnectionContext", () => ({
   RemoteConnectionProvider: ({ children }: { children: React.ReactNode }) =>
     children,
+  useOptionalRemoteConnection: () => testState.remote,
   useRemoteConnection: () => testState.remote,
 }));
 
@@ -42,6 +43,10 @@ vi.mock("../../hooks/useRemoteActivityBusConnection", () => ({
 
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({ version: null }),
+}));
+
+vi.mock("../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({ settings: null }),
 }));
 
 vi.mock("../../hooks/useReloadNotifications", () => ({

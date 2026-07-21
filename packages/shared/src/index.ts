@@ -12,6 +12,12 @@ export {
   LATEX_MATH_RENDERING_CLIENT_CAPABILITY,
 } from "./agent-context.js";
 
+export type { HostIdentity } from "./host-identity.js";
+export {
+  MAX_HOST_IDENTITY_ICON_CODE_UNITS,
+  normalizeHostIdentityIcon,
+} from "./host-identity.js";
+
 // File path detection (shared between server and client)
 export type { DetectedFilePath, TextSegment } from "./filePathDetection.js";
 export {
@@ -245,6 +251,7 @@ export {
   DEVICE_BRIDGE_CAPABILITY,
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
+  HOST_IDENTITY_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
   SERVER_CAPABILITIES,
   VOICE_INPUT_CAPABILITY,

@@ -44,7 +44,9 @@ describe("tab title indicators", () => {
   });
 
   it("composes attention and activity prefixes in stable order", () => {
-    expect(composeTabTitle("Project", 2, "(●)")).toBe("(2) (●) Project");
+    expect(composeTabTitle("Project", 2, "(●)", "💻")).toBe(
+      "(2) (●) 💻 Project",
+    );
   });
 
   it("strips known prefixes before recomposing", () => {
@@ -52,6 +54,9 @@ describe("tab title indicators", () => {
     expect(stripTabTitlePrefixes("(○) (3) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("(2) (*) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("( ) (3) Project")).toBe("Project");
+    expect(stripTabTitlePrefixes("(2) (●) 💻 Project", "💻")).toBe(
+      "Project",
+    );
   });
 
   it("derives activity frames from the configured cadence", () => {
@@ -99,5 +104,25 @@ describe("tab title indicators", () => {
     renderHook(() => useNeedsAttentionBadge());
 
     expect(document.title).toBe("Project - Session");
+  });
+
+  it("keeps the host marker after attention prefixes", () => {
+    inboxCounts.needsAttention = 2;
+
+    renderHook(() => useNeedsAttentionBadge("❤️"));
+
+    expect(document.title).toBe("(2) ❤️ Project - Session");
+  });
+
+  it("replaces a changed host marker without duplicating prefixes", () => {
+    const view = renderHook(
+      ({ icon }: { icon: string }) => useNeedsAttentionBadge(icon),
+      { initialProps: { icon: "❤️" } },
+    );
+    expect(document.title).toBe("❤️ Project - Session");
+
+    view.rerender({ icon: "💻" });
+
+    expect(document.title).toBe("💻 Project - Session");
   });
 });

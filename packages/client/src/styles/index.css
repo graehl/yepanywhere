@@ -1833,6 +1833,17 @@ body.session-transcript-selection-active .reload-banner * {
   background: var(--bg-hover);
 }
 
+.host-identity-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 /* Project breadcrumb in session header */
 .project-breadcrumb-wrapper {
   position: relative;
@@ -9943,6 +9954,74 @@ a.linkified-url:hover {
   min-width: min(100%, 18rem);
   max-width: 28rem;
   margin-top: 0;
+}
+
+.host-identity-controls {
+  display: flex;
+  flex: 0 1 25rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: min(100%, 18rem);
+}
+
+.host-identity-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.host-identity-preset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.host-identity-preset:hover {
+  background: var(--border-color);
+}
+
+.host-identity-preset.active {
+  border-color: var(--app-yep-green);
+  box-shadow: inset 0 0 0 1px var(--app-yep-green);
+}
+
+.host-identity-preset:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.host-identity-custom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.host-identity-custom .host-identity-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.host-identity-validation {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+@container (max-width: 36rem) {
+  .host-identity-controls {
+    width: 100%;
+    flex-basis: auto;
+  }
 }
 
 .file-access-settings-panel {

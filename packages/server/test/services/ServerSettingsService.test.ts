@@ -32,6 +32,18 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("workstreamsEnabled")).toBe(false);
   });
 
+  it("persists host identity across service instances", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+    await service.updateSettings({ hostIdentity: { icon: "💻" } });
+    await service.updateSettings({ serviceWorkerEnabled: false });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+
+    expect(reloaded.getSetting("hostIdentity")).toEqual({ icon: "💻" });
+  });
+
   it.each([
     "heartbeat",
     "yepanywhere heartbeat",

@@ -151,3 +151,5 @@
   provider persistence and nested beneath its canonical YA parent session.
 - host-awake - Server-owned, process-lifetime idle-sleep inhibition with an
   optional macOS closed-lid-on-external-power strategy.
+- host-identity - Optional server-owned emoji marker for connected headers and
+  browser-tab titles, hidden against older servers.

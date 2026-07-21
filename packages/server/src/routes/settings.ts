@@ -39,6 +39,7 @@ import {
   parseClientDefaults,
   parseFileAccess,
   parseHelperTargets,
+  parseHostIdentity,
   parseHostAliasList,
   parseNewSessionDefaults,
   parsePromptCacheKeepalive,
@@ -251,6 +252,17 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
           400,
         );
       }
+    }
+
+    if ("hostIdentity" in body) {
+      const parsedHostIdentity = parseHostIdentity(body.hostIdentity);
+      if (parsedHostIdentity === null) {
+        return c.json(
+          { error: "hostIdentity.icon must contain exactly one marker" },
+          400,
+        );
+      }
+      updates.hostIdentity = parsedHostIdentity;
     }
 
     // Handle remoteExecutors array

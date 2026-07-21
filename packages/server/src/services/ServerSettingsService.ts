@@ -12,6 +12,7 @@ import type {
   CacheMissBillingSettings,
   ClientDefaults,
   HelperTargetConfig,
+  HostIdentity,
   NewSessionDefaults,
   PromptCacheKeepaliveSettings,
   SessionToolbarPresenceClientDefaults,
@@ -63,6 +64,8 @@ export interface ServerSettings {
   workstreamsEnabled?: boolean;
   /** Base URL for the hosted YA client; remote login/share routes are appended */
   yaClientBaseUrl?: string;
+  /** Optional visual marker identifying this YA host in connected clients. */
+  hostIdentity?: HostIdentity;
   /** @deprecated Use yaClientBaseUrl. Kept to migrate older settings files. */
   publicShareViewerBaseUrl?: string;
   /** SSH host aliases for remote executors (from ~/.ssh/config) */

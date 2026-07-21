@@ -15,6 +15,7 @@ import type {
   DeviceInfo,
   FreezePublicSessionLiveSharesResponse,
   HelperTargetConfig,
+  HostIdentity,
   ModelInfo,
   NewSessionDefaults,
   PendingInputType,
@@ -1491,6 +1492,8 @@ export interface ServerSettings {
   workstreamsEnabled?: boolean;
   /** Base URL for the hosted YA client */
   yaClientBaseUrl?: string | null;
+  /** Optional visual marker identifying the connected YA host. */
+  hostIdentity?: HostIdentity;
   /** @deprecated Use yaClientBaseUrl. */
   publicShareViewerBaseUrl?: string | null;
   /** SSH host aliases for remote executors */

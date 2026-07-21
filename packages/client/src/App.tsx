@@ -10,6 +10,10 @@ import { ReloadBanner } from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
+import {
+  HostIdentityProvider,
+  useHostIdentity,
+} from "./contexts/HostIdentityContext";
 import { InboxProvider } from "./contexts/InboxContext";
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { CurrentSourceRuntimeProvider } from "./contexts/SourceRuntimeContext";
@@ -36,6 +40,7 @@ interface Props {
 function AppContent({ children }: Props) {
   const location = useLocation();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
+  const { icon: hostIdentityIcon } = useHostIdentity();
 
   // Manage SSE connection based on auth state (prevents 401s on login page)
   useActivityBusConnection();
@@ -47,7 +52,7 @@ function AppContent({ children }: Props) {
   useSyncNotifyInAppSetting();
 
   // Update tab title with needs-attention badge count (uses InboxContext)
-  useNeedsAttentionBadge();
+  useNeedsAttentionBadge(hostIdentityIcon ?? undefined);
 
   // One-time seed of the per-model compact-early threshold for users migrating
   // from the pre-always-1M 200K window (task 029).
@@ -123,15 +128,17 @@ export function App({ children }: Props) {
         <AuthProvider>
           <ClientSummarySourceBinding />
           <CurrentSourceRuntimeProvider>
-            <InboxProvider>
-              <SchemaValidationProvider>
-                <AppContent>{children}</AppContent>
-                {!isLoading && showWizard && (
-                  <OnboardingWizard onComplete={completeOnboarding} />
-                )}
-                {!isLoading && !showWizard && <CodexUpdatePrompt />}
-              </SchemaValidationProvider>
-            </InboxProvider>
+            <HostIdentityProvider>
+              <InboxProvider>
+                <SchemaValidationProvider>
+                  <AppContent>{children}</AppContent>
+                  {!isLoading && showWizard && (
+                    <OnboardingWizard onComplete={completeOnboarding} />
+                  )}
+                  {!isLoading && !showWizard && <CodexUpdatePrompt />}
+                </SchemaValidationProvider>
+              </InboxProvider>
+            </HostIdentityProvider>
           </CurrentSourceRuntimeProvider>
         </AuthProvider>
       </ToastProvider>

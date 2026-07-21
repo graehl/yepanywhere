@@ -26,6 +26,10 @@ import { HostOfflineModal } from "./components/HostOfflineModal";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { RemoteCompatibilityNotices } from "./components/RemoteCompatibilityNotices";
 import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
+import {
+  HostIdentityProvider,
+  useHostIdentity,
+} from "./contexts/HostIdentityContext";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
   RemoteConnectionProvider,
@@ -58,11 +62,14 @@ interface Props {
  * SecureConnection. Used by both ConnectionGate (direct mode) and
  * RelayConnectionGate (relay mode) once connected.
  */
-export function ConnectedAppContent({ children }: { children: ReactNode }) {
+function ConnectedAppContentInner({ children }: { children: ReactNode }) {
   const location = useLocation();
   useRemoteActivityBusConnection();
   const { currentRelayUsername } = useRemoteConnection();
   const { version: versionInfo } = useVersion();
+  const { icon: hostIdentityIcon } = useHostIdentity();
+
+  useNeedsAttentionBadge(hostIdentityIcon ?? undefined);
 
   const {
     isManualReloadMode,
@@ -120,6 +127,14 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
       {children}
       <FloatingActionButton />
     </>
+  );
+}
+
+export function ConnectedAppContent({ children }: { children: ReactNode }) {
+  return (
+    <HostIdentityProvider>
+      <ConnectedAppContentInner>{children}</ConnectedAppContentInner>
+    </HostIdentityProvider>
   );
 }
 
@@ -281,8 +296,6 @@ export function ConnectionGate() {
 function RemoteAppInner({ children }: Props) {
   const location = useLocation();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
-
-  useNeedsAttentionBadge();
 
   return (
     <>

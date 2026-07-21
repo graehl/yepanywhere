@@ -17,6 +17,7 @@ const semanticClipboardUrl = new URL(
   "../../lib/semanticHtmlClipboard.ts",
   import.meta.url,
 );
+const clipboardModifier = process.platform === "darwin" ? "Meta" : "Control";
 
 let browser: Browser;
 let context: BrowserContext;
@@ -128,7 +129,7 @@ describe("Markdown preview rich-text copy", () => {
     });
 
     await page.locator(".markdown-rendered").selectText();
-    await page.keyboard.press("Control+c");
+    await page.keyboard.press(`${clipboardModifier}+c`);
     const copied = await page.evaluate(async () => {
       const item = (await navigator.clipboard.read())[0];
       if (!item) {
@@ -148,7 +149,7 @@ describe("Markdown preview rich-text copy", () => {
     expect(copied.text).toContain("model");
 
     await page.locator("#paste-target").click();
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press(`${clipboardModifier}+v`);
     const pastedHtml = await page.locator("#paste-target").innerHTML();
     expect(pastedHtml).toContain("<table>");
     expect(pastedHtml).not.toMatch(
@@ -170,7 +171,7 @@ describe("Markdown preview rich-text copy", () => {
       node.replaceChildren();
     });
     await page.locator(".fixed-font-markdown-table").selectText();
-    await page.keyboard.press("Control+c");
+    await page.keyboard.press(`${clipboardModifier}+c`);
     const html = await page.evaluate(async () => {
       const item = (await navigator.clipboard.read())[0];
       if (!item) {
@@ -187,7 +188,7 @@ describe("Markdown preview rich-text copy", () => {
     );
 
     await page.locator("#paste-target").click();
-    await page.keyboard.press("Control+v");
+    await page.keyboard.press(`${clipboardModifier}+v`);
     const pastedHtml = await page.locator("#paste-target").innerHTML();
     expect(pastedHtml).toContain("<table>");
     expect(pastedHtml).not.toMatch(

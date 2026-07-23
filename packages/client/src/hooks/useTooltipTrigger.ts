@@ -29,7 +29,7 @@ export function useTooltipTrigger({
   onOpenChange,
   delayMultiplier = 1,
 }: TooltipTriggerOptions) {
-  const { tooltipMode, tooltipDelayMs } = useTooltipAppearance();
+  const { tooltipMode } = useTooltipAppearance();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibilityTokenRef = useRef<symbol | null>(null);
   const movementDismissedRef = useRef(false);
@@ -70,7 +70,7 @@ export function useTooltipTrigger({
       return;
     }
     timerRef.current = setTimeout(show, delayMs);
-  }, [clearTimer, delayMultiplier, show, tooltipMode, tooltipDelayMs]);
+  }, [clearTimer, delayMultiplier, show, tooltipMode]);
 
   const close = useCallback(() => {
     clearTimer();

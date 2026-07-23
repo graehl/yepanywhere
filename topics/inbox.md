@@ -6,6 +6,10 @@
 
 Topic: inbox
 
+See also:
+
+- [`session-summary-fidelity.md`](session-summary-fidelity.md)
+
 ## Route Contract
 
 `createInboxRoutes` returns session rows, not arbitrary project work. The route
@@ -29,6 +33,12 @@ The tier order is:
 
 Each tier is sorted by `updatedAt` descending and capped at 20 items. Archived
 sessions are skipped before tiering.
+
+Inbox's collection read requires only session identity, title, and recency. A
+provider with a bounded list-summary reader may use it for dirty or uncached
+sessions instead of completing a transcript-tail summary. That projection must
+not update the complete-summary index or clear its dirty state; complete
+consumers must still receive exact message count and tail-derived metadata.
 
 `pendingInputType` is live process state, not durable session-summary state.
 Inbox may place a session in `needsAttention` only when the owned process is

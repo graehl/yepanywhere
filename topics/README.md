@@ -51,6 +51,8 @@
 - Turn-notch actions / fork-from-turn (fork already exists; proposal: expose fork/copy/trim from scrollbar notches + seed compose with the forked turn)
 - Turn-rail marker layout (hit targets sized to neighbor gaps; optional PAVA de-cluster spread behind one off-by-default constant)
 - Client global store (coarse normalized sessions/projects/project queues/inbox summary cache, not transcript state)
+- Session summary fidelity (bounded list projections, complete-index isolation,
+  and partial-observation nondowngrade rules)
 - Client source runtime topology (per-YA-server runtime boundary above summary/query/session-detail stores)
 - Session media handles (problem statement for lazy transcript image/blob
   payloads behind authenticated server media IDs)

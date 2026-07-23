@@ -155,3 +155,5 @@
   browser-tab titles, hidden against older servers.
 - tooltip-interactions - Shared native/themed tooltip presentation, pointer-rest
   delay, warm adjacent scanning, and future rendered hidden-tail previews.
+- session-summary-fidelity - Bounded session list projections, complete-index
+  isolation, and partial-observation nondowngrade rules.

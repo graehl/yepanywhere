@@ -3,6 +3,7 @@ import type { Message } from "../../types";
 import {
   hasEquivalentJsonlMessage,
   reconcileClaudeQueueOperationEchoes,
+  reconcileCodexSteerEchoes,
   reconcileLinearMessages,
 } from "../linearMessageDedup";
 
@@ -867,5 +868,74 @@ describe("reconcileClaudeQueueOperationEchoes", () => {
       expect(remaining).toContain("ya-uuid-short");
       expect(remaining).not.toContain("ya-uuid-long");
     });
+  });
+});
+
+describe("reconcileCodexSteerEchoes", () => {
+  const STEER = "answer this after the long-running command";
+
+  function steerEcho(
+    overrides: Partial<Message> & { timestamp: string },
+  ): Message {
+    return {
+      uuid: "ya-steer-uuid",
+      type: "user",
+      tempId: "temp-steer",
+      _source: "sdk",
+      messageMetadata: { deliveryIntent: "steer" },
+      message: { role: "user", content: STEER },
+      ...overrides,
+    } as Message;
+  }
+
+  function durableRow(
+    overrides: Partial<Message> & { timestamp: string },
+  ): Message {
+    return {
+      uuid: "codex-durable-user",
+      type: "user",
+      _source: "jsonl",
+      codexUserTurnProvenance: "paired",
+      message: { role: "user", content: STEER },
+      ...overrides,
+    } as Message;
+  }
+
+  it("pairs an old optimistic steer with its durable user row", () => {
+    const echo = steerEcho({ timestamp: "2026-07-23T03:10:00.000Z" });
+    const row = durableRow({ timestamp: "2026-07-23T03:19:08.210Z" });
+
+    const result = reconcileCodexSteerEchoes([echo, row]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?._source).toBe("jsonl");
+    expect(result[0]?.uuid).toBe("codex-durable-user");
+    expect(result[0]?.tempId).toBe("temp-steer");
+  });
+
+  it("does not pair direct sends or provider stream copies", () => {
+    const direct = steerEcho({
+      uuid: "ya-direct-uuid",
+      timestamp: "2026-07-23T03:10:00.000Z",
+      messageMetadata: { deliveryIntent: "direct" },
+    });
+    const providerCopy = steerEcho({
+      uuid: "codex-stream-user",
+      tempId: undefined,
+      timestamp: "2026-07-23T03:19:08.200Z",
+      messageMetadata: undefined,
+    });
+    const row = durableRow({ timestamp: "2026-07-23T03:19:08.210Z" });
+
+    expect(
+      reconcileCodexSteerEchoes([direct, providerCopy, row]),
+    ).toHaveLength(3);
+  });
+
+  it("does not pair a steer composed after an older identical row", () => {
+    const row = durableRow({ timestamp: "2026-07-23T03:10:00.000Z" });
+    const echo = steerEcho({ timestamp: "2026-07-23T03:10:03.000Z" });
+
+    expect(reconcileCodexSteerEchoes([row, echo])).toHaveLength(2);
   });
 });

@@ -1107,3 +1107,52 @@ describe("claude queue-operation echo dedup", () => {
     expect(state.messages[0]?._source).toBe("jsonl");
   });
 });
+
+describe("codex steer echo dedup", () => {
+  const STEER = "what does heartbeat 300 do?";
+
+  function steerEcho(timestamp: string): Message {
+    return {
+      type: "user",
+      uuid: "ya-steer-uuid",
+      tempId: "temp-steer",
+      timestamp,
+      messageMetadata: { deliveryIntent: "steer" },
+      message: { role: "user", content: STEER },
+    } as Message;
+  }
+
+  function durableRow(timestamp: string): Message {
+    return {
+      type: "user",
+      uuid: "codex-durable-user",
+      timestamp,
+      codexUserTurnProvenance: "paired",
+      message: { role: "user", content: STEER },
+    } as Message;
+  }
+
+  it("confirms a long-lived steer when Codex catch-up arrives", () => {
+    const state = reduceSessionDetailActions(
+      [
+        {
+          type: "applyStreamMessage",
+          message: steerEcho("2026-07-23T03:10:00.000Z"),
+        },
+        {
+          type: "applyCatchupMessages",
+          messages: [durableRow("2026-07-23T03:19:08.210Z")],
+        },
+      ],
+      {
+        ...createInitialSessionDetailState(),
+        session: sessionMetadata("codex"),
+      },
+    );
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?._source).toBe("jsonl");
+    expect(state.messages[0]?.uuid).toBe("codex-durable-user");
+    expect(state.messages[0]?.tempId).toBe("temp-steer");
+  });
+});

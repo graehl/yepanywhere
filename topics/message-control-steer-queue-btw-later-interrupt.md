@@ -210,6 +210,14 @@ durable transcript copy merges in, then confirms. Mechanism and the
 Claude queue-operation pairing behind it:
 [stream-durable-id-dedup.md](stream-durable-id-dedup.md) §Claude.
 
+A server-accepted in-turn steer must survive reconnect while the provider is
+still working on that turn. Its optimistic user echo remains in replay through
+the provider turn boundary, even when a long-running tool outlives the ordinary
+15–30-second replay window; the durable transcript remains authoritative once
+the provider writes the turn. Reload must therefore show the accepted steer,
+then reconcile it with the durable row rather than letting a live assistant
+response appear without the user turn it answers.
+
 A delivered steering turn renders at its delivery point, not its send
 point. In particular, when pending steers are delivered by an interrupt
 (Claude rejects the running tool and consumes the queue), the turn must

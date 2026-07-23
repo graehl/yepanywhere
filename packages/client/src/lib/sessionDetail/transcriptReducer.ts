@@ -2,6 +2,7 @@ import {
   getMessageTimestampMs,
   hasEquivalentJsonlMessage,
   reconcileClaudeQueueOperationEchoes,
+  reconcileCodexSteerEchoes,
   reconcileLinearMessages,
 } from "../linearMessageDedup";
 import { isUnconfirmedSelfSend } from "../deliveryState";
@@ -180,9 +181,13 @@ function maybeReconcileApprox(
   const approx = usesApproxMessageDedup(provider)
     ? reconcileLinearMessages(providerReconciled, approxDedupOptions(provider))
     : providerReconciled;
+  const steerReconciled =
+    provider === "codex" || provider === "codex-oss"
+      ? reconcileCodexSteerEchoes(approx)
+      : approx;
   return usesQueueOperationEchoDedup(provider)
-    ? reconcileClaudeQueueOperationEchoes(approx)
-    : approx;
+    ? reconcileClaudeQueueOperationEchoes(steerReconciled)
+    : steerReconciled;
 }
 
 function maxOptionalNumber(

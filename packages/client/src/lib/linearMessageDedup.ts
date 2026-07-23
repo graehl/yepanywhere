@@ -372,6 +372,18 @@ function isOptimisticUserEcho(message: Message): boolean {
   return (message._source ?? "sdk") === "sdk" && isPlainUserTurn(message);
 }
 
+function isUnconfirmedSteerEcho(message: Message): boolean {
+  if (!isUnconfirmedSelfSend(message)) {
+    return false;
+  }
+  const metadata = (message as { messageMetadata?: unknown }).messageMetadata;
+  return (
+    metadata !== null &&
+    typeof metadata === "object" &&
+    (metadata as { deliveryIntent?: unknown }).deliveryIntent === "steer"
+  );
+}
+
 function getComparableUserText(message: Message): string | null {
   const text = getTextContent(message);
   return text === null ? null : normalizeVisibleText(text);
@@ -380,7 +392,11 @@ function getComparableUserText(message: Message): string | null {
 export function reconcileClaudeQueueOperationEchoes(
   messages: Message[],
 ): Message[] {
-  return reconcileDequeueDeliveredTurns(reconcileQueueOperationRows(messages));
+  return reconcileDeliveredUserTurns(
+    reconcileQueueOperationRows(messages),
+    isUnconfirmedSelfSend,
+    QUEUE_OPERATION_ECHO_WINDOW_MS,
+  );
 }
 
 function reconcileQueueOperationRows(messages: Message[]): Message[] {
@@ -472,7 +488,7 @@ function reconcileQueueOperationRows(messages: Message[]): Message[] {
   return result;
 }
 
-// The CLI has a second busy-send delivery shape the pairing above cannot see:
+// Claude has a second busy-send delivery shape the pairing above cannot see:
 // on interrupt (and some end-of-turn deliveries) it *dequeues* every pending
 // queued message — content-less queue-operation dequeue rows the reader never
 // surfaces — and writes one real user row (its own uuid, parented on the
@@ -488,6 +504,12 @@ function reconcileQueueOperationRows(messages: Message[]): Message[] {
 // keeps this safe without a tight timestamp window: enqueue-to-delivery can
 // span a long-running tool, so the only time constraint is that no consumed
 // echo postdates the delivery by more than clock skew.
+//
+// Codex has the same identity shape for long-running steers: the optimistic
+// echo carries YA's uuid, while the durable user row carries a positional id.
+// The general 2s backstop cannot pair them when Codex consumes the steer after
+// a long tool. Codex calls the same exact-text reconciler, but only for
+// self-sent echoes explicitly marked as steers.
 
 function isDurableDeliveredUserRow(message: Message): boolean {
   return (
@@ -513,11 +535,12 @@ function matchEchoRun(
   rowTimestampMs: number,
   echoes: DequeueCandidate[],
   consumed: Set<number>,
+  futureSkewMs: number,
 ): DequeueCandidate[] | null {
   const usable = echoes.filter(
     (echo) =>
       !consumed.has(echo.index) &&
-      echo.timestampMs <= rowTimestampMs + QUEUE_OPERATION_ECHO_WINDOW_MS,
+      echo.timestampMs <= rowTimestampMs + futureSkewMs,
   );
 
   const consume = (
@@ -546,7 +569,11 @@ function matchEchoRun(
   return run && run.length > 0 ? run : null;
 }
 
-function reconcileDequeueDeliveredTurns(messages: Message[]): Message[] {
+function reconcileDeliveredUserTurns(
+  messages: Message[],
+  isEligibleEcho: (message: Message) => boolean,
+  futureSkewMs: number,
+): Message[] {
   const startIndex = Math.max(0, messages.length - MAX_SCAN_MESSAGES);
 
   let rows: DequeueCandidate[] | null = null;
@@ -556,7 +583,7 @@ function reconcileDequeueDeliveredTurns(messages: Message[]): Message[] {
     if (!message) continue;
     const isRow = isDurableDeliveredUserRow(message);
     const isEcho =
-      !isRow && isOptimisticUserEcho(message) && isUnconfirmedSelfSend(message);
+      !isRow && isOptimisticUserEcho(message) && isEligibleEcho(message);
     if (!isRow && !isEcho) continue;
     const timestampMs = getMessageTimestampMs(message);
     const text = getComparableUserText(message);
@@ -577,7 +604,13 @@ function reconcileDequeueDeliveredTurns(messages: Message[]): Message[] {
   const mergedByIndex = new Map<number, Message>();
   const droppedIndices = new Set<number>();
   for (const row of rows) {
-    const run = matchEchoRun(row.text, row.timestampMs, echoes, droppedIndices);
+    const run = matchEchoRun(
+      row.text,
+      row.timestampMs,
+      echoes,
+      droppedIndices,
+      futureSkewMs,
+    );
     if (!run) continue;
     const rowMessage = messages[row.index];
     const firstEcho = run[0] && messages[run[0].index];
@@ -616,6 +649,14 @@ function reconcileDequeueDeliveredTurns(messages: Message[]): Message[] {
     if (message) result.push(message);
   }
   return result;
+}
+
+export function reconcileCodexSteerEchoes(messages: Message[]): Message[] {
+  return reconcileDeliveredUserTurns(
+    messages,
+    isUnconfirmedSteerEcho,
+    REPLAY_TIMESTAMP_WINDOW_MS,
+  );
 }
 
 export function hasEquivalentJsonlMessage(

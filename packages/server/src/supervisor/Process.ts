@@ -786,6 +786,13 @@ export class Process {
   private bucketSwapTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly BUCKET_SWAP_INTERVAL_MS = 15_000;
 
+  /**
+   * User echoes accepted for in-turn steering remain replayable through the
+   * provider turn. A steer can wait behind a long-running tool for longer than
+   * the ordinary replay buckets, while its durable row does not exist yet.
+   */
+  private activeSteerEchoes: Map<string, SDKMessage> = new Map();
+
   /** Accumulated streaming text for catch-up when clients connect mid-stream */
   private _streamingText = "";
   /** Message ID for current streaming response */
@@ -1973,11 +1980,27 @@ export class Process {
   }
 
   /**
-   * Get recent message history (15-30 seconds) for SSE replay.
-   * Returns messages from both buckets for late-joining clients.
+   * Get recent message history for SSE replay.
+   *
+   * Ordinary messages remain available for 15-30 seconds. In-turn steer
+   * echoes remain available through the provider turn so a reconnect cannot
+   * lose an accepted user message before its durable row exists.
    */
   getMessageHistory(): SDKMessage[] {
-    return [...this.previousBucket, ...this.currentBucket];
+    const buffered = [...this.previousBucket, ...this.currentBucket];
+    if (this.activeSteerEchoes.size === 0) {
+      return buffered;
+    }
+
+    const bufferedUuids = new Set(
+      buffered
+        .map((message) => message.uuid)
+        .filter((uuid): uuid is string => typeof uuid === "string"),
+    );
+    const expiredSteerEchoes = [...this.activeSteerEchoes.entries()]
+      .filter(([uuid]) => !bufferedUuids.has(uuid))
+      .map(([, message]) => message);
+    return [...expiredSteerEchoes, ...buffered];
   }
 
   /**
@@ -2591,6 +2614,9 @@ export class Process {
         this.steerFn &&
         options?.allowSteer !== false
       ) {
+        if (!hidden && shouldEmitMessage(sdkMessage)) {
+          this.activeSteerEchoes.set(uuid, sdkMessage);
+        }
         const steerMessage: UserMessage = {
           ...messageWithUuid,
           // Mirror MessageQueue's attachment expansion for steer payloads.
@@ -2971,6 +2997,25 @@ export class Process {
     this.previousBucket = this.previousBucket.filter(
       (message) => !this.sdkMessageMatchesTempId(message, tempId),
     );
+    for (const [uuid, message] of this.activeSteerEchoes) {
+      if (this.sdkMessageMatchesTempId(message, tempId)) {
+        this.activeSteerEchoes.delete(uuid);
+      }
+    }
+  }
+
+  private releaseActiveSteerEchoes(): void {
+    const bufferedUuids = new Set(
+      [...this.previousBucket, ...this.currentBucket]
+        .map((message) => message.uuid)
+        .filter((uuid): uuid is string => typeof uuid === "string"),
+    );
+    for (const [uuid, message] of this.activeSteerEchoes) {
+      if (!bufferedUuids.has(uuid)) {
+        this.currentBucket.push(message);
+      }
+    }
+    this.activeSteerEchoes.clear();
   }
 
   /**
@@ -3878,6 +3923,11 @@ export class Process {
   private transitionToIdle(): void {
     this.clearIdleTimer();
     this.clearRetryingProviderRuntimeStatus();
+
+    // A provider turn boundary ends the special steering-retention window.
+    // Move any aged-out echoes back into the ordinary replay window to cover
+    // the short gap before the provider's durable transcript becomes visible.
+    this.releaseActiveSteerEchoes();
 
     // Promote deferred messages as the same stitched user turn the provider
     // receives, so the live echo and later transcript catch-up agree.

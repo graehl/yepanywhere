@@ -120,6 +120,66 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("replays steer echoes until the provider turn ends", async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveIterator!: (
+          result: IteratorResult<SDKMessage>,
+        ) => void;
+        const iterator: AsyncIterator<SDKMessage> = {
+          next: () =>
+            new Promise((resolve) => {
+              resolveIterator = resolve;
+            }),
+        };
+        const process = new Process(iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          idleTimeoutMs: 1_000_000,
+          queue: new MessageQueue(),
+          steerFn: vi.fn(async () => true),
+        });
+
+        process.queueMessage({
+          text: "survive a reload",
+          tempId: "temp-steer",
+          metadata: { deliveryIntent: "steer" },
+        });
+
+        // Roll both ordinary 15-second history buckets out. The steer has no
+        // durable provider row yet, so reconnect replay must still include it.
+        vi.advanceTimersByTime(31_000);
+        expect(
+          process.getMessageHistory().map((message) => message.tempId),
+        ).toContain("temp-steer");
+
+        resolveIterator({
+          done: false,
+          value: { type: "result" } as SDKMessage,
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // The turn boundary moves the aged echo back into ordinary replay to
+        // cover the short durable-write gap.
+        expect(
+          process.getMessageHistory().map((message) => message.tempId),
+        ).toContain("temp-steer");
+
+        // Retention is still bounded: ordinary buckets expire both messages.
+        vi.advanceTimersByTime(31_000);
+        expect(process.getMessageHistory()).toEqual([]);
+
+        resolveIterator({ done: true, value: undefined });
+        await Promise.resolve();
+        await process.abort();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("cancels a steered message before the provider queue consumes it", async () => {
       let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {

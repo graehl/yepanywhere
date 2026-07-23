@@ -256,6 +256,20 @@ the durable first user row appears. A real report on 2026-06-30
 the general 2s window. The fix is a first-plain-user-turn-only 30s window in
 `linearMessageDedup`, not a looser general Codex backstop.
 
+An in-turn steer has the inverse timing problem: its optimistic echo can exist
+for longer than the ordinary 15–30-second server replay window before Codex
+consumes and persists it. A reconnect in that interval must still replay the
+accepted echo. `Process` therefore retains steer echoes separately until the
+provider turn boundary, while continuing to use the bounded rolling buckets for
+ordinary messages and for the short post-boundary persistence gap. This
+retention is bounded by the number of steers in the active turn; it does not
+turn the general replay buffer into an unbounded transcript. When Codex finally
+persists a long-lived steer, its positional durable id still differs from the
+echo's YA uuid and the timestamps can be far outside the general 2s backstop.
+`reconcileCodexSteerEchoes` therefore pairs only unconfirmed self-sent
+`deliveryIntent: "steer"` echoes with exact-text durable user turns,
+one-to-one, and adopts the durable row's identity and position.
+
 ### Re-reported first-turn duplicate with attachments
 
 On 2026-06-30, session `019f1685-f1c8-7171-b056-e9b3f2f6be61` showed the

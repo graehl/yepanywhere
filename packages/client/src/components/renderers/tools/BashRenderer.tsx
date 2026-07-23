@@ -31,6 +31,7 @@ import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
 import { Modal } from "../../ui/Modal";
 import {
   getHiddenOutputLineCount,
+  getOutputTailTooltip,
   getPreviewLimits,
   OutputCopyButton,
   truncateOutput,
@@ -526,6 +527,10 @@ function BashCollapsedPreview({
     output,
     outputToolPreviewLineCount,
   );
+  const outputTailTooltip = getOutputTailTooltip(
+    output,
+    outputToolPreviewLineCount,
+  );
   const previewRichContent = useMemo(() => {
     if (previewText === output) {
       return fullRichPreview;
@@ -619,6 +624,7 @@ function BashCollapsedPreview({
               <HiddenContentBadge
                 className="bash-preview-more"
                 count={hiddenOutputLineCount}
+                tooltip={outputTailTooltip ?? output}
               />
             )}
           </div>

@@ -10,9 +10,10 @@ import {
   beginTooltipVisibility,
   endTooltipVisibility,
   getEffectiveTooltipDelayMs,
-  useTooltipAppearance,
+  useTooltipMode,
 } from "../../hooks/useTooltipAppearance";
 import { writeClipboardText } from "../../lib/clipboard";
+import { isElementFullyScrollVisible } from "../../lib/tooltipVisibility";
 
 const TOOLTIP_ID = "ya-global-tooltip";
 const VIEWPORT_MARGIN_PX = 8;
@@ -24,9 +25,14 @@ interface VisibleTooltip {
   anchorY: number;
 }
 
-interface SavedTitle {
-  target: Element;
+interface DetachedTitle {
   value: string;
+  injectedDataTooltip: boolean;
+}
+
+interface DetachedSvgTitle extends DetachedTitle {
+  parent: Element;
+  nextSibling: Node | null;
 }
 
 interface SavedDescription {
@@ -49,6 +55,21 @@ function tooltipTargetFromNode(
   if (!(node instanceof Element)) return null;
   if (activeTarget?.contains(node)) return activeTarget;
   return node.closest("[data-tooltip], [title]");
+}
+
+function normalizeVisibleText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function repeatsFullyVisibleContent(target: Element, text: string): boolean {
+  if (
+    normalizeVisibleText(target.textContent ?? "") !==
+    normalizeVisibleText(text)
+  ) {
+    return false;
+  }
+  if (!(target instanceof HTMLElement)) return false;
+  return isElementFullyScrollVisible(target);
 }
 
 function appendDescriptionId(target: Element): SavedDescription {
@@ -89,14 +110,15 @@ function isContextMenuOperable(event: MouseEvent): boolean {
  * positioning, dwell, adjacency, and accessibility state.
  */
 export function TooltipLayer() {
-  const { tooltipMode } = useTooltipAppearance();
+  const tooltipMode = useTooltipMode();
   const [visible, setVisible] = useState<VisibleTooltip | null>(null);
   const [enlarged, setEnlarged] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
   const tooltipRef = useRef<HTMLDivElement>(null);
   const activeTargetRef = useRef<Element | null>(null);
   const movementDismissedTargetRef = useRef<Element | null>(null);
-  const savedTitleRef = useRef<SavedTitle | null>(null);
+  const detachedTitlesRef = useRef(new Map<Element, DetachedTitle>());
+  const detachedSvgTitlesRef = useRef(new Map<Element, DetachedSvgTitle>());
   const savedDescriptionRef = useRef<SavedDescription | null>(null);
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibilityTokenRef = useRef<symbol | null>(null);
@@ -111,27 +133,74 @@ export function TooltipLayer() {
     showTimerRef.current = null;
   }, []);
 
-  const restoreTitle = useCallback(() => {
-    const saved = savedTitleRef.current;
-    savedTitleRef.current = null;
-    if (
-      saved?.target.isConnected &&
-      !saved.target.hasAttribute("title")
-    ) {
-      saved.target.setAttribute("title", saved.value);
+  const restoreDetachedTitles = useCallback(() => {
+    for (const [target, saved] of detachedTitlesRef.current) {
+      if (!target.isConnected) continue;
+      if (!target.hasAttribute("title")) {
+        target.setAttribute("title", saved.value);
+      }
+      if (
+        saved.injectedDataTooltip &&
+        target.getAttribute("data-tooltip") === saved.value
+      ) {
+        target.removeAttribute("data-tooltip");
+      }
     }
+    detachedTitlesRef.current.clear();
+    for (const [title, saved] of detachedSvgTitlesRef.current) {
+      if (!saved.parent.isConnected) continue;
+      if (!saved.parent.querySelector(":scope > title")) {
+        const nextSibling =
+          saved.nextSibling?.parentNode === saved.parent
+            ? saved.nextSibling
+            : null;
+        saved.parent.insertBefore(title, nextSibling);
+      }
+      if (
+        saved.injectedDataTooltip &&
+        saved.parent.getAttribute("data-tooltip") === saved.value
+      ) {
+        saved.parent.removeAttribute("data-tooltip");
+      }
+    }
+    detachedSvgTitlesRef.current.clear();
   }, []);
 
-  const captureTitle = useCallback((target: Element): string => {
+  const detachTitle = useCallback((target: Element): string => {
     const liveTitle = target.getAttribute("title");
     if (liveTitle === null) {
-      return savedTitleRef.current?.target === target
-        ? savedTitleRef.current.value
-        : "";
+      return detachedTitlesRef.current.get(target)?.value ?? "";
     }
-    savedTitleRef.current = { target, value: liveTitle };
+    const existing = detachedTitlesRef.current.get(target);
+    const injectedDataTooltip =
+      existing?.injectedDataTooltip ??
+      !target.hasAttribute("data-tooltip");
+    detachedTitlesRef.current.set(target, {
+      value: liveTitle,
+      injectedDataTooltip,
+    });
+    if (injectedDataTooltip) {
+      target.setAttribute("data-tooltip", liveTitle);
+    }
     target.removeAttribute("title");
     return liveTitle;
+  }, []);
+
+  const detachSvgTitle = useCallback((title: Element): void => {
+    const parent = title.parentElement;
+    const value = title.textContent?.trim() ?? "";
+    if (parent?.localName !== "svg" || !value) return;
+    const injectedDataTooltip = !parent.hasAttribute("data-tooltip");
+    detachedSvgTitlesRef.current.set(title, {
+      parent,
+      nextSibling: title.nextSibling,
+      value,
+      injectedDataTooltip,
+    });
+    if (injectedDataTooltip) {
+      parent.setAttribute("data-tooltip", value);
+    }
+    title.remove();
   }, []);
 
   const releaseVisibility = useCallback(() => {
@@ -142,24 +211,31 @@ export function TooltipLayer() {
     savedDescriptionRef.current = null;
   }, []);
 
-  const hide = useCallback(() => {
+  const clearActive = useCallback(() => {
     clearShowTimer();
     releaseVisibility();
-    restoreTitle();
     activeTargetRef.current = null;
     visibleRef.current = false;
     visibleTooltipRef.current = null;
     setEnlarged(false);
     setVisible(null);
-  }, [clearShowTimer, releaseVisibility, restoreTitle]);
+  }, [clearShowTimer, releaseVisibility]);
+
+  const hide = clearActive;
+  const dismissUntilDeparture = clearActive;
 
   const show = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
       showTimerRef.current = null;
       if (activeTargetRef.current !== target || !target.isConnected) return;
       const currentText =
-        target.getAttribute("data-tooltip") ?? captureTitle(target);
+        target.getAttribute("data-tooltip") ?? detachTitle(target);
       if (!currentText.trim()) return;
+      if (repeatsFullyVisibleContent(target, currentText)) {
+        movementDismissedTargetRef.current = target;
+        dismissUntilDeparture();
+        return;
+      }
       visibilityTokenRef.current ??= beginTooltipVisibility();
       restoreDescription(savedDescriptionRef.current);
       savedDescriptionRef.current = appendDescriptionId(target);
@@ -176,7 +252,7 @@ export function TooltipLayer() {
         anchorY: resolvedAnchorY,
       });
     },
-    [captureTitle],
+    [detachTitle, dismissUntilDeparture],
   );
 
   const schedule = useCallback(
@@ -201,15 +277,20 @@ export function TooltipLayer() {
         hide();
         activeTargetRef.current = target;
       }
-      const title = captureTitle(target);
+      const title = detachTitle(target);
       const text = target.getAttribute("data-tooltip") ?? title;
       if (!text.trim()) {
         hide();
         return;
       }
+      if (repeatsFullyVisibleContent(target, text)) {
+        movementDismissedTargetRef.current = target;
+        dismissUntilDeparture();
+        return;
+      }
       if (!visibleRef.current) schedule(target, anchorX, anchorY);
     },
-    [captureTitle, hide, schedule],
+    [detachTitle, dismissUntilDeparture, hide, schedule],
   );
 
   useEffect(() => {
@@ -218,6 +299,66 @@ export function TooltipLayer() {
       hide();
       return;
     }
+
+    const detachTitlesWithin = (node: Node) => {
+      if (node instanceof Element && node.hasAttribute("title")) {
+        detachTitle(node);
+      }
+      if (node instanceof Element || node instanceof Document) {
+        for (const target of node.querySelectorAll("[title]")) {
+          detachTitle(target);
+        }
+        if (
+          node instanceof Element &&
+          node.localName === "title" &&
+          node.parentElement?.localName === "svg"
+        ) {
+          detachSvgTitle(node);
+        }
+        for (const title of node.querySelectorAll("svg > title")) {
+          detachSvgTitle(title);
+        }
+      }
+    };
+    const forgetDetachedTitlesWithin = (node: Node) => {
+      if (node instanceof Element) {
+        detachedTitlesRef.current.delete(node);
+        for (const target of node.querySelectorAll("*")) {
+          detachedTitlesRef.current.delete(target);
+        }
+        for (const [title, saved] of detachedSvgTitlesRef.current) {
+          if (node === saved.parent || node.contains(saved.parent)) {
+            detachedSvgTitlesRef.current.delete(title);
+          }
+        }
+      }
+    };
+    detachTitlesWithin(document);
+    const titleObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          if (
+            mutation.target instanceof Element &&
+            mutation.target.hasAttribute("title")
+          ) {
+            detachTitle(mutation.target);
+          }
+          continue;
+        }
+        for (const node of mutation.removedNodes) {
+          forgetDetachedTitlesWithin(node);
+        }
+        for (const node of mutation.addedNodes) {
+          detachTitlesWithin(node);
+        }
+      }
+    });
+    titleObserver.observe(document.documentElement, {
+      attributeFilter: ["title"],
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
 
     const onPointerOver = (event: PointerEvent) => {
       if (!pointerCanHover(event)) return;
@@ -238,6 +379,14 @@ export function TooltipLayer() {
     };
     const onPointerMove = (event: PointerEvent) => {
       if (!pointerCanHover(event)) return;
+      const dismissedTarget = movementDismissedTargetRef.current;
+      if (
+        dismissedTarget &&
+        event.target instanceof Node &&
+        dismissedTarget.contains(event.target)
+      ) {
+        return;
+      }
       const target = tooltipTargetFromNode(
         event.target,
         activeTargetRef.current,
@@ -251,7 +400,7 @@ export function TooltipLayer() {
         activate(target, event.clientX, event.clientY);
       } else {
         movementDismissedTargetRef.current = target;
-        hide();
+        dismissUntilDeparture();
       }
     };
     const onPointerOut = (event: PointerEvent) => {
@@ -293,15 +442,20 @@ export function TooltipLayer() {
       ) {
         return;
       }
+      movementDismissedTargetRef.current = null;
       hide();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") hide();
+      if (event.key !== "Escape") return;
+      const activeTarget = activeTargetRef.current;
+      if (!activeTarget) return;
+      movementDismissedTargetRef.current = activeTarget;
+      dismissUntilDeparture();
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 2) {
         movementDismissedTargetRef.current = activeTargetRef.current;
-        hide();
+        dismissUntilDeparture();
       }
     };
     const onContextMenu = (event: MouseEvent) => {
@@ -320,6 +474,12 @@ export function TooltipLayer() {
       setEnlarged(true);
       void writeClipboardText(currentTooltip.text);
     };
+    const dismissForViewportChange = () => {
+      const activeTarget = activeTargetRef.current;
+      if (!activeTarget) return;
+      movementDismissedTargetRef.current = activeTarget;
+      dismissUntilDeparture();
+    };
 
     document.addEventListener("pointerover", onPointerOver);
     document.addEventListener("pointermove", onPointerMove);
@@ -329,9 +489,11 @@ export function TooltipLayer() {
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("contextmenu", onContextMenu);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", hide, true);
-    window.addEventListener("resize", hide);
+    window.addEventListener("scroll", dismissForViewportChange, true);
+    window.addEventListener("resize", dismissForViewportChange);
+    window.addEventListener("blur", hide);
     return () => {
+      titleObserver.disconnect();
       document.removeEventListener("pointerover", onPointerOver);
       document.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerout", onPointerOut);
@@ -340,11 +502,21 @@ export function TooltipLayer() {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", hide, true);
-      window.removeEventListener("resize", hide);
+      window.removeEventListener("scroll", dismissForViewportChange, true);
+      window.removeEventListener("resize", dismissForViewportChange);
+      window.removeEventListener("blur", hide);
       hide();
+      restoreDetachedTitles();
     };
-  }, [activate, hide, tooltipMode]);
+  }, [
+    activate,
+    detachTitle,
+    detachSvgTitle,
+    dismissUntilDeparture,
+    hide,
+    restoreDetachedTitles,
+    tooltipMode,
+  ]);
 
   useLayoutEffect(() => {
     const element = tooltipRef.current;

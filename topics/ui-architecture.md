@@ -82,6 +82,16 @@ interaction boundary that translates those hints into themed presentation; it
 owns dwell, warm adjacency, viewport placement, dismissal, and accessibility
 association instead of duplicating that machinery at every producer. It must
 not inspect text to infer behavior or rewrite unrelated rendered content.
+Tooltip producers use the shared exclusive-attribute helpers so one element
+has either a native `title` or a themed `data-tooltip`, never both. Shared
+hidden-content badges require their producer's omitted-tail text, keeping the
+tail affordance attached to the abstraction that means “more content” rather
+than patched into individual renderer types.
+While Themed mode is active, the boundary proactively normalizes legacy and
+dynamically added `title` attributes into YA-owned tooltip metadata across the
+mounted document; it restores them only on a switch to Native. This metadata
+normalization is the compatibility boundary for older producers, not a rewrite
+of their rendered content.
 
 Structured explanatory tooltips use the same timing coordinator explicitly.
 Interactive help panels remain popovers with their own state. The observable

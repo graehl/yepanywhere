@@ -1,6 +1,7 @@
 import type { CodexWebRunResult } from "@yep-anywhere/shared";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { UI_KEYS } from "../../../../lib/storageKeys";
 import { webRenderer } from "../WebRenderer";
 
 const renderContext = {
@@ -49,6 +50,7 @@ const searchResult: CodexWebRunResult = {
 describe("WebRenderer", () => {
   afterEach(() => {
     cleanup();
+    window.localStorage.removeItem(UI_KEYS.tooltipMode);
   });
 
   it("summarizes a single opened page with time, wordlim, lines, and host", () => {
@@ -144,13 +146,81 @@ describe("WebRenderer", () => {
     );
     expect(screen.getByText(/content line 0/)).toBeDefined();
     // Hidden-line badge and copy button match the shell-output preview.
-    expect(screen.getByText(/^\+\d+$/)).toBeDefined();
+    const badge = screen.getByText(/^\+\d+$/);
+    expect(badge.getAttribute("data-tooltip")).toMatch(/^\.\.\.\n/);
+    expect(badge.getAttribute("title")).toBeNull();
+    const fadedOutput = badge
+      .closest(".webrun-preview-output-row")
+      ?.querySelector(".webrun-preview-output");
+    expect(fadedOutput?.getAttribute("data-tooltip")).toBe(
+      badge.getAttribute("data-tooltip"),
+    );
     expect(
       screen.getByRole("button", { name: "Copy page text" }),
     ).toBeDefined();
     expect(
       screen.getByRole("button", { name: "View web page content" }),
     ).toBeDefined();
+  });
+
+  it("shows full unfaded page text when its preview is off-screen", () => {
+    const shortResult: CodexWebRunResult = {
+      pages: [
+        {
+          title: "Short page",
+          url: "https://example.org/short",
+          ref: "turn0view0",
+          totalLines: 1,
+          lines: [{ n: 0, text: "Short page body." }],
+        },
+      ],
+    };
+    const { container } = render(
+      <div>
+        {webRenderer.renderCollapsedPreview?.(
+          {},
+          shortResult,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+    expect(container.querySelector(".webrun-preview-fade")).toBeNull();
+    const preview = container.querySelector<HTMLElement>(
+      ".webrun-preview-output",
+    );
+    const renderedText = container.querySelector<HTMLElement>(
+      ".webrun-preview-output-text",
+    );
+    expect(preview).toBeTruthy();
+    expect(renderedText).toBeTruthy();
+    Object.defineProperties(renderedText, {
+      clientWidth: { configurable: true, value: 300 },
+      clientHeight: { configurable: true, value: 40 },
+      scrollWidth: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 40 },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({
+          x: 0,
+          y: window.innerHeight - 20,
+          left: 0,
+          top: window.innerHeight - 20,
+          right: 300,
+          bottom: window.innerHeight + 20,
+          width: 300,
+          height: 40,
+          toJSON: () => ({}),
+        }),
+      },
+    });
+
+    fireEvent.pointerEnter(preview as HTMLElement);
+
+    expect(preview?.getAttribute("data-tooltip")).toContain(
+      "Short page body.",
+    );
+    expect(preview?.getAttribute("title")).toBeNull();
   });
 
   it("surfaces the failure reason for pages without a URL", () => {

@@ -70,7 +70,7 @@ describe("TooltipLayer", () => {
       clientY: 10,
     });
     expect(screen.queryByRole("tooltip")).toBeNull();
-    expect(target.getAttribute("title")).toBe("Command tail");
+    expect(target.getAttribute("title")).toBeNull();
 
     fireEvent.pointerMove(target, {
       pointerType: "mouse",
@@ -79,6 +79,10 @@ describe("TooltipLayer", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
     expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerOut(target, { relatedTarget: document.body });
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Command tail");
   });
 
   it("opens a temporally adjacent tooltip immediately only after a reveal", () => {
@@ -140,6 +144,8 @@ describe("TooltipLayer", () => {
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
 
     expect(screen.getByRole("tooltip").textContent).toBe("took 1.2s");
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("took 1.2s");
   });
 
   it("uses explicit data-tooltip text for custom tooltip targets", () => {
@@ -160,9 +166,123 @@ describe("TooltipLayer", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
 
-    expect(screen.getByRole("tooltip").textContent).toBe(
-      "Send message\nEnter",
+    expect(screen.getByRole("tooltip").textContent).toBe("Send message\nEnter");
+  });
+
+  it("suppresses an exact-content tooltip while the full text is visible", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Visible command">
+          Visible command
+        </button>
+      </>,
     );
+    const target = screen.getByRole("button", { name: "Visible command" });
+    Object.defineProperties(target, {
+      clientWidth: { configurable: true, value: 120 },
+      clientHeight: { configurable: true, value: 24 },
+      scrollWidth: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: 24 },
+    });
+
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(target.getAttribute("title")).toBeNull();
+    fireEvent.pointerMove(target, {
+      pointerType: "mouse",
+      clientX: 11,
+      clientY: 10,
+    });
+    expect(target.getAttribute("title")).toBeNull();
+    fireEvent.pointerOut(target, { relatedTarget: document.body });
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Visible command");
+  });
+
+  it("keeps an exact-content tooltip when the visible text is clipped", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Clipped command">
+          Clipped command
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Clipped command" });
+    Object.defineProperties(target, {
+      clientWidth: { configurable: true, value: 60 },
+      clientHeight: { configurable: true, value: 24 },
+      scrollWidth: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: 24 },
+    });
+
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.getByRole("tooltip").textContent).toBe("Clipped command");
+  });
+
+  it("keeps an exact-content tooltip when a scroll ancestor clips it", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <div data-testid="scrollport" style={{ overflow: "hidden" }}>
+          <button type="button" title="Clipped command">
+            Clipped command
+          </button>
+        </div>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Clipped command" });
+    const scrollport = screen.getByTestId("scrollport");
+    Object.defineProperties(target, {
+      clientWidth: { configurable: true, value: 120 },
+      clientHeight: { configurable: true, value: 24 },
+      scrollWidth: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: 24 },
+    });
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({
+      x: 40,
+      y: 0,
+      left: 40,
+      top: 0,
+      right: 160,
+      bottom: 24,
+      width: 120,
+      height: 24,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(scrollport, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 40,
+      width: 100,
+      height: 40,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 50,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.getByRole("tooltip").textContent).toBe("Clipped command");
   });
 
   it("uses the same delay and description association for keyboard focus", () => {
@@ -184,7 +304,64 @@ describe("TooltipLayer", () => {
 
     fireEvent.focusOut(target);
     expect(target.getAttribute("aria-describedby")).toBeNull();
-    expect(target.getAttribute("title")).toBe("Focused hint");
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Focused hint");
+  });
+
+  it("detaches native titles for all of themed mode and restores Native mode", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Browser-owned hint">
+          Target
+        </button>
+        <svg role="img" aria-label="Starred">
+          <title>Starred</title>
+        </svg>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Target" });
+    const svgTarget = screen.getByRole("img", { name: "Starred" });
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Browser-owned hint");
+    expect(svgTarget.querySelector("title")).toBeNull();
+    expect(svgTarget.getAttribute("data-tooltip")).toBe("Starred");
+
+    act(() => {
+      localStorage.setItem(UI_KEYS.tooltipMode, "native");
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: UI_KEYS.tooltipMode }),
+      );
+    });
+    expect(target.getAttribute("title")).toBe("Browser-owned hint");
+    expect(target.getAttribute("data-tooltip")).toBeNull();
+    expect(svgTarget.querySelector("title")?.textContent).toBe("Starred");
+    expect(svgTarget.getAttribute("data-tooltip")).toBeNull();
+
+    act(() => {
+      localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: UI_KEYS.tooltipMode }),
+      );
+    });
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Browser-owned hint");
+    expect(svgTarget.querySelector("title")).toBeNull();
+    expect(svgTarget.getAttribute("data-tooltip")).toBe("Starred");
+  });
+
+  it("detaches titles added after themed mode mounts", async () => {
+    render(<TooltipLayer />);
+    const target = document.createElement("button");
+    target.textContent = "Late target";
+    target.title = "Late hint";
+    document.body.append(target);
+
+    await act(async () => Promise.resolve());
+
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Late hint");
+    target.remove();
   });
 
   it("copies and enlarges plain text on an otherwise unused context click", () => {

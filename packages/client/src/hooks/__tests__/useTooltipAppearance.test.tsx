@@ -8,7 +8,9 @@ import {
   DEFAULT_TOOLTIP_DELAY_MS,
   endTooltipVisibility,
   getEffectiveTooltipDelayMs,
+  getTextTooltipAttributes,
   getTooltipDelayMs,
+  setElementTextTooltip,
   TOOLTIP_WARM_GRACE_MULTIPLIER,
   useTooltipAppearance,
 } from "../useTooltipAppearance";
@@ -41,7 +43,29 @@ describe("useTooltipAppearance", () => {
     act(() => result.current.setTooltipDelayMs(80));
     expect(result.current.tooltipMode).toBe("themed");
     expect(result.current.tooltipDelayMs).toBe(80);
-    expect(localStorage.getItem(UI_KEYS.sessionHoverCardShowDelayMs)).toBeNull();
+    expect(
+      localStorage.getItem(UI_KEYS.sessionHoverCardShowDelayMs),
+    ).toBeNull();
+  });
+
+  it("assigns text hints to exactly one presentation owner", () => {
+    expect(getTextTooltipAttributes("Hint", "themed")).toEqual({
+      "data-tooltip": "Hint",
+    });
+    expect(getTextTooltipAttributes("Hint", "native")).toEqual({
+      title: "Hint",
+    });
+
+    const target = document.createElement("button");
+    target.title = "stale native";
+    target.dataset.tooltip = "stale themed";
+    setElementTextTooltip(target, "Current", "themed");
+    expect(target.getAttribute("data-tooltip")).toBe("Current");
+    expect(target.getAttribute("title")).toBeNull();
+
+    setElementTextTooltip(target, "Current", "native");
+    expect(target.getAttribute("title")).toBe("Current");
+    expect(target.getAttribute("data-tooltip")).toBeNull();
   });
 
   it("keeps the system warm only for the grace after visible tooltips", () => {

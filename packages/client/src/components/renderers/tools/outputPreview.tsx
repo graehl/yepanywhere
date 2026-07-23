@@ -39,6 +39,24 @@ export function getHiddenOutputLineCount(
   );
 }
 
+/**
+ * Plain-text tail shared by truncated output and diff previews. The tooltip
+ * mirrors the preview's line budget: show an ellipsis plus the last N lines,
+ * and return null when all content already fits.
+ */
+export function getOutputTailTooltip(
+  output: string,
+  visibleLineCount: number,
+  prefix = "",
+): string | null {
+  const normalized = output.trimEnd();
+  if (!normalized) return null;
+  const lines = normalized.split("\n");
+  const tailLineCount = Math.max(1, Math.round(visibleLineCount));
+  if (lines.length <= tailLineCount) return null;
+  return `${prefix}...\n${lines.slice(-tailLineCount).join("\n")}`;
+}
+
 export function truncateOutput(
   text: string,
   limits: { maxLines: number; maxChars: number },

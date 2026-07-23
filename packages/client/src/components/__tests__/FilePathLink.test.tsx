@@ -11,6 +11,7 @@ import { PublicShareProvider } from "../../contexts/PublicShareContext";
 import { I18nProvider } from "../../i18n";
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummaryStore";
 import { getNewSessionPrefill } from "../../lib/newSessionPrefill";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { FilePathLink } from "../FilePathLink";
 
 describe("FilePathLink", () => {
@@ -19,6 +20,7 @@ describe("FilePathLink", () => {
     sessionStorage.clear();
     window.history.replaceState({}, "", "/");
     vi.unstubAllGlobals();
+    window.localStorage.removeItem(UI_KEYS.tooltipMode);
   });
 
   it("renders a native link to the standalone file viewer", () => {
@@ -35,6 +37,26 @@ describe("FilePathLink", () => {
     expect(link.getAttribute("href")).toBe(
       "/projects/project-id/file?path=docs%2Fguide.md&line=12",
     );
+    expect(link.getAttribute("data-tooltip")).toBe("docs/guide.md:12");
+    expect(link.getAttribute("title")).toBeNull();
+  });
+
+  it("uses only the concise native path hint in native tooltip mode", () => {
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "native");
+    render(
+      <FilePathLink
+        projectId="project-id"
+        filePath="docs/guide.md"
+        lineNumber={12}
+        lineEnd={16}
+        displayText="5 lines"
+        showLineSuffix={false}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "5 lines" });
+    expect(link.getAttribute("title")).toBe("docs/guide.md:12-16");
+    expect(link.getAttribute("data-tooltip")).toBeNull();
   });
 
   it("renders file range links with lineEnd", () => {
@@ -153,7 +175,11 @@ describe("FilePathLink", () => {
 
     const copyButton = screen.getByRole("button", { name: "Copy path" });
     fireEvent.click(copyButton);
-    await Promise.resolve();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Copied path" }),
+      ).toBeDefined();
+    });
 
     expect(writeText).toHaveBeenCalledWith("docs/guide.md");
     expect(containerClick).not.toHaveBeenCalled();
@@ -173,7 +199,11 @@ describe("FilePathLink", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
-    await Promise.resolve();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Copied path" }),
+      ).toBeDefined();
+    });
 
     expect(writeText).toHaveBeenCalledWith("ui-report/README.md");
   });
@@ -192,7 +222,11 @@ describe("FilePathLink", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
-    await Promise.resolve();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Copied path" }),
+      ).toBeDefined();
+    });
 
     expect(writeText).toHaveBeenCalledWith("/home/graehl/.claude/CLAUDE.md");
   });

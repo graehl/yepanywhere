@@ -6,10 +6,15 @@ import {
   useState,
 } from "react";
 import { useOutputToolPreviewLineCount } from "../../../hooks/useOutputAppearance";
+import {
+  useTextTooltipAttributes,
+  useVisibilityAwareTextTooltip,
+} from "../../../hooks/useTooltipAppearance";
 import { HiddenContentBadge } from "../../ui/HiddenContentBadge";
 import { Modal } from "../../ui/Modal";
 import {
   getHiddenOutputLineCount,
+  getOutputTailTooltip,
   getPreviewLimits,
   OutputCopyButton,
   truncateOutput,
@@ -288,6 +293,16 @@ function WebCollapsedPreview({
     contentText,
     outputToolPreviewLineCount,
   );
+  const outputTailTooltip = getOutputTailTooltip(
+    contentText,
+    outputToolPreviewLineCount,
+  );
+  const outputTooltipAttributes =
+    useVisibilityAwareTextTooltip<HTMLDivElement>(
+      contentText,
+      outputTailTooltip,
+      ".webrun-preview-output-text",
+    );
 
   const visiblePages = result.pages.slice(0, MAX_PREVIEW_PAGES);
   const omittedPages = result.pages.slice(MAX_PREVIEW_PAGES);
@@ -299,21 +314,7 @@ function WebCollapsedPreview({
       return label && label !== host ? `${host} — ${label}` : `${host}`;
     })
     .join("\n");
-
-  // Hovering the clamped preview reveals the tail in the tooltip, matching
-  // the shell-output preview.
-  const handlePreviewPointerEnter = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const lines = contentText.trimEnd().split("\n");
-      if (lines.length <= outputToolPreviewLineCount) {
-        event.currentTarget.title = "";
-        return;
-      }
-      const lastLines = lines.slice(-outputToolPreviewLineCount).join("\n");
-      event.currentTarget.title = `...\n${lastLines}`;
-    },
-    [contentText, outputToolPreviewLineCount],
-  );
+  const omittedTooltipAttributes = useTextTooltipAttributes(omittedTooltip);
 
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as Element | null;
@@ -355,7 +356,7 @@ function WebCollapsedPreview({
         {omittedPages.length > 0 && (
           <div
             className="webrun-preview-row webrun-preview-more"
-            title={omittedTooltip}
+            {...omittedTooltipAttributes}
           >
             +{omittedPages.length} more
           </div>
@@ -364,7 +365,7 @@ function WebCollapsedPreview({
           <div className="webrun-preview-row webrun-preview-output-row">
             <div
               className="webrun-preview-output"
-              onPointerEnter={handlePreviewPointerEnter}
+              {...outputTooltipAttributes}
             >
               <div
                 className="webrun-preview-output-text"
@@ -385,6 +386,7 @@ function WebCollapsedPreview({
               <HiddenContentBadge
                 className="webrun-preview-more-badge"
                 count={hiddenLineCount}
+                tooltip={outputTailTooltip ?? contentText}
               />
             )}
           </div>

@@ -33,6 +33,10 @@ import {
   type MessageInputToolbarLayoutRefs,
   useMeasuredComposerOverflow,
 } from "../hooks/useMessageInputToolbarLayout";
+import {
+  getTextTooltipAttributes,
+  useTooltipMode,
+} from "../hooks/useTooltipAppearance";
 import { useProviders } from "../hooks/useProviders";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import {
@@ -849,6 +853,7 @@ export function MessageInputToolbarView({
   actionsControl,
   hidePrimaryDeliveryActions = false,
 }: MessageInputToolbarViewProps) {
+  const tooltipMode = useTooltipMode();
   const controlPriority = priority ?? DEFAULT_SESSION_TOOLBAR_PRIORITY;
   // Inline copy always carries `-inline`; append the priority-derived tier (or
   // nothing when pinned). Menu copy carries just the tier. Both mirror each
@@ -2079,7 +2084,10 @@ export function MessageInputToolbarView({
                     : ""
                 }`}
                 aria-label={actionsControl.send.primaryActionLabel}
-                data-tooltip={actionsControl.send.tooltip}
+                {...getTextTooltipAttributes(
+                  actionsControl.send.tooltip,
+                  tooltipMode,
+                )}
               >
                 <span className="send-icon">{actionsControl.send.icon}</span>
               </button>

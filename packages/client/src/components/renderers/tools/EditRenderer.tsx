@@ -11,6 +11,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useExpandedDiff } from "../../../hooks/useExpandedDiff";
+import { useVisibilityAwareTextTooltip } from "../../../hooks/useTooltipAppearance";
 import {
   classifyToolError,
   getErrorClassSuffix,
@@ -33,6 +34,7 @@ import {
   type DiffSelectionSnapshot,
   restoreDiffSelection,
 } from "./editSelectionTransfer";
+import { getOutputTailTooltip } from "./outputPreview";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
 
 const MAX_VISIBLE_LINES = 12;
@@ -383,6 +385,13 @@ function DiffMathView({
     copyText ?? (diffAware ? diffTextToNewSide(sourceText) : sourceText);
   const effectiveRenderMode =
     renderMode ?? getEditRenderMode(baseFilePath ? [baseFilePath] : []);
+  const tailTooltip = truncated
+    ? getOutputTailTooltip(sourceText, MAX_VISIBLE_LINES)
+    : null;
+  const tooltipAttributes = useVisibilityAwareTextTooltip<HTMLDivElement>(
+    sourceText,
+    tailTooltip,
+  );
   return (
     <FixedFontMathToggle
       sourceText={sourceText}
@@ -390,7 +399,10 @@ function DiffMathView({
       baseFilePath={baseFilePath}
       renderMode={effectiveRenderMode}
       sourceView={
-        <div className={`diff-view-container ${truncated ? "truncated" : ""}`}>
+        <div
+          className={`diff-view-container ${truncated ? "truncated" : ""}`}
+          {...tooltipAttributes}
+        >
           <div className="diff-view">{sourceView}</div>
           {effectiveCopyText && <DiffCopyButton text={effectiveCopyText} />}
           {truncated && <div className="diff-fade-overlay" />}
@@ -398,12 +410,16 @@ function DiffMathView({
             <HiddenContentBadge
               className="edit-preview-more"
               count={hiddenLineCount}
+              tooltip={tailTooltip ?? sourceText}
             />
           )}
         </div>
       }
       renderRenderedView={(html) => (
-        <div className={`diff-view-container ${truncated ? "truncated" : ""}`}>
+        <div
+          className={`diff-view-container ${truncated ? "truncated" : ""}`}
+          {...tooltipAttributes}
+        >
           <div className="diff-view">
             {renderFixedFontMathPanel(html, "diff-content")}
           </div>
@@ -413,6 +429,7 @@ function DiffMathView({
             <HiddenContentBadge
               className="edit-preview-more"
               count={hiddenLineCount}
+              tooltip={tailTooltip ?? sourceText}
             />
           )}
         </div>
@@ -633,6 +650,13 @@ function RawPatchPreview({
     }
     return truncateByLines(rawPatch, truncateLines);
   }, [rawPatch, truncateLines]);
+  const tailTooltip = truncateLines
+    ? getOutputTailTooltip(rawPatch, truncateLines)
+    : null;
+  const tooltipAttributes = useVisibilityAwareTextTooltip<HTMLDivElement>(
+    rawPatch,
+    tailTooltip,
+  );
 
   return (
     <FixedFontMathToggle
@@ -643,6 +667,7 @@ function RawPatchPreview({
       sourceView={
         <div
           className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
+          {...tooltipAttributes}
         >
           <div className="diff-view">
             <pre className="code-block">
@@ -654,6 +679,7 @@ function RawPatchPreview({
             <HiddenContentBadge
               className="edit-preview-more"
               count={preview.hiddenLineCount}
+              tooltip={tailTooltip ?? rawPatch}
             />
           )}
         </div>
@@ -661,6 +687,7 @@ function RawPatchPreview({
       renderRenderedView={(html) => (
         <div
           className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
+          {...tooltipAttributes}
         >
           <div className="diff-view">
             {renderFixedFontMathPanel(html, "code-block")}
@@ -670,6 +697,7 @@ function RawPatchPreview({
             <HiddenContentBadge
               className="edit-preview-more"
               count={preview.hiddenLineCount}
+              tooltip={tailTooltip ?? rawPatch}
             />
           )}
         </div>

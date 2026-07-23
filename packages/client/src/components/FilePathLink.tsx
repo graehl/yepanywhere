@@ -7,6 +7,7 @@ import {
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useTextTooltipAttributes } from "../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../lib/appHref";
 import { writeClipboardText, writeClipboardTextLater } from "../lib/clipboard";
 import {
@@ -232,6 +233,7 @@ export const FilePathLink = memo(function FilePathLink({
       : "";
   const suffix = `${lineSuffix}${columnSuffix}`;
   const visibleSuffix = showLineSuffix ? suffix : "";
+  const tooltipAttributes = useTextTooltipAttributes(`${filePath}${suffix}`);
 
   return (
     <>
@@ -240,7 +242,7 @@ export const FilePathLink = memo(function FilePathLink({
         className="file-path-link"
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        title={`${filePath}${suffix}\nClick to view, or use a browser link gesture to open this file`}
+        {...tooltipAttributes}
       >
         <span className="file-path-link-name">{text}</span>
         {visibleSuffix && (

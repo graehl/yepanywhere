@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
+import { UI_KEYS } from "../../../../lib/storageKeys";
 import { bashRenderer } from "../BashRenderer";
 import type { BashResult } from "../types";
 
@@ -36,6 +37,7 @@ const renderContext = {
 describe("BashRenderer", () => {
   afterEach(() => {
     cleanup();
+    window.localStorage.removeItem(UI_KEYS.tooltipMode);
   });
 
   it("unwraps exec_command envelopes before rendering ANSI output", () => {
@@ -95,6 +97,8 @@ describe("BashRenderer", () => {
     const badge = screen.getByText("+2");
     const copyButton = screen.getByRole("button", { name: "Copy output" });
     expect(copyButton.nextElementSibling).toBe(badge);
+    expect(badge.getAttribute("data-tooltip")).toBe("...\nthree\nfour");
+    expect(badge.getAttribute("title")).toBeNull();
   });
 
   it("renders ANSI-colored git diff markdown tables in expanded output", () => {

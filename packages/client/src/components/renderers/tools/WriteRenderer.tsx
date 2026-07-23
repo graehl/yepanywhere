@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { useVisibilityAwareTextTooltip } from "../../../hooks/useTooltipAppearance";
 import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
 import { getPathBasename, makeDisplayPath } from "../../../lib/text";
@@ -14,6 +15,7 @@ import { SchemaWarning } from "../../SchemaWarning";
 import { SessionFilePathLink } from "../../SessionFilePathLink";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import { Modal } from "../../ui/Modal";
+import { getOutputTailTooltip } from "./outputPreview";
 import type { ToolRenderer, WriteInput, WriteResult } from "./types";
 
 const MAX_LINES_COLLAPSED = 30;
@@ -359,6 +361,10 @@ function WriteCollapsedPreview({
   const lines = content.split("\n");
   const lineCount = result?.file?.numLines ?? lines.length;
   const isTruncated = lines.length > PREVIEW_LINES;
+  const tooltipAttributes = useVisibilityAwareTextTooltip<HTMLDivElement>(
+    content,
+    isTruncated ? getOutputTailTooltip(content, PREVIEW_LINES) : null,
+  );
 
   // Truncate highlighted HTML for preview
   const previewHtml = useMemo(() => {
@@ -407,6 +413,7 @@ function WriteCollapsedPreview({
         </div>
         <div
           className={`write-preview-content ${isTruncated ? "write-preview-truncated" : ""}`}
+          {...tooltipAttributes}
         >
           {previewHtml ? (
             <div

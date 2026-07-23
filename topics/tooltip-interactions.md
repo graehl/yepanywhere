@@ -48,15 +48,51 @@ legacy stored card delay.
 ## Themed presentation
 
 Plain text tooltips retain familiar tooltip geometry: a compact monochrome
-surface, high-contrast theme colors, visible border and modest shadow, UI font,
-tight unzoomed line spacing, and no decorative animation. Multiline content
-preserves line breaks.
+surface with maximum black/white contrast and polarity opposite the active
+light or dark color scheme, a visible border and modest shadow, UI font, tight
+unzoomed line spacing, and no decorative animation. The ordinary themed
+tooltip is one pixel larger than the compact `--font-size-xs` UI token; the
+secondary-click enlargement still advances to `--font-size-sm`. Multiline
+content preserves line breaks.
 
-The shared layer consumes both static `title=` hints and explicit
-`data-tooltip` hints. It also supports titles computed on pointer entry, such as
-fresh command elapsed time and output tails. While active it suppresses the
-browser bubble, associates the themed tooltip via `aria-describedby`, and
-restores the source `title` on dismissal. `Native` mode bypasses this layer.
+The shared layer consumes both legacy static `title=` hints and explicit
+`data-tooltip` hints. New and pointer-computed producers assign exactly one
+owner: themed mode uses `data-tooltip`; Native mode uses `title`, never both.
+Shared helpers enforce that rule for React attributes, pointer-computed hints,
+hidden-content badges, and generated fixed-font file links.
+Themed mode proactively detaches every legacy browser `title`, including titles
+added or updated after mount, and retains its text as YA tooltip metadata for
+the entire time Themed mode is active. Only switching to Native restores those
+titles. No pointer departure, dismissal, or viewport change may reintroduce a
+browser-owned bubble while Themed mode owns tooltip presentation.
+
+A hint that exactly repeats its target's visible text is omitted only when the
+target is measurably visible in its own scrollport, every clipping ancestor,
+and the viewport. If any of those clips the content—or the target cannot be
+measured—the hint remains. Explanatory hints and extra metadata are not
+inferred to be redundant. Ran commands use their producer's hidden-content
+count first, then the same actual scroll-visibility check on hover. Thus a
+command without a `+N` badge still reveals its full text when partly scrolled
+out of view, while any fully scroll-visible command has neither a themed nor
+native command tooltip. Expansion alone does not suppress the hint when the
+command remains clipped by its own scrollport, an ancestor, or the viewport.
+The Ran-label hint separately owns elapsed time.
+
+Faded output/diff previews reveal a plain-text tail through shared preview
+machinery: an ellipsis plus the final configured number of lines. The same
+tail is available from the faded content and its `+N` hidden-content badge
+where present. Bash/Ran, Web, Edit, and Write use this contract; the badge
+requires its producer to supply the actual omitted-tail text so a new badge
+cannot silently omit the affordance. When the line-count/character budget says
+all content fits but wrapping, a clipping ancestor, or the viewport still hides
+part of the rendered surface, hovering exposes the full content. Only content
+that both fits and is fully scroll-visible remains without either tooltip
+attribute.
+
+File links use only the concise path and optional line/range as their hint.
+Filename and adjacent `N lines` range links may therefore show the same hint.
+Instructions such as “Click to view” are omitted because link activation and
+browser link gestures are already conventional.
 
 Secondary-click on a visible plain text tooltip copies its full text and
 immediately increases the tooltip by one text-size step, without animation.
@@ -71,22 +107,26 @@ pretending to be hover hints.
 
 ## Future: rendered hidden tails
 
-Faded `+N` hidden-content badges outside Bash/Ran should eventually be able to
-show the omitted tail through the shared preview machinery. Renderers should
-provide their actual hidden text/content to one reusable tail-tooltip path
-rather than each recreating Bash's last-lines handler.
-
-This is a future idea, not part of the initial themed-tooltip work. A rendered
-tail may use its normal output renderer or text/output font instead of the UI
-font, but it remains a tooltip-like affordance: the same monochrome
-high-contrast shell, normal tooltip geometry, dwell/adjacency behavior, and
-slightly tighter unzoomed metrics. “Rendered” changes the body typography and
-content treatment, not the surface into a card.
+The shared hidden-tail tooltip is currently plain text in the tooltip UI font.
+A future rendered tail may use its normal output renderer or text/output font,
+but it remains a tooltip-like affordance: the same monochrome high-contrast
+shell, normal tooltip geometry, dwell/adjacency behavior, and slightly tighter
+unzoomed metrics. “Rendered” changes the body typography and content treatment,
+not the surface into a card.
 
 ## Verification contract
 
-- Static and pointer-computed titles obey rest delay, movement reset/dismiss,
-  focus, and restoration.
+- Static and pointer-computed hints obey rest delay, movement reset/dismiss,
+  focus, and exclusive native/themed ownership. Themed mode contains no live
+  native titles; Native mode restores them.
+- Exact visible-content hints are absent only when fully scroll-visible and
+  remain when clipped by self, ancestor, or viewport; no-`+N` Ran commands
+  follow the same measured rule.
+- Every faded hidden-content preview exposes its actual tail from the fade and
+  `+N` badge where present; an unfaded preview exposes its full content when
+  any of its rendered surface is not scroll-visible.
+- Read/file links expose only a concise path/range and never carry native and
+  themed attributes simultaneously.
 - Only visible tooltips enable immediate temporally adjacent reveals.
 - Native mode leaves ordinary browser titles intact.
 - Valid slider/number edits select themed mode; an empty number draft does not.

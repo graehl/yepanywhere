@@ -1,7 +1,17 @@
-import { useCallback, useSyncExternalStore } from "react";
+import {
+  type PointerEventHandler,
+  useCallback,
+  useSyncExternalStore,
+} from "react";
 import { UI_KEYS } from "../lib/storageKeys";
+import { getVisibilityAwareTooltipText } from "../lib/tooltipVisibility";
 
 export type TooltipMode = "themed" | "native";
+
+export interface TextTooltipAttributes {
+  title?: string;
+  "data-tooltip"?: string;
+}
 
 export const TOOLTIP_DELAY_MIN_MS = 0;
 export const TOOLTIP_DELAY_MAX_MS = 1000;
@@ -52,6 +62,37 @@ export function getTooltipMode(): TooltipMode {
       : "themed";
   } catch {
     return "themed";
+  }
+}
+
+/**
+ * A text hint has exactly one presentation owner. Themed mode delegates
+ * through `data-tooltip`; native mode gives the browser a `title`.
+ */
+export function getTextTooltipAttributes(
+  text: string | null | undefined,
+  mode: TooltipMode = getTooltipMode(),
+): TextTooltipAttributes {
+  if (!text) return {};
+  return mode === "themed" ? { "data-tooltip": text } : { title: text };
+}
+
+/**
+ * Pointer-computed hints use the same exclusive attribute contract as static
+ * hints. Removing both first also clears a stale attribute after a mode change.
+ */
+export function setElementTextTooltip(
+  target: Element,
+  text: string | null | undefined,
+  mode: TooltipMode = getTooltipMode(),
+): void {
+  target.removeAttribute("title");
+  target.removeAttribute("data-tooltip");
+  if (!text) return;
+  if (mode === "themed") {
+    target.setAttribute("data-tooltip", text);
+  } else {
+    target.setAttribute("title", text);
   }
 }
 
@@ -123,12 +164,16 @@ export function useTooltipDelayMs(): number {
   );
 }
 
-export function useTooltipAppearance() {
-  const tooltipMode = useSyncExternalStore(
+export function useTooltipMode(): TooltipMode {
+  return useSyncExternalStore(
     subscribe,
     getTooltipMode,
     () => "themed" as const,
   );
+}
+
+export function useTooltipAppearance() {
+  const tooltipMode = useTooltipMode();
   const tooltipDelayMs = useTooltipDelayMs();
 
   const setTooltipMode = useCallback((value: TooltipMode) => {
@@ -175,6 +220,55 @@ export function useTooltipAppearance() {
     setTooltipDelayMs,
     resetTooltipDelayMs,
   };
+}
+
+/** Reactive attributes for render-time tooltip text. */
+export function useTextTooltipAttributes(
+  text: string | null | undefined,
+): TextTooltipAttributes {
+  const tooltipMode = useTooltipMode();
+  return getTextTooltipAttributes(text, tooltipMode);
+}
+
+/**
+ * Preview surfaces show their explicit omitted tail when truncated. If they
+ * have no truncation marker, pointer entry measures the rendered content and
+ * exposes the full text only when that surface is not fully scroll-visible.
+ */
+export function useVisibilityAwareTextTooltip<T extends HTMLElement>(
+  fullText: string | null | undefined,
+  omittedContentPreview?: string | null,
+  visibilitySelector?: string,
+): TextTooltipAttributes & { onPointerEnter: PointerEventHandler<T> } {
+  const tooltipMode = useTooltipMode();
+  const attributes = getTextTooltipAttributes(
+    omittedContentPreview,
+    tooltipMode,
+  );
+  const onPointerEnter = useCallback<PointerEventHandler<T>>(
+    (event) => {
+      const visibilityTarget =
+        (visibilitySelector
+          ? event.currentTarget.querySelector<HTMLElement>(visibilitySelector)
+          : null) ?? event.currentTarget;
+      setElementTextTooltip(
+        event.currentTarget,
+        getVisibilityAwareTooltipText(
+          visibilityTarget,
+          fullText,
+          omittedContentPreview,
+        ),
+        tooltipMode,
+      );
+    },
+    [
+      fullText,
+      omittedContentPreview,
+      tooltipMode,
+      visibilitySelector,
+    ],
+  );
+  return { ...attributes, onPointerEnter };
 }
 
 export function isTooltipWarm(nowMs = Date.now()): boolean {

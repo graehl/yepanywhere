@@ -16,6 +16,11 @@ import {
   useOutputToolPreviewLineCount,
 } from "../../hooks/useOutputAppearance";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
+import {
+  getTextTooltipAttributes,
+  setElementTextTooltip,
+  useTooltipMode,
+} from "../../hooks/useTooltipAppearance";
 import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
@@ -24,8 +29,13 @@ import {
   getCommandResultMeta,
   parseShellToolOutput,
 } from "../../lib/shellToolOutput";
+import {
+  getVisibilityAwareTooltipText,
+  isElementFullyScrollVisible,
+} from "../../lib/tooltipVisibility";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
+import { getOutputTailTooltip } from "../renderers/tools/outputPreview";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
 import { HiddenContentBadge } from "../ui/HiddenContentBadge";
@@ -522,6 +532,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   const sessionMetadata = useOptionalSessionMetadata();
   const outputToolPreviewLineCount = useOutputToolPreviewLineCount();
   const deferredPreviewTypography = useDeferredPreviewTypographyMetrics();
+  const tooltipMode = useTooltipMode();
   const toggleSummaryExpanded = useCallback(() => {
     setSummaryExpanded((current) => !current);
   }, []);
@@ -583,7 +594,8 @@ export const ToolCallRow = memo(function ToolCallRow({
       if (!isBashTool) {
         return;
       }
-      event.currentTarget.title =
+      setElementTextTooltip(
+        event.currentTarget,
         computeCommandElapsedTitle({
           toolInput,
           structuredResult,
@@ -591,7 +603,9 @@ export const ToolCallRow = memo(function ToolCallRow({
           startTimestampMs,
           resultTimestampMs,
           nowMs: Date.now(),
-        }) ?? "";
+        }),
+        tooltipMode,
+      );
     },
     [
       isBashTool,
@@ -600,6 +614,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       status,
       startTimestampMs,
       resultTimestampMs,
+      tooltipMode,
     ],
   );
   const canRenderInteractiveSummary =
@@ -813,6 +828,10 @@ export const ToolCallRow = memo(function ToolCallRow({
     () => getCommandPreview(headerCommand, outputToolPreviewLineCount),
     [headerCommand, outputToolPreviewLineCount],
   );
+  const commandHasHiddenPreviewContent =
+    !bashCommandExpanded &&
+    bashCommandPreview.hiddenCount !== null &&
+    bashCommandPreview.hiddenCount > 0;
   const bashCommandQuoteRef = useQuoteableTextSource<HTMLSpanElement>(
     showBashCommandTarget
       ? !noOutputBashResult && bashCommandExpanded
@@ -830,7 +849,15 @@ export const ToolCallRow = memo(function ToolCallRow({
   // — refreshed on hover so a running command's elapsed stays current.
   const handleCommandTitlePointerEnter = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!headerCommand) {
+      const commandText =
+        event.currentTarget.querySelector<HTMLElement>(
+          ".tool-summary-command-text",
+        ) ?? event.currentTarget;
+      const shouldShowTooltip =
+        commandHasHiddenPreviewContent ||
+        !isElementFullyScrollVisible(commandText);
+      if (!headerCommand || !shouldShowTooltip) {
+        setElementTextTooltip(event.currentTarget, null, tooltipMode);
         return;
       }
       const elapsed = computeCommandElapsed({
@@ -841,9 +868,13 @@ export const ToolCallRow = memo(function ToolCallRow({
         resultTimestampMs,
         nowMs: Date.now(),
       });
-      event.currentTarget.title = elapsed
-        ? `[${formatCommandDuration(elapsed.seconds)}] ${headerCommand}`
-        : headerCommand;
+      setElementTextTooltip(
+        event.currentTarget,
+        elapsed
+          ? `[${formatCommandDuration(elapsed.seconds)}] ${headerCommand}`
+          : headerCommand,
+        tooltipMode,
+      );
     },
     [
       headerCommand,
@@ -852,6 +883,8 @@ export const ToolCallRow = memo(function ToolCallRow({
       status,
       startTimestampMs,
       resultTimestampMs,
+      commandHasHiddenPreviewContent,
+      tooltipMode,
     ],
   );
 
@@ -864,11 +897,6 @@ export const ToolCallRow = memo(function ToolCallRow({
       }
       const output =
         getBashResultOutputForRichPreview(structuredResult).trimEnd();
-      const lines = output ? output.split("\n") : [];
-      if (lines.length <= outputToolPreviewLineCount) {
-        event.currentTarget.title = "";
-        return;
-      }
       const elapsed = computeCommandElapsed({
         toolInput,
         structuredResult,
@@ -880,8 +908,28 @@ export const ToolCallRow = memo(function ToolCallRow({
       const elapsedPrefix = elapsed
         ? `[${formatCommandDuration(elapsed.seconds)}] `
         : "";
-      const lastLines = lines.slice(-outputToolPreviewLineCount).join("\n");
-      event.currentTarget.title = `${elapsedPrefix}...\n${lastLines}`;
+      const tooltip = getOutputTailTooltip(
+        output,
+        outputToolPreviewLineCount,
+        elapsedPrefix,
+      );
+      const outputSurface =
+        event.currentTarget.querySelector<HTMLElement>(".bash-preview-output");
+      const visibilityTarget =
+        outputSurface?.querySelector<HTMLElement>(
+          "pre, .fixed-font-rendered__content",
+        ) ??
+        outputSurface ??
+        event.currentTarget;
+      setElementTextTooltip(
+        event.currentTarget,
+        getVisibilityAwareTooltipText(
+          visibilityTarget,
+          `${elapsedPrefix}${output}`,
+          tooltip,
+        ),
+        tooltipMode,
+      );
     },
     [
       isBashTool,
@@ -891,6 +939,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       status,
       startTimestampMs,
       resultTimestampMs,
+      tooltipMode,
     ],
   );
 
@@ -1088,7 +1137,10 @@ export const ToolCallRow = memo(function ToolCallRow({
         ) : showBashCommandTarget && noOutputBashResult ? (
           <span
             className="tool-summary tool-summary-command"
-            title={headerCommand}
+            {...getTextTooltipAttributes(
+              commandHasHiddenPreviewContent ? headerCommand : null,
+              tooltipMode,
+            )}
             onPointerEnter={handleCommandTitlePointerEnter}
           >
             <span
@@ -1108,7 +1160,10 @@ export const ToolCallRow = memo(function ToolCallRow({
             ]
               .filter(Boolean)
               .join(" ")}
-            title={headerCommand}
+            {...getTextTooltipAttributes(
+              commandHasHiddenPreviewContent ? headerCommand : null,
+              tooltipMode,
+            )}
             onPointerEnter={handleCommandTitlePointerEnter}
             aria-label={
               bashCommandExpanded ? "Collapse command" : "Show full command"
@@ -1174,6 +1229,7 @@ export const ToolCallRow = memo(function ToolCallRow({
             <HiddenContentBadge
               className="tool-summary-command-more"
               count={bashCommandPreview.hiddenCount}
+              tooltip={headerCommand}
             />
           )}
       </div>

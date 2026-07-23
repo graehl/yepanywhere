@@ -9,7 +9,7 @@ import {
   beginTooltipVisibility,
   endTooltipVisibility,
   getEffectiveTooltipDelayMs,
-  useTooltipAppearance,
+  useTooltipMode,
 } from "./useTooltipAppearance";
 
 interface TooltipTriggerOptions {
@@ -29,7 +29,7 @@ export function useTooltipTrigger({
   onOpenChange,
   delayMultiplier = 1,
 }: TooltipTriggerOptions) {
-  const { tooltipMode } = useTooltipAppearance();
+  const tooltipMode = useTooltipMode();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibilityTokenRef = useRef<symbol | null>(null);
   const movementDismissedRef = useRef(false);

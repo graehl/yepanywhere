@@ -16,6 +16,7 @@ import {
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
+import { useTooltipMode } from "../../hooks/useTooltipAppearance";
 import { toBrowserAppHref } from "../../lib/appHref";
 import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
 import {
@@ -195,7 +196,7 @@ function renderMarkdownFileLink(
   const absoluteFilePath = `/${filePath}`;
   const titlePath = makeDisplayPath(absoluteFilePath, options.projectPath);
   return {
-    html: `<a class="fixed-font-file-link" href="${escapeHtmlAttribute(fileUrl)}" data-fixed-font-file-path="${escapeHtmlAttribute(filePath)}" title="${escapeHtmlAttribute(`${titlePath}\nClick to view, middle-click to open in new tab`)}">${labelHtml}</a>`,
+    html: `<a class="fixed-font-file-link" href="${escapeHtmlAttribute(fileUrl)}" data-fixed-font-file-path="${escapeHtmlAttribute(filePath)}" data-tooltip="${escapeHtmlAttribute(titlePath)}">${labelHtml}</a>`,
     changed: true,
   };
 }
@@ -862,6 +863,18 @@ export function hasFixedFontRichContent(
   return renderFixedFontRichContent(sourceText, options).changed;
 }
 
+function applyRenderedTooltipMode(
+  html: string,
+  tooltipMode: "themed" | "native",
+): string {
+  return tooltipMode === "themed"
+    ? html
+    : html.replace(
+        / data-tooltip="([^"]*)"/g,
+        (_match, text: string) => ` title="${text}"`,
+      );
+}
+
 export function FixedFontMathToggle({
   sourceText,
   sourceView,
@@ -874,6 +887,7 @@ export function FixedFontMathToggle({
   const sessionMetadata = useOptionalSessionMetadata();
   const publicShare = usePublicShareContext();
   const basePath = useRemoteBasePath();
+  const tooltipMode = useTooltipMode();
   const [viewerLink, setViewerLink] = useState<{
     filePath: string;
     href: string | null;
@@ -922,6 +936,10 @@ export function FixedFontMathToggle({
   );
   const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =
     useScrollPreservingToggle(showRendered, toggleLocalMode);
+  const presentedHtml = useMemo(
+    () => applyRenderedTooltipMode(rendered.html, tooltipMode),
+    [rendered.html, tooltipMode],
+  );
 
   useEffect(() => {
     const element = copySourceRef.current;
@@ -984,7 +1002,7 @@ export function FixedFontMathToggle({
         // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to rendered file links inside the HTML
         // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links
         <div onClick={handleRenderedClick} onCopy={handleRenderedCopy}>
-          {renderRenderedView(rendered.html)}
+          {renderRenderedView(presentedHtml)}
         </div>
       ) : (
         sourceView

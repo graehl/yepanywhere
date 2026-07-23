@@ -808,7 +808,8 @@ describe("MessageInput", () => {
       );
       expect(actions).toHaveLength(2);
       expect(actions[0]?.classList.contains("queue-mode")).toBe(true);
-      expect(actions[0]?.textContent).toContain("Queue");
+      expect(actions[0]?.getAttribute("aria-label")).toBe("toolbarQueueLabel");
+      expect(actions[0]?.textContent).toBe("→");
       expect(actions[1]?.classList.contains("steer-mode")).toBe(true);
       expect(actions[1]?.textContent).toContain("Steer");
 
@@ -877,7 +878,7 @@ describe("MessageInput", () => {
     }
   });
 
-  it("keeps keyboard focus while More exposes attachments and Project Queue", () => {
+  it("keeps keyboard focus while More exposes attachments and Project Queue stays inline", () => {
     const viewport = installMobileKeyboardViewport();
     const onProjectQueue = vi.fn();
     const onAttach = vi.fn();
@@ -915,10 +916,91 @@ describe("MessageInput", () => {
       fireEvent.click(attach);
       expect(inputClick).toHaveBeenCalledTimes(1);
 
+      fireEvent.pointerDown(more);
+      fireEvent.click(more);
+      expect(more.getAttribute("aria-expanded")).toBe("false");
+
+      expect(
+        document.querySelector(
+          ".message-input-keyboard-project-queue-slot .project-queue-mode",
+        ),
+      ).toBeTruthy();
       fireEvent.click(
         screen.getByRole("button", { name: "Queue for Project Queue" }),
       );
       expectSubmission(onProjectQueue, "project later", "deferred");
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it("reserves queue slots before live actions appear", () => {
+    const viewport = installMobileKeyboardViewport();
+    const onQueue = vi.fn();
+    const onProjectQueue = vi.fn();
+
+    function LiveActionsHarness() {
+      const [actionsAvailable, setActionsAvailable] = useState(false);
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => setActionsAvailable(true)}
+          >
+            Make queue actions available
+          </button>
+          <MessageInput
+            onSend={vi.fn()}
+            onQueue={actionsAvailable ? onQueue : undefined}
+            onProjectQueue={actionsAvailable ? onProjectQueue : undefined}
+            supportsSteering
+            draftKey="stable-mobile-actions"
+            placeholder="Stable actions"
+            supportsPermissionMode={false}
+            supportsThinkingToggle={false}
+          />
+        </>
+      );
+    }
+
+    render(<LiveActionsHarness />);
+    const textarea = screen.getByPlaceholderText("Stable actions");
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, { target: { value: "queue this later" } });
+
+      const projectQueueSlot = document.querySelector(
+        ".message-input-keyboard-project-queue-slot",
+      );
+      const sessionAlternateSlot = document.querySelector(
+        ".message-input-keyboard-session-alternate-slot",
+      );
+      const primary = document.querySelector(
+        ".message-input-keyboard-primary",
+      );
+
+      expect(projectQueueSlot).toBeTruthy();
+      expect(sessionAlternateSlot).toBeTruthy();
+      expect(projectQueueSlot?.children).toHaveLength(0);
+      expect(sessionAlternateSlot?.children).toHaveLength(0);
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Make queue actions available",
+        }),
+      );
+
+      expect(
+        document.querySelector(".message-input-keyboard-primary"),
+      ).toBe(primary);
+      expect(
+        projectQueueSlot?.querySelector(".project-queue-mode"),
+      ).toBeTruthy();
+      expect(
+        sessionAlternateSlot?.querySelector(".queue-mode"),
+      ).toBeTruthy();
     } finally {
       viewport.restore();
     }

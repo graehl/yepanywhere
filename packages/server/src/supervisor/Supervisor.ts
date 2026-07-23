@@ -2455,7 +2455,9 @@ export class Supervisor {
       !serviceTierChanged &&
       !thinkingChanged &&
       !effortChanged &&
-      process.supportsSetModel
+      process.supportsSetModel &&
+      (process.getProviderRuntimeStatus()?.kind !== "retrying" ||
+        process.supportsInterrupt)
     ) {
       const changed = await process.setModel(nextModel);
       return changed ? process : null;

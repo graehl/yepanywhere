@@ -119,6 +119,8 @@ export interface RecapRequestResult {
 const CLAUDE_UNBOUNDED_MAX_RETRIES = 2_147_483_647;
 const PROCESS_ABORT_TIMEOUT_MS = 5_000;
 const PID_EXIT_POLL_INTERVAL_MS = 25;
+const MODEL_SWITCH_RETRY_INTERRUPT_PREAMBLE =
+  "The previous provider request was interrupted because the model changed while the provider was retrying. Continue under the newly selected model.";
 
 function isLocalPidRunning(pid: number): boolean {
   try {
@@ -1800,6 +1802,13 @@ export class Process {
       return false;
     }
 
+    const interruptsRetryingTurn =
+      this._state.type === "in-turn" &&
+      this.providerRuntimeStatus?.kind === "retrying";
+    if (interruptsRetryingTurn && !this.interruptFn) {
+      return false;
+    }
+
     const log = getLogger();
     log.info(
       {
@@ -1813,6 +1822,26 @@ export class Process {
     );
 
     await this.setModelFn(model);
+    if (
+      interruptsRetryingTurn &&
+      this._state.type === "in-turn" &&
+      this.providerRuntimeStatus?.kind === "retrying"
+    ) {
+      const interrupted = await this.interrupt({
+        preamble: MODEL_SWITCH_RETRY_INTERRUPT_PREAMBLE,
+      });
+      if (
+        !interrupted &&
+        this._state.type === "in-turn" &&
+        this.providerRuntimeStatus?.kind === "retrying"
+      ) {
+        throw new Error(
+          "Provider retry could not be interrupted after changing models",
+        );
+      }
+      this.clearRetryingProviderRuntimeStatus();
+    }
+
     // Update resolved model so subsequent API responses reflect the switch
     if (model) {
       this._resolvedModel = model;

@@ -2,6 +2,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import {
   Process,
@@ -429,6 +430,111 @@ describe("Process", () => {
         expect(process.state.type).toBe("idle");
       });
       expect(process.getInfo().providerRuntimeStatus).toBe(null);
+
+      controller.finish();
+    });
+
+    it("interrupts a retrying turn when changing models", async () => {
+      const controller = createControllableIterator();
+      const setModelFn = vi.fn(async () => {});
+      const interruptFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        setModelFn,
+        interruptFn,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+        retry_delay_ms: 60_000,
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+
+      await expect(process.setModel("opus")).resolves.toBe(true);
+
+      expect(setModelFn).toHaveBeenCalledWith("opus");
+      expect(interruptFn).toHaveBeenCalledTimes(1);
+      expect(setModelFn.mock.invocationCallOrder[0]).toBeLessThan(
+        interruptFn.mock.invocationCallOrder[0] ?? 0,
+      );
+      expect(process.getInfo().providerRuntimeStatus).toBe(null);
+      expect(process.resolvedModel).toBe("opus");
+
+      controller.finish();
+    });
+
+    it("does not interrupt if retry progress resumes during a model change", async () => {
+      const controller = createControllableIterator();
+      let process: Process;
+      const setModelFn = vi.fn(async () => {
+        controller.push({
+          type: "assistant",
+          message: { role: "assistant", content: "Recovered" },
+        });
+        await waitFor(() => {
+          expect(process.getInfo().providerRuntimeStatus).toBe(null);
+        });
+      });
+      const interruptFn = vi.fn(async () => true);
+      process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        setModelFn,
+        interruptFn,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "api_retry",
+        session_id: "sess-1",
+        error_status: 429,
+        error: "rate_limit",
+      });
+
+      await waitFor(() => {
+        expect(process.getInfo().providerRuntimeStatus?.kind).toBe("retrying");
+      });
+
+      await expect(process.setModel("opus")).resolves.toBe(true);
+
+      expect(interruptFn).not.toHaveBeenCalled();
+      expect(process.resolvedModel).toBe("opus");
+
+      controller.finish();
+    });
+
+    it("does not interrupt an ordinary active turn when changing models", async () => {
+      const controller = createControllableIterator();
+      const setModelFn = vi.fn(async () => {});
+      const interruptFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        setModelFn,
+        interruptFn,
+      });
+
+      await expect(process.setModel("opus")).resolves.toBe(true);
+
+      expect(setModelFn).toHaveBeenCalledWith("opus");
+      expect(interruptFn).not.toHaveBeenCalled();
 
       controller.finish();
     });

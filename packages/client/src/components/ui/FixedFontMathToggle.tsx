@@ -215,26 +215,61 @@ function renderKatexHtml(tex: string, displayMode: boolean): string {
   }
 }
 
+function isEscapedDelimiter(sourceText: string, start: number): boolean {
+  let precedingBackslashes = 0;
+  for (let index = start - 1; index >= 0; index -= 1) {
+    if (sourceText[index] !== "\\") break;
+    precedingBackslashes += 1;
+  }
+  return precedingBackslashes % 2 === 1;
+}
+
+function findUnescapedDelimiter(
+  sourceText: string,
+  delimiter: string,
+  start: number,
+): number {
+  let cursor = start;
+  while (cursor < sourceText.length) {
+    const match = sourceText.indexOf(delimiter, cursor);
+    if (match < 0 || !isEscapedDelimiter(sourceText, match)) {
+      return match;
+    }
+    cursor = match + delimiter.length;
+  }
+  return -1;
+}
+
 function tryMatchBlockMath(
   sourceText: string,
   start: number,
 ): { end: number; html: string } | null {
-  if (!sourceText.startsWith("$$", start)) {
+  const delimiters = sourceText.startsWith("$$", start)
+    ? { close: "$$", open: "$$" }
+    : sourceText.startsWith("\\[", start) &&
+        !isEscapedDelimiter(sourceText, start)
+      ? { close: "\\]", open: "\\[" }
+      : null;
+  if (!delimiters) {
     return null;
   }
 
-  const end = sourceText.indexOf("$$", start + 2);
+  const end = findUnescapedDelimiter(
+    sourceText,
+    delimiters.close,
+    start + delimiters.open.length,
+  );
   if (end < 0) {
     return null;
   }
 
-  const tex = sourceText.slice(start + 2, end).trim();
+  const tex = sourceText.slice(start + delimiters.open.length, end).trim();
   if (!tex) {
     return null;
   }
 
   return {
-    end: end + 2,
+    end: end + delimiters.close.length,
     html: renderKatexHtml(tex, true),
   };
 }
@@ -243,6 +278,24 @@ function tryMatchInlineMath(
   sourceText: string,
   start: number,
 ): { end: number; html: string } | null {
+  if (
+    sourceText.startsWith("\\(", start) &&
+    !isEscapedDelimiter(sourceText, start)
+  ) {
+    const end = findUnescapedDelimiter(sourceText, "\\)", start + 2);
+    if (end < 0) {
+      return null;
+    }
+    const tex = sourceText.slice(start + 2, end).trim();
+    if (!tex || tex.includes("\n")) {
+      return null;
+    }
+    return {
+      end: end + 2,
+      html: renderKatexHtml(tex, false),
+    };
+  }
+
   if (sourceText[start] !== "$") {
     return null;
   }
@@ -462,12 +515,16 @@ function renderInlineFixedFontContent(
       }
     }
 
-    const inlineMath = tryMatchInlineMath(sourceText, cursor);
-    if (inlineMath) {
+    const blockMath = tryMatchBlockMath(sourceText, cursor);
+    const inlineMath = blockMath
+      ? null
+      : tryMatchInlineMath(sourceText, cursor);
+    const math = blockMath ?? inlineMath;
+    if (math) {
       flushPlain(cursor);
-      html += inlineMath.html;
+      html += math.html;
       changed = true;
-      cursor = inlineMath.end;
+      cursor = math.end;
       plainStart = cursor;
       continue;
     }
@@ -655,6 +712,36 @@ function renderMarkdownLineContent(
   return inline;
 }
 
+function renderStandaloneDisplayMath(
+  lines: DiffAwareLine[],
+  start: number,
+  diffAware: boolean,
+): { end: number; html: string } | null {
+  if (diffAware) return null;
+
+  const opening = lines[start]?.content.trim();
+  const closing = opening === "$$" ? "$$" : opening === "\\[" ? "\\]" : null;
+  if (!closing) return null;
+
+  let end = start + 1;
+  while (end < lines.length && lines[end]?.content.trim() !== closing) {
+    end += 1;
+  }
+  if (end >= lines.length) return null;
+
+  const tex = lines
+    .slice(start + 1, end)
+    .map((line) => line.content)
+    .join("\n")
+    .trim();
+  if (!tex) return null;
+
+  return {
+    end: end + 1,
+    html: renderKatexHtml(tex, true),
+  };
+}
+
 function renderRichLine(
   line: DiffAwareLine,
   rendered: ReturnType<typeof renderMarkdownLineContent>,
@@ -693,6 +780,15 @@ function renderFixedFontRichContentInner(
   let index = 0;
 
   while (index < lines.length) {
+    const displayMath = renderStandaloneDisplayMath(lines, index, diffAware);
+    if (displayMath) {
+      html += displayMath.html;
+      if (displayMath.end < lines.length) html += "\n";
+      changed = true;
+      index = displayMath.end;
+      continue;
+    }
+
     const table = renderMarkdownTable(lines, index, renderOptions);
     if (table) {
       html += table.html;
@@ -744,6 +840,8 @@ export function mayHaveFixedFontRichContent(sourceText: string): boolean {
 
   if (
     sourceText.includes("$") ||
+    sourceText.includes("\\(") ||
+    sourceText.includes("\\[") ||
     sourceText.includes("`") ||
     sourceText.includes("[") ||
     sourceText.includes("**") ||

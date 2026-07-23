@@ -565,12 +565,16 @@ describe("useProjectQueues", () => {
 
     await waitFor(() => expect(result.current.items).toHaveLength(1));
     await act(async () => {
-      await result.current.promoteNow("project-1", "1", { force: true });
+      await result.current.promoteNow("project-1", "1", {
+        force: true,
+        deliveryIntent: "steer",
+      });
     });
 
     expect(apiMock.promoteProjectQueueNow).toHaveBeenCalledWith("project-1", {
       itemId: "1",
       force: true,
+      deliveryIntent: "steer",
     });
     expect(result.current.items).toEqual([]);
     expect(result.current.projectStatusesByProject[PROJECT_ID]).toMatchObject({

@@ -175,16 +175,38 @@ color, not the normal per-session queue color. Each inline item should display
 its Project Queue position within the project backlog so users can distinguish
 local session queue order from project-wide queue order.
 
-Inline rendering is a visibility and cancel mirror for items that target the
-current session. The projects page remains the authoritative queue manager for
-cross-project inspection, edit, and retry.
+Inline rendering reuses the current-session queued-message actions for items
+that target that session:
+
+- Copy preserves the queued text.
+- Edit is available only while the main composer has no text, attachments, or
+  uploads. It atomically removes the item from Project Queue and restores its
+  text, uploaded attachments, and permission mode into the composer. It is a
+  take-to-composer action, not a second in-place queue editor.
+- Steer now force-dispatches that item to the existing session with explicit
+  steering intent, bypassing quiet/idle blockers but not global dispatch pause
+  or the per-project in-flight guard.
+- Cancel removes the item from the inline queue.
+
+There is no promote-to-patient action. Patient queue remains a per-session
+delivery intent rather than another Project Queue state. The projects page
+remains the authoritative queue manager for cross-project inspection, full
+in-place edit, retry, and reordering.
+
+An item whose attachments still exist only as Project Queue-owned staged
+references cannot be taken into the session composer: removing that item also
+cleans those staged files. Keep Edit hidden for that case rather than silently
+dropping attachments. Existing-session items normally carry durable uploaded
+attachment references and can restore them.
 
 The projects page is also the authoritative global dispatch pause surface. Show
 Pause/Resume only while Project Queue has visible backlog. When dispatch is
 paused after server restart, copy must distinguish that state from a manual
 pause so users understand why durable backlog is not promoting automatically.
-Destructive item removal should use Delete/Remove wording, not Cancel, because
-it permanently removes the persisted queue item.
+The projects-page queue manager uses Delete/Remove wording for permanent item
+removal. The session-inline queued-message surface uses Cancel, matching the
+neighboring per-session queue action even though both remove the persisted
+Project Queue item.
 
 Move-to-top is project-local. Pausing global dispatch does not change the
 queue's project-scoped semantics; it only stops promotion until Resume.

@@ -1,5 +1,6 @@
 import type {
   EffortLevel,
+  PermissionMode,
   PromptSuggestionMode,
   ProviderName,
   ProjectQueueItemSummary,
@@ -579,6 +580,7 @@ function SessionPageContent({
             attachments: item.message.attachments,
             lastError: item.lastError,
             isMutating: projectQueues.mutatingItemId === item.id,
+            canEdit: !item.message.stagedAttachments,
           },
         ];
       }),
@@ -2454,6 +2456,98 @@ function SessionPageContent({
     [projectId, projectQueues.deleteItem, showToast, t],
   );
 
+  const restoreQueuedMessageToComposer = useCallback(
+    (
+      content: string,
+      queuedAttachments: readonly ComposerAttachment[] = [],
+      mode?: PermissionMode,
+    ) => {
+      const controls = draftControlsRef.current;
+      if (!controls) {
+        return;
+      }
+      const currentDraft = controls.getDraft();
+      controls.setDraft(
+        currentDraft.trim()
+          ? appendComposerTransferDraft(currentDraft, content)
+          : content,
+      );
+      if (queuedAttachments.length > 0) {
+        setComposerAttachments((current) => [...current, ...queuedAttachments]);
+      }
+      if (mode) {
+        setPermissionMode(mode);
+      }
+      setCorrectionDraft(null);
+      requestAnimationFrame(() => controls.focus?.());
+    },
+    [setComposerAttachments, setPermissionMode],
+  );
+
+  const handleEditProjectQueueItem = useCallback(
+    async (itemId: string) => {
+      const controls = draftControlsRef.current;
+      const item = projectQueueItemsForProject.find(
+        (candidate) => candidate.id === itemId,
+      );
+      if (
+        !controls ||
+        controls.getDraft().trim() ||
+        attachmentsRef.current.length > 0 ||
+        pendingUploadsRef.current.size > 0 ||
+        !item ||
+        item.message.stagedAttachments
+      ) {
+        return;
+      }
+
+      try {
+        await projectQueues.deleteItem(projectId, itemId);
+        restoreQueuedMessageToComposer(
+          item.message.text,
+          item.message.attachments,
+          item.message.mode ?? item.target.mode,
+        );
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("projectQueueInlineEditFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [
+      projectId,
+      projectQueueItemsForProject,
+      projectQueues.deleteItem,
+      restoreQueuedMessageToComposer,
+      showToast,
+      t,
+    ],
+  );
+
+  const handleSteerProjectQueueItem = useCallback(
+    async (itemId: string) => {
+      try {
+        const result = await projectQueues.promoteNow(projectId, itemId, {
+          force: true,
+          deliveryIntent: "steer",
+        });
+        if (!result.promoted) {
+          throw new Error(result.error ?? result.reason);
+        }
+        showToast(t("projectQueueInlineSteered"), "success");
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("projectQueueInlineSteerFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [projectId, projectQueues.promoteNow, showToast, t],
+  );
+
   const handleCancelDeferred = useCallback(
     async (tempId: string) => {
       // No optimistic removal: the chip disappears when the server's next
@@ -2481,6 +2575,43 @@ function SessionPageContent({
       }
     },
     [deferredMessages, sessionId, showToast, t],
+  );
+
+  const handleEditDeferred = useCallback(
+    async (tempId: string) => {
+      const controls = draftControlsRef.current;
+      const message = deferredMessages.find(
+        (candidate) => candidate.tempId === tempId,
+      );
+      if (
+        !controls ||
+        controls.getDraft().trim() ||
+        attachmentsRef.current.length > 0 ||
+        pendingUploadsRef.current.size > 0 ||
+        !message
+      ) {
+        return;
+      }
+
+      try {
+        await api.cancelDeferredMessage(sessionId, tempId);
+        lastComposerSubmissionRef.current =
+          getRecallSubmissionAfterQueuedCancel(
+            lastComposerSubmissionRef.current,
+            lastSentComposerSubmissionRef.current,
+            deferredMessages,
+            tempId,
+          );
+        restoreQueuedMessageToComposer(message.content, message.attachments);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("sessionDeferredEditFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [deferredMessages, restoreQueuedMessageToComposer, sessionId, showToast, t],
   );
 
   const handleCancelUnconfirmedUserMessage = useCallback(
@@ -4597,8 +4728,14 @@ function SessionPageContent({
                   getComposerDraft={getComposerDraftForAnchors}
                   composerDraft={composerDraftForAnchors}
                   composerDraftChange={composerDraftChangeForAnchors}
+                  canEditQueuedMessages={
+                    composerDraftForAnchors.trim().length === 0 &&
+                    attachments.length === 0 &&
+                    uploadProgress.length === 0
+                  }
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
+                  onEditDeferred={handleEditDeferred}
                   onCancelUnconfirmedUserMessage={
                     handleCancelUnconfirmedUserMessage
                   }
@@ -4607,6 +4744,8 @@ function SessionPageContent({
                   onSteerRecoveredDeferred={handleSteerRecoveredDeferred}
                   onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
                   onCancelProjectQueueMessage={handleCancelProjectQueueItem}
+                  onEditProjectQueueMessage={handleEditProjectQueueItem}
+                  onSteerProjectQueueMessage={handleSteerProjectQueueItem}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
                   onTrimBeforeUserMessage={trimClientFromUserMessage}
                   onForkBeforeUserMessage={

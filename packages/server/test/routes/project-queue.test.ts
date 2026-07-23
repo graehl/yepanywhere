@@ -288,7 +288,11 @@ describe("Project Queue Routes", () => {
 
     const promoteResponse = await routes.request(`/${projectId}/promote-now`, {
       method: "POST",
-      body: JSON.stringify({ itemId: item.id, force: true }),
+      body: JSON.stringify({
+        itemId: item.id,
+        force: true,
+        deliveryIntent: "steer",
+      }),
       headers: { "Content-Type": "application/json" },
     });
     const promoteBody = await promoteResponse.json();
@@ -301,6 +305,7 @@ describe("Project Queue Routes", () => {
     expect(projectQueueScheduler.promoteNow).toHaveBeenCalledWith(projectId, {
       itemId: item.id,
       force: true,
+      deliveryIntent: "steer",
     });
   });
 

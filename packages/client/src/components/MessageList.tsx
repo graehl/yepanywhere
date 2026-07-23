@@ -393,6 +393,7 @@ interface InlineProjectQueueMessage {
   attachments?: UploadedFile[];
   lastError?: string;
   isMutating?: boolean;
+  canEdit?: boolean;
 }
 
 function formatQueuedAge(timestampMs: number, nowMs: number): string {
@@ -481,10 +482,14 @@ interface Props {
   getComposerDraft?: () => string;
   composerDraft?: string;
   composerDraftChange?: DraftTextChangeMetadata;
+  /** Whether the composer is empty enough to take a queued item for editing. */
+  canEditQueuedMessages?: boolean;
   /** Clear all comment anchors after the quoted turn is sent. */
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Move a live deferred message back into an empty composer. */
+  onEditDeferred?: (tempId: string) => void;
   /** Callback to cancel an optimistic steering send before the provider acts. */
   onCancelUnconfirmedUserMessage?: (tempId: string) => void;
   /** Steer a patient queued message, and earlier patient entries, into the session now */
@@ -497,6 +502,10 @@ interface Props {
   onDeleteRecoveredDeferred?: (queueId: string) => void;
   /** Callback to cancel a Project Queue item */
   onCancelProjectQueueMessage?: (itemId: string) => void;
+  /** Move a Project Queue item back into an empty composer. */
+  onEditProjectQueueMessage?: (itemId: string) => void;
+  /** Force a Project Queue item into the active session now. */
+  onSteerProjectQueueMessage?: (itemId: string) => void;
   /** Callback to correct the latest actually-sent user message */
   onCorrectLatestUserMessage?: (messageId: string, content: string) => void;
   /** Callback to aggressively reload the client transcript from a user turn */
@@ -557,6 +566,25 @@ function XIcon({ size = 14 }: { size?: number }) {
     >
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function PencilIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   );
 }
@@ -683,6 +711,90 @@ function BtwAsideTimelineCard({
   );
 }
 
+interface QueuedMessageActionsProps {
+  variant: "session" | "project";
+  text: string;
+  canEdit: boolean;
+  disabled?: boolean;
+  onEdit?: () => void;
+  onSteer?: () => void;
+  steerLabel?: string;
+  onCancel?: () => void;
+}
+
+function QueuedMessageActions({
+  variant,
+  text,
+  canEdit,
+  disabled = false,
+  onEdit,
+  onSteer,
+  steerLabel,
+  onCancel,
+}: QueuedMessageActionsProps) {
+  const { t } = useI18n();
+  const isProject = variant === "project";
+  const editLabel = isProject
+    ? t("projectQueueInlineEdit")
+    : t("sessionQueuedEdit");
+  const cancelLabel = isProject
+    ? t("projectQueueInlineCancel")
+    : t("sessionQueuedCancel");
+
+  return (
+    <div className="deferred-message-actions" data-queue-actions={variant}>
+      <CopyTextButton
+        text={text}
+        label={isProject ? t("projectQueueInlineCopy") : t("sessionQueuedCopy")}
+        className="deferred-message-action deferred-message-action-copy"
+        showTextLabel
+        onClick={(event) => event.stopPropagation()}
+      />
+      {canEdit && onEdit ? (
+        <button
+          type="button"
+          className="deferred-message-action deferred-message-action-edit"
+          disabled={disabled}
+          onClick={onEdit}
+          aria-label={editLabel}
+          title={editLabel}
+        >
+          <PencilIcon />
+          <span>{t("projectQueueEdit")}</span>
+        </button>
+      ) : null}
+      {onSteer ? (
+        <button
+          type="button"
+          className="deferred-message-action deferred-message-action-steer"
+          disabled={disabled}
+          onClick={onSteer}
+          aria-label={steerLabel ?? t("sessionSteerQueuedMessageNow")}
+          title={steerLabel ?? t("sessionSteerQueuedMessageNow")}
+        >
+          <PlayIcon />
+          <span>{t("sessionSteerNow")}</span>
+        </button>
+      ) : null}
+      {onCancel ? (
+        <button
+          type="button"
+          className={`deferred-message-action deferred-message-action-cancel ${
+            isProject ? "project-queue-inline-message-cancel" : ""
+          }`}
+          disabled={disabled}
+          onClick={onCancel}
+          aria-label={cancelLabel}
+          title={cancelLabel}
+        >
+          <XIcon />
+          <span>{t("projectQueueCancel")}</span>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   transcriptDisplayObjects = EMPTY_TRANSCRIPT_DISPLAY_OBJECTS,
@@ -704,14 +816,18 @@ export const MessageList = memo(function MessageList({
   getComposerDraft,
   composerDraft = "",
   composerDraftChange,
+  canEditQueuedMessages,
   quoteClearSignal = 0,
   onCancelDeferred,
+  onEditDeferred,
   onCancelUnconfirmedUserMessage,
   onSteerDeferred,
   onResumeRecoveredDeferred,
   onSteerRecoveredDeferred,
   onDeleteRecoveredDeferred,
   onCancelProjectQueueMessage,
+  onEditProjectQueueMessage,
+  onSteerProjectQueueMessage,
   onCorrectLatestUserMessage,
   onTrimBeforeUserMessage,
   onForkBeforeUserMessage,
@@ -806,6 +922,8 @@ export const MessageList = memo(function MessageList({
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const { t } = useI18n();
+  const queuedEditAvailable =
+    canEditQueuedMessages ?? composerDraft.trim().length === 0;
   const nowMs = useRelativeNow();
   const reportFollowingBottom = useCallback((followingBottom: boolean) => {
     onFollowingBottomChangeRef.current?.(followingBottom);
@@ -2618,30 +2736,31 @@ export const MessageList = memo(function MessageList({
                         {projectQueue.lastError}
                       </span>
                     )}
-                    <div className="deferred-message-actions">
-                      <CopyTextButton
-                        text={projectQueue.content}
-                        label={t("projectQueueInlineCopy")}
-                        className="deferred-message-action deferred-message-action-copy"
-                        showTextLabel
-                        onClick={(event) => event.stopPropagation()}
-                      />
-                      {tailRow.allowsCancel && onCancelProjectQueueMessage && (
-                        <button
-                          type="button"
-                          className="deferred-message-action deferred-message-action-cancel project-queue-inline-message-cancel"
-                          disabled={projectQueue.isMutating}
-                          onClick={() =>
-                            onCancelProjectQueueMessage(projectQueue.id)
-                          }
-                          aria-label={t("projectQueueInlineCancel")}
-                          title={t("projectQueueInlineCancel")}
-                        >
-                          <XIcon />
-                          <span>{t("projectQueueDelete")}</span>
-                        </button>
-                      )}
-                    </div>
+                    <QueuedMessageActions
+                      variant="project"
+                      text={projectQueue.content}
+                      canEdit={
+                        queuedEditAvailable && projectQueue.canEdit !== false
+                      }
+                      disabled={projectQueue.isMutating}
+                      onEdit={
+                        tailRow.allowsCancel && onEditProjectQueueMessage
+                          ? () => onEditProjectQueueMessage(projectQueue.id)
+                          : undefined
+                      }
+                      onSteer={
+                        tailRow.projectQueueStatusKind === "queued" &&
+                        onSteerProjectQueueMessage
+                          ? () => onSteerProjectQueueMessage(projectQueue.id)
+                          : undefined
+                      }
+                      steerLabel={t("projectQueueInlineSteer")}
+                      onCancel={
+                        tailRow.allowsCancel && onCancelProjectQueueMessage
+                          ? () => onCancelProjectQueueMessage(projectQueue.id)
+                          : undefined
+                      }
+                    />
                   </div>
                 </div>
                 <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
@@ -2734,93 +2853,85 @@ export const MessageList = memo(function MessageList({
                       <span>{deferred.attachmentCount}</span>
                     </span>
                   ) : null}
-                  <div className="deferred-message-actions">
-                    <CopyTextButton
+                  {tailRow.isRecovered ? (
+                    <div className="deferred-message-actions">
+                      <CopyTextButton
+                        text={deferred.content}
+                        label={t("sessionQueuedCopy")}
+                        className="deferred-message-action deferred-message-action-copy"
+                        showTextLabel
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                      {recoveredQueueId && onSteerRecoveredDeferred ? (
+                        <button
+                          type="button"
+                          className="deferred-message-action deferred-message-action-steer"
+                          onClick={() =>
+                            onSteerRecoveredDeferred(recoveredQueueId)
+                          }
+                          aria-label={steerQueuedLabel}
+                          title={steerQueuedLabel}
+                        >
+                          <PlayIcon />
+                          <span>{t("sessionSteerNow")}</span>
+                        </button>
+                      ) : null}
+                      {tailRow.allowsRecoveredResume &&
+                      recoveredQueueId &&
+                      onResumeRecoveredDeferred ? (
+                        <button
+                          type="button"
+                          className="deferred-message-action deferred-message-action-resume"
+                          onClick={() =>
+                            onResumeRecoveredDeferred(recoveredQueueId)
+                          }
+                          aria-label={t("sessionRecoveredQueuedResume")}
+                          title={t("sessionRecoveredQueuedResume")}
+                        >
+                          <PlayIcon />
+                          <span>{t("sessionRecoveredQueuedResumeShort")}</span>
+                        </button>
+                      ) : null}
+                      {tailRow.allowsRecoveredDelete &&
+                      recoveredQueueId &&
+                      onDeleteRecoveredDeferred ? (
+                        <button
+                          type="button"
+                          className="deferred-message-action deferred-message-action-cancel"
+                          onClick={() =>
+                            onDeleteRecoveredDeferred(recoveredQueueId)
+                          }
+                          aria-label={t("sessionRecoveredQueuedDelete")}
+                          title={t("sessionRecoveredQueuedDelete")}
+                        >
+                          <XIcon />
+                          <span>{t("sessionRecoveredQueuedDeleteShort")}</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <QueuedMessageActions
+                      variant="session"
                       text={deferred.content}
-                      label="Copy queued message"
-                      className="deferred-message-action deferred-message-action-copy"
-                      showTextLabel
-                      onClick={(event) => event.stopPropagation()}
+                      canEdit={queuedEditAvailable}
+                      onEdit={
+                        deferred.tempId && onEditDeferred
+                          ? () => onEditDeferred(deferred.tempId as string)
+                          : undefined
+                      }
+                      onSteer={
+                        tailRow.isPatient && deferred.tempId && onSteerDeferred
+                          ? () => onSteerDeferred(deferred.tempId as string)
+                          : undefined
+                      }
+                      steerLabel={steerQueuedLabel}
+                      onCancel={
+                        tailRow.allowsDeferredCancel && onCancelDeferred
+                          ? () => onCancelDeferred(deferred.tempId as string)
+                          : undefined
+                      }
                     />
-                    {tailRow.isPatient &&
-                    !tailRow.isRecovered &&
-                    deferred.tempId &&
-                    onSteerDeferred ? (
-                      <button
-                        type="button"
-                        className="deferred-message-action deferred-message-action-steer"
-                        onClick={() =>
-                          onSteerDeferred(deferred.tempId as string)
-                        }
-                        aria-label={steerQueuedLabel}
-                        title={steerQueuedLabel}
-                      >
-                        <PlayIcon />
-                        <span>{t("sessionSteerNow")}</span>
-                      </button>
-                    ) : null}
-                    {tailRow.isRecovered &&
-                    recoveredQueueId &&
-                    onSteerRecoveredDeferred ? (
-                      <button
-                        type="button"
-                        className="deferred-message-action deferred-message-action-steer"
-                        onClick={() =>
-                          onSteerRecoveredDeferred(recoveredQueueId)
-                        }
-                        aria-label={steerQueuedLabel}
-                        title={steerQueuedLabel}
-                      >
-                        <PlayIcon />
-                        <span>{t("sessionSteerNow")}</span>
-                      </button>
-                    ) : null}
-                    {tailRow.allowsRecoveredResume &&
-                    recoveredQueueId &&
-                    onResumeRecoveredDeferred ? (
-                      <button
-                        type="button"
-                        className="deferred-message-action deferred-message-action-resume"
-                        onClick={() =>
-                          onResumeRecoveredDeferred(recoveredQueueId)
-                        }
-                        aria-label={t("sessionRecoveredQueuedResume")}
-                        title={t("sessionRecoveredQueuedResume")}
-                      >
-                        <PlayIcon />
-                        <span>{t("sessionRecoveredQueuedResumeShort")}</span>
-                      </button>
-                    ) : null}
-                    {tailRow.allowsRecoveredDelete &&
-                    recoveredQueueId &&
-                    onDeleteRecoveredDeferred ? (
-                      <button
-                        type="button"
-                        className="deferred-message-action deferred-message-action-cancel"
-                        onClick={() =>
-                          onDeleteRecoveredDeferred(recoveredQueueId)
-                        }
-                        aria-label={t("sessionRecoveredQueuedDelete")}
-                        title={t("sessionRecoveredQueuedDelete")}
-                      >
-                        <XIcon />
-                        <span>{t("sessionRecoveredQueuedDeleteShort")}</span>
-                      </button>
-                    ) : tailRow.allowsDeferredCancel && onCancelDeferred ? (
-                      <button
-                        type="button"
-                        className="deferred-message-action deferred-message-action-cancel"
-                        onClick={() =>
-                          onCancelDeferred(deferred.tempId as string)
-                        }
-                        aria-label="Cancel queued message"
-                        title="Cancel queued message"
-                      >
-                        <XIcon />
-                        <span>Cancel</span>
-                      </button>
-                    ) : null}
-                  </div>
+                  )}
                 </div>
               </div>
               <MessageAge timestampMs={timestampMs} nowMs={nowMs} />

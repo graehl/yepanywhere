@@ -48,6 +48,42 @@ describe("MessageList queue rows", () => {
     expect(onCancelDeferred).toHaveBeenCalledWith("temp-queued");
   });
 
+  it("offers take-to-composer editing only while the composer is blank", () => {
+    const onEditDeferred = vi.fn();
+    const deferredMessages = [
+      {
+        tempId: "temp-queued",
+        content: "queued text",
+        timestamp: "2026-04-25T00:00:00.000Z",
+      },
+    ];
+    const { rerender } = render(
+      <MessageList
+        messages={[]}
+        composerDraft="   "
+        deferredMessages={deferredMessages}
+        onEditDeferred={onEditDeferred}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message" }),
+    );
+    expect(onEditDeferred).toHaveBeenCalledWith("temp-queued");
+
+    rerender(
+      <MessageList
+        messages={[]}
+        composerDraft="existing draft"
+        deferredMessages={deferredMessages}
+        onEditDeferred={onEditDeferred}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Edit queued message" })).toBe(
+      null,
+    );
+  });
+
   it("copies sent user message text", async () => {
     const writeText = stubClipboardWriteText();
 
@@ -298,7 +334,7 @@ describe("MessageList queue rows", () => {
     expect(screen.getByText("Project Queue (#2)")).toBeTruthy();
   });
 
-  it("deletes inline project queue messages", () => {
+  it("cancels inline project queue messages", () => {
     const onCancelProjectQueueMessage = vi.fn();
     render(
       <MessageList
@@ -317,10 +353,42 @@ describe("MessageList queue rows", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Delete Project Queue item" }),
+      screen.getByRole("button", { name: "Cancel Project Queue item" }),
     );
 
     expect(onCancelProjectQueueMessage).toHaveBeenCalledWith("project-queue-1");
+  });
+
+  it("shares edit and steer actions with inline Project Queue messages", () => {
+    const onEditProjectQueueMessage = vi.fn();
+    const onSteerProjectQueueMessage = vi.fn();
+    render(
+      <MessageList
+        messages={[]}
+        composerDraft=""
+        projectQueueMessages={[
+          {
+            id: "project-queue-1",
+            content: "project queued",
+            timestamp: "2026-04-25T00:00:05.000Z",
+            status: "queued",
+            projectPosition: 1,
+          },
+        ]}
+        onEditProjectQueueMessage={onEditProjectQueueMessage}
+        onSteerProjectQueueMessage={onSteerProjectQueueMessage}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit Project Queue item" }),
+    );
+    expect(onEditProjectQueueMessage).toHaveBeenCalledWith("project-queue-1");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Steer Project Queue item now" }),
+    );
+    expect(onSteerProjectQueueMessage).toHaveBeenCalledWith("project-queue-1");
   });
 
   it("keeps the latest stale message age visible in the right rail", () => {

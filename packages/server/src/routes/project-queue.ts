@@ -70,6 +70,9 @@ export function createGlobalProjectQueueRoutes(
         ? { itemId: body.itemId }
         : {}),
       ...(body.force === true ? { force: true } : {}),
+      ...(body.deliveryIntent === "steer"
+        ? { deliveryIntent: "steer" as const }
+        : {}),
     };
     const promoteResult = await deps.projectQueueScheduler.promoteNow(
       projectId,

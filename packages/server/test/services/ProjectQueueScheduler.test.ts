@@ -510,6 +510,7 @@ describe("ProjectQueueScheduler", () => {
     const forced = await scheduler.promoteNow(projectId, {
       itemId: item.id,
       force: true,
+      deliveryIntent: "steer",
     });
 
     expect(forced).toMatchObject({
@@ -521,7 +522,10 @@ describe("ProjectQueueScheduler", () => {
     expect(supervisor.resumeCalls).toHaveLength(1);
     expect(supervisor.resumeCalls[0]).toMatchObject({
       sessionId: "session-2",
-      message: { text: "force despite blocker" },
+      message: {
+        text: "force despite blocker",
+        metadata: { deliveryIntent: "steer", steerNow: true },
+      },
     });
   });
 

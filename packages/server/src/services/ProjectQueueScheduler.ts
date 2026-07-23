@@ -105,6 +105,7 @@ type RunProjectResult =
 interface PromoteNowOptions {
   itemId?: string;
   force?: boolean;
+  deliveryIntent?: "steer";
 }
 
 export interface ProjectQueueSchedulerOptions {
@@ -496,7 +497,7 @@ export class ProjectQueueScheduler {
         }
       }
 
-      const result = await this.dispatchItem(item);
+      const result = await this.dispatchItem(item, options);
       await this.projectQueueService.completeDispatch(projectId, item.id);
       const sessionId =
         item.target.type === "existing-session"
@@ -539,6 +540,7 @@ export class ProjectQueueScheduler {
 
   private async dispatchItem(
     item: ProjectQueueItem,
+    options: PromoteNowOptions,
   ): Promise<ProjectQueueDispatchResult> {
     const permissionMode = item.message.mode ?? item.target.mode;
     const modelSettings = this.toModelSettings(item);
@@ -548,6 +550,7 @@ export class ProjectQueueScheduler {
             item,
             permissionMode,
             modelSettings,
+            options.deliveryIntent,
           )
         : await this.dispatchNewSessionItem(
             item,
@@ -569,6 +572,7 @@ export class ProjectQueueScheduler {
     item: ProjectQueueItem,
     permissionMode: PermissionMode | undefined,
     modelSettings: ModelSettings,
+    deliveryIntent: PromoteNowOptions["deliveryIntent"],
   ): Promise<ProjectQueueDispatchResult> {
     if (item.target.type !== "existing-session") {
       throw new Error("Project queue item target changed during dispatch");
@@ -580,7 +584,7 @@ export class ProjectQueueScheduler {
     return this.supervisor.resumeSession(
       item.target.sessionId,
       item.projectPath,
-      this.toUserMessage(item, stagedAttachments),
+      this.toUserMessage(item, stagedAttachments, deliveryIntent),
       permissionMode,
       modelSettings,
     );
@@ -651,6 +655,7 @@ export class ProjectQueueScheduler {
   private toUserMessage(
     item: ProjectQueueItem,
     stagedAttachments: readonly UploadedFile[] = [],
+    deliveryIntent?: PromoteNowOptions["deliveryIntent"],
   ): UserMessage {
     const attachments =
       item.message.attachments || stagedAttachments.length > 0
@@ -660,7 +665,16 @@ export class ProjectQueueScheduler {
       text: item.message.text,
       ...(attachments ? { attachments } : {}),
       ...(item.message.mode ? { mode: item.message.mode } : {}),
-      ...(item.message.metadata ? { metadata: item.message.metadata } : {}),
+      ...(item.message.metadata || deliveryIntent
+        ? {
+            metadata: {
+              ...item.message.metadata,
+              ...(deliveryIntent === "steer"
+                ? { deliveryIntent: "steer" as const, steerNow: true }
+                : {}),
+            },
+          }
+        : {}),
     };
   }
 

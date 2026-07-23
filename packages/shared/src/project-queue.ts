@@ -77,6 +77,8 @@ export interface ProjectQueuePromoteNowResult {
 export interface ProjectQueuePromoteNowRequest {
   itemId?: string;
   force?: boolean;
+  /** Deliver an existing-session item through the provider's active-turn steering path. */
+  deliveryIntent?: "steer";
 }
 
 export type ProjectQueueClientSource =

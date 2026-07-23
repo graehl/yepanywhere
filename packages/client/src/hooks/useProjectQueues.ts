@@ -40,7 +40,7 @@ export interface UseProjectQueuesResult {
   promoteNow: (
     projectId: string,
     itemId: string,
-    options?: { force?: boolean },
+    options?: { force?: boolean; deliveryIntent?: "steer" },
   ) => Promise<ProjectQueuePromoteNowResult>;
   updateItem: (
     projectId: string,
@@ -245,7 +245,7 @@ export function useProjectQueues(
     async (
       projectId: string,
       itemId: string,
-      options: { force?: boolean } = {},
+      options: { force?: boolean; deliveryIntent?: "steer" } = {},
     ) => {
       setMutatingPromoteItemId(itemId);
       setMutationError(null);
@@ -254,6 +254,9 @@ export function useProjectQueues(
         const response = await api.promoteProjectQueueNow(projectId, {
           itemId,
           ...(options.force ? { force: true } : {}),
+          ...(options.deliveryIntent
+            ? { deliveryIntent: options.deliveryIntent }
+            : {}),
         });
         requestSummary.reportProjectQueueGlobalCollectionSnapshot(response);
         return response.promoteResult;

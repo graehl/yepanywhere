@@ -159,6 +159,11 @@ interface Props {
   onQueue?: (text: string, metadata?: MessageSubmissionMetadata) => void;
   /** Queue through the project-level idle gate. Hidden unless opted in. */
   onProjectQueue?: (text: string, metadata?: MessageSubmissionMetadata) => void;
+  /** Queue this draft as the opening turn of a new session in the project. */
+  onProjectQueueNewSession?: (
+    text: string,
+    metadata?: MessageSubmissionMetadata,
+  ) => void;
   disabled?: boolean;
   placeholder?: string;
   mode?: PermissionMode;
@@ -279,6 +284,7 @@ export function MessageInput({
   onSend,
   onQueue,
   onProjectQueue,
+  onProjectQueueNewSession,
   disabled,
   placeholder,
   mode = "default",
@@ -1032,34 +1038,51 @@ export function MessageInput({
     resetCompositionMetadata,
   ]);
 
+  const submitToProjectQueue = useCallback(
+    (
+      submit:
+        | ((
+            text: string,
+            metadata?: MessageSubmissionMetadata,
+          ) => void)
+        | undefined,
+    ) => {
+      if (!submit) return;
+
+      // Stop voice recording and get any pending interim text
+      const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+
+      let finalText = controls.getDraft().trimEnd();
+      if (pendingVoice) {
+        finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+      }
+
+      const hasContent = finalText.trim() || attachments.length > 0;
+      if (hasContent && !disabled) {
+        const metadata = buildSubmissionMetadata("deferred");
+        controls.clearInput();
+        resetCompositionMetadata();
+        setInterimTranscript("");
+        submit(finalText.trim(), metadata);
+        textareaRef.current?.focus();
+      }
+    },
+    [
+      attachments.length,
+      buildSubmissionMetadata,
+      controls,
+      disabled,
+      resetCompositionMetadata,
+    ],
+  );
+
   const handleProjectQueue = useCallback(() => {
-    if (!onProjectQueue) return;
+    submitToProjectQueue(onProjectQueue);
+  }, [onProjectQueue, submitToProjectQueue]);
 
-    // Stop voice recording and get any pending interim text
-    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-
-    let finalText = controls.getDraft().trimEnd();
-    if (pendingVoice) {
-      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
-    }
-
-    const hasContent = finalText.trim() || attachments.length > 0;
-    if (hasContent && !disabled) {
-      const metadata = buildSubmissionMetadata("deferred");
-      controls.clearInput();
-      resetCompositionMetadata();
-      setInterimTranscript("");
-      onProjectQueue(finalText.trim(), metadata);
-      textareaRef.current?.focus();
-    }
-  }, [
-    attachments.length,
-    buildSubmissionMetadata,
-    controls,
-    disabled,
-    onProjectQueue,
-    resetCompositionMetadata,
-  ]);
+  const handleProjectQueueNewSession = useCallback(() => {
+    submitToProjectQueue(onProjectQueueNewSession);
+  }, [onProjectQueueNewSession, submitToProjectQueue]);
 
   const handleBtwClick = useCallback(() => {
     if (disabled || !onBtwShortcut) return;
@@ -1834,6 +1857,10 @@ export function MessageInput({
     onQueue: onQueue ? handleQueue : undefined,
     onProjectQueue:
       onProjectQueue && !forkSummaryMode ? handleProjectQueue : undefined,
+    onProjectQueueNewSession:
+      onProjectQueueNewSession && !forkSummaryMode
+        ? handleProjectQueueNewSession
+        : undefined,
     onSteer: hasActiveDualActions ? handleSteer : undefined,
     primaryActionKind: effectivePrimaryActionKind,
     sendOverride: forkSummaryMode

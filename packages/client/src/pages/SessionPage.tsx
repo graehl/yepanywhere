@@ -4,6 +4,7 @@ import type {
   PromptSuggestionMode,
   ProviderName,
   ProjectQueueItemSummary,
+  ProjectQueueStagedAttachments,
   PublicSessionShareSessionStatusResponse,
   ThinkingMode,
   TranscriptDisplayObject,
@@ -138,6 +139,7 @@ import {
   createComposerDraftAttachmentState,
   getComposerTransferReplacement,
   materializeComposerAttachmentsForSubmission,
+  splitComposerAttachmentsForSubmission,
   type PreparedComposerSubmission,
   uploadComposerAttachmentFile,
 } from "../lib/sessionComposerSubmission";
@@ -2354,8 +2356,9 @@ function SessionPageContent({
     }
   };
 
-  const handleProjectQueue = async (
+  const queueComposerForProject = async (
     text: string,
+    targetType: "existing-session" | "new-session",
     metadata?: MessageSubmissionMetadata,
   ) => {
     const prepared = prepareComposerSubmission(text);
@@ -2370,40 +2373,62 @@ function SessionPageContent({
 
     let currentAttachments = [...attachmentsRef.current];
     let uploadedAttachments: UploadedFile[] = [];
+    let stagedAttachments: ProjectQueueStagedAttachments | undefined;
 
     try {
       currentAttachments = await collectComposerAttachmentsForSubmission();
-      uploadedAttachments =
-        await materializeComposerAttachments(currentAttachments);
+      if (targetType === "new-session") {
+        const splitAttachments =
+          splitComposerAttachmentsForSubmission(currentAttachments);
+        uploadedAttachments = splitAttachments.uploadedFiles;
+        stagedAttachments = splitAttachments.draftState ?? undefined;
+      } else {
+        uploadedAttachments =
+          await materializeComposerAttachments(currentAttachments);
+      }
       logSessionUiTrace("composer-project-queue-start", {
         sessionId,
         projectId,
+        targetType,
         permissionMode,
         thinking,
         slashCommand: slashCommand ?? null,
         textLength: outgoingText.length,
-        attachmentCount: uploadedAttachments.length,
+        attachmentCount: currentAttachments.length,
         clientTimestamp,
         serverOffsetMs: getEstimatedServerOffsetMs(),
       });
       const requestSentAtMs = Date.now();
       const response = await api.createProjectQueueItem(projectId, {
-        target: {
-          type: "existing-session",
-          sessionId,
-          mode: permissionMode,
-          model: session?.model ?? getModelSetting(),
-          thinking,
-          showThinking,
-          provider: effectiveProvider,
-          executor: session?.executor,
-        },
+        target:
+          targetType === "new-session"
+            ? {
+                type: "new-session",
+                mode: permissionMode,
+                model: session?.model ?? getModelSetting(),
+                thinking,
+                showThinking,
+                provider: effectiveProvider,
+                executor: session?.executor,
+                title: outgoingText,
+              }
+            : {
+                type: "existing-session",
+                sessionId,
+                mode: permissionMode,
+                model: session?.model ?? getModelSetting(),
+                thinking,
+                showThinking,
+                provider: effectiveProvider,
+                executor: session?.executor,
+              },
         message: {
           text: outgoingText,
           mode: permissionMode,
           ...(uploadedAttachments.length > 0
             ? { attachments: uploadedAttachments }
             : {}),
+          ...(stagedAttachments ? { stagedAttachments } : {}),
           metadata: {
             ...metadata,
             deliveryIntent: "deferred",
@@ -2419,18 +2444,27 @@ function SessionPageContent({
       logSessionUiTrace("composer-project-queue-result", {
         sessionId,
         projectId,
+        targetType,
         uploadWaitMs: requestSentAtMs - actionAtMs,
       });
       draftControlsRef.current?.clearDraft();
       revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();
-      showToast(t("projectQueueSessionQueuedToast"), "success");
+      showToast(
+        t(
+          targetType === "new-session"
+            ? "projectQueueNewSessionQueuedToast"
+            : "projectQueueSessionQueuedToast",
+        ),
+        "success",
+      );
     } catch (err) {
-      console.error("Failed to queue project message:", err);
+      console.error("Failed to queue Project Queue message:", err);
       logSessionUiTrace("composer-project-queue-error", {
         sessionId,
         projectId,
+        targetType,
         message: err instanceof Error ? err.message : String(err),
       });
       draftControlsRef.current?.restoreFromStorage();
@@ -2439,6 +2473,16 @@ function SessionPageContent({
       showToast(t("projectQueueSubmitFailed", { message: errorMsg }), "error");
     }
   };
+
+  const handleProjectQueue = (
+    text: string,
+    metadata?: MessageSubmissionMetadata,
+  ) => queueComposerForProject(text, "existing-session", metadata);
+
+  const handleProjectQueueNewSession = (
+    text: string,
+    metadata?: MessageSubmissionMetadata,
+  ) => queueComposerForProject(text, "new-session", metadata);
 
   const handleCancelProjectQueueItem = useCallback(
     async (itemId: string) => {
@@ -4925,6 +4969,11 @@ function SessionPageContent({
                 onProjectQueue={
                   !mainComposerForAside && showProjectQueueAction
                     ? handleProjectQueue
+                    : undefined
+                }
+                onProjectQueueNewSession={
+                  !mainComposerForAside && supportsProjectQueue
+                    ? handleProjectQueueNewSession
                     : undefined
                 }
                 primaryActionKind={

@@ -64,6 +64,7 @@ export interface ComposerToolbarOverflowLayoutSignatureInput {
   btw: ComposerToolbarOverflowPriorityInput;
   steerNow: ComposerToolbarOverflowPriorityInput;
   projectQueue: ComposerToolbarOverflowPriorityInput;
+  projectQueueNewSession: boolean;
   microphone: "live" | "preview" | "off";
   waveform: boolean;
   send: "send" | "steer" | "queue" | "off" | undefined;
@@ -89,6 +90,7 @@ export function getComposerToolbarOverflowLayoutSignature(
     `btw:${input.btw}`,
     `steerNow:${input.steerNow}`,
     `projectQueue:${input.projectQueue}`,
+    `projectQueueNewSession:${input.projectQueueNewSession}`,
     `microphone:${input.microphone}`,
     `waveform:${input.waveform}`,
     `send:${input.send}`,

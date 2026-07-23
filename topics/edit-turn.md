@@ -7,12 +7,11 @@ Topic: edit-turn
 
 ## Proposal status
 
-Queued-turn inline editing is implemented as of 2026-06-11: clicking a queued
-turn edits it in place, blur saves the queued text in place, and `Cancel edit
-(Esc)` restores the original text without moving it into the composer. Sent-turn
-editing is still correction editing through the composer. The remaining proposed
-direction is to make sent-turn correction use the same inline target shape when
-that product contract is ready.
+Queued-turn inline editing is proposed, not current behavior. Live regular,
+patient, and current-session Project Queue rows currently use
+take-to-composer editing: Edit removes the queued item and restores its content
+to the main composer. The Projects page has a separate in-place Project Queue
+editor. Sent-turn editing remains correction editing through the composer.
 
 ## Problem
 
@@ -22,6 +21,12 @@ as a fresh-message composer. The UI needs a discoverable escape hatch and a
 visible edit target so a destructive-looking local edit can be cancelled without
 guessing which mode is active.
 
+Queued text also accumulates while the surrounding conversation and backlog
+continue to change. Users need to correct that scratchpad without cancelling and
+re-appending it at the tail: that silently changes the intended delivery order
+and can let later queued context pass the edited item. Keeping the queued row as
+the editing surface makes both its identity and its position visible.
+
 ## Inline edit contract
 
 - Entering edit mode replaces the target queued or sent user turn with an
@@ -29,7 +34,9 @@ guessing which mode is active.
 - Focus moves into the inline editor. The normal composer should not be the
   active fresh-message target while inline edit is active.
 - The editor autogrows with input up to a bounded height, then scrolls
-  internally. Controls remain attached to the edited turn.
+  internally. As lines are added or removed, the queued-message stack reflows
+  around the editor while preserving its existing bottom anchoring; controls
+  remain attached to the edited turn.
 - The turn shows a visible edit-state control such as `Cancel edit (Esc)`.
 - Pressing `Esc` while focus is inside the inline editor cancels edit mode,
   restores the original turn text, and removes the visible cancel control. That
@@ -44,6 +51,10 @@ guessing which mode is active.
 Queued turn editing is scratchpad editing: the saved result should update the
 queued item while preserving the queue contract, including original queue
 position and any edit barrier needed to keep later queued items from passing it.
+Entering edit mode therefore requires a server-visible hold on that same item,
+not a client-only textarea over a dispatchable row. Save patches the held item
+in place and releases it; cancel restores the original item and releases it.
+The hold prevents the original text from dispatching while the user edits.
 
 Sent turn editing is correction editing under the current YA model. It does not
 mutate the historical provider transcript, and the user-facing submit action

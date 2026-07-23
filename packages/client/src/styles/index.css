@@ -6143,6 +6143,24 @@ a.linkified-url:hover {
   box-shadow: none;
 }
 
+.project-queue-new-session-mark {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--project-queue-action-bg);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .send-button.patient-queue-action {
   background: var(--patient-queue-action-bg);
   color: white;

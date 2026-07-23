@@ -292,6 +292,10 @@ vi.mock("../../i18n", () => ({
             "Send after all sessions in this project are idle",
           toolbarProjectQueueTooltipWithShortcut:
             "Send after all sessions in this project are idle\nCtrl+Enter",
+          toolbarProjectQueueNewSessionLabel:
+            "Queue as new session for Project Queue",
+          toolbarProjectQueueNewSessionTooltip:
+            "Start a new session after all sessions in this project are idle",
           toolbarLivenessVerifiedProgress: "Verified progress",
           toolbarLivenessVerifiedIdle: "Verified idle",
           toolbarRelativeAgeNow: "now",
@@ -602,6 +606,10 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
       "Send after all sessions in this project are idle",
     toolbarProjectQueueTooltipWithShortcut:
       "Send after all sessions in this project are idle\nCtrl+Enter",
+    toolbarProjectQueueNewSessionLabel:
+      "Queue as new session for Project Queue",
+    toolbarProjectQueueNewSessionTooltip:
+      "Start a new session after all sessions in this project are idle",
     toolbarSteerNowLabel: "Steer now",
     toolbarSteerNowShortLabel: "Now",
     toolbarSteerNowTooltip: "Steer current turn now",
@@ -3055,12 +3063,14 @@ describe("MessageInput", () => {
     };
     const onQueue = vi.fn();
     const onProjectQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
     const textarea = renderMessageInput(
       vi.fn(() => true),
       {
         supportsSteering: true,
         onQueue,
         onProjectQueue,
+        onProjectQueueNewSession,
       },
     );
 
@@ -3068,7 +3078,27 @@ describe("MessageInput", () => {
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
 
     expectSubmission(onProjectQueue, "project quiet later", "deferred");
+    expect(onProjectQueueNewSession).not.toHaveBeenCalled();
     expect(onQueue).not.toHaveBeenCalled();
+  });
+
+  it("does not bind Ctrl+Enter to the Project Queue new-session action", () => {
+    const onQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        supportsSteering: true,
+        onQueue,
+        onProjectQueueNewSession,
+      },
+    );
+
+    fireEvent.change(textarea, { target: { value: "stay in this session" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    expectSubmission(onQueue, "stay in this session", "deferred");
+    expect(onProjectQueueNewSession).not.toHaveBeenCalled();
   });
 
   it("falls back to patient queue when the Project Queue shortcut is disabled", () => {
@@ -3176,18 +3206,72 @@ describe("MessageInput", () => {
     expectSubmission(onProjectQueue, "project-wide later", "deferred");
   });
 
+  it("routes the explicit Project Queue new-session action", () => {
+    const onProjectQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      onProjectQueue,
+      onProjectQueueNewSession,
+    });
+
+    fireEvent.change(textarea, { target: { value: "start separately later" } });
+    const button = screen.getByRole("button", {
+      name: "Queue as new session for Project Queue",
+    });
+
+    expect(button.getAttribute("title")).toBe(
+      "Start a new session after all sessions in this project are idle",
+    );
+    fireEvent.click(button);
+
+    expectSubmission(
+      onProjectQueueNewSession,
+      "start separately later",
+      "deferred",
+    );
+    expect(onProjectQueue).not.toHaveBeenCalled();
+  });
+
+  it("shows only the Project Queue new-session action when current-session queueing is unavailable", () => {
+    const onProjectQueueNewSession = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      onProjectQueueNewSession,
+    });
+
+    fireEvent.change(textarea, { target: { value: "new work" } });
+
+    expect(
+      screen.queryByRole("button", { name: "Queue for Project Queue" }),
+    ).toBe(null);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Queue as new session for Project Queue",
+      }),
+    );
+    expectSubmission(onProjectQueueNewSession, "new work", "deferred");
+  });
+
   it("hides the project queue action without server capability", () => {
     versionState.version = {
       ...versionState.version,
       capabilities: [VOICE_INPUT_CAPABILITY],
     };
     const onProjectQueue = vi.fn();
-    const textarea = renderMessageInput(vi.fn(), { onProjectQueue });
+    const onProjectQueueNewSession = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      onProjectQueue,
+      onProjectQueueNewSession,
+    });
 
     fireEvent.change(textarea, { target: { value: "project-wide later" } });
 
     expect(
       screen.queryByRole("button", { name: "Queue for Project Queue" }),
+    ).toBe(null);
+    expect(
+      screen.queryByRole("button", {
+        name: "Queue as new session for Project Queue",
+      }),
     ).toBe(null);
   });
 
@@ -3550,6 +3634,7 @@ describe("MessageInput", () => {
       btw: "pin",
       steerNow: "pin",
       projectQueue: "pin",
+      projectQueueNewSession: false,
       microphone: "live",
       waveform: true,
       send: "send",

@@ -135,37 +135,42 @@ when Project Queue adds no useful semantics:
 - Show when the project already has Project Queue backlog, so a normal send or
   start does not accidentally jump ahead of accepted queued project work.
 
-New-session Project Queue follows the same rule: hide when the selected project
-is idle and has no Project Queue backlog; show when the project has active work
-or existing Project Queue backlog.
+The dedicated new-session form follows the same rule: hide its Project Queue
+action when the selected project is idle and has no Project Queue backlog; show
+it when the project has active work or existing Project Queue backlog. An active
+session composer is different: its additional "queue as new session" action has
+useful semantics even while the project is idle, so it is present whenever the
+Project Queue toolbar control is enabled and supported. The neighboring
+current-session Project Queue action retains the activity/backlog visibility
+rule above.
 
 The new-session initial-turn composer is part of the Project Queue contract.
 When it queues a new session, the durable prompt/copy source is the text
 accepted from that composer, because that is what the user typed (including
 slash-command arguments). The promoted session should persist that text as its
 initial prompt and derive its title/display fallback from that saved prompt.
-Known gap: the initial-turn composer currently has no Project Queue button, so
-a user can queue later work from an existing session but cannot queue "start
-this new session after the project backlog drains" at the moment they write the
-initial turn. The missing affordance should reuse the same Project Queue target
-shape (`target.type === "new-session"`) and the same visibility rules above,
-not a separate client-held draft queue.
+Both the dedicated new-session form and the active-session composer's
+additional new-session action create the same durable Project Queue target
+shape (`target.type === "new-session"`); neither uses a client-held draft
+queue. The active-session action inherits that session's selected provider,
+model, executor, permission mode, and thinking settings for the future session.
 
-UI visibility should use both exact active session ids, when available, and
-project-level Project Queue blocking-count summaries. The count fallback covers
-cases such as a fresh client after server restart where a project has
-queue-blocking work but the current session composer has not yet seen every
-active sibling session in its local inbox tiers. Do not derive this fallback
-from owned-process counts alone; idle retained YA processes should not expose
-the advanced Project Queue action.
+Current-session Project Queue action visibility should use both exact active
+session ids, when available, and project-level Project Queue blocking-count
+summaries. The count fallback covers cases such as a fresh client after server
+restart where a project has queue-blocking work but the current session
+composer has not yet seen every active sibling session in its local inbox
+tiers. Do not derive this fallback from owned-process counts alone; idle
+retained YA processes should not expose the current-session action.
 
-When the Project Queue action is visible and the Project Queue Ctrl+Enter
-preference is enabled, Ctrl+Enter submits through Project Queue instead of the
-regular per-session alternate action. This binding applies to both existing
-session composers and the new-session composer. It is intentionally conditioned
-on the same availability as the visible Project Queue button, so hiding or
-disabling Project Queue cannot silently steal Ctrl+Enter from regular
-queue/steer behavior.
+When the current-session Project Queue action is visible and the Project Queue
+Ctrl+Enter preference is enabled, Ctrl+Enter activates that same
+current-session action instead of the regular per-session alternate action. In
+the dedicated new-session form, Ctrl+Enter activates that form's new-session
+Project Queue action. It does not activate the active-session composer's
+additional new-session action. Each binding is intentionally conditioned on
+the availability of the button it mirrors, so hiding or disabling Project
+Queue cannot silently steal Ctrl+Enter from regular queue/steer behavior.
 
 ## Inline Rendering
 
@@ -199,6 +204,18 @@ cleans those staged files. Keep Edit hidden for that case rather than silently
 dropping attachments. Existing-session items normally carry durable uploaded
 attachment references and can restore them.
 
+### Future inline editing
+
+The take-to-composer action is intentionally only an incremental editing
+affordance. A future inline editor should replace the queued row with a
+textarea that grows and reflows the queued-message stack as lines are added,
+while preserving the row's project-wide position. It must acquire a
+server-visible edit hold before exposing mutable text: otherwise the scheduler
+can dispatch the original item while its client-side editor is open. Save
+patches the same held item and releases it; cancel restores the original item
+and releases it. The shared rationale and interaction contract are in
+[`edit-turn.md`](edit-turn.md).
+
 The projects page is also the authoritative global dispatch pause surface. Show
 Pause/Resume only while Project Queue has visible backlog. When dispatch is
 paused after server restart, copy must distinguish that state from a manual
@@ -230,17 +247,9 @@ the session surface until project-level queue management is intentionally added.
 Existing-session Project Queue items may contain already uploaded attachment
 references because the session id and upload destination exist at compose time.
 
-New-session Project Queue cannot safely support attachments until durable
-pre-session attachment staging exists. Today, new-session attachments upload
-after a real session is created, into storage scoped to that session. A queued
-new session does not have that durable session upload destination yet. The
-client also cannot persist browser `File` objects, blob URLs, or in-flight
-upload handles in the server queue file.
-
-The missing capability is a server-owned staging area for attachments before a
-session exists. The current tactical plan is
-`docs/tactical/028-pre-session-attachment-staging.md`: upload pre-session files
-to a temporary YA data-dir staging area, persist only server-owned staged
-references in new-session Project Queue items, and materialize those files into
-the normal final session attachment destination when the queued new session is
-promoted.
+New-session Project Queue items support attachments through the server-owned
+pre-session staging area. The queue persists only staged references, not
+browser `File` objects, blob URLs, or in-flight upload handles. Promotion
+materializes those staged files into the new session's normal attachment
+destination. The design and lifecycle are documented in
+`docs/tactical/028-pre-session-attachment-staging.md`.

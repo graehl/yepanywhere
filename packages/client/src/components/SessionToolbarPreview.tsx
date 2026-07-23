@@ -176,8 +176,10 @@ function usePreviewToolbarControls(previewNowMs: number) {
       },
       projectQueue: {
         onProjectQueue: noop,
+        onProjectQueueNewSession: noop,
         canSend: true,
         tooltip: t("toolbarProjectQueueTooltip"),
+        newSessionTooltip: t("toolbarProjectQueueNewSessionTooltip"),
       },
     };
     return props;

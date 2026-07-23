@@ -10,7 +10,8 @@
  * One `pi --mode rpc` child runs per YA session. Commands go to stdin as
  * LF-JSONL; stdout interleaves command responses, agent events, and extension
  * UI requests (see pi-rpc-client.ts). Each YA user turn sends `prompt` and
- * streams agent events until `agent_end`, normalizing them to YA SDKMessages.
+ * streams agent events until `agent_settled`, normalizing them to YA
+ * SDKMessages.
  */
 
 import { type ChildProcess, exec, spawn } from "node:child_process";
@@ -480,7 +481,7 @@ export class PiProvider implements AgentProvider {
   /**
    * Session loop. Process + RPC client are already up and the session id is
    * known. Yields an init message first, then per queued user turn sends a
-   * `prompt` and streams agent events until `agent_end`.
+   * `prompt` and streams agent events until `agent_settled`.
    */
   private async *runSession(
     client: PiRpcClient,
@@ -555,7 +556,8 @@ export class PiProvider implements AgentProvider {
           message: { role: "user", content: text },
         } as SDKMessage;
 
-        // `agent_end` for this run flips this true; the drain loop stops then.
+        // `agent_settled` flips this true after retries, compaction, and queued
+        // continuations finish; the drain loop stops only at that boundary.
         let turnComplete = false;
         stream.currentAssistantId = null;
         stream.text = "";
@@ -606,8 +608,10 @@ export class PiProvider implements AgentProvider {
    * Map one pi AgentSessionEvent to zero or more YA SDKMessages.
    *
    * Streaming text/thinking are emitted as delta slices under a stable per-
-   * message uuid (YA appends same-uuid assistant content). `agent_end` becomes a
-   * `result` carrying the last turn's usage — the drain loop's turn boundary.
+   * message uuid (YA appends same-uuid assistant content). `agent_settled`
+   * becomes a `result` carrying the last turn's usage — the drain loop's turn
+   * boundary. `agent_end` only ends one low-level run and may precede automatic
+   * retry, compaction, or queued continuation.
    */
   private mapEvent(
     event: { type: string; [key: string]: unknown },
@@ -759,7 +763,7 @@ export class PiProvider implements AgentProvider {
         return messages;
       }
 
-      case "agent_end": {
+      case "agent_settled": {
         const result: SDKMessage = {
           type: "result",
           session_id: sessionId,

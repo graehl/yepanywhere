@@ -9,6 +9,7 @@ Topic: provider-refresh
 
 Related topics: [claude](claude.md), [grok](grok.md),
 [opencode-backend](opencode-backend.md),
+[pi-provider](pi-provider.md),
 [provider-state-machine](provider-state-machine.md),
 [provider-model-glyphs](provider-model-glyphs.md),
 [cost-efficiency](cost-efficiency.md).
@@ -124,6 +125,29 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-07-23:
+
+- Installed Codex and npm `@openai/codex` `latest` are `0.145.0`. The official
+  `rust-v0.145.0` source is commit
+  `25af12f7e61572b0bc18ddb1008be543b91519b0`; root compatibility and expected
+  protocol markers now record `0.145.0`.
+- `pnpm codex:protocol:check` found two added and fifteen changed files in YA's
+  checked-in subset. Regeneration adds `ResponseItemId` and `SleepItem`; input
+  content admits audio; web search can carry structured results; thread
+  history exposes direct-input readiness and backward cursors; fork/resume,
+  usage, workspace-root, and MCP app-context types match the current server.
+- The new fields are additive or stronger aliases for values YA already treats
+  opaquely. YA does not send the new optional fork, audio, or runtime-workspace
+  controls, and no normalizer or provider-control change is required.
+- The no-token `model/list` probe contains Sol, GPT-5.5, Terra, Luna, GPT-5.4,
+  GPT-5.4-Mini, and GPT-5.3-Codex-Spark. GPT-5.4 and GPT-5.4-Mini return after
+  their 0.144.6 removal, so YA now restores both in the fallback catalog for
+  0.145.0 and newer while preserving the reduced fallback for 0.144.6 through
+  0.144.x.
+
+Status: Codex 0.145.0 app-server protocol compatibility is refreshed in
+generated source, and its version-gated fallback matches the live catalog.
+
 Current source refresh, 2026-07-19:
 
 - Installed Codex and npm `@openai/codex` `latest` are `0.144.6`. The official
@@ -134,8 +158,9 @@ Current source refresh, 2026-07-19:
 - The no-token `model/list` catalog now contains Sol, Terra, Luna, GPT-5.5, and
   GPT-5.3-Codex-Spark. GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex, and GPT-5.2 are no
   longer advertised. YA keeps the original 0.144.0-0.144.5 fallback for those
-  executables and uses the reduced catalog from 0.144.6 onward. The real-turn
-  probe was also corrected to read the current paginated `data` response.
+  executables and uses the reduced catalog for 0.144.6 through 0.144.x. The
+  real-turn probe was also corrected to read the current paginated `data`
+  response.
 - The official 0.144.6 hotfix corrects Sol, Terra, and Luna context windows to
   272,000 tokens. YA now uses that value for live normalized and fallback
   GPT-5.6 model metadata while retaining the older 258,000-token default for
@@ -360,6 +385,23 @@ Difference detectors:
   by `claude-sdk-schema` or visible normalization tests.
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
+
+Current source refresh, 2026-07-23:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.215` to `0.3.218`;
+  its bundled and independently installed runtime report Claude Code
+  `2.1.218`. Root compatibility markers record that pair.
+- The SDK changes are additive on YA-consumed surfaces: usage may identify the
+  canonical model/provider, rewind results may list skipped links, teammate
+  messages and timing records carry more provenance, and the bridge adds a
+  rename callback. `set_model` accepting null and sandbox filesystem
+  `disabled` do not change YA's existing calls.
+- The deprecated `bubble` agent-definition mode was removed. YA does not use
+  that mode, and the provider's model/command discovery, setting, interrupt,
+  and MCP controls remain type-compatible.
+
+Status: Claude Code 2.1.218 / SDK 0.3.218 package and control compatibility is
+refreshed; no YA runtime behavior change is required.
 
 Current source refresh, 2026-07-19:
 
@@ -651,7 +693,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.199` | `0.3.199` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.218` | `0.3.218` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

@@ -6,6 +6,7 @@ import {
 export const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
 export const CODEX_CLI_GPT56_MIN_VERSION = "0.144.0";
 export const CODEX_CLI_GPT56_REDUCED_CATALOG_MIN_VERSION = "0.144.6";
+export const CODEX_CLI_GPT56_RESTORED_CATALOG_MIN_VERSION = "0.145.0";
 
 const PREFERRED_MODEL_ORDER = [
   "gpt-5.6-sol",
@@ -62,67 +63,74 @@ const GPT53_SPARK_FALLBACK_CODEX_MODEL: ModelInfo = {
   name: "GPT-5.3-Codex-Spark",
 };
 
+const GPT54_FALLBACK_CODEX_MODEL: ModelInfo = {
+  id: "gpt-5.4",
+  name: "GPT-5.4",
+  description: "Strong model for everyday coding.",
+  defaultReasoningEffort: "medium",
+  supportedReasoningEfforts: [
+    {
+      reasoningEffort: "low",
+      description: "Fast responses with lighter reasoning",
+    },
+    {
+      reasoningEffort: "medium",
+      description: "Balances speed and reasoning depth for everyday tasks",
+    },
+    {
+      reasoningEffort: "high",
+      description: "Greater reasoning depth for complex problems",
+    },
+    {
+      reasoningEffort: "xhigh",
+      description: "Extra high reasoning depth for complex problems",
+    },
+  ],
+  inputModalities: ["text", "image"],
+  supportsPersonality: true,
+  serviceTiers: [
+    {
+      id: "priority",
+      name: "Fast",
+      description: "1.5x speed, increased usage",
+    },
+  ],
+};
+
+const GPT54_MINI_FALLBACK_CODEX_MODEL: ModelInfo = {
+  id: "gpt-5.4-mini",
+  name: "GPT-5.4-Mini",
+  description: "Small, fast, and cost-efficient model for simpler coding tasks.",
+  defaultReasoningEffort: "medium",
+  supportedReasoningEfforts: [
+    {
+      reasoningEffort: "low",
+      description: "Fast responses with lighter reasoning",
+    },
+    {
+      reasoningEffort: "medium",
+      description: "Balances speed and reasoning depth for everyday tasks",
+    },
+    {
+      reasoningEffort: "high",
+      description: "Greater reasoning depth for complex problems",
+    },
+    {
+      reasoningEffort: "xhigh",
+      description: "Extra high reasoning depth for complex problems",
+    },
+  ],
+  inputModalities: ["text", "image"],
+  supportsPersonality: true,
+};
+
+const GPT54_FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  GPT54_FALLBACK_CODEX_MODEL,
+  GPT54_MINI_FALLBACK_CODEX_MODEL,
+];
+
 const GPT54_AND_OLDER_FALLBACK_CODEX_MODELS: ModelInfo[] = [
-  {
-    id: "gpt-5.4",
-    name: "GPT-5.4",
-    description: "Strong model for everyday coding.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: [
-      {
-        reasoningEffort: "low",
-        description: "Fast responses with lighter reasoning",
-      },
-      {
-        reasoningEffort: "medium",
-        description: "Balances speed and reasoning depth for everyday tasks",
-      },
-      {
-        reasoningEffort: "high",
-        description: "Greater reasoning depth for complex problems",
-      },
-      {
-        reasoningEffort: "xhigh",
-        description: "Extra high reasoning depth for complex problems",
-      },
-    ],
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-    serviceTiers: [
-      {
-        id: "priority",
-        name: "Fast",
-        description: "1.5x speed, increased usage",
-      },
-    ],
-  },
-  {
-    id: "gpt-5.4-mini",
-    name: "GPT-5.4-Mini",
-    description:
-      "Small, fast, and cost-efficient model for simpler coding tasks.",
-    defaultReasoningEffort: "medium",
-    supportedReasoningEfforts: [
-      {
-        reasoningEffort: "low",
-        description: "Fast responses with lighter reasoning",
-      },
-      {
-        reasoningEffort: "medium",
-        description: "Balances speed and reasoning depth for everyday tasks",
-      },
-      {
-        reasoningEffort: "high",
-        description: "Greater reasoning depth for complex problems",
-      },
-      {
-        reasoningEffort: "xhigh",
-        description: "Extra high reasoning depth for complex problems",
-      },
-    ],
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-  },
+  ...GPT54_FALLBACK_CODEX_MODELS,
   { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
   GPT53_SPARK_FALLBACK_CODEX_MODEL,
   { id: "gpt-5.2", name: "GPT-5.2" },
@@ -222,11 +230,20 @@ const GPT56_INITIAL_FALLBACK_CODEX_MODELS: ModelInfo[] = [
   ...GPT54_AND_OLDER_FALLBACK_CODEX_MODELS,
 ];
 
+const GPT56_REDUCED_FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  GPT56_SOL_FALLBACK_CODEX_MODEL,
+  GPT55_FALLBACK_CODEX_MODEL,
+  GPT56_TERRA_FALLBACK_CODEX_MODEL,
+  GPT56_LUNA_FALLBACK_CODEX_MODEL,
+  GPT53_SPARK_FALLBACK_CODEX_MODEL,
+];
+
 export const FALLBACK_CODEX_MODELS: ModelInfo[] = [
   GPT56_SOL_FALLBACK_CODEX_MODEL,
   GPT55_FALLBACK_CODEX_MODEL,
   GPT56_TERRA_FALLBACK_CODEX_MODEL,
   GPT56_LUNA_FALLBACK_CODEX_MODEL,
+  ...GPT54_FALLBACK_CODEX_MODELS,
   GPT53_SPARK_FALLBACK_CODEX_MODEL,
 ];
 
@@ -313,6 +330,12 @@ export function getFallbackCodexModelsForCliVersion(
     compareSemver(version, CODEX_CLI_GPT56_REDUCED_CATALOG_MIN_VERSION) < 0
   ) {
     return GPT56_INITIAL_FALLBACK_CODEX_MODELS;
+  }
+  if (
+    version &&
+    compareSemver(version, CODEX_CLI_GPT56_RESTORED_CATALOG_MIN_VERSION) < 0
+  ) {
+    return GPT56_REDUCED_FALLBACK_CODEX_MODELS;
   }
   return FALLBACK_CODEX_MODELS;
 }

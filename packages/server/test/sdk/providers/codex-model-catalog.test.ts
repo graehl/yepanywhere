@@ -3,6 +3,7 @@ import {
   CODEX_CLI_GPT55_MIN_VERSION,
   CODEX_CLI_GPT56_MIN_VERSION,
   CODEX_CLI_GPT56_REDUCED_CATALOG_MIN_VERSION,
+  CODEX_CLI_GPT56_RESTORED_CATALOG_MIN_VERSION,
   compareSemver,
   getFallbackCodexModelsForCliVersion,
   normalizeCodexModelList,
@@ -76,6 +77,19 @@ describe("Codex model catalog", () => {
       "gpt-5.5",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
+      "gpt-5.3-codex-spark",
+    ]);
+    expect(
+      getFallbackCodexModelsForCliVersion(
+        CODEX_CLI_GPT56_RESTORED_CATALOG_MIN_VERSION,
+      ).map((model) => model.id),
+    ).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.4",
+      "gpt-5.4-mini",
       "gpt-5.3-codex-spark",
     ]);
     expect(getFallbackCodexModelsForCliVersion(null)[0]).toMatchObject({

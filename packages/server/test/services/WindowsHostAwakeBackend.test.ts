@@ -29,7 +29,7 @@ function fakeChild(
 describe("WindowsHostAwakeBackend", () => {
   it("uses stdin PowerShell without execution-policy bypass or script files", async () => {
     let helperSource = "";
-    const spawnProcess = vi.fn((...args: unknown[]) => {
+    const spawnProcess = vi.fn((..._args: unknown[]) => {
       const child = fakeChild((process) => {
         helperSource = process.stdin.read()?.toString() ?? "";
         process.stdout.write(

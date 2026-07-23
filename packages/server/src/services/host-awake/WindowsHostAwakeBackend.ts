@@ -20,7 +20,7 @@ const WINDOWS_HELPER_START_TIMEOUT_MS = 8_000;
 const WINDOWS_HELPER_OUTPUT_LIMIT_BYTES = 16 * 1024;
 const WINDOWS_HELPER_RELEASE_TIMEOUT_MS = 2_000;
 
-export const WINDOWS_HOST_AWAKE_HELPER_SOURCE = String.raw`
+export const WINDOWS_HOST_AWAKE_HELPER_SOURCE = `
 $ErrorActionPreference = 'Stop'
 
 Add-Type -TypeDefinition @'
@@ -474,7 +474,7 @@ export class WindowsHostAwakeBackend implements HostAwakeBackend {
 
       const handleLine = (line: string) => {
         const payload = parsePayload(line);
-        if (!payload || payload.kind !== "status") return;
+        if (payload?.kind !== "status") return;
         const status = payloadToStatus(payload);
         if (!lease) {
           lease = new WindowsHostAwakeLease(child, status);

@@ -89,7 +89,7 @@ function isContextMenuOperable(event: MouseEvent): boolean {
  * positioning, dwell, adjacency, and accessibility state.
  */
 export function TooltipLayer() {
-  const { tooltipMode, tooltipDelayMs } = useTooltipAppearance();
+  const { tooltipMode } = useTooltipAppearance();
   const [visible, setVisible] = useState<VisibleTooltip | null>(null);
   const [enlarged, setEnlarged] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -192,7 +192,7 @@ export function TooltipLayer() {
         );
       }
     },
-    [clearShowTimer, show, tooltipDelayMs],
+    [clearShowTimer, show],
   );
 
   const activate = useCallback(

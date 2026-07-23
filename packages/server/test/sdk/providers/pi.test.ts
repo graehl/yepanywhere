@@ -1,19 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { PiProvider } from "../../../src/sdk/providers/pi.js";
+import {
+  PiProvider,
+  piVersionUsesAgentSettled,
+} from "../../../src/sdk/providers/pi.js";
+
+type PiEvent = { type: string; [key: string]: unknown };
+
+function makeStream(terminalEvent: "agent_end" | "agent_settled") {
+  return {
+    currentAssistantId: null,
+    text: "",
+    thinking: "",
+    lastUsage: null,
+    lastCostUsd: null,
+    terminalEvent,
+    toolStates: new Map(),
+  };
+}
+
+function mapPiEvent(
+  provider: PiProvider,
+  event: PiEvent,
+  sessionId: string,
+  stream: ReturnType<typeof makeStream>,
+) {
+  const privateProvider = provider as unknown as {
+    mapEvent(
+      event: PiEvent,
+      sessionId: string,
+      stream: ReturnType<typeof makeStream>,
+    ): unknown[];
+  };
+  return privateProvider.mapEvent(event, sessionId, stream);
+}
 
 describe("PiProvider event mapping", () => {
+  it("selects the terminal event from the Pi version boundary", () => {
+    expect(piVersionUsesAgentSettled("0.80.3")).toBe(false);
+    expect(piVersionUsesAgentSettled("pi 0.80.4")).toBe(true);
+    expect(piVersionUsesAgentSettled("0.81.1")).toBe(true);
+    expect(piVersionUsesAgentSettled("unknown")).toBeNull();
+  });
+
   it("waits for agent_settled before completing a YA turn", () => {
     const provider = new PiProvider();
-    const stream = {
-      currentAssistantId: null,
-      text: "",
-      thinking: "",
-      lastUsage: null,
-      lastCostUsd: null,
-      toolStates: new Map(),
-    };
-    const mapEvent = (event: { type: string; [key: string]: unknown }) =>
-      provider["mapEvent"](event, "pi-session", stream);
+    const stream = makeStream("agent_settled");
+    const mapEvent = (event: PiEvent) =>
+      mapPiEvent(provider, event, "pi-session", stream);
 
     expect(
       mapEvent({
@@ -49,6 +82,21 @@ describe("PiProvider event mapping", () => {
           cache_creation_input_tokens: 3,
         },
         total_cost_usd: 0.012,
+      },
+    ]);
+  });
+
+  it("keeps agent_end as the legacy pre-0.80.4 boundary", () => {
+    const provider = new PiProvider();
+    const stream = makeStream("agent_end");
+    const mapEvent = (event: PiEvent) =>
+      mapPiEvent(provider, event, "legacy-pi-session", stream);
+
+    expect(mapEvent({ type: "agent_settled" })).toEqual([]);
+    expect(mapEvent({ type: "agent_end", willRetry: false })).toEqual([
+      {
+        type: "result",
+        session_id: "legacy-pi-session",
       },
     ]);
   });

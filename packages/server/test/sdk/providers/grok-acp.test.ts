@@ -35,9 +35,11 @@ import {
 import {
   GrokACPProvider,
   type GrokACPProviderConfig,
+  normalizeGrokModels,
 } from "../../../src/sdk/providers/grok-acp.js";
 import type {
   ACPClientConfig,
+  ExtensionMethodCallback,
   PermissionRequestCallback,
   SessionUpdateCallback,
 } from "../../../src/sdk/providers/acp/client.js";
@@ -77,11 +79,68 @@ describe("GrokACPProvider", () => {
   });
 
   describe("getAvailableModels", () => {
-    it("should return the single grok-build model", async () => {
+    it("should return a non-empty catalog with one default", async () => {
       const models = await provider.getAvailableModels();
-      expect(models).toHaveLength(1);
-      expect(models[0].id).toBe("grok-build");
-      expect(models[0].name).toBe("Grok Build");
+      expect(models.length).toBeGreaterThan(0);
+      expect(models.filter((model) => model.isDefault)).toHaveLength(1);
+      expect(models.every((model) => model.id && model.name)).toBe(true);
+    });
+
+    it("normalizes the current object-keyed Grok 4.5 cache", () => {
+      expect(
+        normalizeGrokModels(
+          {
+            models: {
+              "grok-4.5": {
+                info: {
+                  id: "grok-4.5",
+                  name: "Grok 4.5",
+                  description: "Frontier model",
+                  context_window: 500_000,
+                  supports_reasoning_effort: true,
+                  reasoning_effort: "high",
+                  reasoning_efforts: [
+                    {
+                      id: "high",
+                      value: "high",
+                      description: "Highest quality",
+                      default: true,
+                    },
+                    { id: "low", value: "low", description: "Quick" },
+                  ],
+                },
+              },
+              hidden: {
+                info: { id: "hidden", name: "Hidden", hidden: true },
+              },
+            },
+          },
+          [
+            "Default model: grok-4.5",
+            "Available models:",
+            "  * grok-4.5 (default)",
+          ].join("\n"),
+        ),
+      ).toEqual([
+        {
+          id: "grok-4.5",
+          name: "Grok 4.5",
+          description: "Frontier model",
+          contextWindow: 500_000,
+          isDefault: true,
+          supportsEffort: true,
+          supportedEffortLevels: ["high", "low"],
+          supportedReasoningEfforts: [
+            {
+              reasoningEffort: "high",
+              description: "Highest quality",
+            },
+            { reasoningEffort: "low", description: "Quick" },
+          ],
+          defaultEffortLevel: "high",
+          defaultReasoningEffort: "high",
+        },
+      ]);
     });
   });
 
@@ -288,6 +347,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   let holdFirstPrompt = false;
   let releaseHeldPrompt: (() => void) | null = null;
   let failResume = false;
+  let extensionMethodCallback: ExtensionMethodCallback | null = null;
 
   // Minimal fake ACPClient that records calls and allows controlling flow
   class FakeACPClient {
@@ -326,6 +386,9 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     }
     setPermissionRequestCallback(_cb: PermissionRequestCallback) {
       return;
+    }
+    setExtensionMethodCallback(cb: ExtensionMethodCallback) {
+      extensionMethodCallback = cb;
     }
     async connect(config: ACPClientConfig) {
       connectCalls.push(config);
@@ -377,6 +440,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     holdFirstPrompt = false;
     releaseHeldPrompt = null;
     failResume = false;
+    extensionMethodCallback = null;
     acpClientMock = vi.fn(() => new FakeACPClient());
 
     // Mock fs for isInstalled / findGrokPath to always succeed in these tests
@@ -566,14 +630,28 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
 
   it("passes -m model flag only for non-default models", async () => {
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+    const defaultModel = (await provider.getAvailableModels()).find(
+      (model) => model.isDefault,
+    );
+    expect(defaultModel).toBeDefined();
 
     await startAndReadInit(provider, {
       cwd: "/tmp",
       initialMessage: { text: "hi" },
-      model: "grok-build", // default, should not add -m
+      model: defaultModel?.id,
     });
     const argsDefault = connectCalls[connectCalls.length - 1].args;
     expect(argsDefault).not.toContain("-m");
+
+    connectCalls.length = 0;
+
+    await startAndReadInit(provider, {
+      cwd: "/tmp",
+      initialMessage: { text: "hi" },
+      model: "default",
+    });
+    const argsDefaultAlias = connectCalls[0].args;
+    expect(argsDefaultAlias).not.toContain("-m");
 
     connectCalls.length = 0;
 
@@ -654,6 +732,169 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     // (verified indirectly: no crash, and Fake records via set* in constructor)
     // We can at least confirm a connect happened with a provider that had the cb
     expect(connectCalls.length).toBeGreaterThan(0);
+  });
+
+  it("bridges Grok question extensions to YA pending input", async () => {
+    const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+    const approvalFn = vi.fn().mockResolvedValue({
+      behavior: "allow" as const,
+      updatedInput: {
+        answers: {
+          "Which target?": ["Staging", "EU west"],
+        },
+      },
+    });
+    const session = await provider.startSession({
+      cwd: "/tmp",
+      initialMessage: { text: "ask me" },
+      onToolApproval: approvalFn,
+    });
+
+    try {
+      await session.iterator.next();
+      expect(extensionMethodCallback).not.toBeNull();
+      const response = await extensionMethodCallback?.(
+        "x.ai/ask_user_question",
+        {
+          sessionId: "grok_ses",
+          toolCallId: "call-question",
+          mode: "default",
+          questions: [
+            {
+              question: "Which target?",
+              options: [
+                { label: "Production", description: "Deploy live" },
+                { label: "Staging", description: "Deploy to staging" },
+              ],
+              multiSelect: true,
+            },
+          ],
+        },
+      );
+
+      expect(approvalFn).toHaveBeenCalledWith(
+        "AskUserQuestion",
+        {
+          questions: [
+            {
+              question: "Which target?",
+              header: "Question 1",
+              options: [
+                { label: "Production", description: "Deploy live" },
+                { label: "Staging", description: "Deploy to staging" },
+              ],
+              multiSelect: true,
+            },
+          ],
+        },
+        { signal: expect.any(AbortSignal) },
+      );
+      expect(response).toEqual({
+        outcome: "accepted",
+        answers: {
+          "Which target?": ["Staging"],
+        },
+        annotations: {
+          "Which target?": { notes: "EU west" },
+        },
+      });
+    } finally {
+      session.abort();
+    }
+  });
+
+  it("preserves Grok preview metadata for single-choice answers", async () => {
+    const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+    const approvalFn = vi.fn().mockResolvedValue({
+      behavior: "allow" as const,
+      updatedInput: {
+        answers: {
+          "Which approach?": "Incremental",
+        },
+      },
+    });
+    const session = await provider.startSession({
+      cwd: "/tmp",
+      initialMessage: { text: "ask me" },
+      onToolApproval: approvalFn,
+    });
+
+    try {
+      await session.iterator.next();
+      const response = await extensionMethodCallback?.(
+        "x.ai/ask_user_question",
+        {
+          questions: [
+            {
+              question: "Which approach?",
+              options: [
+                {
+                  label: "Incremental",
+                  description: "Keep the current boundary",
+                  preview: "Step 1\nStep 2",
+                },
+              ],
+              multiSelect: false,
+            },
+          ],
+        },
+      );
+
+      expect(response).toEqual({
+        outcome: "accepted",
+        answers: {
+          "Which approach?": ["Incremental"],
+        },
+        annotations: {
+          "Which approach?": { preview: "Step 1\nStep 2" },
+        },
+      });
+    } finally {
+      session.abort();
+    }
+  });
+
+  it("bridges Grok plan approval extensions to YA pending input", async () => {
+    const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+    const approvalFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        behavior: "deny" as const,
+        message: "Add a rollback step",
+      })
+      .mockResolvedValueOnce({ behavior: "allow" as const });
+    const session = await provider.startSession({
+      cwd: "/tmp",
+      initialMessage: { text: "plan" },
+      onToolApproval: approvalFn,
+    });
+
+    try {
+      await session.iterator.next();
+      const params = {
+        sessionId: "grok_ses",
+        toolCallId: "call-plan",
+        planContent: "# Plan\n\nDeploy.",
+      };
+      await expect(
+        extensionMethodCallback?.("x.ai/exit_plan_mode", params),
+      ).resolves.toEqual({
+        outcome: "cancelled",
+        feedback: "Add a rollback step",
+      });
+      await expect(
+        extensionMethodCallback?.("x.ai/exit_plan_mode", params),
+      ).resolves.toEqual({
+        outcome: "approved",
+      });
+      expect(approvalFn).toHaveBeenCalledWith(
+        "ExitPlanMode",
+        { plan: "# Plan\n\nDeploy." },
+        { signal: expect.any(AbortSignal) },
+      );
+    } finally {
+      session.abort();
+    }
   });
 
   it("steers an active Grok prompt with a second ACP prompt", async () => {
@@ -743,7 +984,7 @@ describe("GrokACPProvider Real Binary Smoke (opt-in)", () => {
     }
   });
 
-  it("starts a real session and receives init + at least one assistant/result when grok present", async () => {
+  it("starts a real session and receives the requested assistant reply", async () => {
     if (!ENABLED) return;
 
     const { GrokACPProvider: RealGrok } = await import(
@@ -809,9 +1050,10 @@ describe("GrokACPProvider Real Binary Smoke (opt-in)", () => {
 
     expect(messages.length).toBeGreaterThanOrEqual(2);
     expect(messages[0]).toMatchObject({ type: "system", subtype: "init" });
-    const hasResultOrAssistant = messages.some(
-      (m) => m.type === "result" || m.type === "assistant",
+    const assistantMessages = messages.filter(
+      (message) => message.type === "assistant",
     );
-    expect(hasResultOrAssistant).toBe(true);
+    expect(JSON.stringify(assistantMessages)).toContain("grok-smoke-ok");
+    expect(messages.some((message) => message.type === "result")).toBe(true);
   }, 60000);
 });

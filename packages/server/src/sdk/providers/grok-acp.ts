@@ -2,10 +2,12 @@
  * Grok Build ACP Provider implementation using Agent Client Protocol.
  *
  * Phase 1 (live supervision prototype): core startSession -> iterator/queue/abort,
- * ACPClient wiring for `grok agent stdio`, hardcoded `grok-build` model,
- * basic install/auth detection via ~/.grok/bin/grok + ~/.grok/auth.json,
+ * ACPClient wiring for `grok agent stdio`, local model-catalog discovery,
+ * basic install/auth detection via GROK_HOME (default ~/.grok),
  * normalization of ACP events (agent_thought_chunk, tool_call*,
  * agent_message_chunk, plan) into SDKMessage (thinking blocks + tool_use/tool_result + approvals).
+ * Grok's x.ai AskUserQuestion and ExitPlanMode extension requests reuse YA's
+ * existing pending-input flow.
  * Steering uses a second ACP session/prompt call against the same live Grok
  * session while the current prompt is still active.
  *
@@ -29,13 +31,13 @@
  * - /home/graehl/.grok/docs/user-guide/03-keyboard-shortcuts.md + 14-headless-mode.md (effort,
  *   permission modes, interject for future phases)
  * - Local ~/.grok/models_cache.json + `grok models` + `~/.grok/bin/grok --help` (model info)
- * Native ACP fork, scanner/history, full /btw, tests, docs updates = later phases.
+ * Native ACP fork and full /btw remain later phases.
  *
- * Beta software (grok 0.1.220 as of 2026-05); surfaces can change. All claims grounded in
- * local binary + docs inspection.
+ * Audited through Grok 0.2.111 (2026-07) using the installed binary/docs and
+ * the first-party xai-org/grok-build source (public tree at 0.2.110).
  */
 
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -50,7 +52,11 @@ import type {
   ToolCallUpdate,
   ToolKind,
 } from "@agentclientprotocol/sdk";
-import type { ModelInfo, SlashCommand } from "@yep-anywhere/shared";
+import type {
+  EffortLevel,
+  ModelInfo,
+  SlashCommand,
+} from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
@@ -69,6 +75,7 @@ import type {
 } from "./types.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Env vars the `grok` CLI honors for API-key auth. The auth docs state the key
@@ -82,8 +89,11 @@ const execAsync = promisify(exec);
  */
 const GROK_BILLING_ENV_DENYLIST = ["XAI_API_KEY", "GROK_CODE_XAI_API_KEY"];
 
-/** Stable Grok Build model info from the local CLI (`grok models`). */
-const GROK_MODELS: ModelInfo[] = [
+/**
+ * Compatibility fallback for older installations whose model command/cache
+ * cannot be read. Current installations are discovered dynamically.
+ */
+const LEGACY_GROK_MODELS: ModelInfo[] = [
   {
     id: "grok-build",
     name: "Grok Build",
@@ -92,6 +102,164 @@ const GROK_MODELS: ModelInfo[] = [
     isDefault: true,
   },
 ];
+
+const GROK_EFFORT_LEVELS = new Set<EffortLevel>([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+function asRecordValue(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function nonemptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function effortLevel(value: unknown): EffortLevel | undefined {
+  const candidate = nonemptyString(value) as EffortLevel | undefined;
+  return candidate && GROK_EFFORT_LEVELS.has(candidate)
+    ? candidate
+    : undefined;
+}
+
+function parseGrokModelsOutput(output: string | undefined): {
+  defaultModelId?: string;
+  modelIds: string[];
+} {
+  const modelIds: string[] = [];
+  let defaultModelId: string | undefined;
+  for (const line of output?.split(/\r?\n/) ?? []) {
+    const declaredDefault = line.match(/^\s*Default model:\s*(\S+)\s*$/i);
+    if (declaredDefault) {
+      defaultModelId = declaredDefault[1];
+      continue;
+    }
+    const listed = line.match(/^\s*\*\s+(\S+)(?:\s+\(default\))?\s*$/i);
+    if (!listed) continue;
+    const listedId = listed[1];
+    if (!listedId) continue;
+    modelIds.push(listedId);
+    if (/\(default\)\s*$/i.test(line)) {
+      defaultModelId = listedId;
+    }
+  }
+  return { defaultModelId, modelIds };
+}
+
+/**
+ * Normalize the object-keyed model cache shipped by current Grok versions.
+ * `grok models` remains authoritative for visibility/order/default selection;
+ * cache entries contribute richer names, descriptions, context, and efforts.
+ */
+export function normalizeGrokModels(
+  rawCache: unknown,
+  modelsOutput?: string,
+): ModelInfo[] {
+  const root = asRecordValue(rawCache);
+  const rawModels = root?.models;
+  const cached = new Map<string, ModelInfo>();
+
+  const entries: Array<[string | undefined, unknown]> = Array.isArray(rawModels)
+    ? rawModels.map((value) => [undefined, value])
+    : Object.entries(asRecordValue(rawModels) ?? {});
+
+  for (const [cacheKey, value] of entries) {
+    const wrapper = asRecordValue(value);
+    const info = asRecordValue(wrapper?.info) ?? wrapper;
+    if (!info || info.hidden === true) continue;
+
+    const id =
+      nonemptyString(info.id) ??
+      nonemptyString(info.model) ??
+      nonemptyString(cacheKey);
+    if (!id) continue;
+
+    const reasoningEfforts = Array.isArray(info.reasoning_efforts)
+      ? info.reasoning_efforts
+          .map((value) => asRecordValue(value))
+          .filter(
+            (value): value is Record<string, unknown> => value !== undefined,
+          )
+      : [];
+    const supportedEffortLevels = reasoningEfforts
+      .map((value) => effortLevel(value.value ?? value.id))
+      .filter((value): value is EffortLevel => value !== undefined);
+    const defaultEffortLevel =
+      effortLevel(info.reasoning_effort) ??
+      reasoningEfforts
+        .filter((value) => value.default === true)
+        .map((value) => effortLevel(value.value ?? value.id))
+        .find((value): value is EffortLevel => value !== undefined);
+    const contextWindow =
+      typeof info.context_window === "number"
+        ? info.context_window
+        : undefined;
+    const supportsEffort =
+      info.supports_reasoning_effort === true ||
+      supportedEffortLevels.length > 0;
+
+    cached.set(id, {
+      id,
+      name: nonemptyString(info.name) ?? id,
+      ...(nonemptyString(info.description)
+        ? { description: nonemptyString(info.description) }
+        : {}),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      ...(supportsEffort ? { supportsEffort: true } : {}),
+      ...(supportedEffortLevels.length > 0
+        ? {
+            supportedEffortLevels,
+            supportedReasoningEfforts: reasoningEfforts.flatMap((value) => {
+              const reasoningEffort = nonemptyString(value.value ?? value.id);
+              return reasoningEffort
+                ? [
+                    {
+                      reasoningEffort,
+                      ...(nonemptyString(value.description)
+                        ? { description: nonemptyString(value.description) }
+                        : {}),
+                    },
+                  ]
+                : [];
+            }),
+          }
+        : {}),
+      ...(defaultEffortLevel
+        ? {
+            defaultEffortLevel,
+            defaultReasoningEffort: defaultEffortLevel,
+          }
+        : {}),
+    });
+  }
+
+  const listing = parseGrokModelsOutput(modelsOutput);
+  const ids =
+    listing.modelIds.length > 0 ? listing.modelIds : Array.from(cached.keys());
+  const models = ids.map(
+    (id): ModelInfo =>
+      cached.get(id) ?? {
+        id,
+        name: id,
+      },
+  );
+  const defaultModelId =
+    listing.defaultModelId ?? models[0]?.id;
+  return models.map((model) => ({
+    ...model,
+    ...(model.id === defaultModelId ? { isDefault: true } : {}),
+  }));
+}
 
 interface GrokAuthProfile {
   access_token?: unknown;
@@ -151,6 +319,7 @@ export class GrokACPProvider implements AgentProvider {
   private readonly pathExists: (path: string) => boolean;
   private ambientXaiApiKey: string | undefined;
   private useAmbientXaiApiKey = false;
+  private modelCache: ModelInfo[] | undefined;
   private log = getLogger();
 
   constructor(config: GrokACPProviderConfig = {}) {
@@ -183,9 +352,7 @@ export class GrokACPProvider implements AgentProvider {
     return authStatus.authenticated;
   }
 
-  /**
-   * Get detailed authentication status using ~/.grok/auth.json (and binary presence).
-   */
+  /** Get detailed authentication status using GROK_HOME/auth.json. */
   async getAuthStatus(): Promise<AuthStatus> {
     const installed = await this.isInstalled();
     if (!installed) {
@@ -196,7 +363,7 @@ export class GrokACPProvider implements AgentProvider {
       };
     }
 
-    const authPath = join(homedir(), ".grok", "auth.json");
+    const authPath = join(this.getGrokHome(), "auth.json");
     if (!existsSync(authPath)) {
       return {
         installed: true,
@@ -242,11 +409,45 @@ export class GrokACPProvider implements AgentProvider {
     }
   }
 
-  /**
-   * Get available Grok models (always just the single grok-build entry).
-   */
+  /** Get the Grok CLI's visible model catalog with local cache metadata. */
   async getAvailableModels(): Promise<ModelInfo[]> {
-    return [...GROK_MODELS];
+    if (this.modelCache) {
+      return this.modelCache.map((model) => ({ ...model }));
+    }
+
+    let rawCache: unknown;
+    try {
+      rawCache = JSON.parse(
+        readFileSync(join(this.getGrokHome(), "models_cache.json"), "utf-8"),
+      );
+    } catch {
+      rawCache = undefined;
+    }
+
+    let modelsOutput: string | undefined;
+    const grokPath = await this.findGrokPath();
+    if (grokPath) {
+      try {
+        const { stdout } = await execFileAsync(grokPath, ["models"], {
+          encoding: "utf-8",
+          env: this.getSubscriptionEnvironment(),
+          timeout: 10_000,
+        });
+        modelsOutput = String(stdout);
+      } catch (error) {
+        this.log.debug(
+          { error },
+          "Failed to query Grok model listing; using local cache",
+        );
+      }
+    }
+
+    const discovered = normalizeGrokModels(rawCache, modelsOutput);
+    this.modelCache =
+      discovered.length > 0
+        ? discovered
+        : LEGACY_GROK_MODELS.map((model) => ({ ...model }));
+    return this.modelCache.map((model) => ({ ...model }));
   }
 
   /**
@@ -312,7 +513,7 @@ export class GrokACPProvider implements AgentProvider {
       yield {
         type: "error",
         error:
-          "Grok Build CLI not found. Ensure ~/.grok/bin/grok exists or is in PATH. See ~/.grok/docs/user-guide/15-agent-mode.md for `grok agent stdio`.",
+          "Grok Build CLI not found. Ensure GROK_HOME/bin/grok (default ~/.grok/bin/grok) exists or grok is in PATH.",
       } as SDKMessage;
       return;
     }
@@ -323,7 +524,14 @@ export class GrokACPProvider implements AgentProvider {
     if (options.effort) {
       args.push("--effort", options.effort);
     }
-    if (options.model && options.model !== "grok-build") {
+    const defaultModel = (await this.getAvailableModels()).find(
+      (model) => model.isDefault,
+    )?.id;
+    if (
+      options.model &&
+      options.model !== "default" &&
+      options.model !== defaultModel
+    ) {
       args.push("-m", options.model);
     }
     args.push("agent", "stdio");
@@ -345,6 +553,9 @@ export class GrokACPProvider implements AgentProvider {
       this.log.debug({ request }, "Grok permission callback invoked");
       return this.handlePermissionRequest(request, options, signal);
     });
+    client.setExtensionMethodCallback((method, params) =>
+      this.handleExtensionMethod(method, params, options, signal),
+    );
 
     try {
       const connectStart = Date.now();
@@ -546,6 +757,188 @@ export class GrokACPProvider implements AgentProvider {
             }
           : { source: "builtin" },
     };
+  }
+
+  /**
+   * Handle the two blocking xAI extension requests that correspond to YA's
+   * existing pending-input surfaces. Unknown methods remain protocol errors
+   * rather than receiving a success-shaped empty response.
+   */
+  private async handleExtensionMethod(
+    method: string,
+    params: Record<string, unknown>,
+    options: StartSessionOptions,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    switch (method) {
+      case "x.ai/ask_user_question":
+        return this.handleAskUserQuestion(params, options, signal);
+      case "x.ai/exit_plan_mode":
+        return this.handleExitPlanMode(params, options, signal);
+      default:
+        throw new Error(`Unsupported Grok ACP extension method: ${method}`);
+    }
+  }
+
+  private async handleAskUserQuestion(
+    params: Record<string, unknown>,
+    options: StartSessionOptions,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    const questions = this.grokQuestions(params.questions);
+    if (signal.aborted || !options.onToolApproval || questions.length === 0) {
+      return { outcome: "cancelled" };
+    }
+
+    try {
+      const result = await options.onToolApproval(
+        "AskUserQuestion",
+        { questions },
+        { signal },
+      );
+      if (result.behavior !== "allow") {
+        return { outcome: "cancelled" };
+      }
+      return this.grokQuestionResponse(questions, result.updatedInput);
+    } catch (error) {
+      this.log.warn(
+        { error },
+        "Grok AskUserQuestion handling failed; cancelling request",
+      );
+      return { outcome: "cancelled" };
+    }
+  }
+
+  private grokQuestions(value: unknown): Array<{
+    question: string;
+    header: string;
+    options: Array<{
+      label: string;
+      description: string;
+      preview?: string;
+    }>;
+    multiSelect: boolean;
+  }> {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item, index) => {
+      const question = asRecordValue(item);
+      const text = nonemptyString(question?.question);
+      if (!text) return [];
+      const options = Array.isArray(question?.options)
+        ? question.options.flatMap((item) => {
+            const option = asRecordValue(item);
+            const label = nonemptyString(option?.label);
+            if (!label) return [];
+            const preview = nonemptyString(option?.preview);
+            return [
+              {
+                label,
+                description: nonemptyString(option?.description) ?? "",
+                ...(preview ? { preview } : {}),
+              },
+            ];
+          })
+        : [];
+      return [
+        {
+          question: text,
+          header:
+            nonemptyString(question?.header) ?? `Question ${index + 1}`,
+          options,
+          multiSelect:
+            question?.multiSelect === true || question?.multi_select === true,
+        },
+      ];
+    });
+  }
+
+  private grokQuestionResponse(
+    questions: ReturnType<GrokACPProvider["grokQuestions"]>,
+    updatedInput: unknown,
+  ): Record<string, unknown> {
+    const answers = asRecordValue(asRecordValue(updatedInput)?.answers);
+    const accepted: Record<string, string[]> = {};
+    const annotations: Record<
+      string,
+      { notes?: string; preview?: string }
+    > = {};
+
+    for (const question of questions) {
+      const rawAnswer = answers?.[question.question];
+      const values = (
+        Array.isArray(rawAnswer) ? rawAnswer : [rawAnswer]
+      ).filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0,
+      );
+      if (values.length === 0) continue;
+
+      const optionLabels = new Set(
+        question.options.map((option) => option.label),
+      );
+      const selected = values.filter((value) => optionLabels.has(value));
+      const notes = values
+        .filter((value) => !optionLabels.has(value))
+        .map((value) => value.trim());
+      if (selected.length === 0 && notes.length > 0) {
+        selected.push("Other");
+      }
+      if (selected.length > 0) {
+        accepted[question.question] = selected;
+      }
+
+      const preview =
+        question.multiSelect || selected.length !== 1
+          ? undefined
+          : question.options.find((option) => option.label === selected[0])
+              ?.preview;
+      if (notes.length > 0 || preview) {
+        annotations[question.question] = {
+          ...(preview ? { preview } : {}),
+          ...(notes.length > 0 ? { notes: notes.join("\n") } : {}),
+        };
+      }
+    }
+
+    return {
+      outcome: "accepted",
+      answers: accepted,
+      ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
+    };
+  }
+
+  private async handleExitPlanMode(
+    params: Record<string, unknown>,
+    options: StartSessionOptions,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    if (signal.aborted || !options.onToolApproval) {
+      return { outcome: "cancelled" };
+    }
+
+    try {
+      const result = await options.onToolApproval(
+        "ExitPlanMode",
+        { plan: nonemptyString(params.planContent) ?? "" },
+        { signal },
+      );
+      if (result.behavior === "allow") {
+        return { outcome: "approved" };
+      }
+      const feedback = result.message?.trim();
+      return {
+        outcome: "cancelled",
+        ...(feedback && feedback !== "User denied permission"
+          ? { feedback }
+          : {}),
+      };
+    } catch (error) {
+      this.log.warn(
+        { error },
+        "Grok ExitPlanMode handling failed; cancelling request",
+      );
+      return { outcome: "cancelled" };
+    }
   }
 
   /**
@@ -1054,7 +1447,23 @@ export class GrokACPProvider implements AgentProvider {
   }
 
   /**
-   * Find the Grok CLI path (strongly prefers ~/.grok/bin/grok per local layout + topic).
+   * Resolve Grok's state directory. The released CLI documents GROK_HOME as
+   * the override for binaries, auth, cache, docs, and sessions.
+   */
+  private getGrokHome(): string {
+    return nonemptyString(process.env.GROK_HOME) ?? join(homedir(), ".grok");
+  }
+
+  private getSubscriptionEnvironment(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const key of GROK_BILLING_ENV_DENYLIST) {
+      delete env[key];
+    }
+    return env;
+  }
+
+  /**
+   * Find the Grok CLI path (strongly prefers GROK_HOME/bin/grok).
    */
   private async findGrokPath(): Promise<string | null> {
     if (this.grokPath) {
@@ -1062,7 +1471,7 @@ export class GrokACPProvider implements AgentProvider {
     }
 
     const home = homedir();
-    const preferred = join(home, ".grok", "bin", "grok");
+    const preferred = join(this.getGrokHome(), "bin", "grok");
     if (this.pathExists(preferred)) {
       return preferred;
     }

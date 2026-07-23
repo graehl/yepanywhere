@@ -59,6 +59,18 @@ export type PermissionRequestCallback = (
 ) => Promise<RequestPermissionResponse>;
 
 /**
+ * Callback for provider-specific ACP extension requests.
+ *
+ * The SDK strips the leading `_` from JSON-RPC extension methods before
+ * invoking this callback, so `_x.ai/ask_user_question` arrives as
+ * `x.ai/ask_user_question`.
+ */
+export type ExtensionMethodCallback = (
+  method: string,
+  params: Record<string, unknown>,
+) => Promise<Record<string, unknown>>;
+
+/**
  * ACP Client - manages connection to an ACP-compatible agent.
  *
  * Usage:
@@ -82,6 +94,7 @@ export class ACPClient {
   }
   private onSessionUpdate: SessionUpdateCallback | null = null;
   private onPermissionRequest: PermissionRequestCallback | null = null;
+  private onExtensionMethod: ExtensionMethodCallback | null = null;
 
   /**
    * Set callback for session update notifications.
@@ -99,6 +112,15 @@ export class ACPClient {
   setPermissionRequestCallback(callback: PermissionRequestCallback): void {
     this.log.debug("Permission request callback registered");
     this.onPermissionRequest = callback;
+  }
+
+  /**
+   * Set the provider-specific ACP extension request handler.
+   * Must be called before connect() so the client handler includes extMethod.
+   */
+  setExtensionMethodCallback(callback: ExtensionMethodCallback): void {
+    this.log.debug("ACP extension method callback registered");
+    this.onExtensionMethod = callback;
   }
 
   /**
@@ -162,10 +184,13 @@ export class ACPClient {
    */
   private createClientHandlers(): Client {
     this.log.debug(
-      { hasPermissionCallback: !!this.onPermissionRequest },
+      {
+        hasPermissionCallback: !!this.onPermissionRequest,
+        hasExtensionMethodCallback: !!this.onExtensionMethod,
+      },
       "Creating ACP client handlers",
     );
-    return {
+    const client: Client = {
       sessionUpdate: async (params: SessionNotification) => {
         this.log.trace({ update: params }, "ACP session update");
         this.onSessionUpdate?.(params);
@@ -185,6 +210,16 @@ export class ACPClient {
         return { outcome: { outcome: "cancelled" } };
       },
     };
+
+    const extensionMethod = this.onExtensionMethod;
+    if (extensionMethod) {
+      client.extMethod = async (method, params) => {
+        this.log.debug({ method }, "ACP extension method received");
+        return extensionMethod(method, params);
+      };
+    }
+
+    return client;
   }
 
   /**
@@ -319,5 +354,6 @@ export class ACPClient {
     this.connection = null;
     this.onSessionUpdate = null;
     this.onPermissionRequest = null;
+    this.onExtensionMethod = null;
   }
 }

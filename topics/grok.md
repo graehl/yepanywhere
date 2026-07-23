@@ -1,36 +1,49 @@
 # Grok Build Provider
 
-This topic tracks integration of xAI's Grok Build (the agentic coding CLI invoked as `grok`) as a YA provider. Emphasis is on ACP-driven live supervision for tool activity (read/edit/execute/think) and thinking visibility, CLI-native effort/model controls, and (later) history interop from `~/.grok/` artifacts. All prototype and implementation work is deliberately isolated to new Grok-specific files and behind `ENABLED_PROVIDERS` so that no other provider or core routing path can regress.
+This topic tracks integration of xAI's Grok Build (the agentic coding CLI
+invoked as `grok`) as a YA provider. Emphasis is on ACP-driven live
+supervision for tool activity and thinking visibility, CLI-native effort/model
+controls, and (later) history interop from `~/.grok/` artifacts. Grok behavior
+is isolated behind `ENABLED_PROVIDERS`; the only shared ACP addition is a
+conditional extension-request hook that remains absent for other providers.
 
 Related topics: [claude.md](claude.md), [provider-state-machine.md](provider-state-machine.md), [provider-model-glyphs.md](provider-model-glyphs.md), architecture-mandates.md.
 
-## Background (as of late May 2026)
+## Current upstream and local surface (2026-07-23)
 
-Grok Build is xAI's terminal-first coding agent (early beta, announced ~May 2026). It supports interactive TUI, headless (`grok -p "..."`), subagents, skills, AGENTS.md, hooks, MCP, rich sandbox + permission system (modes overlap YA's `plan`/`acceptEdits`/`bypassPermissions` etc.), and explicit ACP support for embedding in other apps/IDEs.
+Grok Build is xAI's terminal-first coding agent. It supports an interactive
+TUI, headless mode, subagents, skills, AGENTS.md, hooks, MCP, a sandbox and
+permission system, and ACP for embedding in other apps. xAI released the
+client source under Apache-2.0 in July 2026; the public source now supplements
+the installed binary and state as a first-party compatibility reference.
 
 Local evidence on this host (non-destructive inspection of the installed binary and state):
-- Version: `grok 0.2.3 (14d81fd87) [stable]`.
-- `grok models` (authoritative): default `grok-build`; no
-  `grok-build-latest` entry is advertised by this CLI version.
-- `~/.grok/models_cache.json`: `grok_version` `0.2.3`, only model
-  `"grok-build"`, name "Grok Build", description "Best for advanced coding
-  tasks", `supports_reasoning_effort: false`, context 512k.
-- Top-level CLI flags (from `--help`): `-m/--model <MODEL>`,
-  `--effort <LEVEL>` (values: low, medium, high, xhigh, max),
-  `--reasoning-effort <EFFORT>`, `--permission-mode`, `-p/--single`,
-  `grok models`, `grok sessions`, ACP integration path documented for "other
-  apps". `grok agent --help` also exposes `-m/--model` and
-  `--reasoning-effort`; `grok agent stdio` itself still takes no subcommand
-  flags, so YA's top-level `--effort ... agent stdio` argument shape remains
-  valid.
+
+- Installed version: `grok 0.2.111 (94172f2aa4) [stable]`.
+- `grok models` advertises only `grok-4.5` and marks it as the default.
+- `~/.grok/models_cache.json` describes Grok 4.5 with a 500k context window
+  and `high` (default), `medium`, and `low` reasoning efforts.
+- `grok agent stdio` remains YA's transport. A live, no-model-call ACP
+  initialize probe reported protocol version 1, agent version 0.2.111,
+  `grok-4.5`, and commands including `compact`, `context`, `session-info`,
+  `deep-research`, `workflow`, and `goal`.
+- The base ACP update union now includes transcript-bearing message, thought,
+  tool, and plan updates plus command, mode, configuration, and session-info
+  metadata updates. YA normalizes the transcript-bearing updates, consumes the
+  command inventory, and deliberately ignores metadata-only updates until a YA
+  surface needs them.
+- Grok also uses `_x.ai/session/update` notifications for provider state such
+  as retries and turn completion. Those are operational metadata rather than
+  an additional transcript stream.
 - Session storage: `~/.grok/sessions/<encoded-cwd>/<uuid>/` containing
   `summary.json`, `updates.jsonl`, `chat_history.jsonl`, `plan.json`,
   `rewind_points.jsonl`, `signals.json`, `feedback.jsonl`,
   `compaction_checkpoints/`, and `subagents/`, plus the top-level
-  `session_search.sqlite`. The refreshed 0.2.3 docs call `updates.jsonl` the
+  `session_search.sqlite`. The installed docs call `updates.jsonl` the
   authoritative conversation log for `/load` and restore.
 
 ACP (via the already-vendored `@agentclientprotocol/sdk` and YA's `ACPClient`) is the highest-leverage integration surface. Protocol surfaces:
+
 - `agent_thought_chunk` (thinking/reasoning exposure)
 - `tool_call` / `tool_call_update` with `kind` in {"read","edit","delete","move","search","execute","think","fetch","other"}, `locations[]` (file+line follow-along), `content` including `Diff` for edits, raw I/O, status lifecycle
 - `plan` updates
@@ -42,21 +55,23 @@ This gives first-class visibility into read, edit (with diffs), bash/execute, an
 
 YA's new-session flow (`NewSessionForm.tsx`, `useProviders`, `getAvailableModels()` from the provider, `useModelSettings` + `EFFORT_LEVEL_OPTIONS`, `ModelInfo` + `EffortLevel` / `ThinkingConfig` / `ThinkingOption` in `packages/shared/src/types.ts`) populates a per-provider model dropdown + optional effort/thinking toggle.
 
-From the Grok CLI + cache (the source of truth for what the local `grok` binary will actually run):
+From the Grok CLI and cache, which define what the installed binary can run:
 
-- The only model id the CLI and TUI use is **`grok-build`** (display name "Grok Build" or "Grok Build (default)").
-- `grok -m grok-build` (or simply omitting `-m`) selects it.
-- The model entry explicitly reports `supports_reasoning_effort: false`.
-- However the CLI itself exposes global flags `--effort` and `--reasoning-effort` (plus the values low/medium/high/xhigh/max line up closely with YA's `EffortLevel = "low" | "medium" | "high" | "max"`).
-
-**Recommendation for the Grok provider implementation**:
-- `getAvailableModels()` must return (at minimum) `[{ id: "grok-build", name: "Grok Build", description: "Best for advanced coding tasks", ... }]`.
-- In the YA new-session UI the entry for a "grok" provider will therefore read naturally as **"grok-build"** (or "Grok Build" with the id in parens or tooltip). This matches what `grok models` and the TUI actually present to the user.
-- Effort/thinking toggle: the provider can advertise support (via the existing `supportsThinkingToggle` flag or equivalent) and map the selected `EffortLevel` to the appropriate `--effort` / `--reasoning-effort` flag when constructing the start command or ACP session params. Default behavior when no effort is chosen: omit the flag (let the agent decide, consistent with the model's cache entry having `reasoning_effort: null`).
+- The current visible/default model is `grok-4.5` (display name "Grok 4.5").
+- The current model supports `low`, `medium`, and `high` effort, with `high`
+  as its default.
+- `getAvailableModels()` queries `grok models` for the visible ids, ordering,
+  and default, then enriches them from `GROK_HOME/models_cache.json`.
+  Object-keyed and older array-shaped caches are both accepted.
+- If neither live listing nor cache can be read, YA retains `grok-build` as a
+  compatibility fallback for older installations. The fallback does not
+  override a readable current catalog.
+- YA omits `-m` for the discovered default or the generic `default` alias and
+  passes an explicit id for any other selection. It maps the selected YA
+  effort to Grok's top-level `--effort` flag; no selection leaves the CLI
+  default intact.
 
 No special casing or UI changes are required in `NewSessionForm` or the model settings hooks; the normal per-provider `ModelInfo[]` path is sufficient.
-
-API note: the underlying model is also exposed as `grok-build-0.1` on the public xAI API, but the CLI / local agent surface uses the `grok-build` slug.
 
 ## API Key Billing Boundary
 
@@ -72,7 +87,7 @@ Providers settings page exposes a default-off opt-in. That opt-in reinjects
 only the ambient `XAI_API_KEY` captured at YA startup; it does not reuse
 `YEP_STT_XAI_API_KEY`, so STT can remain on different billing from Grok Build.
 
-## Integration Plan (Explicitly Isolated — Zero Risk to Other Providers)
+## Implementation Phases
 
 The mandate from local rules and architecture docs is to prototype Grok-specific concerns without touching load-bearing shared paths.
 
@@ -80,19 +95,25 @@ The mandate from local rules and architecture docs is to prototype Grok-specific
 - Local + docs inspection of models, effort flags, ACP surface, session layout (done).
 - Model name decision recorded above.
 
-**Phase 1 (live supervision prototype — highest value, lowest surface)**
+**Phase 1 (live supervision prototype) — landed**
+
 - Add `"grok"` (and/or `"grok-acp"`) to the `ProviderName` union and `ALL_PROVIDERS` list (additive only).
-- New file only: `packages/server/src/sdk/providers/grok.ts` (or `grok-acp.ts`) that:
+- `packages/server/src/sdk/providers/grok-acp.ts`:
   - Implements `AgentProvider` + `startSession` using the existing `ACPClient`.
-  - Spawns the `grok` binary with appropriate ACP/stdio flags (discover exact flag via `grok --help` or test; precedent is Gemini's `--experimental-acp`).
+  - Spawns `grok agent stdio`, with top-level model/effort flags.
   - Normalizes `SessionNotification` / `agent_thought_chunk` / `tool_call` (kinds + diffs + locations) into `SDKMessage` (thinking blocks + tool_use/tool_result).
   - Wires permission callbacks to YA's `CanUseTool`.
-  - Returns `ModelInfo[]` with the single `grok-build` entry.
+  - Discovers the visible model catalog and metadata from the installed CLI.
   - Maps effort from YA `EffortLevel` to CLI flags where possible.
+  - Maps Grok question and plan-approval extension requests to YA pending
+    input.
 - Register the new provider instance in `providers/index.ts` (additive switch case + `getAllProviders`).
 - Extend `ENABLED_PROVIDERS` parsing and the provider-resolution / routes paths (additive; existing providers unaffected when the env var is not set or does not include "grok").
-- CLI detection + auth status: presence of `~/.grok/bin/grok` + `~/.grok/auth.json` or `config.toml` (read-only checks).
-- All of the above lives in brand-new files or tiny additive deltas. `Process`, `Supervisor`, message routing, other provider implementations, and the client render pipeline are untouched.
+- CLI detection + auth status: `GROK_HOME/bin/grok` and
+  `GROK_HOME/auth.json` (read-only checks).
+- The shared ACP client exposes a callback only when Grok registers it.
+  `Process`, `Supervisor`, message routing, other provider implementations,
+  and the client render pipeline remain untouched.
 
 **Phase 2 (history / interop)**
 - New scanner: `packages/server/src/projects/grok-scanner.ts` (modeled on `codex-scanner.ts`).
@@ -109,9 +130,11 @@ The mandate from local rules and architecture docs is to prototype Grok-specific
 - No edits to `Process.ts`, `EventBus`, replay buffer logic, or any shared hot path.
 - No changes to how other providers are instantiated or how their iterators are wrapped.
 - Scanner/history work can be stubbed or behind a separate feature flag initially.
-- ACP client and normalization code can be copied/adapted from `gemini-acp.ts` into the new Grok file (no shared refactoring until the Grok impl is proven).
+- Do not generalize Grok normalization into other providers without a shared
+  contract and evidence.
 
-This structure guarantees that enabling or even crashing the Grok prototype (via `ENABLED_PROVIDERS=grok`) cannot affect Claude, Codex, Gemini, or OpenCode users or sessions.
+This structure keeps Grok startup and normalization behind its provider gate;
+other ACP providers do not advertise or handle Grok extension requests.
 
 ## History Replay Detail Policy
 
@@ -132,14 +155,50 @@ forcing misleading generic shapes. Per-update Grok `_meta` is noisy telemetry
 and should not be carried into replayed messages unless a future UI explicitly
 needs a stable subset.
 
+## ACP Extension Request Contract
+
+Grok uses reverse ACP extension requests for two blocking interactions that
+are not ordinary session updates:
+
+- `_x.ai/ask_user_question` is mapped to YA's existing
+  `AskUserQuestion` pending-input surface. Multiple choice, multi-select,
+  cancel, and free-form "Other" text round-trip to Grok's accepted/cancelled
+  response shape. A free-form-only answer is returned as `Other`; accompanying
+  text and selected-option previews use Grok's per-question annotations.
+- `_x.ai/exit_plan_mode` is mapped to YA's existing `ExitPlanMode` approval.
+  Approval returns `approved`; denial returns `cancelled` with feedback when
+  the user supplied it.
+
+Both requests fail closed when the session is aborted, no approval callback is
+available, the question payload is unusable, or YA handling throws. Unknown
+Grok extension methods remain protocol errors instead of receiving a
+success-shaped empty response. The shared ACP client installs an extension
+handler only when a provider registers one, preserving the prior behavior for
+other ACP providers.
+
+YA's pinned `@agentclientprotocol/sdk` 0.12.0 already supports extension
+methods and the standard update variants Grok currently uses, so this refresh
+does not require an ACP dependency upgrade.
+
 ## Open Questions & Epistemic Status
 
-- Exact ACP invocation flag for the `grok` binary (local test will resolve quickly).
-- Real-world richness of `agent_thought_chunk` and `tool_call_update` (with diffs) for `grok-build` workloads — the protocol supports it; the backend implementation quality is the variable.
+- A paid live 0.2.111 prompt could not be completed during this refresh because
+  the current account returned HTTP 402. Initialize, model/command discovery,
+  durable update shapes, first-party source, and mocked extension round-trips
+  were still verified.
+- Real-world richness of 0.2.111 `agent_thought_chunk` and
+  `tool_call_update` events remains to be re-smoked once model access is
+  available.
+- Grok questions in plan mode can advertise provider-specific "Chat about
+  this" and "Skip interview" outcomes. YA currently exposes the shared
+  answer-or-cancel surface only.
 - Evolution of the on-disk multi-file + sqlite layout during the beta (treat as unstable; ACP live path is the stable contract for supervision).
-- Whether `grok` will later advertise `supports_reasoning_effort: true` for the model or expose more granular thinking controls.
 
-All claims above are grounded in direct local binary + state inspection on this machine plus the official docs.x.ai/build/* pages (as of the dates in the tool results). Beta software; surfaces can change.
+Claims above are grounded in the installed binary/state, live no-cost ACP
+probes, and the first-party public source. The public checkout's package
+version is 0.2.110 while this host runs 0.2.111, so source findings were
+cross-checked against the installed CLI and not treated as proof of the final
+patch release.
 
 ## Steering, Interject, and /btw Forking Support
 
@@ -191,11 +250,11 @@ If Grok's ACP agent treats a second `prompt` during a turn as "start a new turn 
 
 Update the tracking checkboxes below to include these items.
 
-## Local Grok Build Documentation (Authoritative Source for Implementers)
+## Grok Build Sources for Implementers
 
 **Critical for any future agent or human implementer:**
 
-The most accurate and up-to-date information about Grok Build's CLI surface, ACP behavior, keyboard shortcuts (including the `Ctrl+Enter` interject), session storage layout, configuration, headless usage, and capabilities lives in the **locally installed documentation** on this machine:
+For the exact released binary, prefer its bundled docs and runtime probes:
 
 - `~/.grok/docs/user-guide/`
   - `03-keyboard-shortcuts.md` — especially the "During an active turn" section documenting `Ctrl+Enter` interject.
@@ -209,9 +268,11 @@ Also authoritative on this host:
 - `~/.grok/models_cache.json`
 - Actual session directories under `~/.grok/sessions/...` (multiple `.jsonl` files per session + `session_search.sqlite`).
 
-Public docs at `https://docs.x.ai/build/...` are useful for high-level overview but lag the locally installed TUI docs. Always prefer the files under `~/.grok/docs/user-guide/` when implementing against the real binary.
-
-Any subagent or human doing the implementation work **must** be explicitly instructed to read the contents of `~/.grok/docs/user-guide/` as primary source material alongside this topic file.
+The first-party `xai-org/grok-build` repository is the definitive readable
+reference for agent-loop, ACP extension, tool, and TUI behavior. It is synced
+periodically from an internal monorepo and may trail the released binary, so
+compare its package version and `SOURCE_REV` against `grok --version` before
+using a source finding as evidence for the installed patch.
 
 ## Progress Snapshot (2026-05-26 Takeover)
 
@@ -288,23 +349,18 @@ Known remaining gap:
 Grok provider work remains broader than modal prompt/interview handling:
 
 - **Source refresh:** the provider-refresh audit currently marks Grok ACP as
-  due. Local Grok has advanced beyond the version captured earlier in this
-  topic, the local docs/cache changed, and the visible model catalog may no
-  longer be just `grok-build`. Refresh the CLI/cache evidence before relying on
-  the model list, effort flags, or static fallback names.
-- **Model catalog drift:** YA still needs a verified strategy for any newly
-  advertised Grok Build or composer models, rather than hardcoding only the
-  older `grok-build` assumption indefinitely.
+  current through installed 0.2.111 and public source 0.2.110. Re-run it when
+  the installed model/command catalog, ACP dependency, or first-party request
+  and notification enums change.
 - **Full history replay:** `updates.jsonl` replay remains incomplete; summary
   lookup and native-id recovery are not a substitute for restart/reconnect
   transcript visibility.
-- **ACP prompt/interview forms:** trace Grok Build's current ACP/TUI shape for
-  multiple-choice, cancel, and free-form prompts and decide whether existing
-  YA `user-question` pending-input UI is sufficient or a Grok-specific adapter
-  is needed.
+- **Live 0.2.111 smoke:** repeat an assistant/tool/steering run once the
+  account can make model calls; the present refresh stopped at the upstream
+  HTTP 402 instead of treating it as a provider success.
 - **Default-enable decision:** keep Grok isolated behind provider gating until
-  ACP stability, history replay, model catalog refresh, and prompt behavior
-  are good enough for ordinary use.
+  ACP stability, history replay, and current live prompt behavior are good
+  enough for ordinary use.
 
 ## 0.2.3 Refresh and Steering Smoke (2026-05-28)
 
@@ -350,11 +406,42 @@ and title "Bearings Research Paper Reading Session Analysis". Detail still
 returns an empty `messages` array because full Grok `updates.jsonl` transcript
 replay remains Phase 2 history work.
 
-Near follow-up once the above is green:
+Bundled references for future released-binary checks:
 
-- Keep local docs as the authoritative source for future work:
+- Read:
   `~/.grok/docs/user-guide/15-agent-mode.md`,
   `17-sessions.md`, `03-keyboard-shortcuts.md`, and related files.
+
+## 0.2.111 and Open-Source Refresh (2026-07-23)
+
+The local install is `grok 0.2.111 (94172f2aa4) [stable]`. xAI's public
+`xai-org/grok-build` checkout was inspected at git
+`a5727c5960452e7527a154b25cb5bf00cda0545e`; its recorded source revision is
+`30192d2eef5d91a8fff0e53957de5bd05b43398c` and its package version is
+0.2.110. The installed 0.2.111 changelog is primarily TUI fixes, but the
+one-release source lag remains an explicit evidence boundary.
+
+This refresh enacted four YA-visible changes:
+
+1. Model discovery now follows `grok models` and enriches the visible catalog
+   from `GROK_HOME/models_cache.json`. The current catalog is the single,
+   default `grok-4.5` model with a 500k context window and
+   low/medium/high effort metadata. `grok-build` remains only as an unreadable-
+   catalog fallback for old installations.
+2. `GROK_HOME` now consistently controls binary, auth, and model-cache lookup.
+3. Grok's `x.ai/ask_user_question` and `x.ai/exit_plan_mode` reverse requests
+   reuse YA's pending-question and plan-approval flows. This was the material
+   compatibility gap exposed by the newly public first-party source.
+4. The standard update union and `_x.ai/session/update` notifications were
+   audited. YA already handles the transcript-bearing standard updates; the
+   new mode/config/session-info and xAI lifecycle variants are metadata-only
+   for current YA surfaces.
+
+The installed CLI completed ACP initialize and session creation without a
+model call. A real prompt reached xAI but returned HTTP 402 because the current
+account balance is exhausted, so the refresh makes no claim of a successful
+0.2.111 assistant/tool stream. Unit tests cover model normalization and both
+reverse-request bridges.
 
 ## Tracking
 
@@ -363,7 +450,8 @@ place. Liveness-specific evidence from the takeover also informs
 [`session-liveness.md`](session-liveness.md).
 
 - [x] Add "grok" / "grok-acp" to `ProviderName` + `ALL_PROVIDERS` (additive)
-- [x] New `grok-acp.ts` minimal ACP-based provider returning the `grok-build` model and streaming normalized events (thinking + tools + approvals)
+- [x] New `grok-acp.ts` ACP-based provider with dynamically discovered models
+  and normalized events (thinking + tools + approvals)
 - [x] Effort / `--effort` mapping from YA `EffortLevel` using top-level CLI args
 - [x] Auth/install detection and `isAuthenticated` using `~/.grok/` state, including nested auth profiles
 - [x] Register + `ENABLED_PROVIDERS` wiring (no impact on default "all")
@@ -373,11 +461,12 @@ place. Liveness-specific evidence from the takeover also informs
 - [x] Active-turn interject/steering via repeated ACP prompt (mocked coverage
   and 0.2.3 live smoke passed)
 - [x] 0.2.3 CLI/docs refresh audited and recorded
+- [x] 0.2.111 CLI/cache/ACP and public 0.2.110 source audited
+- [x] Prompt/interview and plan-exit extension requests mapped to YA pending
+  input
+- [x] Dynamic model catalog reconciled with the current local Grok binary and
+  cache
 - [ ] (Phase 2) `grok-scanner.ts` + minimal schema for session listing + history — summary reader exists; full scanner/history replay not done
-- [ ] Prompt/interview forms over ACP/TUI traced and mapped to YA pending-input
-  UI
-- [ ] Model catalog/provider refresh reconciled with the current local Grok
-  binary, docs, and cache
 - [ ] Docs updates + version pinning note — topic and `CLAUDE.md` provider list updated; broader README/provider capability docs not done
 - [ ] Decision point: promote "grok" to default-enabled once ACP surface proves stable
 
@@ -388,4 +477,5 @@ task file; that file references this committed topic, not the reverse.
 
 Topic: grok
 
-<!-- epistemic status: local binary + cache + `grok models`/`--help` inspection + official docs.x.ai as of 2026-05; beta; plan prioritizes isolation per project rules -->
+<!-- epistemic status: installed 0.2.111 binary/cache/ACP probes + public
+xai-org/grok-build 0.2.110 source as of 2026-07; provider remains gated -->

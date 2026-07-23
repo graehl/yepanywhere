@@ -60,3 +60,9 @@ stop renaming provider rollout files; the short-lived former contract made an
 explicit Kill hide history and prevent deliberate continuation, so preserving
 that response shape would preserve the wrong mechanism. YA's co-deployed
 client now distinguishes verified shutdown from exemption persistence failure.
+
+2026-07-23 Pi RPC turn completion — use `agent_settled` for Pi 0.80.4 and
+newer, but retain `agent_end` for version-probed 0.79.9 through 0.80.3
+binaries because they never emit the newer event and would otherwise hang.
+Fail startup when `pi --version` is unrecognized rather than guessing a
+boundary that could either hang or finalize before retry/compaction completes.

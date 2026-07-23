@@ -564,9 +564,10 @@ No checked-in generated Claude protocol needs regeneration.
 
 ## Grok ACP
 
-Grok Build is beta and its local installation is the best source of truth for
-the provider YA actually launches. Public docs are secondary to the installed
-CLI docs and local caches.
+The local installation is the source of truth for the provider YA actually
+launches. The first-party public source is the best implementation reference,
+but its version and `SOURCE_REV` must be checked because it is periodically
+synced and may trail the released binary.
 
 Primary sources:
 
@@ -577,6 +578,8 @@ Primary sources:
 - local docs under `~/.grok/docs/user-guide/`, especially
   `15-agent-mode.md`, `17-sessions.md`, `03-keyboard-shortcuts.md`,
   `11-custom-models.md`, and `22-permissions-and-safety.md`;
+- first-party `xai-org/grok-build` source, including its package version and
+  root `SOURCE_REV`;
 - `packages/server/src/sdk/providers/grok-acp.ts`;
 - `packages/server/src/sessions/grok-reader.ts`;
 - ACP SDK dependency `@agentclientprotocol/sdk`;
@@ -594,35 +597,47 @@ grok agent stdio --help
 
 Difference detectors:
 
-- `grok models` or `models_cache.json` contains model ids or metadata not
-  represented by `GROK_MODELS`, or the default model changes.
+- `grok models` or `models_cache.json` changes visible ids, metadata, cache
+  shape, or the default in a way the dynamic normalizer does not preserve.
 - `grok agent` flags move between top-level, `agent`, and `agent stdio`
   positions; YA currently places effort/model flags before `agent stdio`.
-- Local docs add or remove ACP methods, permission modes, interject/steering
-  semantics, session storage files, compaction behavior, or custom-model
-  credential precedence.
+- Local docs or first-party source add or remove ACP methods, reverse
+  extension requests, permission modes, interject/steering semantics, session
+  storage files, compaction behavior, or custom-model credential precedence.
 - ACP update or permission request shapes no longer match `GrokACPProvider`
   normalization tests.
 - `@agentclientprotocol/sdk` changes enough to alter `ACPClient` request,
   notification, or permission typings.
 
-Current read-only audit, 2026-06-05:
+Enacted audit, 2026-07-23:
 
-- Installed Grok is `grok 0.2.22 (967574cb1) [stable]`; the topic and provider
-  header still contain `0.2.3` and `0.1.220` evidence.
-- Local user-guide docs were refreshed at `2026-06-05 01:01 UTC`.
-- `grok models` reports default `grok-build` and available
-  `grok-composer-2.5-fast` plus `grok-build`.
-- `models_cache.json` now stores models in an object keyed by id and includes
-  `grok-composer-2.5-fast`; YA's provider still hardcodes only `grok-build`.
-- `grok agent --help` exposes `-m/--model`, `--reasoning-effort`, and
-  `--always-approve`; `grok agent stdio --help` still has no subcommand flags.
-- `@agentclientprotocol/sdk` is pinned/current at `0.12.0`; latest npm version
-  is `0.24.0`.
+- Installed Grok is `grok 0.2.111 (94172f2aa4) [stable]`.
+- `grok models` advertises only/default `grok-4.5`.
+  `models_cache.json` reports a 500k context window and low/medium/high effort,
+  with high as the default.
+- YA now discovers the CLI-visible catalog and enriches it from the cache
+  instead of hardcoding `grok-build`; that id remains an unreadable-catalog
+  fallback for older installations.
+- A live initialize probe reported ACP protocol version 1, agent version
+  0.2.111, `grok-4.5`, and the current slash-command inventory.
+- Standard update types now also include current-mode, config-option, and
+  session-info metadata. Grok persists `_x.ai/session/update` retry and
+  turn-completed notifications. Neither is a missing transcript message type
+  for current YA surfaces.
+- The first-party Apache-2.0 `xai-org/grok-build` source was inspected at git
+  `a5727c5960452e7527a154b25cb5bf00cda0545e`, source revision
+  `30192d2eef5d91a8fff0e53957de5bd05b43398c`, package version 0.2.110.
+- That source exposed two blocking reverse requests:
+  `x.ai/ask_user_question` and `x.ai/exit_plan_mode`. YA now maps them to its
+  existing pending-input flows and fails closed when input cannot be obtained.
+- `@agentclientprotocol/sdk` remains pinned at 0.12.0. Its existing extension
+  method API and standard update union cover these Grok surfaces, so no
+  dependency upgrade is needed.
+- A live assistant/tool smoke is still due: the current account completed
+  initialize/session setup but returned HTTP 402 on the model call.
 
-Status: Grok ACP is due for at least a doc/header/model-catalog refresh, and
-possibly a source refresh if YA should expose `grok-composer-2.5-fast` or adapt
-to the newer ACP SDK.
+Status: Grok ACP source and docs are current through installed 0.2.111 and
+public source 0.2.110, subject to the live-prompt coverage gap above.
 
 ## OpenCode
 

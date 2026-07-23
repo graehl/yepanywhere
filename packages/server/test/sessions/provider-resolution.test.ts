@@ -2,6 +2,7 @@ import type { UrlProjectId } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   findSessionSummaryAcrossProviders,
+  listSessionListSummariesAcrossProviders,
   listSessionsAcrossProviders,
 } from "../../src/sessions/provider-resolution.js";
 import type { ISessionIndexService } from "../../src/indexes/types.js";
@@ -158,6 +159,87 @@ describe("provider resolution", () => {
     expect(
       sessionIndexService.getSessionSummaryWithCache,
     ).not.toHaveBeenCalled();
+  });
+
+  it("keeps lightweight list results out of the complete index path", async () => {
+    const projectId = "proj-list" as UrlProjectId;
+    const cachedSummary: SessionSummary = {
+      id: "cached-session",
+      projectId,
+      title: "Cached title",
+      fullTitle: "Cached full title",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:02:00.000Z",
+      messageCount: 442,
+      ownership: { owner: "none" },
+      provider: "codex",
+      model: "late-model",
+      lastAgentText: "Complete tail",
+    };
+    const reader = makeReader(null);
+    reader.listSessionFiles = vi.fn(async () => [
+      {
+        sessionId: cachedSummary.id,
+        filePath: `/tmp/list/${cachedSummary.id}.jsonl`,
+      },
+      {
+        sessionId: "dirty-session",
+        filePath: "/tmp/list/dirty-session.jsonl",
+      },
+    ]);
+    reader.getSessionListSummary = vi.fn(async (sessionId) => ({
+      id: sessionId,
+      projectId,
+      title: "Bounded title",
+      updatedAt: "2026-06-01T00:03:00.000Z",
+    }));
+    const sessionIndexService = makeSessionIndexService(null);
+    vi.mocked(
+      sessionIndexService.getCachedSessionSummary,
+    ).mockImplementation(async (_dir, _projectId, sessionId) =>
+      sessionId === cachedSummary.id ? cachedSummary : null,
+    );
+
+    const sessions = await listSessionListSummariesAcrossProviders(
+      {
+        id: projectId,
+        path: "/tmp/list",
+        name: "list",
+        sessionCount: 2,
+        sessionDir: "/tmp/list",
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+        provider: "codex",
+      },
+      {
+        readerFactory: vi.fn(() => reader),
+        sessionIndexService,
+      },
+    );
+
+    expect(sessions).toEqual([
+      {
+        id: "dirty-session",
+        projectId,
+        title: "Bounded title",
+        updatedAt: "2026-06-01T00:03:00.000Z",
+      },
+      {
+        id: "cached-session",
+        projectId,
+        title: "Cached title",
+        updatedAt: "2026-06-01T00:02:00.000Z",
+      },
+    ]);
+    expect(reader.getSessionListSummary).toHaveBeenCalledTimes(1);
+    expect(reader.getSessionSummary).not.toHaveBeenCalled();
+    expect(
+      sessionIndexService.getSessionsWithCache,
+    ).not.toHaveBeenCalledWith("/tmp/list", projectId, reader, undefined);
+    expect(sessions[1]).not.toHaveProperty("messageCount");
+    expect(sessions[1]).not.toHaveProperty("model");
+    expect(sessions[1]).not.toHaveProperty("lastAgentText");
   });
 
   it("lists OpenCode sessions for a project whose primary provider is Claude", async () => {

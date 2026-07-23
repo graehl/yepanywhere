@@ -6032,6 +6032,18 @@ a.linkified-url:hover {
   background: var(--bg-hover);
 }
 
+.message-input-keyboard-secondary-slot {
+  width: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  flex: 0 0 48px;
+}
+
+.message-input-keyboard-secondary-slot:empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .message-input-keyboard-action {
   min-width: 0;
   min-height: 48px;
@@ -6051,6 +6063,15 @@ a.linkified-url:hover {
   touch-action: manipulation;
 }
 
+.message-input-keyboard-action.message-input-keyboard-secondary {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  flex: 0 0 48px;
+  padding: 0;
+  font-size: 1.2rem;
+}
+
 .message-input-keyboard-actions.has-alternate
   .message-input-keyboard-action {
   padding-inline: var(--space-2);
@@ -6058,6 +6079,10 @@ a.linkified-url:hover {
 
 .message-input-keyboard-action.queue-mode {
   background: var(--attention-color);
+}
+
+.message-input-keyboard-action.project-queue-mode {
+  background: var(--project-queue-action-bg);
 }
 
 .message-input-keyboard-action:disabled {

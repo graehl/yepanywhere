@@ -22,17 +22,19 @@ import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
-import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js";
+import { listSessionListSummariesAcrossProviders } from "../sessions/provider-resolution.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
-import type { ISessionReader } from "../sessions/types.js";
+import type {
+  ISessionReader,
+  SessionListSummary,
+} from "../sessions/types.js";
 import type { ProjectQueueService } from "../services/ProjectQueueService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
   AgentActivity,
   PendingInputType,
   Project,
-  SessionSummary,
 } from "../supervisor/types.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
 import { getActiveSessionIndexOptions } from "./session-list-options.js";
@@ -122,7 +124,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
 
     // Collect all sessions with enriched data
     const allSessions: Array<{
-      session: SessionSummary;
+      session: SessionListSummary;
       projectName: string;
       pendingInputType?: PendingInputType;
       activity?: AgentActivity;
@@ -147,7 +149,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
     const projectSessionResults = await Promise.all(
       projects.map(async (project) => {
         try {
-          const sessions = await listSessionsAcrossProviders(
+          const sessions = await listSessionListSummariesAcrossProviders(
             project,
             {
               readerFactory: deps.readerFactory,
@@ -171,7 +173,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
             { err, projectId: project.id },
             "Failed to fetch sessions for inbox project",
           );
-          return { project, sessions: [] as SessionSummary[] };
+          return { project, sessions: [] as SessionListSummary[] };
         }
       }),
     );

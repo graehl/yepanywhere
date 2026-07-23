@@ -1132,6 +1132,14 @@ export function MessageInput({
             onClick: handleQueue,
           }
       : null;
+  // Keep the keyboard-open primary action's hit area stable while live session
+  // and project state changes. These potential-action slots stay in the row
+  // even before their buttons become useful, so Queue or Project Queue can
+  // appear without taking space out from under Send/Steer.
+  const reserveMobileProjectQueueSlot =
+    !forkSummaryMode && toolbarVisibility.projectQueue;
+  const reserveMobileSessionAlternateSlot =
+    !forkSummaryMode && supportsSteering;
   const collapsedActionKind =
     collapsedComposerButton === "alternate" && hasActiveDualActions
       ? effectivePrimaryActionKind === "queue"
@@ -2317,12 +2325,13 @@ export function MessageInput({
               >
                 <MessageInputToolbar
                   {...toolbarProps}
+                  onProjectQueue={undefined}
                   hidePrimaryDeliveryActions
                 />
               </div>
             )}
             <div
-              className={`message-input-keyboard-actions${canSubmit && mobileKeyboardAlternateAction ? " has-alternate" : ""}`}
+              className={`message-input-keyboard-actions${forkSummaryMode?.onSubmitWithoutSummary ? " has-alternate" : ""}`}
             >
               <button
                 type="button"
@@ -2336,7 +2345,48 @@ export function MessageInput({
               >
                 <span aria-hidden="true">...</span>
               </button>
-              {canSubmit && mobileKeyboardAlternateAction && (
+              {reserveMobileProjectQueueSlot && (
+                <div className="message-input-keyboard-secondary-slot message-input-keyboard-project-queue-slot">
+                  {onProjectQueue && (
+                    <button
+                      type="button"
+                      className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode"
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={handleProjectQueue}
+                      disabled={disabled}
+                      aria-label={t("toolbarProjectQueueLabel")}
+                      title={
+                        projectQueueShortcutAvailable
+                          ? t("toolbarProjectQueueTooltipWithShortcut")
+                          : t("toolbarProjectQueueTooltip")
+                      }
+                    >
+                      <span aria-hidden="true">⇥</span>
+                    </button>
+                  )}
+                </div>
+              )}
+              {reserveMobileSessionAlternateSlot && (
+                <div className="message-input-keyboard-secondary-slot message-input-keyboard-session-alternate-slot">
+                  {mobileKeyboardAlternateAction && (
+                    <button
+                      type="button"
+                      className={`message-input-keyboard-action message-input-keyboard-secondary ${mobileKeyboardAlternateAction.kind}-mode`}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={mobileKeyboardAlternateAction.onClick}
+                      disabled={disabled}
+                      aria-label={mobileKeyboardAlternateAction.label}
+                      title={mobileKeyboardAlternateAction.label}
+                    >
+                      <span aria-hidden="true">
+                        {mobileKeyboardAlternateAction.icon}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+              {forkSummaryMode?.onSubmitWithoutSummary &&
+                mobileKeyboardAlternateAction && (
                 <button
                   type="button"
                   className={`message-input-keyboard-action message-input-keyboard-alternate ${mobileKeyboardAlternateAction.kind}-mode`}
@@ -2351,19 +2401,17 @@ export function MessageInput({
                   </span>
                 </button>
               )}
-              {canSubmit && (
-                <button
-                  type="button"
-                  className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={submitPrimaryAction}
-                  disabled={disabled}
-                  aria-label={mobileKeyboardActionLabel}
-                >
-                  <span>{mobileKeyboardActionDisplayLabel}</span>
-                  <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
-                </button>
-              )}
+              <button
+                type="button"
+                className={`message-input-keyboard-action message-input-keyboard-primary ${effectivePrimaryActionKind}-mode`}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={submitPrimaryAction}
+                disabled={disabled}
+                aria-label={mobileKeyboardActionLabel}
+              >
+                <span>{mobileKeyboardActionDisplayLabel}</span>
+                <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
+              </button>
             </div>
           </div>
         )}

@@ -11,6 +11,7 @@ See also:
 - [`ui-architecture.md`](ui-architecture.md)
 - [`project-queue.md`](project-queue.md)
 - [`sidebar-session-ordering.md`](sidebar-session-ordering.md)
+- [`session-summary-fidelity.md`](session-summary-fidelity.md)
 - [`../docs/tactical/025-zustand-client-summary-store.md`](../docs/tactical/025-zustand-client-summary-store.md)
 - [`../docs/tactical/026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md)
 - [`../docs/tactical/027-client-summary-source-registry.md`](../docs/tactical/027-client-summary-source-registry.md)
@@ -94,6 +95,12 @@ REST snapshots are authoritative for what they queried, but they are not allowed
 to overwrite newer field groups observed from events or local successful
 actions within the same source. Missed activity events are healed by later REST
 snapshots for that source.
+
+Collection snapshots and activity events may contain only a subset of one
+session's facts. Omitted fields preserve richer values already in the
+normalized record; producers must not send compatibility placeholders for
+facts they did not observe. The cross-layer fidelity and nondowngrade rules
+live in [`session-summary-fidelity.md`](session-summary-fidelity.md).
 
 The activity bus remains the fast event transport. The global store does not
 replace it and does not make events durable. Activity events that reduce into

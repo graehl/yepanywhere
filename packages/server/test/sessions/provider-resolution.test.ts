@@ -1,6 +1,7 @@
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
+  findSessionListSummaryAcrossProviders,
   findSessionSummaryAcrossProviders,
   listSessionListSummariesAcrossProviders,
   listSessionsAcrossProviders,
@@ -102,7 +103,7 @@ describe("provider resolution", () => {
     expect(reader.getSessionSummary).not.toHaveBeenCalled();
   });
 
-  it("keeps head-mode summary resolution on the cheap reader path", async () => {
+  it("keeps typed list-summary resolution on the cheap reader path", async () => {
     const projectId = "proj-head" as UrlProjectId;
     const summary: SessionSummary = {
       id: "session-head",
@@ -116,9 +117,17 @@ describe("provider resolution", () => {
       provider: "codex",
     };
     const reader = makeReader(summary);
+    reader.getSessionListSummary = vi.fn(async () => ({
+      id: summary.id,
+      projectId,
+      title: summary.title,
+      fullTitle: summary.fullTitle,
+      updatedAt: summary.updatedAt,
+      provider: summary.provider,
+    }));
     const sessionIndexService = makeSessionIndexService(null);
 
-    const resolved = await findSessionSummaryAcrossProviders(
+    const resolved = await findSessionListSummaryAcrossProviders(
       {
         id: projectId,
         path: "/tmp/head",
@@ -141,15 +150,21 @@ describe("provider resolution", () => {
         sessionIndexService,
       },
       "codex",
-      { readMode: "head" },
     );
 
-    expect(resolved?.summary).toBe(summary);
-    expect(reader.getSessionSummary).toHaveBeenCalledWith(
+    expect(resolved?.summary).toEqual({
+      id: "session-head",
+      projectId,
+      title: "Head",
+      fullTitle: "Head",
+      updatedAt: "2026-06-01T00:01:00.000Z",
+      provider: "codex",
+    });
+    expect(reader.getSessionListSummary).toHaveBeenCalledWith(
       "session-head",
       projectId,
-      { readMode: "head" },
     );
+    expect(reader.getSessionSummary).not.toHaveBeenCalled();
     expect(sessionIndexService.getCachedSessionSummary).toHaveBeenCalledWith(
       "/tmp/head/.codex-sessions",
       projectId,
@@ -191,7 +206,9 @@ describe("provider resolution", () => {
       id: sessionId,
       projectId,
       title: "Bounded title",
+      fullTitle: "Bounded full title",
       updatedAt: "2026-06-01T00:03:00.000Z",
+      provider: "codex",
     }));
     const sessionIndexService = makeSessionIndexService(null);
     vi.mocked(
@@ -223,13 +240,17 @@ describe("provider resolution", () => {
         id: "dirty-session",
         projectId,
         title: "Bounded title",
+        fullTitle: "Bounded full title",
         updatedAt: "2026-06-01T00:03:00.000Z",
+        provider: "codex",
       },
       {
         id: "cached-session",
         projectId,
         title: "Cached title",
+        fullTitle: "Cached full title",
         updatedAt: "2026-06-01T00:02:00.000Z",
+        provider: "codex",
       },
     ]);
     expect(reader.getSessionListSummary).toHaveBeenCalledTimes(1);

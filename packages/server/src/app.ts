@@ -144,7 +144,10 @@ import { GeminiSessionReader } from "./sessions/gemini-reader.js";
 import { GrokSessionReader } from "./sessions/grok-reader.js";
 import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
 import { PiSessionReader } from "./sessions/pi-reader.js";
-import { findSessionSummaryAcrossProviders } from "./sessions/provider-resolution.js";
+import {
+  findSessionListSummaryAcrossProviders,
+  findSessionSummaryAcrossProviders,
+} from "./sessions/provider-resolution.js";
 import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
@@ -665,6 +668,34 @@ export function createApp(options: AppOptions): AppResult {
       options.sessionMetadataService?.getRecapMessages(sessionId) ?? [],
     );
   };
+  const getSessionListSummary = async (
+    sessionId: string,
+    projectId: string,
+  ) => {
+    const project = await scanner.getProject(projectId);
+    if (!project) return null;
+    const resolved = await findSessionListSummaryAcrossProviders(
+      project,
+      sessionId,
+      project.id,
+      {
+        readerFactory,
+        codexSessionsDir,
+        codexReaderFactory,
+        codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
+        geminiSessionsDir: GEMINI_TMP_DIR,
+        geminiReaderFactory,
+        geminiHashToCwd: geminiScanner.getHashToCwd(),
+        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokReaderFactory,
+        piSessionsDir: PI_SESSIONS_DIR,
+        piReaderFactory,
+        claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
+      },
+      options.sessionMetadataService?.getProvider(sessionId),
+    );
+    return resolved?.summary ?? null;
+  };
   let supervisor: Supervisor;
   const getHeartbeatTurnCandidates = async (): Promise<
     HeartbeatTurnCandidate[]
@@ -704,13 +735,12 @@ export function createApp(options: AppOptions): AppResult {
       }
 
       for (const project of projects) {
-        const resolved = await findSessionSummaryAcrossProviders(
+        const resolved = await findSessionListSummaryAcrossProviders(
           project,
           sessionId,
           project.id,
           providerResolutionDeps,
           metadata.provider,
-          { readMode: "head" },
         );
         if (!resolved) {
           continue;
@@ -733,7 +763,7 @@ export function createApp(options: AppOptions): AppResult {
           projectId: project.id,
           projectPath: project.path,
           provider: resolved.summary.provider,
-          model: resolved.summary.model,
+          model: metadata.requestedModel,
           executor: metadata.executor,
           updatedAt: resolved.summary.updatedAt,
           hasPendingToolCall: true,
@@ -836,6 +866,7 @@ export function createApp(options: AppOptions): AppResult {
         // Callback to get session summary for new external sessions
         // projectId is now UrlProjectId (base64url) - ExternalSessionTracker converts it
         getSessionSummary,
+        getSessionListSummary,
       })
     : undefined;
 

@@ -77,6 +77,7 @@ import {
   augmentPersistedSessionMessages,
 } from "../sessions/persisted-augments.js";
 import {
+  findSessionListSummaryAcrossProviders,
   findSessionSummaryAcrossProviders,
   getSessionSources,
 } from "../sessions/provider-resolution.js";
@@ -236,13 +237,12 @@ async function resolveSessionReaderForAgentContent({
   const metadataProvider = deps.sessionMetadataService?.getProvider(
     sessionId,
   ) as ProviderName | undefined;
-  const resolved = await findSessionSummaryAcrossProviders(
+  const resolved = await findSessionListSummaryAcrossProviders(
     project,
     sessionId,
     projectId,
     providerResolutionDeps(deps),
     metadataProvider,
-    { readMode: "head" },
   );
 
   return resolved?.source.reader ?? deps.readerFactory(project);
@@ -1695,7 +1695,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
       const overlayHasTranscript = overlayProject
         ? Boolean(
-            await findSessionSummaryAcrossProviders(
+            await findSessionListSummaryAcrossProviders(
               overlayProject,
               sessionId,
               overlayTranscriptProjectId,
@@ -1703,7 +1703,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               deps.sessionMetadataService?.getProvider(sessionId) as
                 | ProviderName
                 | undefined,
-              { readMode: "head" },
             ),
           )
         : false;
@@ -1856,13 +1855,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     preferredProvider?: ProviderName,
     process?: Process,
   ): Promise<Session | null> => {
-    const resolved = await findSessionSummaryAcrossProviders(
+    const resolved = await findSessionListSummaryAcrossProviders(
       project,
       sessionId,
       projectId,
       providerResolutionDeps(deps),
       preferredProvider,
-      { readMode: "head" },
     );
 
     if (resolved) {
@@ -2301,13 +2299,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         (deps.sessionMetadataService.getProvider(sessionId) as
           | ProviderName
           | undefined);
-      const summary = await findSessionSummaryAcrossProviders(
+      const summary = await findSessionListSummaryAcrossProviders(
         transcriptProject,
         sessionId,
         transcriptProjectId,
         providerResolutionDeps(deps),
         metadataProvider,
-        { readMode: "head" },
       );
       if (!summary) {
         return c.json({ error: "Session not found" }, 404);
@@ -3452,17 +3449,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     let providerName = metadataProvider ?? body.provider;
     if (!providerName) {
-      const sessionSummaryResult = await findSessionSummaryAcrossProviders(
-        project,
-        sessionId,
-        projectId as UrlProjectId,
-        providerResolutionDeps(deps),
-        metadataProvider ?? body.provider,
-        { readMode: "head" },
-      );
-      const sessionSummary = sessionSummaryResult?.summary ?? null;
+      const sessionSummaryResult =
+        await findSessionListSummaryAcrossProviders(
+          project,
+          sessionId,
+          projectId as UrlProjectId,
+          providerResolutionDeps(deps),
+          metadataProvider ?? body.provider,
+        );
       providerName =
-        sessionSummary?.provider ??
+        sessionSummaryResult?.source.provider ??
         metadataProvider ??
         body.provider ??
         project.provider;
@@ -4208,19 +4204,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       sessionId,
     ) as ProviderName | undefined;
     const sourceProcess = deps.supervisor.getProcessForSession(sessionId);
-    const sessionSummaryResult = await findSessionSummaryAcrossProviders(
+    const sessionSummaryResult = await findSessionListSummaryAcrossProviders(
       project,
       sessionId,
       projectId,
       providerResolutionDeps(deps),
       sourceProcess?.provider ?? metadataProvider,
-      { readMode: "head" },
     );
     const sessionSummary = sessionSummaryResult?.summary ?? null;
     const providerName =
       sourceProcess?.provider ??
       metadataProvider ??
-      sessionSummary?.provider ??
+      sessionSummaryResult?.source.provider ??
       project.provider;
     if (!deps.supervisor.supportsForkSession(providerName)) {
       return c.json(
@@ -4235,14 +4230,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       originalMetadata?.customTitle,
     );
     if (!baseTitle) {
-      try {
-        const summary = await deps
-          .readerFactory(project)
-          .getSessionSummary(sessionId, projectId, { readMode: "head" });
-        baseTitle = normalizeRestartTitleCandidate(summary?.title);
-      } catch {
-        // Title is cosmetic; fall through to the provider default.
-      }
+      baseTitle = normalizeRestartTitleCandidate(sessionSummary?.title);
     }
     const forkTitle = baseTitle
       ? truncateSessionTitle(
@@ -4368,19 +4356,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     let sourceProcess = deps.supervisor.getProcessForSession(sessionId);
     const liveSourceProcess =
       sourceProcess && !sourceProcess.isTerminated ? sourceProcess : undefined;
-    const sessionSummaryResult = await findSessionSummaryAcrossProviders(
+    const sessionSummaryResult = await findSessionListSummaryAcrossProviders(
       project,
       sessionId,
       projectId,
       providerResolutionDeps(deps),
       liveSourceProcess?.provider ?? metadataProvider,
-      { readMode: "head" },
     );
-    const sessionSummary = sessionSummaryResult?.summary ?? null;
     const providerName =
       liveSourceProcess?.provider ??
       metadataProvider ??
-      sessionSummary?.provider ??
+      sessionSummaryResult?.source.provider ??
       sourceProcess?.provider ??
       project.provider;
     if (!deps.supervisor.supportsForkSession(providerName)) {
@@ -5771,19 +5757,25 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({ error: "Session directory not found" }, 500);
       }
 
-      // Get original session to extract title for the clone
-      const reader = deps.readerFactory(project);
-      let originalSession = await reader.getSessionSummary(
-        sessionId,
-        projectId,
-        { readMode: "head" },
-      );
-      let cloneProvider: ProviderName = project.provider;
+      // Resolve bounded source/title metadata without treating it as a
+      // complete transcript summary.
+      const originalResolution =
+        await findSessionListSummaryAcrossProviders(
+          project,
+          sessionId,
+          projectId,
+          providerResolutionDeps(deps),
+          body.provider,
+        );
+      const originalSession = originalResolution?.summary ?? null;
+      let cloneProvider: ProviderName =
+        originalResolution?.source.provider ?? project.provider;
 
       let result: { newSessionId: string; entries: number };
 
       const shouldCloneFromCodex =
         isCodexProviderName(body.provider) ||
+        isCodexProviderName(originalResolution?.source.provider) ||
         isCodexProviderName(project.provider) ||
         (!originalSession && project.provider === "claude");
 
@@ -5797,14 +5789,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           return c.json({ error: "Session file not found" }, 404);
         }
 
-        originalSession =
-          originalSession ??
-          (await codexReader.getSessionSummary(sessionId, projectId, {
-            readMode: "head",
-          })) ??
-          null;
         cloneProvider =
-          originalSession?.provider ??
+          originalResolution?.source.provider ??
           body.provider ??
           (isCodexProviderName(project.provider) ? project.provider : "codex");
         result = await cloneCodexSession(filePath);

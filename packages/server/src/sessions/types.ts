@@ -20,7 +20,9 @@ export interface SessionListSummary {
   id: SessionSummary["id"];
   projectId: SessionSummary["projectId"];
   title: SessionSummary["title"];
+  fullTitle: SessionSummary["fullTitle"];
   updatedAt: SessionSummary["updatedAt"];
+  provider: SessionSummary["provider"];
   customTitle?: SessionSummary["customTitle"];
   isArchived?: SessionSummary["isArchived"];
   isStarred?: SessionSummary["isStarred"];
@@ -32,7 +34,9 @@ export function toSessionListSummary(
     | "id"
     | "projectId"
     | "title"
+    | "fullTitle"
     | "updatedAt"
+    | "provider"
     | "customTitle"
     | "isArchived"
     | "isStarred"
@@ -42,7 +46,9 @@ export function toSessionListSummary(
     id: summary.id,
     projectId: summary.projectId,
     title: summary.title,
+    fullTitle: summary.fullTitle,
     updatedAt: summary.updatedAt,
+    provider: summary.provider,
     ...(summary.customTitle !== undefined
       ? { customTitle: summary.customTitle }
       : {}),

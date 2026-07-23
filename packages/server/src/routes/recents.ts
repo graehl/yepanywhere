@@ -12,7 +12,7 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import type { RecentsService } from "../recents/index.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
-import { findSessionSummaryAcrossProviders } from "../sessions/provider-resolution.js";
+import { findSessionListSummaryAcrossProviders } from "../sessions/provider-resolution.js";
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
@@ -67,7 +67,7 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
 
       const projectPath = decodeProjectId(projectId);
       const projectName = getProjectName(projectPath);
-      const resolved = await findSessionSummaryAcrossProviders(
+      const resolved = await findSessionListSummaryAcrossProviders(
         project,
         entry.sessionId,
         projectId,
@@ -85,7 +85,6 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
           piReaderFactory: deps.piReaderFactory,
         },
         undefined,
-        { readMode: "head" },
       );
       if (!resolved) {
         continue;

@@ -627,8 +627,10 @@ describe("CodexSessionReader - OSS Support", () => {
       title: "cheap summary title",
     });
     expect(Object.keys(listSummary ?? {}).sort()).toEqual([
+      "fullTitle",
       "id",
       "projectId",
+      "provider",
       "title",
       "updatedAt",
     ]);

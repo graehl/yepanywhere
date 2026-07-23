@@ -16,7 +16,7 @@ import type {
   SessionQueuePersistenceService,
 } from "../services/SessionQueuePersistenceService.js";
 import {
-  findSessionSummaryAcrossProviders,
+  findSessionListSummaryAcrossProviders,
   type ProviderResolutionDeps,
 } from "../sessions/provider-resolution.js";
 import type { Project } from "../supervisor/types.js";
@@ -181,13 +181,12 @@ async function enrichProjectQueueItem(
   }
 
   try {
-    const resolved = await findSessionSummaryAcrossProviders(
+    const resolved = await findSessionListSummaryAcrossProviders(
       project,
       item.target.sessionId,
       project.id,
       buildProviderResolutionDeps(deps),
       item.target.provider,
-      { readMode: "head" },
     );
     return {
       ...item,

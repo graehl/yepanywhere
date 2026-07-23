@@ -196,10 +196,6 @@ describe("Codex clone route", () => {
       projectId,
     );
     expect(clonedSummary?.id).toBe(body.sessionId);
-    expect(claudeReader.getSessionSummary).toHaveBeenCalledWith(
-      "source-session",
-      projectId,
-      { readMode: "head" },
-    );
+    expect(claudeReader.getSessionSummary).not.toHaveBeenCalled();
   });
 });

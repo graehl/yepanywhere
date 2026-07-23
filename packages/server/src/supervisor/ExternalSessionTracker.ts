@@ -10,10 +10,10 @@ import {
   encodeProjectId,
   getProjectName,
 } from "../projects/paths.js";
+import type { SessionListSummary } from "../sessions/types.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { readFirstLine } from "../utils/jsonl.js";
 import { BatchProcessor } from "../watcher/BatchProcessor.js";
-import type { GetSessionSummaryOptions } from "../sessions/types.js";
 import type {
   BusEvent,
   EventBus,
@@ -49,6 +49,10 @@ function getProjectNameForProjectId(projectId: UrlProjectId): string {
   return getProjectName(decodeProjectId(projectId));
 }
 
+type TrackedSessionSummary =
+  | { fidelity: "complete"; summary: SessionSummary }
+  | { fidelity: "list"; summary: SessionListSummary };
+
 export interface ExternalSessionTrackerOptions {
   eventBus: EventBus;
   supervisor: Supervisor;
@@ -61,8 +65,12 @@ export interface ExternalSessionTrackerOptions {
   getSessionSummary?: (
     sessionId: string,
     projectId: UrlProjectId,
-    options?: GetSessionSummaryOptions,
   ) => Promise<SessionSummary | null>;
+  /** Optional bounded callback for Codex title/recency observations. */
+  getSessionListSummary?: (
+    sessionId: string,
+    projectId: UrlProjectId,
+  ) => Promise<SessionListSummary | null>;
 }
 
 /**
@@ -85,10 +93,13 @@ export class ExternalSessionTracker {
   private getSessionSummary?: (
     sessionId: string,
     projectId: UrlProjectId,
-    options?: GetSessionSummaryOptions,
   ) => Promise<SessionSummary | null>;
+  private getSessionListSummary?: (
+    sessionId: string,
+    projectId: UrlProjectId,
+  ) => Promise<SessionListSummary | null>;
   /** Batches session parsing to prevent OOM from concurrent file reads */
-  private sessionParser: BatchProcessor<SessionSummary | null>;
+  private sessionParser: BatchProcessor<TrackedSessionSummary | null>;
   /** Tracks sessions that have already emitted session-created */
   private createdSessions: Set<string> = new Set();
   /** Cache of last known session state for change detection */
@@ -96,7 +107,8 @@ export class ExternalSessionTracker {
     string,
     {
       title: string | null;
-      messageCount: number;
+      updatedAt: string;
+      messageCount?: number;
       projectId: UrlProjectId;
       contextUsage?: ContextUsage;
       model?: string;
@@ -110,17 +122,34 @@ export class ExternalSessionTracker {
     this.decayMs = options.decayMs ?? 30000;
     this.abortGraceMs = options.abortGraceMs ?? DEFAULT_ABORT_GRACE_MS;
     this.getSessionSummary = options.getSessionSummary;
+    this.getSessionListSummary = options.getSessionListSummary;
 
     // Initialize batch processor for session parsing
     // Limits concurrent JSONL parsing to prevent OOM during bulk file operations
-    this.sessionParser = new BatchProcessor<SessionSummary | null>({
+    this.sessionParser = new BatchProcessor<TrackedSessionSummary | null>({
       concurrency: 5,
       batchMs: 300,
-      onResult: (sessionId, summary) => {
-        if (!summary) return;
+      onResult: (sessionId, observed) => {
+        if (!observed) return;
 
+        const summary = observed.summary;
+        const isComplete = observed.fidelity === "complete";
         const projectId = summary.projectId as UrlProjectId;
         const now = new Date().toISOString();
+        const cached = this.sessionStateCache.get(sessionId);
+        const nextState = {
+          ...cached,
+          title: summary.title,
+          updatedAt: summary.updatedAt,
+          projectId,
+          ...(isComplete
+            ? {
+                messageCount: observed.summary.messageCount,
+                contextUsage: observed.summary.contextUsage,
+                model: observed.summary.model,
+              }
+            : {}),
+        };
 
         // Check if supervisor owns this session
         const isOwned = !!this.supervisor.getProcessForSession(sessionId);
@@ -135,48 +164,38 @@ export class ExternalSessionTracker {
         if (!this.createdSessions.has(sessionId)) {
           if (isOwned) {
             // Owned session - supervisor already emitted session-created with title: null
-            // Cache state and emit session-updated if title is now available
-            this.sessionStateCache.set(sessionId, {
-              title: summary.title,
-              messageCount: summary.messageCount,
-              projectId,
-              contextUsage: summary.contextUsage,
-              model: summary.model,
-            });
+            // Cache state and emit only fields observed at this fidelity.
+            this.sessionStateCache.set(sessionId, nextState);
             this.createdSessions.add(sessionId);
 
-            // Emit session-updated if title, messageCount, contextUsage, or model has real values
-            // (supervisor emits session-created with title: null, messageCount: 0)
-            if (
-              summary.title ||
-              summary.messageCount > 0 ||
-              summary.contextUsage ||
-              summary.model
-            ) {
-              const event: SessionUpdatedEvent = {
-                type: "session-updated",
-                sessionId,
-                projectId,
-                title: summary.title,
-                messageCount: summary.messageCount,
-                updatedAt: summary.updatedAt,
-                contextUsage: summary.contextUsage,
-                model: summary.model,
-                lastAgentText: summary.lastAgentText,
-                timestamp: now,
-              };
-              this.eventBus.emit(event);
-            }
-          } else {
+            // Supervisor emits session-created before this observation.
+            const event: SessionUpdatedEvent = {
+              type: "session-updated",
+              sessionId,
+              projectId,
+              title: summary.title,
+              updatedAt: summary.updatedAt,
+              ...(isComplete
+                ? {
+                    messageCount: observed.summary.messageCount,
+                    contextUsage: observed.summary.contextUsage,
+                    model: observed.summary.model,
+                    lastAgentText: observed.summary.lastAgentText,
+                  }
+                : {}),
+              timestamp: now,
+            };
+            this.eventBus.emit(event);
+          } else if (isComplete) {
             // New external session - emit session-created
-            summary.ownership = { owner: "external" };
-
             const event: SessionCreatedEvent = {
               type: "session-created",
               session: {
-                ...summary,
+                ...observed.summary,
+                ownership: { owner: "external" },
                 projectName:
-                  summary.projectName ?? getProjectNameForProjectId(projectId),
+                  observed.summary.projectName ??
+                  getProjectNameForProjectId(projectId),
               },
               timestamp: now,
             };
@@ -184,28 +203,32 @@ export class ExternalSessionTracker {
             this.createdSessions.add(sessionId);
 
             // Cache initial state for future change detection
-            this.sessionStateCache.set(sessionId, {
-              title: summary.title,
-              messageCount: summary.messageCount,
-              projectId,
-              contextUsage: summary.contextUsage,
-              model: summary.model,
-            });
+            this.sessionStateCache.set(sessionId, nextState);
+          } else {
+            // Codex normally emits its synthetic session-created before the
+            // batched list read completes. If header creation failed or raced,
+            // fall back to a complete read rather than inventing required
+            // SessionSummary fields from a partial projection.
+            this.enqueueTrackedSummary(sessionId, projectId, "complete");
           }
         } else {
           // Existing session - check for changes and emit session-updated
-          const cached = this.sessionStateCache.get(sessionId);
           const titleChanged = cached?.title !== summary.title;
+          const updatedAtChanged = cached?.updatedAt !== summary.updatedAt;
           const messageCountChanged =
-            cached?.messageCount !== summary.messageCount;
+            isComplete &&
+            cached?.messageCount !== observed.summary.messageCount;
           // Compare context usage by input tokens (percentage can be derived)
           const contextUsageChanged =
+            isComplete &&
             cached?.contextUsage?.inputTokens !==
-            summary.contextUsage?.inputTokens;
-          const modelChanged = cached?.model !== summary.model;
+              observed.summary.contextUsage?.inputTokens;
+          const modelChanged =
+            isComplete && cached?.model !== observed.summary.model;
 
           if (
             titleChanged ||
+            updatedAtChanged ||
             messageCountChanged ||
             contextUsageChanged ||
             modelChanged
@@ -215,23 +238,21 @@ export class ExternalSessionTracker {
               sessionId,
               projectId,
               title: summary.title,
-              messageCount: summary.messageCount,
               updatedAt: summary.updatedAt,
-              contextUsage: summary.contextUsage,
-              model: summary.model,
-              lastAgentText: summary.lastAgentText,
+              ...(isComplete
+                ? {
+                    messageCount: observed.summary.messageCount,
+                    contextUsage: observed.summary.contextUsage,
+                    model: observed.summary.model,
+                    lastAgentText: observed.summary.lastAgentText,
+                  }
+                : {}),
               timestamp: now,
             };
             this.eventBus.emit(event);
 
             // Update cache
-            this.sessionStateCache.set(sessionId, {
-              title: summary.title,
-              messageCount: summary.messageCount,
-              projectId,
-              contextUsage: summary.contextUsage,
-              model: summary.model,
-            });
+            this.sessionStateCache.set(sessionId, nextState);
           }
         }
       },
@@ -362,6 +383,35 @@ export class ExternalSessionTracker {
     this.recentlyAborted.clear();
   }
 
+  private async loadTrackedSummary(
+    sessionId: string,
+    projectId: UrlProjectId,
+    fidelity: "complete" | "list",
+  ): Promise<TrackedSessionSummary | null> {
+    if (fidelity === "list" && this.getSessionListSummary) {
+      const summary = await this.getSessionListSummary(sessionId, projectId);
+      return summary ? { fidelity: "list", summary } : null;
+    }
+    if (!this.getSessionSummary) {
+      return null;
+    }
+    const summary = await this.getSessionSummary(sessionId, projectId);
+    return summary ? { fidelity: "complete", summary } : null;
+  }
+
+  private enqueueTrackedSummary(
+    sessionId: string,
+    projectId: UrlProjectId,
+    fidelity: "complete" | "list",
+  ): void {
+    if (!this.getSessionSummary && !this.getSessionListSummary) {
+      return;
+    }
+    this.sessionParser.enqueue(sessionId, () =>
+      this.loadTrackedSummary(sessionId, projectId, fidelity),
+    );
+  }
+
   private async handleFileChange(event: FileChangeEvent): Promise<void> {
     // Only care about session files
     if (event.fileType !== "session" && event.fileType !== "agent-session") {
@@ -390,14 +440,8 @@ export class ExternalSessionTracker {
     if (process) {
       // We own it - remove from external tracking if present
       this.removeExternal(sessionId);
-      // Still parse to detect title/messageCount changes for owned sessions
-      if (this.getSessionSummary) {
-        const getSessionSummary = this.getSessionSummary;
-        const projectId = process.projectId;
-        this.sessionParser.enqueue(sessionId, async () => {
-          return getSessionSummary(sessionId, projectId, { readMode: "head" });
-        });
-      }
+      // Claude summaries are complete; preserve their exact event fields.
+      this.enqueueTrackedSummary(sessionId, process.projectId, "complete");
       return;
     }
 
@@ -455,14 +499,9 @@ export class ExternalSessionTracker {
     const process = this.supervisor.getProcessForSession(sessionId);
     if (process) {
       this.removeExternal(sessionId);
-      // Still parse to detect title/messageCount changes for owned sessions
-      if (this.getSessionSummary) {
-        const getSessionSummary = this.getSessionSummary;
-        const projectId = process.projectId;
-        this.sessionParser.enqueue(sessionId, async () => {
-          return getSessionSummary(sessionId, projectId, { readMode: "head" });
-        });
-      }
+      // Codex title/recency is bounded; the owned SDK remains authoritative
+      // for message count, model, context usage, and recent output.
+      this.enqueueTrackedSummary(sessionId, process.projectId, "list");
       return;
     }
 
@@ -567,13 +606,7 @@ export class ExternalSessionTracker {
     const process = this.supervisor.getProcessForSession(meta.id);
     if (process) {
       this.removeExternal(meta.id);
-      if (this.getSessionSummary) {
-        const getSessionSummary = this.getSessionSummary;
-        const projectId = process.projectId;
-        this.sessionParser.enqueue(meta.id, async () => {
-          return getSessionSummary(meta.id, projectId, { readMode: "head" });
-        });
-      }
+      this.enqueueTrackedSummary(meta.id, process.projectId, "complete");
       return;
     }
 
@@ -672,15 +705,17 @@ export class ExternalSessionTracker {
       clearTimeout(existing.timeoutId);
       existing.lastActivity = now;
       existing.timeoutId = this.createDecayTimeout(sessionId);
-      // Always parse to detect changes (title, messageCount)
-      if (this.getSessionSummary) {
-        const getSessionSummary = this.getSessionSummary;
+      // Codex emits bounded title/recency patches. Other watched providers
+      // retain complete summaries and exact event fields.
+      if (this.getSessionSummary || this.getSessionListSummary) {
         this.sessionParser.enqueue(sessionId, async () => {
           const project = await this.resolveProjectForSession(info);
           if (!project) return null;
-          return getSessionSummary(sessionId, project.id as UrlProjectId, {
-            readMode: "head",
-          });
+          return this.loadTrackedSummary(
+            sessionId,
+            project.id as UrlProjectId,
+            info.provider === "codex" ? "list" : "complete",
+          );
         });
       }
     } else {
@@ -696,14 +731,15 @@ export class ExternalSessionTracker {
       this.externalSessions.set(sessionId, externalInfo);
 
       // Queue session parsing - batched to prevent OOM from bulk file operations
-      if (this.getSessionSummary) {
-        const getSessionSummary = this.getSessionSummary;
+      if (this.getSessionSummary || this.getSessionListSummary) {
         this.sessionParser.enqueue(sessionId, async () => {
           const project = await this.resolveProjectForSession(externalInfo);
           if (!project) return null;
-          return getSessionSummary(sessionId, project.id as UrlProjectId, {
-            readMode: "head",
-          });
+          return this.loadTrackedSummary(
+            sessionId,
+            project.id as UrlProjectId,
+            externalInfo.provider === "codex" ? "list" : "complete",
+          );
         });
       }
 

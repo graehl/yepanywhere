@@ -540,9 +540,7 @@ export class CodexSessionReader implements ISessionReader {
         continue;
       }
 
-      const summary = await this.getSessionSummary(session.id, projectId, {
-        readMode: "head",
-      });
+      const summary = await this.getSessionSummary(session.id, projectId);
       if (summary) {
         summaries.push(summary);
       }

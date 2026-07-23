@@ -60,6 +60,11 @@ export interface ResolvedSessionSummary {
   summary: SessionSummary;
 }
 
+export interface ResolvedSessionListSummary {
+  source: SessionSource;
+  summary: SessionListSummary;
+}
+
 function normalizeProviderGroup(
   provider: ProviderName | string | undefined,
 ): ProviderGroup | null {
@@ -491,6 +496,59 @@ export async function listSessionListSummariesAcrossProviders(
   }
 
   return sessions;
+}
+
+export async function findSessionListSummaryAcrossProviders(
+  project: Project,
+  sessionId: string,
+  projectId: UrlProjectId,
+  deps: ProviderResolutionDeps,
+  preferredProvider?: ProviderName | string,
+): Promise<ResolvedSessionListSummary | null> {
+  for (const source of getSessionSources(project, deps, preferredProvider)) {
+    if (source.reader.getSessionListSummary) {
+      const cachedSummary = deps.sessionIndexService
+        ? await deps.sessionIndexService.getCachedSessionSummary(
+            source.sessionDir,
+            projectId,
+            sessionId,
+            source.reader,
+          )
+        : null;
+      if (cachedSummary) {
+        return {
+          source,
+          summary: toSessionListSummary(cachedSummary),
+        };
+      }
+
+      const summary = await source.reader.getSessionListSummary(
+        sessionId,
+        projectId,
+      );
+      if (summary) {
+        return { source, summary };
+      }
+      continue;
+    }
+
+    const completeSummary = deps.sessionIndexService
+      ? await deps.sessionIndexService.getSessionSummaryWithCache(
+          source.sessionDir,
+          projectId,
+          sessionId,
+          source.reader,
+        )
+      : await source.reader.getSessionSummary(sessionId, projectId);
+    if (completeSummary) {
+      return {
+        source,
+        summary: toSessionListSummary(completeSummary),
+      };
+    }
+  }
+
+  return null;
 }
 
 export async function findSessionSummaryAcrossProviders(

@@ -79,12 +79,10 @@ describe("Recents Routes", () => {
     expect(vi.mocked(claudeReader.getSessionSummary)).toHaveBeenCalledWith(
       "sess-1",
       "proj-1",
-      { readMode: "head" },
     );
     expect(vi.mocked(codexReader.getSessionSummary)).toHaveBeenCalledWith(
       "sess-1",
       "proj-1",
-      { readMode: "head" },
     );
   });
 });

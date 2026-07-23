@@ -106,8 +106,10 @@ describe("ExternalSessionTracker", () => {
     }
   });
 
-  it("requests head summaries for owned Codex file changes", async () => {
+  it("emits only bounded fields for owned Codex file changes", async () => {
     const eventBus = new EventBus();
+    const events: BusEvent[] = [];
+    eventBus.subscribe((event) => events.push(event));
     const projectId = encodeProjectId("/tmp/codex-project");
     const sessionId = "019f28d9-2dff-7dd2-8326-4b0e6093aed4";
     const supervisor = {
@@ -131,6 +133,14 @@ describe("ExternalSessionTracker", () => {
       ownership: { owner: "none" as const },
       provider: "codex" as const,
     }));
+    const getSessionListSummary = vi.fn(async () => ({
+      id: sessionId,
+      projectId,
+      title: "Codex title",
+      fullTitle: "Codex title",
+      updatedAt: "2026-07-04T00:00:01.000Z",
+      provider: "codex" as const,
+    }));
 
     const tracker = new ExternalSessionTracker({
       eventBus,
@@ -138,6 +148,7 @@ describe("ExternalSessionTracker", () => {
       scanner,
       decayMs: 100,
       getSessionSummary,
+      getSessionListSummary,
     });
 
     try {
@@ -152,13 +163,134 @@ describe("ExternalSessionTracker", () => {
       });
 
       await vi.waitFor(() => {
-        expect(getSessionSummary).toHaveBeenCalledWith(sessionId, projectId, {
-          readMode: "head",
-        });
+        expect(getSessionListSummary).toHaveBeenCalledWith(
+          sessionId,
+          projectId,
+        );
       });
+      expect(getSessionSummary).not.toHaveBeenCalled();
+      const update = events.find(
+        (event) =>
+          event.type === "session-updated" && event.sessionId === sessionId,
+      );
+      expect(update).toMatchObject({
+        type: "session-updated",
+        sessionId,
+        projectId,
+        title: "Codex title",
+        updatedAt: "2026-07-04T00:00:01.000Z",
+      });
+      expect(update).not.toHaveProperty("messageCount");
+      expect(update).not.toHaveProperty("contextUsage");
+      expect(update).not.toHaveProperty("model");
+      expect(update).not.toHaveProperty("lastAgentText");
       expect(tracker.isExternal(sessionId)).toBe(false);
     } finally {
       tracker.dispose();
+    }
+  });
+
+  it("keeps external Codex creation complete before bounded updates", async () => {
+    const eventBus = new EventBus();
+    const events: BusEvent[] = [];
+    eventBus.subscribe((event) => events.push(event));
+
+    const projectPath = "/tmp/external-codex-project";
+    const projectId = encodeProjectId(projectPath);
+    const sessionId = "019f28d9-2dff-7dd2-8326-4b0e6093aed5";
+    const tempDir = join(tmpdir(), `codex-external-${randomUUID()}`);
+    const sessionFile = join(tempDir, `rollout-${sessionId}.jsonl`);
+
+    await mkdir(tempDir, { recursive: true });
+    await writeFile(
+      sessionFile,
+      `${JSON.stringify({
+        type: "session_meta",
+        payload: {
+          cwd: projectPath,
+          timestamp: "2026-07-04T00:00:00.000Z",
+          model: "codex-test-model",
+        },
+      })}\n`,
+    );
+
+    const supervisor = {
+      getProcessForSession: vi.fn(() => undefined),
+    } as unknown as Supervisor;
+    const scanner = {
+      getProjectBySessionDirSuffix: vi.fn(),
+    } as unknown as ProjectScanner;
+    const getSessionSummary = vi.fn(async () => null);
+    const getSessionListSummary = vi.fn(async () => ({
+      id: sessionId,
+      projectId,
+      title: "External Codex title",
+      fullTitle: "External Codex title",
+      updatedAt: "2026-07-04T00:00:01.000Z",
+      provider: "codex" as const,
+    }));
+
+    const tracker = new ExternalSessionTracker({
+      eventBus,
+      supervisor,
+      scanner,
+      decayMs: 1000,
+      getSessionSummary,
+      getSessionListSummary,
+    });
+
+    try {
+      eventBus.emit({
+        type: "file-change",
+        provider: "codex",
+        path: sessionFile,
+        relativePath: `2026/07/04/rollout-${sessionId}.jsonl`,
+        changeType: "modify",
+        fileType: "session",
+        timestamp: new Date().toISOString(),
+      });
+
+      await vi.waitFor(() => {
+        expect(getSessionListSummary).toHaveBeenCalledWith(
+          sessionId,
+          projectId,
+        );
+      });
+
+      const creation = events.find(
+        (event) =>
+          event.type === "session-created" && event.session.id === sessionId,
+      );
+      expect(creation).toMatchObject({
+        type: "session-created",
+        session: {
+          id: sessionId,
+          projectId,
+          messageCount: 0,
+          model: "codex-test-model",
+          ownership: { owner: "external" },
+        },
+      });
+
+      const update = events.find(
+        (event) =>
+          event.type === "session-updated" && event.sessionId === sessionId,
+      );
+      expect(update).toMatchObject({
+        type: "session-updated",
+        sessionId,
+        projectId,
+        title: "External Codex title",
+        updatedAt: "2026-07-04T00:00:01.000Z",
+      });
+      expect(update).not.toHaveProperty("messageCount");
+      expect(update).not.toHaveProperty("contextUsage");
+      expect(update).not.toHaveProperty("model");
+      expect(update).not.toHaveProperty("lastAgentText");
+      expect(getSessionSummary).not.toHaveBeenCalled();
+    } finally {
+      tracker.dispose();
+      await rm(tempDir, { recursive: true, force: true });
     }
   });
 

@@ -21,12 +21,15 @@ tail-derived fields such as context usage, current model, and recent agent text
 are present when the provider can derive them.
 
 `SessionListSummary` is a bounded projection for collection routes that need
-only identity, title, recency, and optional user-owned list decorations:
+only identity, title, provider, recency, and optional user-owned list
+decorations:
 
 - `id`;
 - `projectId`;
 - `title`;
-- `updatedAt`.
+- `fullTitle`;
+- `updatedAt`;
+- `provider`;
 - `customTitle`, `isArchived`, and `isStarred` when an upstream enrichment
   already supplied them.
 
@@ -75,6 +78,13 @@ Producers must therefore construct patches by selecting known fields. They must
 not spread a list projection over a complete summary and must not copy values
 from a compatibility-shaped head result into complete-summary event fields.
 
+`ExternalSessionTracker` follows the same rule. Codex file changes use the
+bounded list reader and may emit title plus `updatedAt`; they do not emit
+message count, model, context usage, or recent-agent text. The owned Codex SDK
+and later complete-summary reads remain authoritative for those fields.
+Providers whose tracker read is complete may continue emitting their exact
+fields.
+
 ## Inbox behavior
 
 Inbox needs title and transcript recency for filtering, tiering, sorting, and
@@ -95,6 +105,6 @@ other complete-summary consumers keep using the complete index path.
 
 | Area | Current compatibility | Desired direction | Trigger |
 | --- | --- | --- | --- |
-| Head reads | Some callers request `readMode: "head"` while receiving the full `SessionSummary` TypeScript shape. | Move bounded consumers to a separately typed list-summary method, then retire compatibility-shaped head results. | Touching a head-mode caller or reader. |
-| Activity events | `session-updated` is structurally partial, but producers can still forward approximate defined values. | Emit only fields observed at full fidelity; use dedicated discovery/list events where a full created row is unavailable. | Changing external-session tracking or event summary derivation. |
+| Head reads | Production bounded consumers use `SessionListSummary`; Codex retains `readMode: "head"` only inside its typed adapter and direct parser tests. | Retire the compatibility-shaped reader option when no external/internal test contract needs it. | Changing the Codex summary reader API. |
+| Activity events | Codex external tracking now emits only list-known title/recency fields; complete index and non-Codex tracker events retain exact fields. | Use dedicated discovery/list events if another producer cannot provide the complete `session-created` shape. | Adding a partial session-creation producer. |
 | Client freshness | Content fields currently share a coarse observation timestamp. | Split freshness by field or fidelity if independent producers begin updating overlapping content fields at materially different precision. | Evidence of a newer partial field blocking a valid richer update. |

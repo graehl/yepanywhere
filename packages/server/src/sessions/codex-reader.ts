@@ -63,12 +63,14 @@ import type {
   SummaryParserWorkerMode,
   SummaryParserWorkerRequest,
 } from "./summary-parser-worker-protocol.js";
-import type {
-  GetSessionSummaryOptions,
-  GetSessionOptions,
-  ISessionReader,
-  LoadedSession,
-  SessionSummaryReadMode,
+import {
+  type GetSessionSummaryOptions,
+  type GetSessionOptions,
+  type ISessionReader,
+  type LoadedSession,
+  type SessionListSummary,
+  type SessionSummaryReadMode,
+  toSessionListSummary,
 } from "./types.js";
 
 export interface CodexSessionReaderOptions {
@@ -630,6 +632,16 @@ export class CodexSessionReader implements ISessionReader {
     } catch {
       return null;
     }
+  }
+
+  async getSessionListSummary(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<SessionListSummary | null> {
+    const summary = await this.getSessionSummary(sessionId, projectId, {
+      readMode: "head",
+    });
+    return summary ? toSessionListSummary(summary) : null;
   }
 
   async getSession(

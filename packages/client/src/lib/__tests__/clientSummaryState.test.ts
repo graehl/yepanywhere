@@ -1055,6 +1055,53 @@ describe("clientSummaryState", () => {
     });
   });
 
+  it("does not downgrade complete content fields with an inbox projection", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions" },
+        sessions: [
+          globalSession("rich-session", {
+            fullTitle: "Complete full title",
+            messageCount: 442,
+            model: "late-model",
+            lastAgentText: "Complete tail",
+          }),
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [],
+        active: [],
+        recentActivity: [
+          inboxItem("rich-session", {
+            sessionTitle: "Fresh list title",
+            updatedAt: "2026-05-02T00:00:00.000Z",
+          }),
+        ],
+        unread8h: [],
+        unread24h: [],
+      },
+      200,
+    );
+
+    expect(
+      selectSessionCollectionRecord(state, "rich-session"),
+    ).toMatchObject({
+      title: "Fresh list title",
+      updatedAt: "2026-05-02T00:00:00.000Z",
+      fullTitle: "Complete full title",
+      messageCount: 442,
+      model: "late-model",
+      lastAgentText: "Complete tail",
+    });
+  });
+
   it("does not synthesize activity from active inbox tier placement", () => {
     let state = applyInboxCollectionSnapshot(
       createEmptyClientSummaryState(),

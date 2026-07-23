@@ -13,6 +13,49 @@ import type {
 import type { Message, SessionSummary } from "../supervisor/types.js";
 
 /**
+ * Bounded session facts for collection routes that only need identity, title,
+ * and recency. Transcript-tail fields intentionally do not belong here.
+ */
+export interface SessionListSummary {
+  id: SessionSummary["id"];
+  projectId: SessionSummary["projectId"];
+  title: SessionSummary["title"];
+  updatedAt: SessionSummary["updatedAt"];
+  customTitle?: SessionSummary["customTitle"];
+  isArchived?: SessionSummary["isArchived"];
+  isStarred?: SessionSummary["isStarred"];
+}
+
+export function toSessionListSummary(
+  summary: Pick<
+    SessionSummary,
+    | "id"
+    | "projectId"
+    | "title"
+    | "updatedAt"
+    | "customTitle"
+    | "isArchived"
+    | "isStarred"
+  >,
+): SessionListSummary {
+  return {
+    id: summary.id,
+    projectId: summary.projectId,
+    title: summary.title,
+    updatedAt: summary.updatedAt,
+    ...(summary.customTitle !== undefined
+      ? { customTitle: summary.customTitle }
+      : {}),
+    ...(summary.isArchived !== undefined
+      ? { isArchived: summary.isArchived }
+      : {}),
+    ...(summary.isStarred !== undefined
+      ? { isStarred: summary.isStarred }
+      : {}),
+  };
+}
+
+/**
  * Options for reading a session.
  */
 export interface GetSessionOptions {
@@ -73,6 +116,17 @@ export interface ISessionReader {
     projectId: UrlProjectId,
     options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null>;
+
+  /**
+   * Read only the bounded facts needed by lightweight collection routes.
+   *
+   * Providers should implement this only when they can bound the work
+   * independently of transcript-tail size.
+   */
+  getSessionListSummary?(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<SessionListSummary | null>;
 
   /**
    * Get full session with messages.

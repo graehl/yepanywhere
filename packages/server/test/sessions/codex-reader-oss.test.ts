@@ -617,6 +617,22 @@ describe("CodexSessionReader - OSS Support", () => {
       stopReason: "head_complete",
     });
 
+    const listSummary = await reader.getSessionListSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(listSummary).toMatchObject({
+      id: sessionId,
+      projectId: "test-project",
+      title: "cheap summary title",
+    });
+    expect(Object.keys(listSummary ?? {}).sort()).toEqual([
+      "id",
+      "projectId",
+      "title",
+      "updatedAt",
+    ]);
+
     const full = await reader.getSessionSummary(
       sessionId,
       "test-project" as UrlProjectId,

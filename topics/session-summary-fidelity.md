@@ -21,12 +21,14 @@ tail-derived fields such as context usage, current model, and recent agent text
 are present when the provider can derive them.
 
 `SessionListSummary` is a bounded projection for collection routes that need
-only identity, title, and recency:
+only identity, title, recency, and optional user-owned list decorations:
 
 - `id`;
 - `projectId`;
 - `title`;
 - `updatedAt`.
+- `customTitle`, `isArchived`, and `isStarred` when an upstream enrichment
+  already supplied them.
 
 Unknown full-summary values are absent from the list type. A list reader must
 not manufacture placeholder counts or expose an early model as though it were

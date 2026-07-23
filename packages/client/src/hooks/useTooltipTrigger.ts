@@ -8,7 +8,10 @@ import {
 import {
   beginTooltipVisibility,
   endTooltipVisibility,
+  exceedsTooltipPointerJitter,
   getEffectiveTooltipDelayMs,
+  getTooltipDelayMs,
+  TOOLTIP_CLOSE_DELAY_MULTIPLIER,
   useTooltipMode,
 } from "./useTooltipAppearance";
 
@@ -31,8 +34,11 @@ export function useTooltipTrigger({
 }: TooltipTriggerOptions) {
   const tooltipMode = useTooltipMode();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibilityTokenRef = useRef<symbol | null>(null);
-  const movementDismissedRef = useRef(false);
+  const pointerRootRef = useRef<HTMLElement | null>(null);
+  const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const focusWithinRef = useRef(false);
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -43,6 +49,12 @@ export function useTooltipTrigger({
     }
   }, []);
 
+  const clearCloseTimer = useCallback(() => {
+    if (!closeTimerRef.current) return;
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
   const releaseVisibility = useCallback(() => {
     const token = visibilityTokenRef.current;
     if (!token) return;
@@ -50,13 +62,20 @@ export function useTooltipTrigger({
     endTooltipVisibility(token);
   }, []);
 
+  const close = useCallback(() => {
+    clearTimer();
+    clearCloseTimer();
+    releaseVisibility();
+    onOpenChange(false);
+  }, [clearCloseTimer, clearTimer, onOpenChange, releaseVisibility]);
+
   const show = useCallback(() => {
     timerRef.current = null;
     if (!visibilityTokenRef.current && tooltipMode === "themed") {
-      visibilityTokenRef.current = beginTooltipVisibility();
+      visibilityTokenRef.current = beginTooltipVisibility(close);
     }
     onOpenChange(true);
-  }, [onOpenChange, tooltipMode]);
+  }, [close, onOpenChange, tooltipMode]);
 
   const schedule = useCallback(() => {
     clearTimer();
@@ -72,25 +91,46 @@ export function useTooltipTrigger({
     timerRef.current = setTimeout(show, delayMs);
   }, [clearTimer, delayMultiplier, show, tooltipMode]);
 
-  const close = useCallback(() => {
-    clearTimer();
-    releaseVisibility();
-    onOpenChange(false);
-  }, [clearTimer, onOpenChange, releaseVisibility]);
-
-  const onPointerEnter = useCallback(() => {
-    movementDismissedRef.current = false;
-    schedule();
-  }, [schedule]);
-  const onPointerMove = useCallback(() => {
-    if (movementDismissedRef.current) return;
-    if (openRef.current && tooltipMode === "themed") {
-      movementDismissedRef.current = true;
+  const scheduleClose = useCallback(() => {
+    if (closeTimerRef.current) return;
+    const delayMs =
+      tooltipMode === "native"
+        ? 0
+        : getTooltipDelayMs() * TOOLTIP_CLOSE_DELAY_MULTIPLIER;
+    if (delayMs === 0) {
       close();
-    } else if (!openRef.current) {
-      schedule();
+      return;
     }
-  }, [close, schedule, tooltipMode]);
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      close();
+    }, delayMs);
+  }, [close, tooltipMode]);
+
+  const onPointerEnter = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      pointerRootRef.current = event.currentTarget;
+      lastPointerPositionRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      clearCloseTimer();
+      schedule();
+    },
+    [clearCloseTimer, schedule],
+  );
+  const onPointerMove = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      pointerRootRef.current = event.currentTarget;
+      lastPointerPositionRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      clearCloseTimer();
+      if (!openRef.current) schedule();
+    },
+    [clearCloseTimer, schedule],
+  );
   const onPointerLeave = useCallback(
     (event: PointerEvent<HTMLElement>) => {
       if (
@@ -99,15 +139,27 @@ export function useTooltipTrigger({
       ) {
         return;
       }
-      movementDismissedRef.current = false;
-      close();
+      const position = lastPointerPositionRef.current;
+      if (
+        openRef.current &&
+        !exceedsTooltipPointerJitter(
+          position,
+          event.clientX,
+          event.clientY,
+        )
+      ) {
+        return;
+      }
+      if (openRef.current) scheduleClose();
+      else close();
     },
-    [close],
+    [close, scheduleClose],
   );
   const onFocus = useCallback(() => {
-    movementDismissedRef.current = false;
+    focusWithinRef.current = true;
+    clearCloseTimer();
     schedule();
-  }, [schedule]);
+  }, [clearCloseTimer, schedule]);
   const onBlur = useCallback(
     (event: FocusEvent<HTMLElement>) => {
       if (
@@ -116,7 +168,7 @@ export function useTooltipTrigger({
       ) {
         return;
       }
-      movementDismissedRef.current = false;
+      focusWithinRef.current = false;
       close();
     },
     [close],
@@ -126,12 +178,41 @@ export function useTooltipTrigger({
     if (!open) releaseVisibility();
   }, [open, releaseVisibility]);
 
+  useEffect(() => {
+    if (!open || tooltipMode !== "themed") return;
+    const handleDocumentPointerMove = (event: globalThis.PointerEvent) => {
+      if (focusWithinRef.current) return;
+      const root = pointerRootRef.current;
+      if (
+        root &&
+        event.target instanceof Node &&
+        root.contains(event.target)
+      ) {
+        return;
+      }
+      if (
+        !exceedsTooltipPointerJitter(
+          lastPointerPositionRef.current,
+          event.clientX,
+          event.clientY,
+        )
+      ) {
+        return;
+      }
+      scheduleClose();
+    };
+    document.addEventListener("pointermove", handleDocumentPointerMove);
+    return () =>
+      document.removeEventListener("pointermove", handleDocumentPointerMove);
+  }, [open, scheduleClose, tooltipMode]);
+
   useEffect(
     () => () => {
       clearTimer();
+      clearCloseTimer();
       releaseVisibility();
     },
-    [clearTimer, releaseVisibility],
+    [clearCloseTimer, clearTimer, releaseVisibility],
   );
 
   return {

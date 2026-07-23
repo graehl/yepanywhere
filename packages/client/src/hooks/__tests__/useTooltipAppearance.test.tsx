@@ -88,4 +88,18 @@ describe("useTooltipAppearance", () => {
     );
     expect(getEffectiveTooltipDelayMs()).toBe(DEFAULT_TOOLTIP_DELAY_MS);
   });
+
+  it("supersedes the previous visible tooltip before granting ownership", () => {
+    const dismissFirst = vi.fn();
+    const dismissSecond = vi.fn();
+    const first = beginTooltipVisibility(dismissFirst);
+
+    const second = beginTooltipVisibility(dismissSecond);
+
+    expect(dismissFirst).toHaveBeenCalledOnce();
+    expect(dismissSecond).not.toHaveBeenCalled();
+    endTooltipVisibility(first);
+    expect(getEffectiveTooltipDelayMs()).toBe(0);
+    endTooltipVisibility(second);
+  });
 });

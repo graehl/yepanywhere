@@ -523,7 +523,7 @@ export function SessionListItem({
       const hoverCardId = hoverCardIdRef.current;
       if (!rect || !hoverCardId) return;
       announceActiveSessionHoverCard(hoverCardId);
-      previewVisibilityToken.current ??= beginTooltipVisibility();
+      previewVisibilityToken.current ??= beginTooltipVisibility(clearPreview);
       setPreviewPos({
         rowTop: rect.top,
         rowBottom: rect.bottom,
@@ -533,6 +533,7 @@ export function SessionListItem({
     }, isTooltipWarm() ? 0 : hoverCardShowDelayMs);
   }, [
     showHoverCard,
+    clearPreview,
     clearPreviewTimers,
     refreshIdlePreview,
     hoverCardShowDelayMs,

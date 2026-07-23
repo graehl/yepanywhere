@@ -9,7 +9,10 @@ import { createPortal } from "react-dom";
 import {
   beginTooltipVisibility,
   endTooltipVisibility,
+  exceedsTooltipPointerJitter,
   getEffectiveTooltipDelayMs,
+  getTooltipDelayMs,
+  TOOLTIP_CLOSE_DELAY_MULTIPLIER,
   useTooltipMode,
 } from "../../hooks/useTooltipAppearance";
 import { writeClipboardText } from "../../lib/clipboard";
@@ -23,6 +26,11 @@ interface VisibleTooltip {
   text: string;
   anchorX: number;
   anchorY: number;
+}
+
+interface PointerPosition {
+  x: number;
+  y: number;
 }
 
 interface DetachedTitle {
@@ -54,7 +62,19 @@ function tooltipTargetFromNode(
 ): Element | null {
   if (!(node instanceof Element)) return null;
   if (activeTarget?.contains(node)) return activeTarget;
+  if (activeTarget && node.closest(`#${TOOLTIP_ID}`)) return activeTarget;
   return node.closest("[data-tooltip], [title]");
+}
+
+function isPointerJitter(
+  event: PointerEvent,
+  position: PointerPosition | null,
+): boolean {
+  return !exceedsTooltipPointerJitter(
+    position,
+    event.clientX,
+    event.clientY,
+  );
 }
 
 function normalizeVisibleText(value: string): string {
@@ -121,7 +141,9 @@ export function TooltipLayer() {
   const detachedSvgTitlesRef = useRef(new Map<Element, DetachedSvgTitle>());
   const savedDescriptionRef = useRef<SavedDescription | null>(null);
   const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibilityTokenRef = useRef<symbol | null>(null);
+  const lastPointerPositionRef = useRef<PointerPosition | null>(null);
   const visibleRef = useRef(false);
   const visibleTooltipRef = useRef<VisibleTooltip | null>(visible);
   visibleRef.current = visible !== null;
@@ -131,6 +153,12 @@ export function TooltipLayer() {
     if (!showTimerRef.current) return;
     clearTimeout(showTimerRef.current);
     showTimerRef.current = null;
+  }, []);
+
+  const clearHideTimer = useCallback(() => {
+    if (!hideTimerRef.current) return;
+    clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = null;
   }, []);
 
   const restoreDetachedTitles = useCallback(() => {
@@ -213,16 +241,31 @@ export function TooltipLayer() {
 
   const clearActive = useCallback(() => {
     clearShowTimer();
+    clearHideTimer();
     releaseVisibility();
     activeTargetRef.current = null;
     visibleRef.current = false;
     visibleTooltipRef.current = null;
     setEnlarged(false);
     setVisible(null);
-  }, [clearShowTimer, releaseVisibility]);
+  }, [clearHideTimer, clearShowTimer, releaseVisibility]);
 
   const hide = clearActive;
   const dismissUntilDeparture = clearActive;
+
+  const scheduleHide = useCallback(() => {
+    if (hideTimerRef.current) return;
+    const delayMs =
+      getTooltipDelayMs() * TOOLTIP_CLOSE_DELAY_MULTIPLIER;
+    if (delayMs === 0) {
+      hide();
+      return;
+    }
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      hide();
+    }, delayMs);
+  }, [hide]);
 
   const show = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
@@ -236,7 +279,7 @@ export function TooltipLayer() {
         dismissUntilDeparture();
         return;
       }
-      visibilityTokenRef.current ??= beginTooltipVisibility();
+      visibilityTokenRef.current ??= beginTooltipVisibility(hide);
       restoreDescription(savedDescriptionRef.current);
       savedDescriptionRef.current = appendDescriptionId(target);
       visibleRef.current = true;
@@ -252,7 +295,7 @@ export function TooltipLayer() {
         anchorY: resolvedAnchorY,
       });
     },
-    [detachTitle, dismissUntilDeparture],
+    [detachTitle, dismissUntilDeparture, hide],
   );
 
   const schedule = useCallback(
@@ -273,8 +316,16 @@ export function TooltipLayer() {
 
   const activate = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
-      if (target !== activeTargetRef.current) {
-        hide();
+      clearHideTimer();
+      const changesTarget = target !== activeTargetRef.current;
+      const switchesVisibleTooltip = changesTarget && visibleRef.current;
+      if (changesTarget) {
+        if (switchesVisibleTooltip) {
+          clearShowTimer();
+          setEnlarged(false);
+        } else {
+          hide();
+        }
         activeTargetRef.current = target;
       }
       const title = detachTitle(target);
@@ -288,9 +339,21 @@ export function TooltipLayer() {
         dismissUntilDeparture();
         return;
       }
+      if (switchesVisibleTooltip) {
+        show(target, anchorX, anchorY);
+        return;
+      }
       if (!visibleRef.current) schedule(target, anchorX, anchorY);
     },
-    [detachTitle, dismissUntilDeparture, hide, schedule],
+    [
+      clearHideTimer,
+      clearShowTimer,
+      detachTitle,
+      dismissUntilDeparture,
+      hide,
+      schedule,
+      show,
+    ],
   );
 
   useEffect(() => {
@@ -375,7 +438,19 @@ export function TooltipLayer() {
         event.target,
         activeTargetRef.current,
       );
-      if (target) activate(target, event.clientX, event.clientY);
+      if (!target) return;
+      if (
+        visibleRef.current &&
+        target !== activeTargetRef.current &&
+        isPointerJitter(event, lastPointerPositionRef.current)
+      ) {
+        return;
+      }
+      lastPointerPositionRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      activate(target, event.clientX, event.clientY);
     };
     const onPointerMove = (event: PointerEvent) => {
       if (!pointerCanHover(event)) return;
@@ -392,16 +467,32 @@ export function TooltipLayer() {
         activeTargetRef.current,
       );
       if (!target) {
-        hide();
+        if (visibleRef.current) {
+          if (
+            isPointerJitter(event, lastPointerPositionRef.current)
+          ) {
+            return;
+          }
+          scheduleHide();
+        } else {
+          hide();
+        }
         return;
       }
-      if (movementDismissedTargetRef.current === target) return;
-      if (!visibleRef.current) {
-        activate(target, event.clientX, event.clientY);
-      } else {
-        movementDismissedTargetRef.current = target;
-        dismissUntilDeparture();
+      if (
+        visibleRef.current &&
+        target !== activeTargetRef.current &&
+        isPointerJitter(event, lastPointerPositionRef.current)
+      ) {
+        return;
       }
+      lastPointerPositionRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      clearHideTimer();
+      if (movementDismissedTargetRef.current === target) return;
+      activate(target, event.clientX, event.clientY);
     };
     const onPointerOut = (event: PointerEvent) => {
       const activeTarget = activeTargetRef.current;
@@ -416,13 +507,30 @@ export function TooltipLayer() {
         movementDismissedTargetRef.current = null;
       }
       if (!activeTarget) return;
+      const eventTarget =
+        event.target instanceof Node ? event.target : null;
+      const tooltip = tooltipRef.current;
+      const leftActiveRegion =
+        !!eventTarget &&
+        (activeTarget.contains(eventTarget) ||
+          !!tooltip?.contains(eventTarget));
+      if (!leftActiveRegion) return;
       if (
         event.relatedTarget instanceof Node &&
-        activeTarget.contains(event.relatedTarget)
+        (activeTarget.contains(event.relatedTarget) ||
+          !!tooltip?.contains(event.relatedTarget))
+      ) {
+        clearHideTimer();
+        return;
+      }
+      if (
+        visibleRef.current &&
+        isPointerJitter(event, lastPointerPositionRef.current)
       ) {
         return;
       }
-      hide();
+      if (visibleRef.current) scheduleHide();
+      else hide();
     };
     const onFocusIn = (event: FocusEvent) => {
       const target = tooltipTargetFromNode(
@@ -454,6 +562,12 @@ export function TooltipLayer() {
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 2) {
+        if (
+          event.target instanceof Node &&
+          tooltipRef.current?.contains(event.target)
+        ) {
+          return;
+        }
         movementDismissedTargetRef.current = activeTargetRef.current;
         dismissUntilDeparture();
       }
@@ -461,11 +575,13 @@ export function TooltipLayer() {
     const onContextMenu = (event: MouseEvent) => {
       const currentTooltip = visibleTooltipRef.current;
       const activeTarget = activeTargetRef.current;
+      const tooltip = tooltipRef.current;
       if (
         !currentTooltip ||
         !activeTarget ||
         !(event.target instanceof Node) ||
-        !activeTarget.contains(event.target) ||
+        (!activeTarget.contains(event.target) &&
+          !tooltip?.contains(event.target)) ||
         isContextMenuOperable(event)
       ) {
         return;
@@ -474,11 +590,15 @@ export function TooltipLayer() {
       setEnlarged(true);
       void writeClipboardText(currentTooltip.text);
     };
-    const dismissForViewportChange = () => {
-      const activeTarget = activeTargetRef.current;
-      if (!activeTarget) return;
-      movementDismissedTargetRef.current = activeTarget;
-      dismissUntilDeparture();
+    const handleScroll = () => {
+      if (!visibleRef.current && activeTargetRef.current) hide();
+    };
+    const handleResize = () => {
+      if (!visibleRef.current) {
+        if (activeTargetRef.current) hide();
+        return;
+      }
+      setVisible((current) => (current ? { ...current } : current));
     };
 
     document.addEventListener("pointerover", onPointerOver);
@@ -489,8 +609,8 @@ export function TooltipLayer() {
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("contextmenu", onContextMenu);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", dismissForViewportChange, true);
-    window.addEventListener("resize", dismissForViewportChange);
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
     window.addEventListener("blur", hide);
     return () => {
       titleObserver.disconnect();
@@ -502,19 +622,21 @@ export function TooltipLayer() {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", dismissForViewportChange, true);
-      window.removeEventListener("resize", dismissForViewportChange);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
       window.removeEventListener("blur", hide);
       hide();
       restoreDetachedTitles();
     };
   }, [
     activate,
+    clearHideTimer,
     detachTitle,
     detachSvgTitle,
     dismissUntilDeparture,
     hide,
     restoreDetachedTitles,
+    scheduleHide,
     tooltipMode,
   ]);
 

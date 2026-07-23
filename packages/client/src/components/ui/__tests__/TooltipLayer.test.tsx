@@ -11,8 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTooltipWarmth,
   DEFAULT_TOOLTIP_DELAY_MS,
+  TOOLTIP_CLOSE_DELAY_MULTIPLIER,
 } from "../../../hooks/useTooltipAppearance";
 import { UI_KEYS } from "../../../lib/storageKeys";
+import "../../../../test/pointerEventShim";
 import { TooltipLayer } from "../TooltipLayer";
 
 const originalClipboard = navigator.clipboard;
@@ -36,7 +38,7 @@ describe("TooltipLayer", () => {
     });
   });
 
-  it("waits for pointer rest and dismisses on later movement", () => {
+  it("stays readable through same-target motion and follow scroll", () => {
     render(
       <>
         <TooltipLayer />
@@ -69,20 +71,105 @@ describe("TooltipLayer", () => {
       clientX: 12,
       clientY: 10,
     });
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
     expect(target.getAttribute("title")).toBeNull();
 
-    fireEvent.pointerMove(target, {
+    fireEvent.keyDown(document, {
+      key: "Shift",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
+
+    fireEvent.scroll(window);
+    fireEvent.pointerOut(target, {
       pointerType: "mouse",
-      clientX: 13,
+      clientX: 12,
+      clientY: 10,
+      relatedTarget: document.body,
+    });
+    fireEvent.pointerOver(document.body, {
+      pointerType: "mouse",
+      clientX: 12,
+      clientY: 10,
+      relatedTarget: target,
+    });
+    act(() =>
+      vi.advanceTimersByTime(
+        DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_CLOSE_DELAY_MULTIPLIER,
+      ),
+    );
+    expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
+
+    fireEvent.pointerMove(document.body, {
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 10,
+    });
+    act(() =>
+      vi.advanceTimersByTime(
+        DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_CLOSE_DELAY_MULTIPLIER - 1,
+      ),
+    );
+    expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBe("Command tail");
+  });
+
+  it("keeps the tooltip open while hovering and selecting its text", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Selectable tail">
+          Ran
+        </button>
+        <button type="button" title="Underlying tip">
+          Under
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Ran" });
+    const underlyingTarget = screen.getByRole("button", { name: "Under" });
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
       clientY: 10,
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    const tooltip = screen.getByRole("tooltip");
 
-    fireEvent.pointerOut(target, { relatedTarget: document.body });
-    expect(target.getAttribute("title")).toBeNull();
-    expect(target.getAttribute("data-tooltip")).toBe("Command tail");
+    fireEvent.pointerOut(target, {
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 20,
+      relatedTarget: tooltip,
+    });
+    fireEvent.pointerOver(tooltip, {
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 20,
+      relatedTarget: target,
+    });
+    fireEvent.pointerMove(tooltip, {
+      pointerType: "mouse",
+      clientX: 22,
+      clientY: 20,
+    });
+    fireEvent.pointerDown(tooltip, {
+      pointerType: "mouse",
+      button: 0,
+      clientX: 22,
+      clientY: 20,
+    });
+    act(() =>
+      vi.advanceTimersByTime(
+        DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_CLOSE_DELAY_MULTIPLIER,
+      ),
+    );
+    expect(screen.getByRole("tooltip").textContent).toBe("Selectable tail");
+    expect(underlyingTarget.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("opens a temporally adjacent tooltip immediately only after a reveal", () => {
@@ -110,13 +197,26 @@ describe("TooltipLayer", () => {
 
     fireEvent.pointerOut(first, {
       pointerType: "mouse",
+      clientX: 12,
+      clientY: 10,
       relatedTarget: second,
     });
     fireEvent.pointerOver(second, {
       pointerType: "mouse",
-      clientX: 30,
+      clientX: 12,
       clientY: 10,
     });
+    expect(screen.getByRole("tooltip").textContent).toBe("First tip");
+    expect(first.getAttribute("aria-describedby")).toBe("ya-global-tooltip");
+    expect(second.getAttribute("aria-describedby")).toBeNull();
+
+    fireEvent.pointerMove(second, {
+      pointerType: "mouse",
+      clientX: 16,
+      clientY: 10,
+    });
+    expect(first.getAttribute("aria-describedby")).toBeNull();
+    expect(second.getAttribute("aria-describedby")).toBe("ya-global-tooltip");
     expect(screen.getByRole("tooltip").textContent).toBe("Second tip");
   });
 
@@ -386,10 +486,44 @@ describe("TooltipLayer", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
 
-    fireEvent.contextMenu(target);
+    fireEvent.contextMenu(screen.getByRole("tooltip"));
 
     expect(writeText).toHaveBeenCalledWith("Copy this tail");
     expect(screen.getByRole("tooltip").classList).toContain(
+      "ya-tooltip--enlarged",
+    );
+  });
+
+  it("preserves the browser menu for selected tooltip text", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    vi.spyOn(document, "getSelection").mockReturnValue({
+      isCollapsed: false,
+      toString: () => "Selected tail",
+    } as Selection);
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Selected tail">
+          Ran
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Ran" });
+    fireEvent.pointerOver(target, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    fireEvent.contextMenu(screen.getByRole("tooltip"));
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(screen.getByRole("tooltip").classList).not.toContain(
       "ya-tooltip--enlarged",
     );
   });

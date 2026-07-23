@@ -22,6 +22,16 @@ export const DEFAULT_TOOLTIP_DELAY_MS = 50;
 export const SESSION_HOVERCARD_DELAY_MULTIPLIER = 3;
 
 /**
+ * Leaving a trigger is noisier than entering one: a short grace period keeps
+ * the tooltip reachable across its visual gap without making dismissal feel
+ * sticky.
+ */
+export const TOOLTIP_CLOSE_DELAY_MULTIPLIER = 2;
+
+/** Ignore residual hand/sensor motion near a tooltip hover boundary. */
+export const TOOLTIP_POINTER_JITTER_PX = 4;
+
+/**
  * Once a tooltip has opened, a short time-only adjacency window makes scanning
  * neighboring targets immediate. Targets merely crossed before opening do not
  * warm the system.
@@ -30,6 +40,7 @@ export const TOOLTIP_WARM_GRACE_MULTIPLIER = 6;
 
 const listeners = new Set<() => void>();
 const visibleTooltipTokens = new Set<symbol>();
+const visibleTooltipDismissers = new Map<symbol, () => void>();
 let warmUntilMs = 0;
 let storageListener: ((event: StorageEvent) => void) | null = null;
 
@@ -284,9 +295,26 @@ export function getEffectiveTooltipDelayMs(
     : Math.round(getTooltipDelayMs() * multiplier);
 }
 
-export function beginTooltipVisibility(): symbol {
+export function exceedsTooltipPointerJitter(
+  origin: { readonly x: number; readonly y: number } | null,
+  x: number,
+  y: number,
+): boolean {
+  return (
+    origin === null ||
+    Math.hypot(x - origin.x, y - origin.y) > TOOLTIP_POINTER_JITTER_PX
+  );
+}
+
+export function beginTooltipVisibility(onSuperseded?: () => void): symbol {
+  const supersededDismissers = [...visibleTooltipDismissers.values()];
+  visibleTooltipDismissers.clear();
+  visibleTooltipTokens.clear();
+
   const token = Symbol("visible-tooltip");
   visibleTooltipTokens.add(token);
+  if (onSuperseded) visibleTooltipDismissers.set(token, onSuperseded);
+  for (const dismiss of supersededDismissers) dismiss();
   return token;
 }
 
@@ -294,6 +322,7 @@ export function endTooltipVisibility(
   token: symbol,
   nowMs = Date.now(),
 ): void {
+  visibleTooltipDismissers.delete(token);
   if (!visibleTooltipTokens.delete(token) || visibleTooltipTokens.size > 0) {
     return;
   }
@@ -303,6 +332,7 @@ export function endTooltipVisibility(
 
 /** Clears process-local hover state after navigation/tests or a hard reset. */
 export function clearTooltipWarmth(): void {
+  visibleTooltipDismissers.clear();
   visibleTooltipTokens.clear();
   warmUntilMs = 0;
 }

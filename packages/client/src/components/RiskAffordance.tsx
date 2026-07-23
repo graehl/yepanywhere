@@ -27,16 +27,20 @@ export function RiskAffordance({
     onOpenChange: setShowTooltip,
   });
   return (
-    <span className="external-session-risk">
+    <span
+      className={`external-session-risk${
+        showTooltip ? " external-session-risk--tooltip-visible" : ""
+      }`}
+      onPointerEnter={tooltipTrigger.onPointerEnter}
+      onPointerMove={tooltipTrigger.onPointerMove}
+      onPointerLeave={tooltipTrigger.onPointerLeave}
+    >
       <button
         type="button"
         className={`external-session-risk-link${
           labelClassName ? ` ${labelClassName}` : ""
         }`}
         aria-haspopup="dialog"
-        onPointerEnter={tooltipTrigger.onPointerEnter}
-        onPointerMove={tooltipTrigger.onPointerMove}
-        onPointerLeave={tooltipTrigger.onPointerLeave}
         onFocus={tooltipTrigger.onFocus}
         onBlur={tooltipTrigger.onBlur}
         onClick={() => {

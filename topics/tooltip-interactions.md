@@ -26,17 +26,37 @@ in the same row:
 ## Themed timing
 
 The configured delay measures **pointer rest**, not merely time since entry.
-Pointer movement before the first reveal restarts the timer. Pointer movement
-after reveal dismisses the tooltip, matching the familiar native behavior; the
-same target stays dismissed until the pointer leaves it.
+Pointer movement before the first reveal restarts the timer. Once revealed, the
+tooltip remains open while the pointer moves within either its trigger or the
+tooltip itself. Leaving both starts a close grace of twice the configured delay;
+entering another tooltip trigger during that grace switches immediately.
 
-Keyboard focus uses the same configured delay. Escape, primary click, scroll,
-resize, blur, and leaving the target dismiss the tooltip.
+Keyboard focus uses the same configured delay. Escape, primary click, blur, and
+a deliberate pointer departure dismiss the tooltip. Other keystrokes, including
+modifier combinations used to capture a screenshot, leave a visible tooltip
+alone. Scroll—including transcript follow-scroll—also does not dismiss a
+tooltip the user may be reading. Browser re-hit-testing can emit pointer
+boundary events when scrolling moves content under a stationary pointer;
+unchanged pointer coordinates are not treated as departure. A visible tooltip
+keeps its fixed reading position during scroll and is re-clamped to the
+viewport after resize.
 
 Only a tooltip that actually became visible warms the tooltip system. After it
 closes, entering another target within six times the configured delay opens the
 adjacent tooltip immediately. “Adjacent” is temporal: no geometry test is
 needed. Casually crossing targets that never opened does not warm anything.
+Visibility ownership is global across the delegated text layer, rich
+explanations, and session hovercards: granting it to a new tooltip synchronously
+dismisses the prior owner. A genuine move between warm text targets hands the
+single surface directly to the new target, while small or absent pointer
+movement cannot switch it during scroll or layout re-hit-testing. Neither path
+can flash two tooltips or an intermediate blank tooltip. Every tooltip is the
+frontmost app hit-test surface and belongs to its active hover region. Pointer
+enter, move, down, and context-menu events over its visible bounds target the
+tooltip, never any mouseover-driven component geometrically underneath it.
+Boundary motion accumulates from the last point inside the active hover region;
+up to four CSS pixels is treated as hand/sensor jitter rather than an intent to
+switch targets or dismiss.
 
 The session preview hover card is intentionally slower and does not require
 pointer rest: its first reveal waits three times the configured delay (150 ms
@@ -98,7 +118,11 @@ Secondary-click on a visible plain text tooltip copies its full text and
 immediately increases the tooltip by one text-size step, without animation.
 This must not intercept a right-click already handled by the app, a nonempty
 text selection, or browser-operable link, form, editable, image, video, or
-audio targets. Pointer movement still dismisses the enlarged tooltip.
+audio targets. The enlarged tooltip follows the same hover-region and close
+grace as its ordinary form. The themed surface permits ordinary text selection:
+primary drag within it does not dismiss it, and a secondary-click on selected
+text retains the browser's normal selection menu instead of invoking tooltip
+copy/enlarge.
 
 Rich explanatory tooltips may retain structured content while using the same
 dwell/warmth coordinator. Interactive help panels and menus are popovers, not
@@ -116,9 +140,13 @@ not the surface into a card.
 
 ## Verification contract
 
-- Static and pointer-computed hints obey rest delay, movement reset/dismiss,
-  focus, and exclusive native/themed ownership. Themed mode contains no live
-  native titles; Native mode restores them.
+- Static and pointer-computed hints obey rest delay, persistent trigger/tooltip
+  hover, delayed pointer departure, focus, and exclusive native/themed
+  ownership. Themed mode contains no live native titles; Native mode restores
+  them.
+- Once visible, a tooltip survives same-target pointer motion, transcript
+  follow-scroll, scroll-generated pointer boundary events, and non-Escape
+  keystrokes. Escape and a completed pointer departure still dismiss it.
 - Exact visible-content hints are absent only when fully scroll-visible and
   remain when clipped by self, ancestor, or viewport; no-`+N` Ran commands
   follow the same measured rule.
@@ -128,9 +156,17 @@ not the surface into a card.
 - Read/file links expose only a concise path/range and never carry native and
   themed attributes simultaneously.
 - Only visible tooltips enable immediate temporally adjacent reveals.
+- At most one delegated, rich, or session-preview tooltip is visible, and warm
+  handoff changes ownership without a blank or dual-tooltip frame.
+- Boundary jitter within four CSS pixels neither switches tooltip content nor
+  starts departure dismissal.
+- Every visible tooltip is pointer-opaque and frontmost: hover and pointer
+  interactions cannot reach an obscured component underneath it.
 - Native mode leaves ordinary browser titles intact.
 - Valid slider/number edits select themed mode; an empty number draft does not.
 - Session hover cards use the 3× first-open delay and immediate warm switching.
 - Secondary-click copy/enlarge respects context-menu and selection exclusions.
+- Themed tooltip text is pointer-selectable without weakening departure
+  dismissal.
 - The local and remote entry points install the same tooltip layer and
   pre-render appearance initialization.

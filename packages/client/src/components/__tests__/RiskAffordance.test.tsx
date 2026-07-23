@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTooltipWarmth,
   DEFAULT_TOOLTIP_DELAY_MS,
+  TOOLTIP_CLOSE_DELAY_MULTIPLIER,
 } from "../../hooks/useTooltipAppearance";
+import "../../../test/pointerEventShim";
 import { RiskAffordance } from "../RiskAffordance";
 
 describe("RiskAffordance tooltip timing", () => {
@@ -22,7 +24,7 @@ describe("RiskAffordance tooltip timing", () => {
     vi.useRealTimers();
   });
 
-  it("requires pointer rest and stays dismissed until pointer leave", () => {
+  it("persists through motion and closes after deliberate departure", () => {
     render(
       <RiskAffordance
         label="what is the risk?"
@@ -34,20 +36,69 @@ describe("RiskAffordance tooltip timing", () => {
       name: "what is the risk?",
     });
 
-    fireEvent.pointerEnter(target);
-    fireEvent.pointerMove(target);
+    const hoverRegion = target.closest(".external-session-risk");
+    expect(hoverRegion).toBeTruthy();
+    if (!(hoverRegion instanceof HTMLElement)) return;
+
+    fireEvent.pointerEnter(hoverRegion, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(hoverRegion, {
+      pointerType: "mouse",
+      clientX: 11,
+      clientY: 10,
+    });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
     expect(screen.getByRole("tooltip").textContent).toBe("Risk explanation");
+    expect(hoverRegion.classList).toContain(
+      "external-session-risk--tooltip-visible",
+    );
 
-    fireEvent.pointerMove(target);
-    expect(screen.queryByRole("tooltip")).toBeNull();
-
-    fireEvent.pointerMove(target);
-    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
-    expect(screen.queryByRole("tooltip")).toBeNull();
-
-    fireEvent.pointerLeave(target);
-    fireEvent.pointerEnter(target);
+    const tooltip = screen.getByRole("tooltip");
+    fireEvent.pointerMove(tooltip, {
+      pointerType: "mouse",
+      clientX: 12,
+      clientY: 10,
+    });
     expect(screen.getByRole("tooltip").textContent).toBe("Risk explanation");
+
+    fireEvent.pointerLeave(hoverRegion, {
+      pointerType: "mouse",
+      clientX: 12,
+      clientY: 10,
+      relatedTarget: document.body,
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe("Risk explanation");
+
+    fireEvent.pointerMove(document.body, {
+      pointerType: "mouse",
+      clientX: 14,
+      clientY: 10,
+    });
+    act(() =>
+      vi.advanceTimersByTime(
+        DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_CLOSE_DELAY_MULTIPLIER,
+      ),
+    );
+    expect(screen.getByRole("tooltip").textContent).toBe("Risk explanation");
+
+    fireEvent.pointerMove(document.body, {
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 10,
+    });
+    act(() =>
+      vi.advanceTimersByTime(
+        DEFAULT_TOOLTIP_DELAY_MS * TOOLTIP_CLOSE_DELAY_MULTIPLIER - 1,
+      ),
+    );
+    expect(screen.getByRole("tooltip").textContent).toBe("Risk explanation");
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(hoverRegion.classList).not.toContain(
+      "external-session-risk--tooltip-visible",
+    );
   });
 });

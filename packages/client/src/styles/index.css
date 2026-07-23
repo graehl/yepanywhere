@@ -6386,7 +6386,8 @@ a.linkified-url:hover {
 
 .ya-tooltip {
   position: fixed;
-  z-index: 10000;
+  /* Keep the visible tooltip as the frontmost app hit-test surface. */
+  z-index: 2147483647;
   box-sizing: border-box;
   width: max-content;
   max-width: min(520px, calc(100vw - 16px));
@@ -6405,7 +6406,9 @@ a.linkified-url:hover {
   text-align: left;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  pointer-events: none;
+  pointer-events: auto;
+  user-select: text;
+  cursor: text;
 }
 
 .ya-tooltip--enlarged {
@@ -8052,6 +8055,10 @@ a.linkified-url:hover {
   display: inline-block;
 }
 
+.external-session-risk--tooltip-visible {
+  z-index: 2147483647;
+}
+
 .external-session-risk-link {
   padding: 0;
   border: none;
@@ -8075,7 +8082,7 @@ a.linkified-url:hover {
   top: calc(100% + 0.5rem);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 50;
+  z-index: 2147483647;
   width: min(360px, 90vw);
   max-height: 60vh;
   overflow-y: auto;
@@ -16856,7 +16863,8 @@ a.linkified-url:hover {
    text behind the visual overlay instead of the visible card text. */
 .session-hovercard {
   position: fixed;
-  z-index: 9998; /* above sidebar (101) and modals; below the menu dropdown (10000) */
+  /* A visible tooltip must obscure every ordinary app hit-test surface. */
+  z-index: 2147483647;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

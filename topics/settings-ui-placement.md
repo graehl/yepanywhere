@@ -70,9 +70,12 @@ inventory: `appearance`, `toolbar`, `model`, `message-delivery`,
 Placement precedents (the load-bearing ones — choose by *what the user is
 conceptually adjusting*, not where the code lives):
 
-- **Appearance** — things you can **see at rest, without mouseover first**:
-  visual rendering (fonts, spacing, and visibility toggles like show-thinking's
-  display). `AppearanceSettings.tsx` / `useOutputAppearance`.
+- **Appearance** — visual presentation (fonts, spacing, visibility toggles like
+  show-thinking's display, and the style/timing of transient presentation such
+  as tooltips). Most Appearance effects are visible at rest; a presentation
+  preference does not move to Toolbar merely because hover reveals it.
+  `AppearanceSettings.tsx` / `useOutputAppearance`; see
+  [tooltip-interactions](tooltip-interactions.md).
 - **Toolbar** — which **commands / affordances** are shown in the toolbar.
   `ToolbarSettings.tsx`.
 - **Model + new-session defaults / options** — things **set on session start**:

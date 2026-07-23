@@ -7,11 +7,13 @@ const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { TooltipLayer } from "./components/ui/TooltipLayer";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
+import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
 import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
 import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
@@ -138,6 +140,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
   initializeOutputAppearance();
   initializeTabSize();
   initializeContentMaxWidth();
+  initializeTooltipAppearance();
 
   // Register SW at startup so PWA install is available without visiting settings
   registerServiceWorkerAtStartup();
@@ -160,6 +163,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
   createRoot(rootElement).render(
     <Wrapper>
       <ErrorBoundary>
+        <TooltipLayer />
         <BrowserRouter basename={basename}>
           <App>
             <Routes>

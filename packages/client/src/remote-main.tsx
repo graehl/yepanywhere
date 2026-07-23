@@ -26,11 +26,13 @@ const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
+import { TooltipLayer } from "./components/ui/TooltipLayer";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
+import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
 import { I18nProvider } from "./i18n";
 import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
@@ -61,6 +63,7 @@ initializeFontSize();
 initializeOutputAppearance();
 initializeTabSize();
 initializeContentMaxWidth();
+initializeTooltipAppearance();
 
 // Register SW at startup so PWA install is available without visiting settings
 registerServiceWorkerAtStartup();
@@ -136,6 +139,7 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <Wrapper>
+    <TooltipLayer />
     <BrowserRouter basename={basename}>
       <I18nProvider>
         <Routes>

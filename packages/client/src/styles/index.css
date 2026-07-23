@@ -6331,7 +6331,37 @@ a.linkified-url:hover {
   opacity: 0.55;
 }
 
-.send-button-with-help::after {
+.ya-tooltip {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 16px));
+  max-height: min(50vh, 420px);
+  overflow: hidden;
+  padding: 5px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.ya-tooltip--enlarged {
+  max-width: min(680px, calc(100vw - 16px));
+  padding: 7px 9px;
+  font-size: var(--font-size-sm);
+}
+
+:root[data-tooltip-mode="native"] .send-button-with-help::after {
   content: attr(data-tooltip);
   position: absolute;
   right: 0;
@@ -6361,8 +6391,9 @@ a.linkified-url:hover {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .send-button-with-help:hover::after,
-  .send-button-with-help:focus-visible::after {
+  :root[data-tooltip-mode="native"] .send-button-with-help:hover::after,
+  :root[data-tooltip-mode="native"]
+    .send-button-with-help:focus-visible::after {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
@@ -11196,6 +11227,49 @@ a.linkified-url:hover {
   flex-wrap: wrap;
 }
 
+.tooltip-settings-actions {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  width: min(100%, 32rem);
+  flex: 1 1 26rem;
+  flex-wrap: nowrap;
+}
+
+.tooltip-settings-actions .output-appearance-slider-row {
+  grid-template-columns: minmax(3rem, 1fr) max-content;
+}
+
+.tooltip-settings-actions .output-appearance-number {
+  box-sizing: border-box;
+  width: 3.75rem;
+}
+
+.tooltip-mode-selector {
+  flex-shrink: 0;
+}
+
+.tooltip-mode-selector .font-size-option {
+  padding-inline: var(--space-1);
+}
+
+@container (max-width: 50rem) {
+  .settings-item--tooltip-control {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .settings-item--tooltip-control > .settings-item-info {
+    width: 100%;
+    flex: 0 1 auto;
+  }
+
+  .settings-item--tooltip-control > .tooltip-settings-actions {
+    align-self: flex-end;
+    flex: 0 1 auto;
+  }
+}
+
 @container (max-width: 36rem) {
   .settings-item--wide-control,
   .settings-item-group-row--wide-control {
@@ -11225,6 +11299,12 @@ a.linkified-url:hover {
   .settings-item--wide-control > .settings-item-actions,
   .settings-item-group-row--wide-control > .settings-item-actions {
     max-width: min(100%, 16rem);
+  }
+
+  .settings-item--wide-control > .tooltip-settings-actions {
+    align-self: stretch;
+    width: 100%;
+    max-width: 100%;
   }
 }
 

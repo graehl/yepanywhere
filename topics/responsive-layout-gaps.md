@@ -152,7 +152,7 @@ UI size Larger.
 | Tool preview lines | `.settings-item-actions` row in `AppearanceSettings.tsx` | Range + numeric value/unit wrapped to two rows. The row uses content-width flex wrapping instead of using available inline space inside the settings item. |
 | Max Content Width | `.settings-item-actions` row in `AppearanceSettings.tsx` | Range + numeric value/unit + reset wrapped to three rows at both expanded and collapsed sidebar states. This was the reported relayout-heavy slider. |
 | Generated Title Length | `.settings-item-actions` row in `AppearanceSettings.tsx` | Same three-row pattern as Max Content Width. |
-| Hover Card Delay | `.settings-item-actions` row in `AppearanceSettings.tsx` | Same three-row pattern as Max Content Width. |
+| Tooltip Style and Delay | `.tooltip-settings-actions` in `AppearanceSettings.tsx` | The mode selector, range, numeric value/unit, and reset form one explicitly allocated row. At narrow widths the range track absorbs the pressure instead of allowing accidental multi-row wrapping. |
 | Hover Card Max Height | `.settings-item-actions` row in `AppearanceSettings.tsx` | Range + numeric value/unit + line-count estimate + reset wrapped to four rows. The estimate is useful, but it needs an allocated slot or a second-line contract, not accidental wrapping. |
 
 Also: 'Ran' blocks can display wrapping followed by unused space on the second line, followed by ... truncation. This was probably implemented by a fixed #chars count since it's a fixed width font - but the width is configurable!

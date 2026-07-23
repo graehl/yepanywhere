@@ -49,6 +49,9 @@ export const UI_KEYS = {
   // Legacy pre-presence keys, read once for migration then removed.
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
   sessionToolbarPriority: "yep-anywhere-session-toolbar-priority",
+  tooltipMode: "yep-anywhere-tooltip-mode",
+  tooltipDelayMs: "yep-anywhere-tooltip-delay-ms",
+  // Legacy per-hover-card delay; seeds the shared tooltip delay at one third.
   sessionHoverCardShowDelayMs: "yep-anywhere-session-hover-card-show-delay-ms",
   sessionHoverCardMaxHeightPx: "yep-anywhere-session-hover-card-max-height-px",
   sessionGeneratedTitleEnabled: "yep-anywhere-session-generated-title-enabled",

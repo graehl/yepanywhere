@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
+import {
+  DEFAULT_TOOLTIP_DELAY_MS,
+  SESSION_HOVERCARD_DELAY_MULTIPLIER,
+  useTooltipAppearance,
+} from "./useTooltipAppearance";
 
-// Delay before a hovered session row reveals its preview card; 0 = instant.
-export const HOVERCARD_SHOW_DELAY_MIN_MS = 0;
-export const HOVERCARD_SHOW_DELAY_MAX_MS = 1000;
-export const HOVERCARD_SHOW_DELAY_STEP_MS = 25;
-export const DEFAULT_HOVERCARD_SHOW_DELAY_MS = 150;
+export const DEFAULT_HOVERCARD_SHOW_DELAY_MS =
+  DEFAULT_TOOLTIP_DELAY_MS * SESSION_HOVERCARD_DELAY_MULTIPLIER;
 
 // Max height of the preview card; taller shows more of the opening request.
 export const HOVERCARD_MAX_HEIGHT_MIN_PX = 80;
@@ -29,15 +31,6 @@ function roundToStep(value: number, step: number): number {
   return Math.round(value / step) * step;
 }
 
-function normalizeShowDelay(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_HOVERCARD_SHOW_DELAY_MS;
-  return clamp(
-    roundToStep(value, HOVERCARD_SHOW_DELAY_STEP_MS),
-    HOVERCARD_SHOW_DELAY_MIN_MS,
-    HOVERCARD_SHOW_DELAY_MAX_MS,
-  );
-}
-
 function normalizeMaxHeight(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_HOVERCARD_MAX_HEIGHT_PX;
   return clamp(
@@ -54,12 +47,7 @@ function readStoredNumber(key: string, fallback: number): number {
 
 function loadHoverCardAppearance(): HoverCardAppearance {
   return {
-    showDelayMs: normalizeShowDelay(
-      readStoredNumber(
-        UI_KEYS.sessionHoverCardShowDelayMs,
-        DEFAULT_HOVERCARD_SHOW_DELAY_MS,
-      ),
-    ),
+    showDelayMs: DEFAULT_HOVERCARD_SHOW_DELAY_MS,
     maxHeightPx: normalizeMaxHeight(
       readStoredNumber(
         UI_KEYS.sessionHoverCardMaxHeightPx,
@@ -74,6 +62,7 @@ function loadHoverCardAppearance(): HoverCardAppearance {
  * change event so a settings edit updates open lists without a remount.
  */
 export function useHoverCardSettings(): HoverCardAppearance {
+  const { tooltipMode, tooltipDelayMs } = useTooltipAppearance();
   const [appearance, setAppearance] = useState<HoverCardAppearance>(
     loadHoverCardAppearance,
   );
@@ -85,20 +74,24 @@ export function useHoverCardSettings(): HoverCardAppearance {
       window.removeEventListener(HOVERCARD_APPEARANCE_CHANGE_EVENT, update);
   }, []);
 
-  return appearance;
+  const nativeDelayMs = readStoredNumber(
+    UI_KEYS.sessionHoverCardShowDelayMs,
+    DEFAULT_HOVERCARD_SHOW_DELAY_MS,
+  );
+  return {
+    ...appearance,
+    showDelayMs:
+      tooltipMode === "native"
+        ? Number.isFinite(nativeDelayMs)
+          ? Math.max(0, nativeDelayMs)
+          : DEFAULT_HOVERCARD_SHOW_DELAY_MS
+        : tooltipDelayMs * SESSION_HOVERCARD_DELAY_MULTIPLIER,
+  };
 }
 
 /** Read + write hover-card settings, for the settings pane. */
 export function useHoverCardAppearance() {
-  const { showDelayMs, maxHeightPx } = useHoverCardSettings();
-
-  const setHoverCardShowDelayMs = useCallback((value: number) => {
-    localStorage.setItem(
-      UI_KEYS.sessionHoverCardShowDelayMs,
-      String(normalizeShowDelay(value)),
-    );
-    window.dispatchEvent(new Event(HOVERCARD_APPEARANCE_CHANGE_EVENT));
-  }, []);
+  const { maxHeightPx } = useHoverCardSettings();
 
   const setHoverCardMaxHeightPx = useCallback((value: number) => {
     localStorage.setItem(
@@ -109,15 +102,12 @@ export function useHoverCardAppearance() {
   }, []);
 
   const resetHoverCardAppearance = useCallback(() => {
-    localStorage.removeItem(UI_KEYS.sessionHoverCardShowDelayMs);
     localStorage.removeItem(UI_KEYS.sessionHoverCardMaxHeightPx);
     window.dispatchEvent(new Event(HOVERCARD_APPEARANCE_CHANGE_EVENT));
   }, []);
 
   return {
-    hoverCardShowDelayMs: showDelayMs,
     hoverCardMaxHeightPx: maxHeightPx,
-    setHoverCardShowDelayMs,
     setHoverCardMaxHeightPx,
     resetHoverCardAppearance,
   };

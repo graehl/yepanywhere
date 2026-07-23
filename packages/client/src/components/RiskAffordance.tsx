@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import { useTooltipTrigger } from "../hooks/useTooltipTrigger";
 import { Modal } from "./ui/Modal";
 
 /**
@@ -20,6 +21,11 @@ export function RiskAffordance({
   explanation: ReactNode;
 }) {
   const [showModal, setShowModal] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipTrigger = useTooltipTrigger({
+    open: showTooltip,
+    onOpenChange: setShowTooltip,
+  });
   return (
     <span className="external-session-risk">
       <button
@@ -28,13 +34,23 @@ export function RiskAffordance({
           labelClassName ? ` ${labelClassName}` : ""
         }`}
         aria-haspopup="dialog"
-        onClick={() => setShowModal(true)}
+        onPointerEnter={tooltipTrigger.onPointerEnter}
+        onPointerMove={tooltipTrigger.onPointerMove}
+        onPointerLeave={tooltipTrigger.onPointerLeave}
+        onFocus={tooltipTrigger.onFocus}
+        onBlur={tooltipTrigger.onBlur}
+        onClick={() => {
+          tooltipTrigger.close();
+          setShowModal(true);
+        }}
       >
         {label}
       </button>
-      <div className="external-session-risk-tooltip" role="tooltip">
-        {explanation}
-      </div>
+      {showTooltip && (
+        <div className="external-session-risk-tooltip" role="tooltip">
+          {explanation}
+        </div>
+      )}
       {showModal && (
         <Modal title={modalTitle} onClose={() => setShowModal(false)}>
           {explanation}

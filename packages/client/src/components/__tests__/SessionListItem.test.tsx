@@ -12,8 +12,10 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { DEFAULT_HOVERCARD_SHOW_DELAY_MS } from "../../hooks/useHoverCardAppearance";
+import { clearTooltipWarmth } from "../../hooks/useTooltipAppearance";
 import { I18nProvider } from "../../i18n";
 import { activityBus } from "../../lib/activityBus";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { SessionListItem } from "../SessionListItem";
 
 const mockWindowOpen = vi.fn();
@@ -31,12 +33,16 @@ function LocationProbe() {
 
 describe("SessionListItem links", () => {
   beforeEach(() => {
+    clearTooltipWarmth();
+    localStorage.clear();
     mockWindowOpen.mockReset();
     vi.stubGlobal("open", mockWindowOpen);
   });
 
   afterEach(() => {
     cleanup();
+    clearTooltipWarmth();
+    localStorage.clear();
     vi.useRealTimers();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -390,6 +396,39 @@ describe("SessionListItem links", () => {
     expect(screen.getByText("Delayed hover prompt")).toBeTruthy();
   });
 
+  it("preserves the stored hover-card delay in native tooltip mode", () => {
+    vi.useFakeTimers();
+    localStorage.setItem(UI_KEYS.tooltipMode, "native");
+    localStorage.setItem(UI_KEYS.sessionHoverCardShowDelayMs, "300");
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Native delay"
+              initialPrompt="Native delay prompt"
+              provider="claude"
+              status={{ owner: "self", processId: "pid-1" }}
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const item = screen
+      .getByRole("link", { name: /Native delay/ })
+      .closest("li");
+    fireEvent.mouseEnter(item!, { clientX: 20 });
+    act(() => vi.advanceTimersByTime(299));
+    expect(screen.queryByText("Native delay prompt")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText("Native delay prompt")).toBeTruthy();
+  });
+
   it("keeps a session hover preview open while the pointer is over the card", () => {
     vi.useFakeTimers();
 
@@ -433,7 +472,7 @@ describe("SessionListItem links", () => {
     expect(screen.queryByText("Selectable recap text")).toBeNull();
   });
 
-  it("keeps only one session hover preview visible", () => {
+  it("switches immediately between session previews after the first opens", () => {
     vi.useFakeTimers();
 
     render(
@@ -474,13 +513,14 @@ describe("SessionListItem links", () => {
 
     fireEvent.mouseEnter(firstItem!, { clientX: 20 });
     act(() => {
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS);
     });
     expect(screen.getByText("First session prompt")).toBeTruthy();
 
+    fireEvent.mouseLeave(firstItem!, { relatedTarget: secondItem });
     fireEvent.mouseEnter(secondItem!, { clientX: 20 });
     act(() => {
-      vi.advanceTimersByTime(200);
+      vi.advanceTimersByTime(0);
     });
     expect(screen.queryByText("First session prompt")).toBeNull();
     expect(screen.getByText("Second session prompt")).toBeTruthy();

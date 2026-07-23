@@ -74,6 +74,20 @@ shares when the adaptation is attached to the shared rendering context or file
 viewer source. It is not a license for arbitrary `onclick` URL surgery after
 the UI has already been generated.
 
+## Global Tooltip Boundary
+
+Ordinary text hints already enter the UI through the semantic `title` or
+`data-tooltip` attributes across many renderers. `TooltipLayer` is the one
+interaction boundary that translates those hints into themed presentation; it
+owns dwell, warm adjacency, viewport placement, dismissal, and accessibility
+association instead of duplicating that machinery at every producer. It must
+not inspect text to infer behavior or rewrite unrelated rendered content.
+
+Structured explanatory tooltips use the same timing coordinator explicitly.
+Interactive help panels remain popovers with their own state. The observable
+contract and native fallback are in
+[tooltip-interactions](tooltip-interactions.md).
+
 ## Settings Pane Conventions
 
 Settings panes apply changes immediately on interaction — the house style

@@ -1715,7 +1715,8 @@ export function MessageInputToolbarView({
                     ? "is-isearch-guide"
                     : ""
                 }`}
-                role="tooltip"
+                role="dialog"
+                aria-label={t("toolbarKeyboardShortcutsAria")}
               >
                 {shortcutsControl.isearchScope !== null ? (
                   <>

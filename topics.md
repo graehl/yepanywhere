@@ -153,3 +153,5 @@
   optional macOS closed-lid-on-external-power strategy.
 - host-identity - Optional server-owned emoji marker for connected headers and
   browser-tab titles, hidden against older servers.
+- tooltip-interactions - Shared native/themed tooltip presentation, pointer-rest
+  delay, warm adjacent scanning, and future rendered hidden-tail previews.

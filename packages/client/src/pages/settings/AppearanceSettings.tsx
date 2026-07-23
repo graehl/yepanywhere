@@ -10,13 +10,9 @@ import {
 } from "../../hooks/useContentMaxWidth";
 import {
   DEFAULT_HOVERCARD_MAX_HEIGHT_PX,
-  DEFAULT_HOVERCARD_SHOW_DELAY_MS,
   HOVERCARD_MAX_HEIGHT_MAX_PX,
   HOVERCARD_MAX_HEIGHT_MIN_PX,
   HOVERCARD_MAX_HEIGHT_STEP_PX,
-  HOVERCARD_SHOW_DELAY_MAX_MS,
-  HOVERCARD_SHOW_DELAY_MIN_MS,
-  HOVERCARD_SHOW_DELAY_STEP_MS,
   useHoverCardAppearance,
 } from "../../hooks/useHoverCardAppearance";
 import { estimateHoverCardPromptLines } from "../../components/sessionHoverCardLines";
@@ -98,6 +94,14 @@ import {
   settingsCategoryIcons,
 } from "./SettingsCategoryIcons";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
+import { CommittedRangeNumberInput } from "../../components/ui/CommittedRangeNumberInput";
+import {
+  DEFAULT_TOOLTIP_DELAY_MS,
+  TOOLTIP_DELAY_MAX_MS,
+  TOOLTIP_DELAY_MIN_MS,
+  TOOLTIP_DELAY_STEP_MS,
+  useTooltipAppearance,
+} from "../../hooks/useTooltipAppearance";
 
 const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
 
@@ -186,12 +190,14 @@ export function AppearanceSettings() {
   } = useOutputAppearance();
   const { tabSize, setTabSize } = useTabSize();
   const { contentMaxWidth, setContentMaxWidth } = useContentMaxWidth();
+  const { hoverCardMaxHeightPx, setHoverCardMaxHeightPx } =
+    useHoverCardAppearance();
   const {
-    hoverCardShowDelayMs,
-    hoverCardMaxHeightPx,
-    setHoverCardShowDelayMs,
-    setHoverCardMaxHeightPx,
-  } = useHoverCardAppearance();
+    tooltipMode,
+    tooltipDelayMs,
+    setTooltipMode,
+    setTooltipDelayMs,
+  } = useTooltipAppearance();
   const { generatedTitleLength, setGeneratedTitleLength } =
     useGeneratedTitleLength();
   const { generatedTitleEnabled, setGeneratedTitleEnabled } =
@@ -204,9 +210,6 @@ export function AppearanceSettings() {
   );
   const [contentMaxWidthDraft, setContentMaxWidthDraft] = useState(() =>
     String(contentMaxWidth),
-  );
-  const [hoverCardDelayDraft, setHoverCardDelayDraft] = useState(() =>
-    String(hoverCardShowDelayMs),
   );
   const [hoverCardHeightDraft, setHoverCardHeightDraft] = useState(() =>
     String(hoverCardMaxHeightPx),
@@ -297,9 +300,8 @@ export function AppearanceSettings() {
     undoEntry(contentMaxWidth, setContentMaxWidth, (value) =>
       setContentMaxWidthDraft(String(value)),
     ),
-    undoEntry(hoverCardShowDelayMs, setHoverCardShowDelayMs, (value) =>
-      setHoverCardDelayDraft(String(value)),
-    ),
+    undoEntry(tooltipDelayMs, setTooltipDelayMs),
+    undoEntry(tooltipMode, setTooltipMode),
     undoEntry(hoverCardMaxHeightPx, setHoverCardMaxHeightPx, (value) =>
       setHoverCardHeightDraft(String(value)),
     ),
@@ -332,10 +334,6 @@ export function AppearanceSettings() {
   useEffect(() => {
     setContentMaxWidthDraft(String(contentMaxWidth));
   }, [contentMaxWidth]);
-
-  useEffect(() => {
-    setHoverCardDelayDraft(String(hoverCardShowDelayMs));
-  }, [hoverCardShowDelayMs]);
 
   useEffect(() => {
     setHoverCardHeightDraft(String(hoverCardMaxHeightPx));
@@ -387,13 +385,6 @@ export function AppearanceSettings() {
     const parsed = Number.parseInt(contentMaxWidthDraft, 10);
     setContentMaxWidth(
       Number.isFinite(parsed) ? parsed : DEFAULT_CONTENT_MAX_WIDTH_PX,
-    );
-  };
-
-  const commitHoverCardDelay = () => {
-    const parsed = Number(hoverCardDelayDraft);
-    setHoverCardShowDelayMs(
-      Number.isFinite(parsed) ? parsed : DEFAULT_HOVERCARD_SHOW_DELAY_MS,
     );
   };
 
@@ -724,50 +715,55 @@ export function AppearanceSettings() {
             </div>
           )}
         </div>
-        <div className="settings-item settings-item--wide-control">
+        <div className="settings-item settings-item--wide-control settings-item--tooltip-control">
           <div className="settings-item-info">
-            <strong>{t("appearanceHoverCardDelayTitle")}</strong>
-            <p>{t("appearanceHoverCardDelayDescription")}</p>
+            <strong>{t("appearanceTooltipDelayTitle")}</strong>
+            <p>{t("appearanceTooltipDelayDescription")}</p>
           </div>
-          <div className="settings-item-actions">
-            <CommittedRangeInput
-              min={HOVERCARD_SHOW_DELAY_MIN_MS}
-              max={HOVERCARD_SHOW_DELAY_MAX_MS}
-              step={HOVERCARD_SHOW_DELAY_STEP_MS}
-              value={hoverCardShowDelayMs}
-              onDraftChange={(value) => setHoverCardDelayDraft(String(value))}
-              onCommit={setHoverCardShowDelayMs}
-              aria-label={t("appearanceHoverCardDelayTitle")}
+          <div className="settings-item-actions tooltip-settings-actions">
+            <div
+              className="font-size-selector tooltip-mode-selector"
+              role="group"
+              aria-label={t("appearanceTooltipModeTitle")}
+            >
+              <button
+                type="button"
+                className={`font-size-option ${
+                  tooltipMode === "themed" ? "active" : ""
+                }`}
+                onClick={() => setTooltipMode("themed")}
+              >
+                {t("appearanceTooltipModeThemed")}
+              </button>
+              <button
+                type="button"
+                className={`font-size-option ${
+                  tooltipMode === "native" ? "active" : ""
+                }`}
+                onClick={() => setTooltipMode("native")}
+              >
+                {t("appearanceTooltipModeNative")}
+              </button>
+            </div>
+            <CommittedRangeNumberInput
+              id="tooltip-delay"
+              min={TOOLTIP_DELAY_MIN_MS}
+              max={TOOLTIP_DELAY_MAX_MS}
+              step={TOOLTIP_DELAY_STEP_MS}
+              value={tooltipDelayMs}
+              unit={t("appearanceTooltipDelayUnit")}
+              ariaLabel={t("appearanceTooltipDelayTitle")}
+              onEdit={() => setTooltipMode("themed")}
+              onCommit={setTooltipDelayMs}
             />
-            <span className="settings-input-unit">
-              <input
-                type="number"
-                className="settings-input-small"
-                min={HOVERCARD_SHOW_DELAY_MIN_MS}
-                max={HOVERCARD_SHOW_DELAY_MAX_MS}
-                step={HOVERCARD_SHOW_DELAY_STEP_MS}
-                value={hoverCardDelayDraft}
-                onChange={(e) => setHoverCardDelayDraft(e.target.value)}
-                onBlur={commitHoverCardDelay}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    commitHoverCardDelay();
-                    e.currentTarget.blur();
-                  }
-                }}
-                aria-label={t("appearanceHoverCardDelayTitle")}
-              />
-              {t("appearanceHoverCardDelayUnit")}
-            </span>
             <button
               type="button"
               className="settings-inline-x"
               onClick={() => {
-                setHoverCardShowDelayMs(DEFAULT_HOVERCARD_SHOW_DELAY_MS);
-                setHoverCardDelayDraft(String(DEFAULT_HOVERCARD_SHOW_DELAY_MS));
+                setTooltipDelayMs(DEFAULT_TOOLTIP_DELAY_MS);
               }}
-              aria-label={t("appearanceHoverCardReset")}
-              title={t("appearanceHoverCardReset")}
+              aria-label={t("appearanceTooltipReset")}
+              title={t("appearanceTooltipReset")}
             >
               ×
             </button>

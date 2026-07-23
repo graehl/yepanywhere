@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
+import {
+  beginTooltipVisibility,
+  endTooltipVisibility,
+  isTooltipWarm,
+} from "../hooks/useTooltipAppearance";
 import { useI18n } from "../i18n";
 import { activityBus } from "../lib/activityBus";
 import { toBrowserAppHref } from "../lib/appHref";
@@ -232,6 +237,7 @@ export function SessionListItem({
     cursorX: number;
   } | null>(null);
   const previewShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewVisibilityToken = useRef<symbol | null>(null);
   const previewCursorX = useRef(0);
   // Idle (non-running) sessions get no live session-updated events, so their
   // recent-activity preview can be stale. After the delayed hover opens, we
@@ -493,10 +499,18 @@ export function SessionListItem({
     }
   }, []);
 
+  const releasePreviewVisibility = useCallback(() => {
+    const token = previewVisibilityToken.current;
+    if (!token) return;
+    previewVisibilityToken.current = null;
+    endTooltipVisibility(token);
+  }, []);
+
   const clearPreview = useCallback(() => {
     clearPreviewTimers();
+    releasePreviewVisibility();
     setPreviewPos(null);
-  }, [clearPreviewTimers]);
+  }, [clearPreviewTimers, releasePreviewVisibility]);
 
   const schedulePreviewShow = useCallback(() => {
     if (!showHoverCard || menuOpenRef.current) return;
@@ -509,13 +523,14 @@ export function SessionListItem({
       const hoverCardId = hoverCardIdRef.current;
       if (!rect || !hoverCardId) return;
       announceActiveSessionHoverCard(hoverCardId);
+      previewVisibilityToken.current ??= beginTooltipVisibility();
       setPreviewPos({
         rowTop: rect.top,
         rowBottom: rect.bottom,
         cursorX: previewCursorX.current,
       });
       previewShowTimer.current = null;
-    }, hoverCardShowDelayMs);
+    }, isTooltipWarm() ? 0 : hoverCardShowDelayMs);
   }, [
     showHoverCard,
     clearPreviewTimers,
@@ -550,8 +565,9 @@ export function SessionListItem({
   useEffect(() => {
     return () => {
       clearPreviewTimers();
+      releasePreviewVisibility();
     };
-  }, [clearPreviewTimers]);
+  }, [clearPreviewTimers, releasePreviewVisibility]);
 
   // A fixed card would drift if the sidebar scrolls under it; clear only when
   // the row's own scroll ancestors move. Transcript autoscroll elsewhere should

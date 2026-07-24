@@ -67,3 +67,5 @@
   facts, and shared semantic projection for web/Android/iOS native renderers)
 - Agents multi-session activity preview (default-off condensed live activity
   for active processes and last-output previews for recently idle ones)
+- Bang commands (proposal: `!!` composer messages run local shell commands as
+  persistent inline display objects, never entering provider context)

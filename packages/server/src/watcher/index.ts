@@ -5,6 +5,7 @@ export type {
   WatchProvider,
   SessionStatusEvent,
   SessionCreatedEvent,
+  SessionIdRemappedEvent,
   SourceChangeEvent,
   ProcessStateEvent,
   ProcessTerminatedEvent,

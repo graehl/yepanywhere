@@ -1,20 +1,19 @@
 # Session ID Remap Events
 
-Status: problem statement. No implementation has landed yet.
+Status: implemented.
 
 ## Problem
 
-A project-queue new session can briefly render as two sidebar rows for one
-logical provider session when YA publishes a temporary startup ID and the
-provider reports the canonical ID immediately afterward. This is a session
-identity bug, not a duplicate-title display problem.
+A newly launched session can briefly render as two sidebar rows for one logical
+provider session when YA publishes a temporary startup ID and the provider
+reports the canonical ID immediately afterward. This is a session identity bug,
+not a duplicate-title display problem. It has occurred through both Project
+Queue and the normal New Session flow.
 
-The observed duplicate was created from Project Queue instead of the normal New
-Session page. The screenshots from July 6, 2026 showed two active `mclone` rows
-with the same prompt. One tooltip only identified Claude; the other identified
-the later Fable model. The duplicate disappeared after the summary data caught
-up, but it should have reconciled at identity level as soon as the canonical ID
-arrived.
+The duplicate rows can expose different amounts of metadata: the optimistic
+temporary row may identify only Claude while the canonical row already
+identifies the Fable model. They previously disappeared only after summary data
+caught up; identity now reconciles as soon as the canonical ID arrives.
 
 ## Evidence
 
@@ -31,6 +30,20 @@ Server log evidence for the observed `mclone` session:
   `session-updated`; it did not include a public remap event.
 - The canonical session JSONL and SDK raw stream identified the model as
   `claude-fable-5`, matching the Fable tooltip row.
+
+The normal New Session reproduction from July 24, 2026 followed the same race:
+
+- `18:08:38.318Z`: the five-second wait expired and YA published temporary ID
+  `92e12bac-9971-4aba-a8c6-cc1963d35621`.
+- `18:08:38.348Z`: Claude reported canonical ID
+  `8de8ddcf-fbd3-43c7-8cbd-8a1f78283ccf`, only 30 ms later.
+- Both IDs mapped to process `6903e5c7-e76f-412c-986a-a6581d01443e`; there was
+  one JSONL transcript and one provider process, which explains why both rows
+  showed the same live response.
+- The duplicate disappeared before the first turn completed. The summary
+  store's 60-second preservation window for an event-created row, followed by
+  a replacement snapshot, explained the eventual cleanup; turn completion was
+  not the identity-reconciliation mechanism.
 
 This also rules out the "missing session id" theory. The provisional row had a
 real YA-generated UUID. The issue is that the client never learned that the
@@ -53,13 +66,11 @@ The startup path is:
 6. `Supervisor.observeProcessEvents` handles the internal event by adding a
    `sessionToProcess` mapping for the canonical ID, keeping the old mapping,
    emitting ownership for the new ID, and scheduling initial reconciliation.
-7. No public activity event tells clients that the old and new IDs are aliases.
-8. The client summary store keys session rows by `session.id`. It upserts the
-   temporary `session-created` row and later upserts canonical `session-updated`
-   or snapshot rows separately.
-9. The sidebar intentionally does not dedupe active rows, so both rows can be
-   visible until replacement snapshots or the recent event-created-row TTL
-   remove the temporary row.
+7. If the old ID was already publicly registered, Supervisor emits a
+   `session-id-remapped` activity event. An init ID received before registration
+   needs no public remap because clients never saw the temporary ID.
+8. The client summary store applies the remap as an identity merge before
+   later canonical updates or snapshots arrive.
 
 Relevant code surfaces:
 
@@ -80,46 +91,56 @@ reconcile the two IDs. Provider-native IDs must not silently replace
 YA-visible session IDs; when the public ID changes, the mapping must be
 explicit in the event contract and client stores.
 
-## Likely Fix Shape
+## Observable Contract
 
-Add a public activity event, probably named `session-id-remapped`, with at
-least:
+When YA has exposed a temporary session ID and later learns a different
+canonical ID:
 
-- `oldSessionId`
-- `newSessionId`
-- `projectId`
-- `processId`
-- `provider`
-- `timestamp`
+- The activity stream emits `session-id-remapped` with:
 
-Emit it from the Supervisor `session-id-changed` handler when
-`oldSessionId !== newSessionId`, near the existing mapping update, ownership
-change, and initial reconciliation scheduling.
+  - `oldSessionId`
+  - `newSessionId`
+  - `projectId`
+  - `processId`
+  - `provider`
+  - `timestamp`
 
-Teach the client summary store to apply the remap as an identity merge:
+- After reducing that event, normalized client state has one entity under the
+  canonical ID and no provisional ID in query lists, inbox tiers, draft
+  decorations, provider-runtime status, Project Queue targets or origins,
+  recovered queues, or parent-session links.
+- If both records exist, canonical fields remain authoritative and provisional
+  fields only backfill information that the canonical record does not carry.
+- Later activity events and collection snapshots that still name a retained
+  old ID resolve to the canonical entity and cannot recreate the duplicate.
+- List projections contain a canonical ID at most once. Inbox tier priority
+  remains `needsAttention`, `active`, `recentActivity`, `unread8h`,
+  `unread24h` if stale memberships collapse across tiers.
+- Server lookups by the old ID continue to resolve to the process for in-flight
+  clients.
 
-- Move or merge the old session record into the new session record.
-- Remove the old ID from query membership arrays, inbox tiers, provider runtime
-  status maps, activity maps, and any other normalized session-id collections.
-- Preserve the canonical record's authoritative fields while using the
-  temporary record to backfill optimistic fields that the canonical record does
-  not have yet.
-- Ensure later old-ID events either resolve through a short-lived alias map or
-  safely no-op after the merge.
-- Avoid duplicate IDs in list projections.
+## Implementation
 
-Also add the event to the client activity-bus types and valid event list, and
-teach source-scoped summary-store subscriptions to route it through the
-reducer.
+Supervisor translates the internal process `session-id-changed` event into the
+public `session-id-remapped` event only when its old ID is already registered.
+It still retains both server-side process mappings.
 
-For open session-detail routes, keep the server-side old-ID mapping at least
-long enough for in-flight clients. A client currently viewing the temporary URL
-can then either continue through the existing mapping or replace the route with
-the canonical URL after receiving the remap event.
+The source-scoped client summary reducer:
+
+- merges and rekeys the entity;
+- rewrites every normalized session-ID collection;
+- keeps the latest 256 old-to-new aliases, flattened across repeated remaps;
+- resolves IDs through those aliases on subsequent event and snapshot writes
+  and on direct session/runtime selectors.
+
+The alias limit bounds source-runtime memory without adding a timer-driven
+cleanup path. The focused session stream's existing `session-id-changed`
+handling continues to replace an open temporary URL, while the server alias
+supports in-flight requests.
 
 ## Tests
 
-Focused coverage should include:
+Focused coverage includes:
 
 - Server emits a public remap event when a process changes from temporary ID to
   canonical ID.
@@ -128,8 +149,7 @@ Focused coverage should include:
   canonical record without leaving the old ID in query lists or inbox tiers.
 - Provider runtime / activity maps keyed by the temporary ID move to the
   canonical ID.
-- Sidebar projections do not show two active rows for the same remapped
-  session.
+- Recent/inbox projections do not show two rows for the same remapped session.
 - A late old-ID event after remap does not recreate the duplicate row.
 
 ## Non-Goals
@@ -143,10 +163,10 @@ Focused coverage should include:
 - Do not change Project Queue dispatch semantics as part of the identity fix.
 - Do not broaden this into the larger client source-runtime refactor.
 
-## Open Questions
+## Decisions
 
-- Should the public event name mirror the internal `session-id-changed` process
-  event, or should it use the more explicit `session-id-remapped` name?
-- How long should the client retain an old-to-new alias for late events?
-- Should route replacement to the canonical ID be automatic for focused session
-  pages, or should the server-side alias remain the only compatibility layer?
+- The public event is `session-id-remapped`; `session-id-changed` remains the
+  focused process-stream event.
+- Client aliases are count-bounded at 256 entries rather than time-bounded.
+- Focused routes keep their existing automatic canonical-URL replacement, and
+  the server retains its old-ID process mapping as a compatibility layer.

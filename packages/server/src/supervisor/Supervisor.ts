@@ -49,6 +49,7 @@ import type {
   ProviderRuntimeStatusChangedEvent,
   SessionAbortedEvent,
   SessionCreatedEvent,
+  SessionIdRemappedEvent,
   SessionStatusEvent,
   SessionUpdatedEvent,
   WorkerActivityEvent,
@@ -3579,8 +3580,22 @@ export class Supervisor {
         // Keep both temp and real session ID mappings to support lookups by either ID
         // Clients might still be using the temp ID when the real ID arrives
         // The old temp ID mapping is retained (no delete)
+        const oldIdWasPublished =
+          this.sessionToProcess.get(event.oldSessionId) === process.id;
         this.sessionToProcess.set(event.newSessionId, process.id);
         this.everOwnedSessions.add(event.newSessionId);
+        if (this.eventBus && oldIdWasPublished) {
+          const remapped: SessionIdRemappedEvent = {
+            type: "session-id-remapped",
+            oldSessionId: event.oldSessionId,
+            newSessionId: event.newSessionId,
+            projectId: process.projectId,
+            processId: process.id,
+            provider: process.provider,
+            timestamp: new Date().toISOString(),
+          };
+          this.eventBus.emit(remapped);
+        }
         const retainedStatus = this.terminalProviderStatuses.get(
           event.oldSessionId,
         );

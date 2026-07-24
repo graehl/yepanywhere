@@ -12,6 +12,7 @@ import {
   type ProcessStateEvent,
   type ProviderRuntimeStatusChangedEvent,
   type SessionCreatedEvent,
+  type SessionIdRemappedEvent,
   type SessionMetadataChangedEvent,
   type SessionSeenEvent,
   type SessionStatusEvent,
@@ -29,6 +30,7 @@ import {
   applyProjectQueueCollectionSnapshot,
   applyProjectQueueGlobalCollectionSnapshot,
   applySessionCollectionCreated,
+  applySessionCollectionIdRemapped,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
   applySessionCollectionSeen,
@@ -280,6 +282,15 @@ function reduceSessionCreated(
   );
 }
 
+function reduceSessionIdRemapped(
+  sourceKey: ClientSummarySourceKey,
+  event: SessionIdRemappedEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
+    applySessionCollectionIdRemapped(current, event),
+  );
+}
+
 function reduceProjectQueueChanged(
   sourceKey: ClientSummarySourceKey,
   event: ProjectQueueChangedEvent,
@@ -337,6 +348,9 @@ function startActivityBusSubscription(
     ),
     onActivityBusSource(sourceKey, "session-created", (event) =>
       reduceSessionCreated(sourceKey, event),
+    ),
+    onActivityBusSource(sourceKey, "session-id-remapped", (event) =>
+      reduceSessionIdRemapped(sourceKey, event),
     ),
     onActivityBusSource(sourceKey, "project-queue-changed", (event) =>
       reduceProjectQueueChanged(sourceKey, event),

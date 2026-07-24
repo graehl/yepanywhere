@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toUrlProjectId } from "@yep-anywhere/shared";
-import { activityBus, type SessionCreatedEvent } from "../activityBus";
+import {
+  activityBus,
+  type SessionCreatedEvent,
+  type SessionIdRemappedEvent,
+} from "../activityBus";
 import { FakeSourceTransport } from "../transport";
 
 const SESSION_CREATED: SessionCreatedEvent = {
@@ -17,6 +21,16 @@ const SESSION_CREATED: SessionCreatedEvent = {
     provider: "claude",
   },
   timestamp: "2026-07-05T00:00:00.000Z",
+};
+
+const SESSION_ID_REMAPPED: SessionIdRemappedEvent = {
+  type: "session-id-remapped",
+  oldSessionId: "temporary-session",
+  newSessionId: "session-1",
+  projectId: toUrlProjectId("project-1"),
+  processId: "process-1",
+  provider: "claude",
+  timestamp: "2026-07-05T00:00:01.000Z",
 };
 
 function getOnlyActivitySubscription(transport: FakeSourceTransport) {
@@ -119,6 +133,24 @@ describe("activityBus source streams", () => {
     expect(onReconnect).toHaveBeenCalledTimes(1);
     expect(activityBus.connected).toBe(true);
 
+    release();
+  });
+
+  it("forwards session ID remaps from the source stream", () => {
+    const transport = new FakeSourceTransport();
+    const onRemapped = vi.fn();
+    activityBus.onSource("source-a", "session-id-remapped", onRemapped);
+
+    const release = activityBus.retainSourceStream("source-a", transport);
+    const subscription = getOnlyActivitySubscription(transport);
+    transport.openSubscription(subscription.id);
+    transport.emitSubscriptionEvent(
+      subscription.id,
+      "session-id-remapped",
+      SESSION_ID_REMAPPED,
+    );
+
+    expect(onRemapped).toHaveBeenCalledWith(SESSION_ID_REMAPPED);
     release();
   });
 

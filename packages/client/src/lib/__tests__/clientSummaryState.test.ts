@@ -8,7 +8,10 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { GlobalSessionItem, InboxItem } from "../../api/client";
 import type { Project as GlobalProject } from "../../types";
-import type { SessionCreatedEvent } from "../activityBus";
+import type {
+  SessionCreatedEvent,
+  SessionIdRemappedEvent,
+} from "../activityBus";
 import {
   applyDraftSessionIdsSnapshot,
   applyGlobalSessionsCollectionSnapshot,
@@ -21,6 +24,7 @@ import {
   applyProviderRuntimeStatusChanged,
   applyProviderRuntimeStatusFromSessionSnapshot,
   applySessionCollectionCreated,
+  applySessionCollectionIdRemapped,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
   applySessionCollectionUpdated,
@@ -200,6 +204,141 @@ function projectQueueStatus(
 }
 
 describe("clientSummaryState", () => {
+  it("merges a provisional session ID into every canonical projection", () => {
+    const temporaryId = "temporary-session";
+    const canonicalId = "canonical-session";
+    const remapped: SessionIdRemappedEvent = {
+      type: "session-id-remapped",
+      oldSessionId: temporaryId,
+      newSessionId: canonicalId,
+      projectId: PROJECT_ID,
+      processId: "process-1",
+      provider: "claude",
+      timestamp: RECENT,
+    };
+    let state = applySessionCollectionCreated(
+      createEmptyClientSummaryState(),
+      createdEvent(temporaryId, { title: "Claude" }),
+      200,
+    );
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession(canonicalId, {
+            title: "Claude Fable",
+            model: "claude-fable-5",
+            ownership: { owner: "self", processId: "process-1" },
+            activity: "in-turn",
+          }),
+          globalSession("child-session", {
+            parentSessionId: temporaryId,
+          }),
+        ],
+        hasMore: false,
+      },
+      250,
+    );
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [],
+        active: [
+          inboxItem(temporaryId, {
+            sessionTitle: "Claude",
+            activity: "in-turn",
+          }),
+          inboxItem(canonicalId, {
+            sessionTitle: "Claude Fable",
+            activity: "in-turn",
+          }),
+        ],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      260,
+    );
+    state = applyDraftSessionIdsSnapshot(state, new Set([temporaryId]), 270);
+    state = applyProviderRuntimeStatusChanged(
+      state,
+      {
+        type: "provider-runtime-status-changed",
+        sessionId: temporaryId,
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: RUNTIME_STATUS,
+        timestamp: RECENT,
+      },
+      280,
+    );
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      {
+        items: [
+          queueItem("1", {
+            target: { type: "existing-session", sessionId: temporaryId },
+            createdFrom: { sessionId: temporaryId },
+          }),
+        ],
+        recoveredSessionQueues: [
+          recoveredSessionQueue("1", { sessionId: temporaryId }),
+        ],
+      },
+      290,
+    );
+
+    state = applySessionCollectionIdRemapped(state, remapped);
+
+    expect([...state.sessions.entities.keys()]).not.toContain(temporaryId);
+    expect(selectSessionCollectionRecord(state, temporaryId)).toMatchObject({
+      id: canonicalId,
+      title: "Claude Fable",
+      model: "claude-fable-5",
+      activity: "in-turn",
+    });
+    expect(
+      selectSessionCollectionQueryRecords(state, {
+        scope: "global-sessions",
+        limit: 50,
+      }).map((record) => record.id),
+    ).toEqual([canonicalId, "child-session"]);
+    expect(selectInboxResponse(state).needsAttention).toEqual([]);
+    expect(selectInboxResponse(state).active[0]?.sessionId).toBe(canonicalId);
+    expect([...selectDraftSessionIds(state)]).toEqual([canonicalId]);
+    expect(selectProviderRuntimeStatusForSession(state, temporaryId)).toEqual(
+      RUNTIME_STATUS,
+    );
+    expect(selectProjectQueueItems(state, PROJECT_ID)[0]).toMatchObject({
+      target: { type: "existing-session", sessionId: canonicalId },
+      createdFrom: { sessionId: canonicalId },
+    });
+    expect(selectProjectQueueRecoveredSessionQueues(state)[0]?.sessionId).toBe(
+      canonicalId,
+    );
+    expect(
+      selectSessionCollectionRecord(state, "child-session")?.parentSessionId,
+    ).toBe(canonicalId);
+
+    state = applySessionCollectionUpdated(
+      state,
+      {
+        type: "session-updated",
+        sessionId: temporaryId,
+        projectId: PROJECT_ID,
+        title: "Late canonical update",
+        updatedAt: RECENT,
+        timestamp: RECENT,
+      },
+      300,
+    );
+
+    expect([...state.sessions.entities.keys()]).not.toContain(temporaryId);
+    expect(selectSessionCollectionRecord(state, canonicalId)?.title).toBe(
+      "Late canonical update",
+    );
+  });
+
   it("stores and clears provider runtime status by session", () => {
     let state = createEmptyClientSummaryState();
 

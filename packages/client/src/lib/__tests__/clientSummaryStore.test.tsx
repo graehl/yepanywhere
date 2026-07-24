@@ -196,15 +196,15 @@ afterEach(() => {
 describe("clientSummaryStore", () => {
   it("subscribes to activityBus once while hooks are mounted", () => {
     const first = renderHook(() => useRecentSessionRecords());
-    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(8);
-    expect(mockActivityBus.listenerCount()).toBe(8);
+    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(9);
+    expect(mockActivityBus.listenerCount()).toBe(9);
 
     const second = renderHook(() => useSessionCollectionRecord("session-1"));
-    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(8);
-    expect(mockActivityBus.listenerCount()).toBe(8);
+    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(9);
+    expect(mockActivityBus.listenerCount()).toBe(9);
 
     first.unmount();
-    expect(mockActivityBus.listenerCount()).toBe(8);
+    expect(mockActivityBus.listenerCount()).toBe(9);
 
     second.unmount();
     expect(mockActivityBus.listenerCount()).toBe(0);
@@ -272,6 +272,67 @@ describe("clientSummaryStore", () => {
 
     expect(recent.result.current).toEqual([]);
     expect(starred.result.current.map((s) => s.id)).toEqual(["session-1"]);
+  });
+
+  it("merges provisional session rows when the activity bus remaps the ID", () => {
+    const temporaryId = "temporary-session";
+    const canonicalId = "canonical-session";
+    const selected = renderHook(() => useSessionCollectionRecord(temporaryId));
+    const recent = renderHook(() =>
+      useRecentSessionRecords(Date.parse("2026-06-27T12:00:00.000Z")),
+    );
+
+    act(() => {
+      reportSessionCollectionCreated(SOURCE_KEY, {
+        type: "session-created",
+        session: {
+          id: temporaryId,
+          projectId: PROJECT_ID,
+          title: "Claude",
+          fullTitle: "Claude",
+          createdAt: RECENT,
+          updatedAt: RECENT,
+          messageCount: 1,
+          ownership: { owner: "self", processId: "process-1" },
+          provider: "claude",
+          activity: "in-turn",
+        },
+        timestamp: RECENT,
+      });
+      reportGlobalSessionsCollectionSnapshot(SOURCE_KEY, {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession(canonicalId, {
+            title: "Claude Fable",
+            model: "claude-fable-5",
+          }),
+        ],
+        hasMore: false,
+      });
+      mockActivityBus.emit("session-id-remapped", {
+        type: "session-id-remapped",
+        oldSessionId: temporaryId,
+        newSessionId: canonicalId,
+        projectId: PROJECT_ID,
+        processId: "process-1",
+        provider: "claude",
+        timestamp: RECENT,
+      });
+    });
+
+    expect(selected.result.current).toMatchObject({
+      id: canonicalId,
+      title: "Claude Fable",
+      model: "claude-fable-5",
+    });
+    expect(recent.result.current.map((record) => record.id)).toEqual([
+      canonicalId,
+    ]);
+    expect(
+      getClientSummarySnapshotForSource(SOURCE_KEY).sessions.entities.has(
+        temporaryId,
+      ),
+    ).toBe(false);
   });
 
   it("isolates current-source session data across host switches", () => {
@@ -582,12 +643,12 @@ describe("clientSummaryStore", () => {
       () => useSessionCollectionRecord("runtime-event-session"),
       { wrapper: runtimeWrapper(runtimeA) },
     );
-    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(8);
+    expect(mockActivityBus.onSource).toHaveBeenCalledTimes(9);
     expect(mockActivityBus.retainSourceStream).toHaveBeenCalledWith(
       sourceA,
       runtimeA.transport,
     );
-    expect(mockActivityBus.listenerCount()).toBe(8);
+    expect(mockActivityBus.listenerCount()).toBe(9);
 
     act(() => {
       mockActivityBus.emit("session-created", {

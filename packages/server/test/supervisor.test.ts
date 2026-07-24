@@ -2580,6 +2580,77 @@ describe("Supervisor", () => {
       expect(created).toBeDefined();
       expect(created?.session.title).toBe("Optimistic title from request");
       expect(created?.session.messageCount).toBe(1);
+      expect(events.some((event) => event.type === "session-id-remapped")).toBe(
+        false,
+      );
+    });
+
+    it("emits a public remap when init follows the provisional ID timeout", async () => {
+      vi.useFakeTimers();
+      try {
+        const controller = createControllableIterator();
+        const eventBus = new EventBus();
+        const events: BusEvent[] = [];
+        eventBus.subscribe((event) => events.push(event));
+
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => ({
+            iterator: controller.iterator,
+            queue: new MessageQueue(),
+            abort: () => controller.finish(),
+          }),
+        };
+        const supervisorWithBus = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+          eventBus,
+        });
+
+        const starting = supervisorWithBus.startSession("/tmp/test", {
+          text: "Start after a slow init",
+        });
+        await vi.advanceTimersByTimeAsync(5000);
+        const process = await starting;
+        const provisionalSessionId = process.sessionId;
+
+        expect(provisionalSessionId).not.toBe("canonical-session");
+        expect(
+          events.find(
+            (event) =>
+              event.type === "session-created" &&
+              event.session.id === provisionalSessionId,
+          ),
+        ).toBeDefined();
+
+        controller.push({
+          type: "system",
+          subtype: "init",
+          session_id: "canonical-session",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(
+          events.find((event) => event.type === "session-id-remapped"),
+        ).toMatchObject({
+          type: "session-id-remapped",
+          oldSessionId: provisionalSessionId,
+          newSessionId: "canonical-session",
+          projectId: encodeProjectId("/tmp/test"),
+          processId: process.id,
+          provider: "claude",
+        });
+        expect(
+          supervisorWithBus.getProcessForSession(provisionalSessionId),
+        ).toBe(process);
+        expect(
+          supervisorWithBus.getProcessForSession("canonical-session"),
+        ).toBe(process);
+
+        controller.finish();
+        await vi.advanceTimersByTimeAsync(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("emits timed session-updated reconciliation from onSessionSummary", async () => {

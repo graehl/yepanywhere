@@ -18,6 +18,7 @@ import {
   type SessionCollectionQueryDescriptor,
   type SessionCollectionQueryState,
   type SessionCollectionRecord,
+  resolveSessionCollectionId,
 } from "./clientSummaryCollections";
 import { INBOX_TIERS, type InboxTier } from "./inboxTiers";
 
@@ -64,7 +65,9 @@ export function selectSessionCollectionRecord(
   state: ClientSummaryState,
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
-  return sessionId ? state.sessions.entities.get(sessionId) : undefined;
+  return sessionId
+    ? state.sessions.entities.get(resolveSessionCollectionId(state, sessionId))
+    : undefined;
 }
 
 export function selectProviderRuntimeStatusForSession(
@@ -74,7 +77,10 @@ export function selectProviderRuntimeStatusForSession(
   if (!sessionId) {
     return null;
   }
-  return state.providerRuntime.bySessionId.get(sessionId)?.status ?? null;
+  const resolvedSessionId = resolveSessionCollectionId(state, sessionId);
+  return (
+    state.providerRuntime.bySessionId.get(resolvedSessionId)?.status ?? null
+  );
 }
 
 export function selectSessionCollectionQueryState(

@@ -149,6 +149,8 @@ export interface InboxCounts {
 export interface SessionCollectionState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
+  /** Bounded old-ID aliases retained to absorb late activity events. */
+  aliases: ReadonlyMap<string, string>;
 }
 
 export interface LocalDecorationState {
@@ -174,6 +176,24 @@ export interface ClientSummaryState {
   inbox: InboxCollectionState;
   localDecorations: LocalDecorationState;
   providerRuntime: ProviderRuntimeState;
+}
+
+export function resolveSessionCollectionId(
+  state: Pick<ClientSummaryState, "sessions">,
+  sessionId: string,
+): string {
+  const aliases = state.sessions.aliases;
+  if (!aliases.size) return sessionId;
+
+  let resolved = sessionId;
+  const visited = new Set<string>();
+  while (!visited.has(resolved)) {
+    visited.add(resolved);
+    const next = aliases.get(resolved);
+    if (!next) break;
+    resolved = next;
+  }
+  return resolved;
 }
 
 export interface GlobalSessionsCollectionSnapshot {

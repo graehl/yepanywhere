@@ -16,6 +16,7 @@ import type {
   ProcessStateEvent,
   ProviderRuntimeStatusChangedEvent,
   SessionCreatedEvent,
+  SessionIdRemappedEvent,
   SessionMetadataChangedEvent,
   SessionSeenEvent,
   SessionStatusEvent,
@@ -41,6 +42,7 @@ import {
   type SessionCollectionObservationSource,
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
+  resolveSessionCollectionId,
 } from "./clientSummaryCollections";
 import {
   createGlobalSessionsQueryKey,
@@ -54,6 +56,7 @@ import {
 
 const NO_OBSERVATION = Number.NEGATIVE_INFINITY;
 const CREATED_SESSION_QUERY_MEMBERSHIP_TTL_MS = 60_000;
+const MAX_SESSION_ID_ALIASES = 256;
 
 // Each session reducer entry point names whether it is applying a fuller row
 // snapshot or a partial observation. The merge rules currently resolve
@@ -70,6 +73,7 @@ export function createEmptyClientSummaryState(): ClientSummaryState {
     sessions: {
       entities: new Map(),
       queries: new Map(),
+      aliases: new Map(),
     },
     projects: {
       entities: new Map(),
@@ -98,9 +102,10 @@ function getRecord(
   state: ClientSummaryState,
   sessionId: string,
 ): SessionCollectionRecord {
+  const resolvedSessionId = resolveSessionCollectionId(state, sessionId);
   return (
-    state.sessions.entities.get(sessionId) ?? {
-      id: sessionId,
+    state.sessions.entities.get(resolvedSessionId) ?? {
+      id: resolvedSessionId,
       observedAt: NO_OBSERVATION,
     }
   );
@@ -110,8 +115,16 @@ function putRecord(
   state: ClientSummaryState,
   record: SessionCollectionRecord,
 ): ClientSummaryState {
+  const id = resolveSessionCollectionId(state, record.id);
+  const parentSessionId = record.parentSessionId
+    ? resolveSessionCollectionId(state, record.parentSessionId)
+    : record.parentSessionId;
+  const normalizedRecord =
+    id === record.id && parentSessionId === record.parentSessionId
+      ? record
+      : { ...record, id, parentSessionId };
   const entities = new Map(state.sessions.entities);
-  entities.set(record.id, record);
+  entities.set(id, normalizedRecord);
   return {
     ...state,
     sessions: {
@@ -119,6 +132,120 @@ function putRecord(
       entities,
     },
   };
+}
+
+function uniqueResolvedSessionIds(
+  state: ClientSummaryState,
+  sessionIds: readonly string[],
+): string[] {
+  const seen = new Set<string>();
+  const resolvedIds: string[] = [];
+  for (const sessionId of sessionIds) {
+    const resolved = resolveSessionCollectionId(state, sessionId);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      resolvedIds.push(resolved);
+    }
+  }
+  return resolvedIds;
+}
+
+function mergeRemappedSessionRecords(
+  provisional: SessionCollectionRecord | undefined,
+  canonical: SessionCollectionRecord | undefined,
+  canonicalId: string,
+): SessionCollectionRecord | undefined {
+  if (!provisional && !canonical) return undefined;
+  if (!provisional) return canonical;
+  if (!canonical) return { ...provisional, id: canonicalId };
+
+  const merged = {
+    ...provisional,
+    ...canonical,
+    id: canonicalId,
+    observedAt: Math.max(provisional.observedAt, canonical.observedAt),
+  };
+  const observationFields = [
+    "snapshotObservedAt",
+    "contentObservedAt",
+    "metadataObservedAt",
+    "projectObservedAt",
+    "lifecycleObservedAt",
+    "unreadObservedAt",
+  ] as const;
+  for (const field of observationFields) {
+    const provisionalValue = provisional[field];
+    const canonicalValue = canonical[field];
+    if (provisionalValue !== undefined || canonicalValue !== undefined) {
+      merged[field] = Math.max(
+        provisionalValue ?? NO_OBSERVATION,
+        canonicalValue ?? NO_OBSERVATION,
+      );
+    }
+  }
+  if (
+    provisional.eventCreatedAt !== undefined ||
+    canonical.eventCreatedAt !== undefined
+  ) {
+    merged.eventCreatedAt = Math.min(
+      provisional.eventCreatedAt ?? Number.POSITIVE_INFINITY,
+      canonical.eventCreatedAt ?? Number.POSITIVE_INFINITY,
+    );
+  }
+  return merged;
+}
+
+function remapProjectQueueItemSessionIds(
+  state: ClientSummaryState,
+  item: ProjectQueueItemSummary,
+): ProjectQueueItemSummary {
+  let target = item.target;
+  if (item.target.type === "existing-session") {
+    const sessionId = resolveSessionCollectionId(
+      state,
+      item.target.sessionId,
+    );
+    if (sessionId !== item.target.sessionId) {
+      target = { ...item.target, sessionId };
+    }
+  }
+  const createdFromSessionId = item.createdFrom?.sessionId
+    ? resolveSessionCollectionId(state, item.createdFrom.sessionId)
+    : item.createdFrom?.sessionId;
+  const createdFrom =
+    item.createdFrom && createdFromSessionId !== item.createdFrom.sessionId
+      ? { ...item.createdFrom, sessionId: createdFromSessionId }
+      : item.createdFrom;
+  return target === item.target && createdFrom === item.createdFrom
+    ? item
+    : { ...item, target, createdFrom };
+}
+
+function remapProjectQueueItems(
+  state: ClientSummaryState,
+  items: readonly ProjectQueueItemSummary[],
+): readonly ProjectQueueItemSummary[] {
+  let changed = false;
+  const remapped = items.map((item) => {
+    const next = remapProjectQueueItemSessionIds(state, item);
+    changed ||= next !== item;
+    return next;
+  });
+  return changed ? remapped : items;
+}
+
+function remapRecoveredSessionQueues(
+  state: ClientSummaryState,
+  queues: readonly ProjectQueueRecoveredSessionQueueSummary[],
+): readonly ProjectQueueRecoveredSessionQueueSummary[] {
+  let changed = false;
+  const remapped = queues.map((queue) => {
+    const sessionId = resolveSessionCollectionId(state, queue.sessionId);
+    if (sessionId === queue.sessionId) return queue;
+    changed = true;
+    return { ...queue, sessionId };
+  });
+  return changed ? remapped : queues;
 }
 
 function providerCountsEqual(
@@ -441,7 +568,8 @@ function putProviderRuntimeStatus(
   status: ProviderRuntimeStatus,
   observedAt: number,
 ): ClientSummaryState {
-  const existing = state.providerRuntime.bySessionId.get(sessionId);
+  const resolvedSessionId = resolveSessionCollectionId(state, sessionId);
+  const existing = state.providerRuntime.bySessionId.get(resolvedSessionId);
   if (existing && observedAt < existing.observedAt) {
     return state;
   }
@@ -451,7 +579,7 @@ function putProviderRuntimeStatus(
       return state;
     }
     const bySessionId = new Map(state.providerRuntime.bySessionId);
-    bySessionId.delete(sessionId);
+    bySessionId.delete(resolvedSessionId);
     return {
       ...state,
       providerRuntime: {
@@ -471,8 +599,8 @@ function putProviderRuntimeStatus(
   }
 
   const bySessionId = new Map(state.providerRuntime.bySessionId);
-  bySessionId.set(sessionId, {
-    sessionId,
+  bySessionId.set(resolvedSessionId, {
+    sessionId: resolvedSessionId,
     projectId,
     status,
     observedAt,
@@ -585,6 +713,10 @@ function putRecoveredSessionQueues(
   observedAt: number,
 ): ClientSummaryState {
   if (!recoveredSessionQueues) return state;
+  const resolvedQueues = remapRecoveredSessionQueues(
+    state,
+    recoveredSessionQueues,
+  );
   if (
     observedAt <
     (state.projectQueues.recoveredSessionQueuesObservedAt ?? NO_OBSERVATION)
@@ -594,7 +726,7 @@ function putRecoveredSessionQueues(
   if (
     recoveredSessionQueuesEqual(
       state.projectQueues.recoveredSessionQueues,
-      recoveredSessionQueues,
+      resolvedQueues,
     ) &&
     observedAt === state.projectQueues.recoveredSessionQueuesObservedAt
   ) {
@@ -604,7 +736,7 @@ function putRecoveredSessionQueues(
     ...state,
     projectQueues: {
       ...state.projectQueues,
-      recoveredSessionQueues,
+      recoveredSessionQueues: resolvedQueues,
       recoveredSessionQueuesObservedAt: observedAt,
     },
   };
@@ -627,9 +759,10 @@ function putProjectQueueSnapshot(
     "merge",
   );
   const existing = next.projectQueues.byProject.get(snapshot.projectId);
+  const resolvedItems = remapProjectQueueItems(next, snapshot.items);
   const snapshotItems = mergeProjectQueueItemDisplayMetadata(
     existing?.items,
-    snapshot.items,
+    resolvedItems,
   );
   if (existing) {
     if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
@@ -734,7 +867,7 @@ function putProjectQueueGlobalSnapshot(
   const bySnapshotProject = new Map<UrlProjectId, ProjectQueueItemSummary[]>();
   const snapshotItems = mergeProjectQueueItemDisplayMetadata(
     state.projectQueues.globalItems,
-    snapshot.items,
+    remapProjectQueueItems(state, snapshot.items),
   );
   for (const item of snapshotItems) {
     const items = bySnapshotProject.get(item.projectId);
@@ -873,9 +1006,14 @@ function putInboxSnapshot(
   );
   let next = state;
   const tiers = createEmptyInboxTierRecord<string[]>(() => []);
+  const seenSessionIds = new Set<string>();
   for (const tier of INBOX_TIERS) {
     for (const item of snapshot[tier]) {
-      tiers[tier].push(item.sessionId);
+      const sessionId = resolveSessionCollectionId(next, item.sessionId);
+      if (!seenSessionIds.has(sessionId)) {
+        seenSessionIds.add(sessionId);
+        tiers[tier].push(sessionId);
+      }
       next = upsertInboxItemRecord(next, item, observation);
     }
   }
@@ -1225,7 +1363,10 @@ function upsertQuery(
     return state;
   }
 
-  const incomingIds = snapshot.sessions.map((session) => session.id);
+  const incomingIds = uniqueResolvedSessionIds(
+    state,
+    snapshot.sessions.map((session) => session.id),
+  );
   let ids = incomingIds;
   if (snapshot.mode === "append" && existing) {
     ids = [
@@ -1399,13 +1540,192 @@ export function applyInboxCollectionSnapshot(
   return putInboxSnapshot(state, snapshot, requestStartedAt);
 }
 
+export function applySessionCollectionIdRemapped(
+  state: ClientSummaryState,
+  event: SessionIdRemappedEvent,
+): ClientSummaryState {
+  const oldSessionId = resolveSessionCollectionId(state, event.oldSessionId);
+  const newSessionId = resolveSessionCollectionId(state, event.newSessionId);
+  if (oldSessionId === newSessionId) {
+    return state;
+  }
+
+  const aliases = new Map(state.sessions.aliases);
+  aliases.delete(newSessionId);
+  for (const [alias, target] of aliases) {
+    if (resolveSessionCollectionId(state, target) === oldSessionId) {
+      aliases.set(alias, newSessionId);
+    }
+  }
+  aliases.delete(event.oldSessionId);
+  aliases.set(event.oldSessionId, newSessionId);
+  if (oldSessionId !== event.oldSessionId) {
+    aliases.delete(oldSessionId);
+    aliases.set(oldSessionId, newSessionId);
+  }
+  while (aliases.size > MAX_SESSION_ID_ALIASES) {
+    const oldestAlias = aliases.keys().next().value;
+    if (oldestAlias === undefined) break;
+    aliases.delete(oldestAlias);
+  }
+
+  let next: ClientSummaryState = {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      aliases,
+    },
+  };
+
+  const entities = new Map(next.sessions.entities);
+  let provisionalRecord: SessionCollectionRecord | undefined;
+  for (const [sessionId, record] of entities) {
+    if (
+      sessionId !== newSessionId &&
+      resolveSessionCollectionId(next, sessionId) === newSessionId
+    ) {
+      provisionalRecord = mergeRemappedSessionRecords(
+        provisionalRecord,
+        record,
+        newSessionId,
+      );
+      entities.delete(sessionId);
+    }
+  }
+  const mergedRecord = mergeRemappedSessionRecords(
+    provisionalRecord,
+    entities.get(newSessionId),
+    newSessionId,
+  );
+  if (mergedRecord) {
+    entities.set(newSessionId, mergedRecord);
+  }
+  for (const [sessionId, record] of entities) {
+    if (!record.parentSessionId) continue;
+    const parentSessionId = resolveSessionCollectionId(
+      next,
+      record.parentSessionId,
+    );
+    if (parentSessionId !== record.parentSessionId) {
+      entities.set(sessionId, { ...record, parentSessionId });
+    }
+  }
+
+  const queries = new Map(next.sessions.queries);
+  for (const [key, query] of queries) {
+    const ids = uniqueResolvedSessionIds(next, query.ids);
+    if (
+      ids.length !== query.ids.length ||
+      ids.some((id, index) => id !== query.ids[index])
+    ) {
+      queries.set(key, { ...query, ids });
+    }
+  }
+  next = {
+    ...next,
+    sessions: {
+      ...next.sessions,
+      entities,
+      queries,
+    },
+  };
+
+  const tiers = createEmptyInboxTierRecord<string[]>(() => []);
+  const seenInboxSessionIds = new Set<string>();
+  for (const tier of INBOX_TIERS) {
+    for (const sessionId of uniqueResolvedSessionIds(
+      next,
+      next.inbox.tiers[tier],
+    )) {
+      if (!seenInboxSessionIds.has(sessionId)) {
+        seenInboxSessionIds.add(sessionId);
+        tiers[tier].push(sessionId);
+      }
+    }
+  }
+
+  const byProject = new Map(next.projectQueues.byProject);
+  for (const [projectId, record] of byProject) {
+    const items = remapProjectQueueItems(next, record.items);
+    if (items !== record.items) {
+      byProject.set(projectId, { ...record, items });
+    }
+  }
+  const globalItems = remapProjectQueueItems(
+    next,
+    next.projectQueues.globalItems,
+  );
+  const recoveredSessionQueues = remapRecoveredSessionQueues(
+    next,
+    next.projectQueues.recoveredSessionQueues,
+  );
+
+  const bySessionId = new Map(next.providerRuntime.bySessionId);
+  let remappedRuntime = bySessionId.get(newSessionId);
+  for (const [sessionId, runtime] of bySessionId) {
+    if (
+      sessionId === newSessionId ||
+      resolveSessionCollectionId(next, sessionId) !== newSessionId
+    ) {
+      continue;
+    }
+    if (!remappedRuntime || runtime.observedAt > remappedRuntime.observedAt) {
+      remappedRuntime = {
+        ...runtime,
+        sessionId: newSessionId,
+      };
+    }
+    bySessionId.delete(sessionId);
+  }
+  if (remappedRuntime) {
+    bySessionId.set(newSessionId, {
+      ...remappedRuntime,
+      sessionId: newSessionId,
+    });
+  }
+
+  return {
+    ...next,
+    projectQueues: {
+      ...next.projectQueues,
+      byProject,
+      globalItems,
+      recoveredSessionQueues,
+    },
+    inbox: {
+      ...next.inbox,
+      tiers,
+    },
+    localDecorations: {
+      ...next.localDecorations,
+      draftSessionIds: new Set(
+        uniqueResolvedSessionIds(next, [
+          ...next.localDecorations.draftSessionIds,
+        ]),
+      ),
+    },
+    providerRuntime: {
+      ...next.providerRuntime,
+      bySessionId,
+    },
+  };
+}
+
 export function applyDraftSessionIdsSnapshot(
   state: ClientSummaryState,
   draftSessionIds: ReadonlySet<string>,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const resolvedDraftSessionIds = new Set(
+    [...draftSessionIds].map((sessionId) =>
+      resolveSessionCollectionId(state, sessionId),
+    ),
+  );
   if (
-    stringSetsEqual(state.localDecorations.draftSessionIds, draftSessionIds)
+    stringSetsEqual(
+      state.localDecorations.draftSessionIds,
+      resolvedDraftSessionIds,
+    )
   ) {
     return state;
   }
@@ -1414,7 +1734,7 @@ export function applyDraftSessionIdsSnapshot(
     ...state,
     localDecorations: {
       ...state.localDecorations,
-      draftSessionIds: new Set(draftSessionIds),
+      draftSessionIds: resolvedDraftSessionIds,
       draftObservedAt: observedAt,
     },
   };

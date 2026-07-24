@@ -50,10 +50,12 @@ remain custom in either mode:
 
 - The risk explanation attached to externally controlled-session and
   pending-tool warnings contains structured explanatory content. Hover or
-  keyboard focus may show that content as a rich tooltip on hover-capable
-  devices; activation opens the same explanation in a modal, which is the touch
-  path. In Themed mode the rich tooltip participates in shared timing and
-  visibility ownership. Native mode preserves its immediate custom reveal.
+  keyboard-visible focus may show that content as a rich tooltip on
+  hover-capable devices; activation opens the same explanation in a modal,
+  which is the touch path. Touch pointer activity and pointer-generated focus
+  do not schedule the rich tooltip. In Themed mode it participates in shared
+  timing and visibility ownership. Native mode preserves its immediate custom
+  hover reveal.
 - A session hover card previews session content and status. It remains a custom
   card in both modes; Themed mode derives its first-open delay from the shared
   setting, while Native mode retains its independent legacy/default delay.
@@ -165,9 +167,11 @@ text retains the browser's normal selection menu instead of invoking tooltip
 copy/enlarge.
 
 Rich explanatory tooltips may retain structured content while using the same
-dwell/warmth coordinator. Interactive help panels and menus are popovers, not
-tooltips; they keep their own explicit open/close interaction instead of
-pretending to be hover hints.
+dwell/warmth coordinator and the same keyboard-visible versus pointer-generated
+focus distinction. Touch activity does not render or warm a rich tooltip when
+activation provides its corresponding dialog path. Interactive help panels and
+menus are popovers, not tooltips; they keep their own explicit open/close
+interaction instead of pretending to be hover hints.
 
 ## Future: rendered hidden tails
 
@@ -186,6 +190,8 @@ not the surface into a card.
   mode restores them.
 - Keyboard-visible focus opens themed tooltips; pointer-generated focus,
   including touch focus, does not reopen a dismissed tooltip.
+- Rich explanatory tooltips likewise ignore touch pointer activity and
+  pointer-generated focus while retaining their activation-to-dialog path.
 - Once visible, a tooltip survives same-target pointer motion, transcript
   follow-scroll, scroll-generated pointer boundary events, and non-Escape
   keystrokes. Escape and a completed pointer departure still dismiss it.
@@ -222,7 +228,7 @@ browser/OS UI rather than page DOM:
 | --- | --- | --- |
 | Native ordinary hint | Target has `title`, has no `data-tooltip`, and exposes the title as an accessibility description where the browser supports that mapping | A Playwright page screenshot generally does **not** capture the native bubble, even after a real hover; absence from the image does not prove failure |
 | Themed ordinary hint | Target has `data-tooltip`, has no `title`, and a delayed hover or keyboard-visible focus creates one page-DOM `role=tooltip` surface | The tooltip is part of the page and should appear in a screenshot after it becomes visible |
-| Touch activation | A real touch tap may focus and activate the target, but waiting past the configured delay must not create a themed tooltip | No themed tooltip remains over the post-activation UI |
+| Touch activation | A real touch tap may focus and activate the target, but waiting past the configured delay must not create an ordinary themed or rich explanatory tooltip | No custom tooltip remains over the post-activation UI |
 | Rich explanation or session preview | Assert the custom surface's own content, timing, ownership, and activation contract independently of ordinary `title` ownership | These surfaces are page DOM and are screenshot-visible in either mode |
 
 Use keyboard `Tab` to verify keyboard-visible focus and a real mouse click or

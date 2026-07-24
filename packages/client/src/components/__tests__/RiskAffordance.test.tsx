@@ -7,6 +7,7 @@ import {
   DEFAULT_TOOLTIP_DELAY_MS,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
 } from "../../hooks/useTooltipAppearance";
+import { I18nProvider } from "../../i18n";
 import { UI_KEYS } from "../../lib/storageKeys";
 import "../../../test/pointerEventShim";
 import { RiskAffordance } from "../RiskAffordance";
@@ -102,5 +103,60 @@ describe("RiskAffordance tooltip timing", () => {
     expect(hoverRegion.classList).not.toContain(
       "external-session-risk--tooltip-visible",
     );
+  });
+
+  it("opens after keyboard-visible focus", () => {
+    render(
+      <RiskAffordance
+        label="what is the risk?"
+        modalTitle="Risk"
+        explanation="Risk explanation"
+      />,
+    );
+    const target = screen.getByRole("button", {
+      name: "what is the risk?",
+    });
+    vi.spyOn(target, "matches").mockImplementation(
+      (selector) => selector === ":focus-visible",
+    );
+
+    fireEvent.focus(target);
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.getByRole("tooltip").textContent).toBe("Risk explanation");
+  });
+
+  it("keeps touch focus on the click-to-modal path", () => {
+    render(
+      <I18nProvider>
+        <RiskAffordance
+          label="what is the risk?"
+          modalTitle="Risk"
+          explanation="Risk explanation"
+        />
+      </I18nProvider>,
+    );
+    const target = screen.getByRole("button", {
+      name: "what is the risk?",
+    });
+    const hoverRegion = target.closest(".external-session-risk");
+    expect(hoverRegion).toBeTruthy();
+    if (!(hoverRegion instanceof HTMLElement)) return;
+    vi.spyOn(target, "matches").mockImplementation(
+      (selector) => selector !== ":focus-visible",
+    );
+
+    fireEvent.pointerEnter(hoverRegion, { pointerType: "touch" });
+    fireEvent.pointerMove(hoverRegion, { pointerType: "touch" });
+    fireEvent.focus(target);
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.click(target);
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("Risk")).toBeTruthy();
+    expect(screen.getByText("Risk explanation")).toBeTruthy();
   });
 });

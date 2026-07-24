@@ -24,8 +24,9 @@ interface TooltipTriggerOptions {
 /**
  * Dwell-delayed trigger behavior for rich tooltip surfaces that cannot use the
  * shared text-only layer. Pointer movement restarts the first-open timer;
- * keyboard focus uses the same delay. Native mode preserves each surface's
- * prior immediate behavior.
+ * keyboard-visible focus uses the same delay. Touch and pointer-generated focus
+ * leave activation to the surface's click behavior. Native mode preserves each
+ * surface's prior immediate hover behavior.
  */
 export function useTooltipTrigger({
   open,
@@ -109,6 +110,7 @@ export function useTooltipTrigger({
 
   const onPointerEnter = useCallback(
     (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === "touch") return;
       pointerRootRef.current = event.currentTarget;
       lastPointerPositionRef.current = {
         x: event.clientX,
@@ -121,6 +123,7 @@ export function useTooltipTrigger({
   );
   const onPointerMove = useCallback(
     (event: PointerEvent<HTMLElement>) => {
+      if (event.pointerType === "touch") return;
       pointerRootRef.current = event.currentTarget;
       lastPointerPositionRef.current = {
         x: event.clientX,
@@ -155,11 +158,15 @@ export function useTooltipTrigger({
     },
     [close, scheduleClose],
   );
-  const onFocus = useCallback(() => {
-    focusWithinRef.current = true;
-    clearCloseTimer();
-    schedule();
-  }, [clearCloseTimer, schedule]);
+  const onFocus = useCallback(
+    (event: FocusEvent<HTMLElement>) => {
+      if (!event.currentTarget.matches(":focus-visible")) return;
+      focusWithinRef.current = true;
+      clearCloseTimer();
+      schedule();
+    },
+    [clearCloseTimer, schedule],
+  );
   const onBlur = useCallback(
     (event: FocusEvent<HTMLElement>) => {
       if (

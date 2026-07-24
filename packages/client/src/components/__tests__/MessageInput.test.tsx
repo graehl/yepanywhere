@@ -208,6 +208,7 @@ vi.mock("../../hooks/useSessionToolbarPresence", async () => {
         nudge: true,
         sessionStatus: true,
         projectQueue: true,
+        projectQueueNewSessionShortcut: true,
       },
       priority: actual.DEFAULT_SESSION_TOOLBAR_PRIORITY,
       setControlPresence: vi.fn(),
@@ -586,6 +587,7 @@ const toolbarVisibility: MessageInputToolbarViewProps["visibility"] = {
   nudge: false,
   sessionStatus: false,
   projectQueue: false,
+  projectQueueNewSessionShortcut: false,
 };
 
 const toolbarT = ((key: string, params?: Record<string, string>) => {
@@ -3460,6 +3462,7 @@ describe("MessageInput", () => {
 
   it("renders the project queue toolbar action when visible", () => {
     const onProjectQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
     render(
       <MessageInputToolbarView
         t={toolbarT}
@@ -3489,8 +3492,10 @@ describe("MessageInput", () => {
           },
           projectQueue: {
             onProjectQueue,
+            onProjectQueueNewSession,
             canSend: true,
             tooltip: "Project Queue",
+            newSessionTooltip: "New-session Project Queue",
           },
         }}
       />,
@@ -3501,6 +3506,69 @@ describe("MessageInput", () => {
     );
 
     expect(onProjectQueue).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole("button", {
+        name: "Queue as new session for Project Queue",
+      }),
+    ).toBe(null);
+    expect(onProjectQueueNewSession).not.toHaveBeenCalled();
+  });
+
+  it("renders the new-session Project Queue shortcut only when opted in", () => {
+    const onProjectQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{
+          ...toolbarVisibility,
+          projectQueue: false,
+          projectQueueNewSessionShortcut: true,
+        }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{
+          send: {
+            onSend: vi.fn(),
+            canSend: true,
+            primaryActionKind: "send",
+            primaryActionLabel: "Send",
+            tooltip: "Send",
+            icon: "↑",
+          },
+          projectQueue: {
+            onProjectQueue,
+            onProjectQueueNewSession,
+            canSend: true,
+            tooltip: "Project Queue",
+            newSessionTooltip: "New-session Project Queue",
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Queue for Project Queue" }),
+    ).toBe(null);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Queue as new session for Project Queue",
+      }),
+    );
+    expect(onProjectQueue).not.toHaveBeenCalled();
+    expect(onProjectQueueNewSession).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the render mode toolbar action hidden by visibility", () => {
@@ -3813,7 +3881,7 @@ describe("MessageInput", () => {
       btw: "pin",
       steerNow: "pin",
       projectQueue: "pin",
-      projectQueueNewSession: false,
+      projectQueueNewSessionShortcut: "off",
       microphone: "live",
       waveform: true,
       send: "send",

@@ -1,11 +1,15 @@
 import {
   PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { isRemoteClient } from "./connection";
 
 export const PROJECT_QUEUE_REMOTE_COMPATIBILITY_LEVEL = 10;
-export { PROJECT_QUEUE_CAPABILITY };
+export {
+  PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+};
 
 export interface ProjectQueueCapabilitySource {
   capabilities?: readonly string[];
@@ -40,6 +44,19 @@ export function serverSupportsProjectQueue(
   return (
     (version?.remoteCompatibilityLevel ?? 0) >=
     PROJECT_QUEUE_REMOTE_COMPATIBILITY_LEVEL
+  );
+}
+
+export function serverSupportsProjectQueueNewSessionShortcutSetting(
+  version: ProjectQueueCapabilitySource | null | undefined,
+  options: ProjectQueueSupportOptions = {},
+): boolean {
+  return (
+    serverSupportsProjectQueue(version, options) &&
+    serverHasCapability(
+      version,
+      PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+    )
   );
 }
 

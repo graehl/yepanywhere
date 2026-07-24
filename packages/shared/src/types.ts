@@ -469,6 +469,7 @@ export interface SessionToolbarPresenceClientDefaults {
   nudge?: ToolbarControlPresence;
   sessionStatus?: ToolbarControlPresence;
   projectQueue?: ToolbarControlPresence;
+  projectQueueNewSessionShortcut?: ToolbarControlPresence;
 }
 
 export type BusyComposerDefaultAction = "steer" | "queue";

@@ -659,6 +659,7 @@ describe("Settings Routes", () => {
             sessionToolbarPresence: {
               modeSelector: "hidden",
               attachments: "pin",
+              projectQueueNewSessionShortcut: "hidden",
             },
           },
         }),
@@ -671,6 +672,7 @@ describe("Settings Routes", () => {
             modeSelector: "hidden",
             attachments: "pin",
             shortcutsHelp: "last",
+            projectQueueNewSessionShortcut: "hidden",
           },
         },
       });

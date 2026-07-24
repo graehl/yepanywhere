@@ -110,12 +110,19 @@ detection of all outside provider activity.
 
 ## UI Semantics
 
-The toolbar affordance is YA-novel behavior, so it is hidden/default-off unless
-the user opts into showing the Project Queue button.
+The toolbar affordances are YA-novel behavior, so both are hidden/default-off
+unless the user opts into them. The current-session Project Queue button and
+the active-composer `+` shortcut for a future new session have separate
+presence settings. Enabling the current-session action must not implicitly
+enable the cross-session shortcut.
 
 Project Queue UI must also be capability-gated on `/api/version` advertising
-`projectQueue`. Treat missing capabilities as unsupported so newer remote
-clients do not show Project Queue entry points against older servers.
+`projectQueue`. The active-composer new-session shortcut and its Toolbar
+setting additionally require
+`project-queue-new-session-shortcut-setting`, so newer clients do not save the
+new presence key to older servers that reject it. Treat missing capabilities
+as unsupported so newer remote clients do not show Project Queue entry points
+against older servers.
 Hosted remote clients must additionally require the current remote
 compatibility generation, because early Project Queue-capable source checkouts
 predate the compatibility marker and can expose partial Project Queue behavior
@@ -137,12 +144,13 @@ when Project Queue adds no useful semantics:
 
 The dedicated new-session form follows the same rule: hide its Project Queue
 action when the selected project is idle and has no Project Queue backlog; show
-it when the project has active work or existing Project Queue backlog. An active
-session composer is different: its additional "queue as new session" action has
-useful semantics even while the project is idle, so it is present whenever the
-Project Queue toolbar control is enabled and supported. The neighboring
-current-session Project Queue action retains the activity/backlog visibility
-rule above.
+it when the project has active work or existing Project Queue backlog. Its
+entry point remains governed by the ordinary Project Queue presence setting.
+An active session composer's additional "queue as new session" action has
+useful semantics even while the project is idle, but it is present only when
+the separate `projectQueueNewSessionShortcut` toolbar control is enabled and
+supported. The neighboring current-session Project Queue action retains the
+activity/backlog visibility rule above.
 
 The new-session initial-turn composer is part of the Project Queue contract.
 When it queues a new session, the durable prompt/copy source is the text

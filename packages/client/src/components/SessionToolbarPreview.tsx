@@ -271,10 +271,24 @@ export function ToolbarControlPreview({
       : controlKey === "btw"
         ? { btw: controls.btw }
         : controlKey === "projectQueue"
-          ? { projectQueue: controls.projectQueue, send: actionContextSend }
-          : controlKey === "steerNow"
-            ? { send: actionContextSend }
-            : {};
+          ? {
+              projectQueue: {
+                ...controls.projectQueue,
+                onProjectQueueNewSession: undefined,
+              },
+              send: actionContextSend,
+            }
+          : controlKey === "projectQueueNewSessionShortcut"
+            ? {
+                projectQueue: {
+                  ...controls.projectQueue,
+                  onProjectQueue: undefined,
+                },
+                send: actionContextSend,
+              }
+            : controlKey === "steerNow"
+              ? { send: actionContextSend }
+              : {};
   const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!onActivate) return;
     if (event.key !== "Enter" && event.key !== " ") return;

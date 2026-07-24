@@ -24,6 +24,19 @@ describe("ToolbarControlPreview", () => {
     const { container } = renderControl("projectQueue");
 
     expect(container.querySelector(".project-queue-button")).toBeTruthy();
+    expect(
+      container.querySelector(".project-queue-new-session-button"),
+    ).toBeNull();
+    expect(container.querySelector(".send-button-with-help")).toBeNull();
+  });
+
+  it("renders the new-session Project Queue shortcut as its own specimen", () => {
+    const { container } = renderControl("projectQueueNewSessionShortcut");
+
+    expect(
+      container.querySelector(".project-queue-new-session-button"),
+    ).toBeTruthy();
+    expect(container.textContent).toContain("+");
     expect(container.querySelector(".send-button-with-help")).toBeNull();
   });
 

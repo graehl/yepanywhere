@@ -3,6 +3,7 @@ import {
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   VOICE_INPUT_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -333,6 +334,9 @@ describe("GET /version", () => {
     const { getServerCapabilities } = await importVersion();
 
     expect(getServerCapabilities()).toContain(PROJECT_QUEUE_CAPABILITY);
+    expect(getServerCapabilities()).toContain(
+      PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+    );
   });
 
   it("reports update-available for stale bridge binaries", async () => {

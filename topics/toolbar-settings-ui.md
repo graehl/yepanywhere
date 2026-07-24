@@ -67,9 +67,10 @@ state and the row's in-place controls to the pane-entry snapshot.
 
 Action-dependent specimens may provide invisible support context that the real
 toolbar requires to construct the control, but the visible specimen remains
-single-control: the `Project Queue` row shows only the project-queue button,
-the `Now` row shows only the steering toggle, and neither row should leak the
-primary send button or disappear because an adjacent send context was omitted.
+single-control: the current-session `Project Queue` row shows only its
+project-queue button, the new-session shortcut row shows only its `+` button,
+the `Now` row shows only the steering toggle, and none should leak the primary
+send button or disappear because an adjacent send context was omitted.
 
 ## Presence slider & narrowing-priority model
 
@@ -97,9 +98,12 @@ runtime still consumes boolean-visibility and tier *projections*, derived in
 Defaults preserve the runtime collapse order: `modeSelector,attachments →
 first`; `slashMenu,thinkingToggle → mid`; `renderMode,nudge,shortcutsHelp →
 last`. Right-side controls (`sessionStatus`, `contextUsage`, `btw`, `steerNow`,
-`projectQueue`) are priority-editable and default to `pin`, preserving today's
-out-of-box toolbar unless the user chooses to collapse them. `MessageInputToolbar`
-derives each supported overflow control's tier CSS class from its priority
+`projectQueue`, and `projectQueueNewSessionShortcut`) are priority-editable and
+default to `pin` when shown, preserving today's out-of-box toolbar unless the
+user chooses to collapse them. The current-session Project Queue button and
+the `+` new-session shortcut have separate rows and separate presence values;
+enabling one must not enable the other. `MessageInputToolbar` derives each
+supported overflow control's tier CSS class from its priority
 (`priorityToTierClass`); the measured-width collapse logic is otherwise
 unchanged (see `composer-bottom-bar-overflow.md`). Controls in that supported
 overflow set get the full five-notch slider, so a visible tier always maps to

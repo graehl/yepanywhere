@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   serverSupportsProjectQueue,
+  serverSupportsProjectQueueNewSessionShortcutSetting,
   shouldShowProjectQueueAffordance,
 } from "../projectQueueVisibility";
 
@@ -40,6 +42,24 @@ describe("serverSupportsProjectQueue", () => {
         },
         { hostedRemote: true },
       ),
+    ).toBe(true);
+  });
+});
+
+describe("serverSupportsProjectQueueNewSessionShortcutSetting", () => {
+  it("requires both Project Queue and the dedicated settings capability", () => {
+    expect(
+      serverSupportsProjectQueueNewSessionShortcutSetting({
+        capabilities: [PROJECT_QUEUE_CAPABILITY],
+      }),
+    ).toBe(false);
+    expect(
+      serverSupportsProjectQueueNewSessionShortcutSetting({
+        capabilities: [
+          PROJECT_QUEUE_CAPABILITY,
+          PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+        ],
+      }),
     ).toBe(true);
   });
 });

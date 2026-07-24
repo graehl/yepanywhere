@@ -65,6 +65,7 @@ const SESSION_TOOLBAR_PRESENCE_CLIENT_DEFAULT_KEYS = [
   "nudge",
   "sessionStatus",
   "projectQueue",
+  "projectQueueNewSessionShortcut",
 ] as const satisfies readonly (keyof SessionToolbarPresenceClientDefaults)[];
 const TOOLBAR_CONTROL_PRESENCES = [
   "hidden",

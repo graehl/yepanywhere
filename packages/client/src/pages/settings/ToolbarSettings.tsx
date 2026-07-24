@@ -17,7 +17,10 @@ import {
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
-import { serverSupportsProjectQueue } from "../../lib/projectQueueVisibility";
+import {
+  serverSupportsProjectQueue,
+  serverSupportsProjectQueueNewSessionShortcutSetting,
+} from "../../lib/projectQueueVisibility";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
@@ -55,6 +58,7 @@ const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
   "btw",
   "steerNow",
   "projectQueue",
+  "projectQueueNewSessionShortcut",
 ]);
 
 // Presence-slider notch order above the Hide notch (0): rightward notches
@@ -171,6 +175,8 @@ export function ToolbarSettings() {
   const { settings, error, updateSettings } = useServerSettings();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const supportsProjectQueueNewSessionShortcutSetting =
+    serverSupportsProjectQueueNewSessionShortcutSetting(version);
 
   const busyComposerDefaultAction =
     settings?.clientDefaults?.busyComposerDefaultAction ?? "steer";
@@ -311,6 +317,16 @@ export function ToolbarSettings() {
         "projectQueue",
         t("appearanceToolbarProjectQueueTitle"),
         t("appearanceToolbarProjectQueueDescription"),
+        "right",
+      ),
+    );
+  }
+  if (supportsProjectQueueNewSessionShortcutSetting) {
+    toolbarControls.push(
+      controlMeta(
+        "projectQueueNewSessionShortcut",
+        t("appearanceToolbarProjectQueueNewSessionShortcutTitle"),
+        t("appearanceToolbarProjectQueueNewSessionShortcutDescription"),
         "right",
       ),
     );

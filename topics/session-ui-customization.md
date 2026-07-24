@@ -28,23 +28,29 @@ fit-driven float whenever the inline row is unavailable; this float is
 [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md)
 § Freshness / position-age presentation. The toggle still governs the inline row
 and the liveness chip.
-Visibility state is held by `useSessionToolbarVisibility` and currently covers
+Presence state is held by `useSessionToolbarPresence` and currently covers
 `modeSelector`, `steerNow`, `attachments`, `slashMenu`, `thinkingToggle`,
 `renderMode`, `microphone`, `waveform`, `shortcutsHelp`, `contextUsage`, `btw`,
-`nudge`, `sessionStatus`, and `projectQueue`. Toggling a control updates the
-preview immediately.
-Controls are three-valued in client storage: missing/`default` follows the
-current client default, while booleans are explicit local choices. The server
-also persists `clientDefaults.sessionToolbarVisibility` so the last selected
-toolbar value becomes the default for devices with no explicit local override.
-Resetting the toolbar visibility clears local overrides and returns that
-browser to following the server client default.
-Narrowing priority is held by `useSessionToolbarPriority` and is editable for
-controls the runtime overflow menu can actually reveal: the left-side controls,
-shortcut help, `sessionStatus`, `contextUsage`, `btw`, `steerNow`, and
-`projectQueue`. The right-side controls default to `pin`, so they stay inline
-unless the user explicitly chooses a collapse tier. `microphone` and `waveform`
-remain visibility-only controls for now.
+`nudge`, `sessionStatus`, `projectQueue`, and
+`projectQueueNewSessionShortcut`. Changing a control updates the preview
+immediately. The two Project Queue controls are independent and default hidden:
+`projectQueue` targets the current session, while
+`projectQueueNewSessionShortcut` exposes the `+` shortcut that sends an
+existing session composer's draft to a future separate session.
+Controls use one stored presence value: missing/`default` follows the current
+client default, `hidden` is an explicit local hide, and `first`/`mid`/`last`/
+`pin` show the control with that narrowing priority. The server also persists
+`clientDefaults.sessionToolbarPresence` so the last selected toolbar value
+becomes the default for devices with no explicit local override. Resetting
+toolbar presence clears local overrides and returns that browser to following
+the server client default.
+Narrowing priority is derived by `useSessionToolbarPresence` and is editable
+for controls the runtime overflow menu can actually reveal: the left-side
+controls, shortcut help, `sessionStatus`, `contextUsage`, `btw`, `steerNow`,
+`projectQueue`, and `projectQueueNewSessionShortcut`. The right-side controls
+default to `pin` when shown, so they stay inline unless the user explicitly
+chooses a collapse tier. `microphone` and `waveform` remain visibility-only
+controls for now.
 
 The former composer model indicator chip is removed from the customizable
 toolbar. The top-right provider badge remains the model/effort status surface

@@ -915,11 +915,18 @@ export function MessageInputToolbarView({
     !hidePrimaryDeliveryActions && actionsControl.send?.onSend
   );
   const showStopButton = !!actionsControl.stop;
-  const showProjectQueueButton = !!(
+  const showCurrentSessionProjectQueueButton = !!(
     visibility.projectQueue &&
-    (actionsControl.projectQueue?.onProjectQueue ||
-      actionsControl.projectQueue?.onProjectQueueNewSession)
+    actionsControl.projectQueue?.onProjectQueue &&
+    actionsControl.send
   );
+  const showNewSessionProjectQueueButton = !!(
+    visibility.projectQueueNewSessionShortcut &&
+    actionsControl.projectQueue?.onProjectQueueNewSession &&
+    actionsControl.send
+  );
+  const showProjectQueueButton =
+    showCurrentSessionProjectQueueButton || showNewSessionProjectQueueButton;
   const selectedSpeechMethod = speechControl?.selectedMethod;
   const queueControl = actionsControl.send?.queue;
   const canToggleSteerNow = !!(
@@ -1095,7 +1102,7 @@ export function MessageInputToolbarView({
       </label>
     );
   };
-  const renderProjectQueueButtons = (className: string, menu = false) => {
+  const renderProjectQueueButtons = (menu = false) => {
     if (
       !showProjectQueueButton ||
       !actionsControl.projectQueue ||
@@ -1105,40 +1112,56 @@ export function MessageInputToolbarView({
     }
     const projectQueue = actionsControl.projectQueue;
     const disabled = actionsControl.disabled || !projectQueue.canSend;
+    const classNameFor = (
+      key: "projectQueue" | "projectQueueNewSessionShortcut",
+      ...extra: string[]
+    ) =>
+      (menu ? menuTierClass : inlineTierClass)(
+        key,
+        "send-button",
+        "project-queue-button",
+        ...extra,
+      );
     return (
       <>
-        {projectQueue.onProjectQueue && (
-          <button
-            type="button"
-            onClick={projectQueue.onProjectQueue}
-            disabled={disabled}
-            className={className}
-            aria-label={t("toolbarProjectQueueLabel")}
-            title={projectQueue.tooltip}
-            role={menu ? "menuitem" : undefined}
-          >
-            <span className="send-icon">⇥</span>
-          </button>
-        )}
-        {projectQueue.onProjectQueueNewSession && (
-          <button
-            type="button"
-            onClick={projectQueue.onProjectQueueNewSession}
-            disabled={disabled}
-            className={`${className} project-queue-new-session-button`}
-            aria-label={t("toolbarProjectQueueNewSessionLabel")}
-            title={projectQueue.newSessionTooltip}
-            role={menu ? "menuitem" : undefined}
-          >
-            <span className="send-icon">⇥</span>
-            <span
-              className="project-queue-new-session-mark"
-              aria-hidden="true"
+        {showCurrentSessionProjectQueueButton &&
+          (!menu || isPriorityCollapsible("projectQueue")) && (
+            <button
+              type="button"
+              onClick={projectQueue.onProjectQueue}
+              disabled={disabled}
+              className={classNameFor("projectQueue")}
+              aria-label={t("toolbarProjectQueueLabel")}
+              title={projectQueue.tooltip}
+              role={menu ? "menuitem" : undefined}
             >
-              +
-            </span>
-          </button>
-        )}
+              <span className="send-icon">⇥</span>
+            </button>
+          )}
+        {showNewSessionProjectQueueButton &&
+          (!menu ||
+            isPriorityCollapsible("projectQueueNewSessionShortcut")) && (
+            <button
+              type="button"
+              onClick={projectQueue.onProjectQueueNewSession}
+              disabled={disabled}
+              className={classNameFor(
+                "projectQueueNewSessionShortcut",
+                "project-queue-new-session-button",
+              )}
+              aria-label={t("toolbarProjectQueueNewSessionLabel")}
+              title={projectQueue.newSessionTooltip}
+              role={menu ? "menuitem" : undefined}
+            >
+              <span className="send-icon">⇥</span>
+              <span
+                className="project-queue-new-session-mark"
+                aria-hidden="true"
+              >
+                +
+              </span>
+            </button>
+          )}
       </>
     );
   };
@@ -1167,9 +1190,12 @@ export function MessageInputToolbarView({
       isPriorityCollapsible("contextUsage")) ||
     (visibility.btw && actionsControl.btw && isPriorityCollapsible("btw")) ||
     (canToggleSteerNow && isPriorityCollapsible("steerNow")) ||
-    (showProjectQueueButton &&
+    (showCurrentSessionProjectQueueButton &&
       actionsControl.send &&
-      isPriorityCollapsible("projectQueue"))
+      isPriorityCollapsible("projectQueue")) ||
+    (showNewSessionProjectQueueButton &&
+      actionsControl.send &&
+      isPriorityCollapsible("projectQueueNewSessionShortcut"))
   );
   const bottomOverflowLayoutKey = getComposerToolbarOverflowLayoutSignature({
     modeSelector:
@@ -1202,11 +1228,13 @@ export function MessageInputToolbarView({
     btw: visibility.btw && actionsControl.btw ? controlPriority.btw : "off",
     steerNow: canToggleSteerNow ? controlPriority.steerNow : "off",
     projectQueue:
-      showProjectQueueButton && actionsControl.send
+      showCurrentSessionProjectQueueButton && actionsControl.send
         ? controlPriority.projectQueue
         : "off",
-    projectQueueNewSession:
-      !!actionsControl.projectQueue?.onProjectQueueNewSession,
+    projectQueueNewSessionShortcut:
+      showNewSessionProjectQueueButton && actionsControl.send
+        ? controlPriority.projectQueueNewSessionShortcut
+        : "off",
     microphone:
       visibility.microphone && selectedSpeechMethod && speechControl?.voiceButton
         ? speechControl.voiceButton.kind
@@ -1670,15 +1698,7 @@ export function MessageInputToolbarView({
                   renderSteerNowToggle(
                     menuTierClass("steerNow", "steer-now-toggle"),
                   )}
-                {isPriorityCollapsible("projectQueue") &&
-                  renderProjectQueueButtons(
-                    menuTierClass(
-                      "projectQueue",
-                      "send-button",
-                      "project-queue-button",
-                    ),
-                    true,
-                  )}
+                {renderProjectQueueButtons(true)}
               </div>
             </div>
           )}
@@ -2064,13 +2084,7 @@ export function MessageInputToolbarView({
                 </span>
               </button>
             )}
-            {renderProjectQueueButtons(
-              inlineTierClass(
-                "projectQueue",
-                "send-button",
-                "project-queue-button",
-              ),
-            )}
+            {renderProjectQueueButtons()}
             {showSendButton && (
               <button
                 type="button"

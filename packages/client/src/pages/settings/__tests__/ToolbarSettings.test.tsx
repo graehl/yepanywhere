@@ -8,7 +8,10 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PROJECT_QUEUE_CAPABILITY } from "../../../lib/projectQueueVisibility";
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+} from "../../../lib/projectQueueVisibility";
 import { ToolbarSettings } from "../ToolbarSettings";
 
 const state = vi.hoisted(() => {
@@ -27,6 +30,7 @@ const state = vi.hoisted(() => {
     nudge: "hidden",
     sessionStatus: "pin",
     projectQueue: "pin",
+    projectQueueNewSessionShortcut: "hidden",
   };
   return {
     defaultPresence,
@@ -135,6 +139,10 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarProjectQueueTitle: "Project Queue",
           appearanceToolbarProjectQueueDescription:
             "Send after all sessions in this project are idle",
+          appearanceToolbarProjectQueueNewSessionShortcutTitle:
+            "Queue as New Session Shortcut",
+          appearanceToolbarProjectQueueNewSessionShortcutDescription:
+            "Queue a separate session from an existing composer",
           appearanceSessionToolbarDescription: "Toolbar controls",
           appearanceToolbarDefaultActionTitle: "Default action",
           appearanceToolbarDefaultActionDescription: "Choose an action",
@@ -183,14 +191,37 @@ describe("ToolbarSettings", () => {
     render(<ToolbarSettings />);
 
     expect(screen.queryByText("Project Queue")).toBe(null);
+    expect(screen.queryByText("Queue as New Session Shortcut")).toBe(null);
   });
 
-  it("shows the Project Queue option with server capability", () => {
+  it("shows only the current-session control without shortcut capability", () => {
     state.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
 
     render(<ToolbarSettings />);
 
     expect(screen.getByText("Project Queue")).toBeTruthy();
+    expect(screen.queryByText("Queue as New Session Shortcut")).toBe(null);
+  });
+
+  it("shows the shortcut control hidden when its capability is present", () => {
+    state.version = {
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+      ],
+    };
+
+    render(<ToolbarSettings />);
+
+    const shortcutRow = screen
+      .getByText("Queue as New Session Shortcut")
+      .closest(".session-toolbar-control-row");
+    expect(shortcutRow).toBeTruthy();
+    expect(
+      within(shortcutRow as HTMLElement).getByRole<HTMLInputElement>("slider", {
+        name: "Queue as New Session Shortcut visibility",
+      }).value,
+    ).toBe("0");
   });
 
   it("shows a presence slider for every control row", () => {

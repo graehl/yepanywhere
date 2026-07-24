@@ -1142,7 +1142,10 @@ export function MessageInput({
     projectQueueSupported &&
     toolbarVisibility.projectQueue;
   const reserveMobileProjectQueueNewSessionSlot =
-    reserveMobileProjectQueueSlot && !!onProjectQueueNewSession;
+    !forkSummaryMode &&
+    projectQueueSupported &&
+    toolbarVisibility.projectQueueNewSessionShortcut &&
+    !!onProjectQueueNewSession;
   const reserveMobileSessionAlternateSlot =
     !forkSummaryMode && supportsSteering;
   const collapsedActionKind =

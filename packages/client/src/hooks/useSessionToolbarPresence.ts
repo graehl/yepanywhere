@@ -11,7 +11,10 @@ import {
   resolveDefaultedEnumRecord,
   setDefaultedEnumRecordValue,
 } from "../lib/defaultedStorage";
-import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
+import {
+  serverSupportsProjectQueue,
+  serverSupportsProjectQueueNewSessionShortcutSetting,
+} from "../lib/projectQueueVisibility";
 import { UI_KEYS } from "../lib/storageKeys";
 import { useVersion } from "./useVersion";
 
@@ -38,6 +41,7 @@ export interface SessionToolbarPresence {
   nudge: ToolbarControlPresence;
   sessionStatus: ToolbarControlPresence;
   projectQueue: ToolbarControlPresence;
+  projectQueueNewSessionShortcut: ToolbarControlPresence;
 }
 
 export type SessionToolbarVisibilityKey = keyof SessionToolbarPresence;
@@ -67,6 +71,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRESENCE: SessionToolbarPresence = {
   nudge: "hidden",
   sessionStatus: "pin",
   projectQueue: "hidden",
+  projectQueueNewSessionShortcut: "hidden",
 };
 
 /**
@@ -90,6 +95,7 @@ export const DEFAULT_SESSION_TOOLBAR_PRIORITY: SessionToolbarPriority = {
   nudge: "last",
   sessionStatus: "pin",
   projectQueue: "pin",
+  projectQueueNewSessionShortcut: "pin",
 };
 
 export const SESSION_TOOLBAR_CONTROL_KEYS = Object.keys(
@@ -325,6 +331,10 @@ export function useSessionToolbarPresence() {
       projectQueue: serverSupportsProjectQueue(version)
         ? presence.projectQueue
         : "hidden",
+      projectQueueNewSessionShortcut:
+        serverSupportsProjectQueueNewSessionShortcutSetting(version)
+          ? presence.projectQueueNewSessionShortcut
+          : "hidden",
     }),
     [presence, version],
   );

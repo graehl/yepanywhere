@@ -1,5 +1,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { PROJECT_QUEUE_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+} from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLIENT_STORAGE_DEFAULT } from "../../lib/defaultedStorage";
 import { UI_KEYS } from "../../lib/storageKeys";
@@ -157,6 +160,7 @@ describe("useSessionToolbarPresence", () => {
       clientDefaults: {
         sessionToolbarPresence: {
           projectQueue: "pin",
+          projectQueueNewSessionShortcut: "pin",
         },
       },
     };
@@ -169,16 +173,23 @@ describe("useSessionToolbarPresence", () => {
     await waitFor(() => {
       expect(result.current.presence.projectQueue).toBe("hidden");
       expect(result.current.visibility.projectQueue).toBe(false);
+      expect(result.current.presence.projectQueueNewSessionShortcut).toBe(
+        "hidden",
+      );
+      expect(result.current.visibility.projectQueueNewSessionShortcut).toBe(
+        false,
+      );
     });
   });
 
-  it("can reveal Project Queue from server client defaults", async () => {
+  it("masks the shortcut without its dedicated settings capability", async () => {
     stubToolbarLayout(false);
     mocks.version = {
       capabilities: [PROJECT_QUEUE_CAPABILITY],
       clientDefaults: {
         sessionToolbarPresence: {
           projectQueue: "pin",
+          projectQueueNewSessionShortcut: "pin",
         },
       },
     };
@@ -191,6 +202,42 @@ describe("useSessionToolbarPresence", () => {
     await waitFor(() => {
       expect(result.current.presence.projectQueue).toBe("pin");
       expect(result.current.visibility.projectQueue).toBe(true);
+      expect(result.current.presence.projectQueueNewSessionShortcut).toBe(
+        "hidden",
+      );
+      expect(result.current.visibility.projectQueueNewSessionShortcut).toBe(
+        false,
+      );
+    });
+  });
+
+  it("can reveal the new-session Project Queue shortcut explicitly", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      capabilities: [
+        PROJECT_QUEUE_CAPABILITY,
+        PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
+      ],
+      clientDefaults: {
+        sessionToolbarPresence: {
+          projectQueueNewSessionShortcut: "pin",
+        },
+      },
+    };
+    const { useSessionToolbarPresence } = await import(
+      "../useSessionToolbarPresence"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarPresence());
+
+    await waitFor(() => {
+      expect(result.current.visibility.projectQueue).toBe(false);
+      expect(result.current.presence.projectQueueNewSessionShortcut).toBe(
+        "pin",
+      );
+      expect(result.current.visibility.projectQueueNewSessionShortcut).toBe(
+        true,
+      );
     });
   });
 

@@ -161,6 +161,8 @@
   isolation, and partial-observation nondowngrade rules.
 - agents-activity-preview - Optional bounded multi-session activity previews
   for active and recently idle process cards on Agents.
-- interactives - Project-affiliated ad-hoc web apps (proxied dev servers or
-  YA-served page bundles) with icon links, plus a confirm-gated annotation
-  flow returning attachment-referencing turns.
+- interactives - Zero-setup container for agent-built project web apps:
+  opinionated template, committed project files, registry, icon links,
+  YA-server-only relay reach, and a meta-UI comment-to-agent channel.
+- rich-interviews - Banked: multi-round structured-input interview flows;
+  YA renders declared formats inline; revisit atop interactives machinery.

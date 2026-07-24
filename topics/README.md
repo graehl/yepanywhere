@@ -69,3 +69,8 @@
   for active processes and last-output previews for recently idle ones)
 - Bang commands (proposal: `!!` composer messages run local shell commands as
   persistent inline display objects, never entering provider context)
+- Interactives (proposal: zero-setup container for agent-built project web
+  apps — opinionated template, committed files, registry, icon links,
+  YA-server-only relay reach, meta-UI comment channel)
+- Rich interviews (banked: multi-round structured-input flows rendered inline
+  from declared formats; revisit atop interactives machinery)

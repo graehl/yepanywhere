@@ -1,40 +1,57 @@
 # Interactives
 
-> Proposal: project-affiliated ad-hoc web apps — agent-built dev servers or
-> static page bundles registered in project-local config — that YA surfaces as
-> persistent icon links on the project's sessions and reaches through its
-> authenticated transports (including relay), plus a confirm-gated annotation
-> flow that returns structured page input to the session as an
-> attachment-referencing turn.
+> Proposal: a zero-setup container for agent-built web apps — dev servers or
+> static page bundles scaffolded from an opinionated template and registered
+> in project-local config — that YA surfaces as persistent icon links on the
+> project's sessions and reaches through its authenticated transports, so a
+> user on a phone or tablet over relay can open them with no hosting
+> knowledge.
 
 Topic: interactives
 
 Status: **proposal, nothing implemented (2026-07-24).** YA's only proxy today
 is the Vite dev-client proxy (`createFrontendProxy`,
-`packages/server/src/frontend/proxy.ts`); no arbitrary-port proxying, no
-project app registry, no annotation upload route exists.
+`packages/server/src/frontend/proxy.ts`); no arbitrary-port proxying and no
+project app registry exists. The rich annotator/interview flow originally
+drafted here is split out to [[rich-interviews]] — different intent, different
+lifecycle, no committed implementation overlap.
 
 ## Motivation
 
-An agent in a session often could answer a need best by *building a small web
-app*: a one-off dashboard over test results, a REST endpoint the user can poke,
-a data explorer, an interview page for a design decision. Today that app dies
-with the terminal: it runs on a dev port on the YA machine, unreachable from
-the hosted remote client, invisible in the session UI, and forgotten when the
-session ends. YA already owns exactly the missing pieces — an authenticated
-local+relay transport, per-project session surfaces, and attachment plumbing —
-so the proposal is a *convention*, not an app framework: a standard for
-project-local registration that YA checks, plus lifecycle/visibility
-management. The app itself stays independent of the YA codebase, typically
-customized or built one-off by the agent in-session for ad-hoc purposes.
+The only reason to couple YA with an environment-for-a-web-app panel is
+**reach**: the user may be on a tablet or phone over relay, with no knowledge
+of how to set such things up. Next to the dev machine, `http://localhost:5199`
+already works; from a phone over relay, nothing does — ports, tunnels, TLS,
+and auth are exactly the setup a novice cannot do. YA is already the
+authenticated, relay-reachable, per-project surface on that machine, so
+surfacing the app there is the entire value. YA stays a *container* —
+lifecycle, visibility, reach — and never becomes an app framework; the app
+itself is independent of the YA codebase, typically customized or built
+one-off by the agent in-session for ad-hoc purposes.
+
+Two hard requirements sharpen the scope (maintainer, 2026-07-24): hosting is
+**YA-server only** — the app runs from the user's machine through YA's
+transports; cloud hosting is right out — and an interactive is **committed
+project files**: the scaffolded subdir, registry entry, and per-app guide are
+ordinary versioned artifacts in the repo, so an app survives sessions,
+travels with a clone, and is reviewable like any other code.
+
+Guiding vision (maintainer, 2026-07-24): "easy enough to use that my kids can
+play with it when it is good enough." The bar is a novice — a kid on a
+tablet — tapping an icon and playing an agent-built animation or game, not an
+operator wiring a deployment. Novice-friendly cuts both ways: *creating* "a
+project web app" from a session must be natural for a non-web-dev too, which
+is why the convention includes an opinionated app template (below) rather
+than leaving each app's organization to per-session improvisation.
 
 Two classes, one registry:
 
 - **Proxied app** — a regular web server (UI or REST) on a loopback dev port
   on the YA machine. YA proxies it; YA does not serve or build it.
 - **Served page** — a static rich html+js bundle (no server of its own) that
-  YA serves directly from a project path. The annotation/interview flow below
-  is the motivating use.
+  YA serves directly from a project path. For the novice vision this is the
+  *primary* class: a plain html+js animation or game has no process to keep
+  alive, so its icon is always live.
 
 ## Vocabulary
 
@@ -42,12 +59,36 @@ Two classes, one registry:
   affiliated with a project.
 - **app icon link** — the persistent per-interactive icon YA renders on the
   project's session surfaces.
-- **annotation flow** — the served-page pattern where user input (comments,
-  selections, choices) is confirmed and uploaded as deltas that become a
-  project-local attachment plus a turn referencing it.
 - **`INTERACTIVES.md`** — optional project doc whose content overrides the
   default prompt prefix injected by the Create Interactive button. Distinct
   from the machine-readable registry below.
+- **app template** — the opinionated scaffold (framework/language choices,
+  layout, registry entry, per-app agent guide, meta-UI hook) agents create
+  new interactives from.
+- **per-app agent guide** — the `.md` the scaffold places in an app's subdir
+  telling the agent how to develop, update, and run that app; update turns
+  reference it.
+- **meta-UI protocol** — the template-provided in-app affordance and page↔YA
+  channel for commenting to the agent inline from the app view.
+
+## App template and per-app agent guide
+
+"Create a project web app" from a session must be natural for a non-web-dev,
+so the convention defines a template for how such an app is organized:
+framework and languages (likely TS plus a to-be-chosen minimal framework),
+directory layout under a conventional project subdir, the registry entry, the
+meta-UI hook wired in, and a **per-app agent guide** — a `.md` scaffolded into
+the created app's subdir that tells the agent how to develop, update, run,
+and register that named app. A turn about the app references that guide (the
+create/update affordances prefix the composer with the reference), so "make
+the ball bounce higher" arrives carrying the app's dev context and the app
+stays maintainable across sessions. The template and guide are where the
+agent-facing instructions/skills land — they belong to the convention, not to
+YA's server code, which never needs to understand the framework choice.
+
+v1 ships exactly one opinionated, friendly built-in template. Per-project
+template override is an intended later extension — recorded here so the v1
+shape does not foreclose it, deliberately not built first.
 
 ## Registration standard (the project-local config YA checks)
 
@@ -72,10 +113,10 @@ Proposed: `.yep/interactives.json` at the project root, an array of entries:
 Contract points:
 
 - YA **reads** this file (watch or rescan on project activity); in v1 YA never
-  writes it — the agent authors it when it creates the app. Whether the file
-  is committed is the project's choice; YA applies no exclude machinery
-  (unlike [[attachment-storage]], there is no accidental-secret-bytes risk in
-  a small config, and a durable project tool may deserve committing).
+  writes it — the agent authors it when it creates the app. Registry, app
+  subdir, and per-app guide are *committed* project files (see Motivation);
+  YA applies no exclude machinery — unlike [[attachment-storage]], committing
+  is the point here, not a leak risk.
 - Proxy targets are **loopback-only** (`127.0.0.1:<port>`); the registry must
   not accept arbitrary hosts. Declaring a port in the project's own config is
   the authorization to proxy it.
@@ -139,17 +180,23 @@ authority under YA's origin**. YA auth is an httpOnly `yep-anywhere-session`
 cookie (`packages/server/src/auth/routes.ts`), so interactive JS cannot read
 the credential, but anything served/proxied under the YA origin can *make*
 authenticated same-origin `/api/*` requests as the operator — CSRF-equivalent
-full API power for agent-generated (LLM-authored, lightly reviewed) code.
+full API power for agent-generated (LLM-authored, lightly reviewed) code. The
+kid-playable vision hardens this from concern to requirement: a child tapping
+a game icon must not be one script call away from operator API power, so
+isolation is the default posture, not an option.
 
 Direction, to verify at design time: render interactives in a sandboxed iframe
 without `allow-same-origin`, giving the page an opaque origin — SameSite=Lax
 should then withhold the session cookie from its requests <!-- assumed -->.
-The annotation upload route would take an explicit per-interactive token
-rather than riding session auth. Path-only separation (`/apps/...` with CSP)
-does **not** isolate origin and is insufficient alone. If sandboxing proves
-incompatible with useful apps (e.g. they need their own workers/storage), the
-fallback posture is informed consent: opening an interactive is running
-agent-authored code with operator power, stated plainly.
+Path-only separation (`/apps/...` with CSP) does **not** isolate origin and is
+insufficient alone. If sandboxing proves incompatible with useful apps (e.g.
+they need their own workers/storage), the fallback posture is informed
+consent: opening an interactive is running agent-authored code with operator
+power, stated plainly — acceptable for the operator, not for the kid case.
+
+The meta-UI protocol (below) reinforces this posture: a templated app's only
+channel to YA is a brokered message channel, so it needs no ambient authority
+at all.
 
 Hosted-client wrinkle: on `ya.graehl.org` the client reaches the server
 through the relay tunnel, not direct HTTP, so an iframe `src` has no plain URL
@@ -158,61 +205,105 @@ tunnel-backed URL space (service-worker-mediated fetch or blob/`srcdoc`
 injection). Open design area — direct (Tailscale/LAN) mode has no such
 problem.
 
+## Meta-UI protocol (comment-to-agent from the app view)
+
+The template bakes a meta-UI affordance into every scaffolded app: from the
+running app's view, the user can comment inline to the agent — a small
+overlay/widget, not something each app reinvents. Mechanically it is a
+page↔YA channel: under the sandboxed-iframe posture, `postMessage` brokered
+by the embedding YA client is the natural transport, and it doubles as the
+*only* capability an app is granted — comments need no cookie or `/api/*`
+authority. A comment (plus optional app-supplied context such as the tapped
+element or app state) lands in the session composer for the user to send
+(v1; auto-send is a later opt-in), consistent with [[vanilla-defaults]].
+This is the freeform, app-side sibling of [[rich-interviews]]: the same
+input-back-to-agent direction, but unstructured in-app comments rather than
+structured multi-round forms.
+
 ## Create Interactive button
 
 A composer-adjacent action that prefills the composer with a prompt prefix
-instructing the agent to build an interactive to this standard (registry
-entry, class choice, port discipline, annotation contract). The default prefix
-is built-in; a project overrides it by carrying `INTERACTIVES.md`, whose
-content precedes the user's turn in the composer. Because the prefix lands
-*in the composer* — visible, editable, sent verbatim only when the user sends —
-it is an explicitly invoked transform in [[vanilla-defaults]] terms, like
-emulated slash-command expansion. The agent-facing instructions/skills that
-make the build reliable are TBD and belong beside the standard once it
-stabilizes.
+instructing the agent to scaffold an interactive from the app template
+(registry entry, class choice, port discipline, per-app agent guide). An
+update affordance on an existing app similarly prefixes a reference to that
+app's per-app agent guide. The default create prefix is built-in; a
+project overrides it by carrying `INTERACTIVES.md`, whose content precedes the
+user's turn in the composer. Because the prefix lands *in the composer* —
+visible, editable, sent verbatim only when the user sends — it is an
+explicitly invoked transform in [[vanilla-defaults]] terms, like emulated
+slash-command expansion. This button is the piece that serves the novice
+vision most directly (tap → describe the game you want), and also the first
+piece to cut if the container concept shrinks — it is sugar, not structure.
+The agent-facing instructions/skills that make the build reliable are TBD and
+belong beside the standard once it stabilizes.
 
-## Annotation flow (served pages; the "interview" class)
+## Relation to rich interviews
 
-The more abstract sibling: a single interactive DOM page — or, later, a
-composable pipeline of pages — with controls for comment, select, choose,
-adjust, ending in an explicit **confirm**. Use cases: structured interviews
-(design tradeoffs, UI-tweak review with live previews), richer versions of
-option-picking prompts.
+[[rich-interviews]] (the annotator/interview flow) was originally drafted as a
+section here and is deliberately separate: its intent is routine structured
+input consumed by workflows/skills, its lifecycle is issued-into-a-session
+rather than project-persistent, and its likely v1 (YA-rendered declarative
+forms) shares no implementation with this container. The one seam: if an
+interview ever needs arbitrary DOM expressiveness, it may embed an
+interactive — a directional reference, not shared ownership. As of
+2026-07-24 rich interviews are banked entirely (lower incremental value);
+the working bet is that this container's machinery — template, meta-UI
+protocol, embedding — accumulates until the interview use cases become
+easily buildable on top.
 
-Precedent: the transcript already has select-and-comment machinery
-([[selection-comment-ui]]: quote-comment, comment anchors) and confirm-gated
-structured questions (AskUserQuestion-style option prompts); this generalizes
-both to agent-authored pages with arbitrary DOM.
+## Prior art
 
-Contract sketch:
+Learn-from targets — source code, demos, marketing — from a 2026-07 survey
+pass. Study their interaction patterns and bridge protocols; their cloud
+hosting models are explicitly rejected by the YA-server-only requirement:
 
-1. Agent builds a served-page bundle (rich html+js) and registers it.
-2. User interacts; nothing leaves the page until **confirm**.
-3. On confirm the page uploads the resulting annotation deltas (proposed: one
-   JSON document with a self-describing `schema` field; format intentionally
-   "some format" — versioned, not frozen yet) to a YA route.
-4. YA writes it as a project-local attachment-type file under the
-   [[attachment-storage]] contract (`.attachments/<session>/`, force-exclude
-   rules apply) and produces a turn referencing the file, using the same
-   "User uploaded files in `.attachments`" prompt-listing mechanism uploads
-   already use.
-5. Recommended v1 delivery: the referencing turn lands in the composer /
-   attachment chip for the user to send (confirm ≈ attach, send stays
-   explicit). Auto-send-on-confirm is a plausible opt-in once trusted.
+- **GitHub Spark** — natural-language micro-apps ("sparks") on an opinionated
+  managed runtime (storage, theming, LLM access) with a PWA dashboard for
+  launching them from anywhere, hosted behind GitHub auth. Validates the
+  shape — template + registry + icon dashboard + zero-setup reach — while its
+  Azure hosting is exactly what the requirement rejects: the shape transfers,
+  the hosting model does not.
+  (https://github.com/features/spark,
+  https://githubnext.com/projects/github-spark/)
+- **Lovable "Visual Edits" / preview toolbar** (similarly v0, Bolt.new) —
+  select elements in the running preview, describe the change in plain
+  language, send to the agent to iterate; selected elements attach to the
+  chat input as references. The meta-UI protocol is this pattern generalized
+  to template-scaffolded apps, and the composer-landing v1 matches the
+  attach-to-chat-input behavior.
+  (https://docs.lovable.dev/features/preview-toolbar)
+- **MCP Apps standard / ChatGPT Apps SDK** — embedded app UIs run in a
+  sandboxed iframe (ChatGPT: a dedicated `*.web-sandbox.oaiusercontent.com`
+  origin with per-widget CSP) and talk to the host via `ui/*` JSON-RPC over
+  `postMessage` (`window.openai` wraps it). Directly validates the
+  sandbox-plus-brokered-channel posture; evaluate MCP Apps as the meta-UI
+  message schema before defining a YA-private one.
+  (https://developers.openai.com/apps-sdk/build/chatgpt-ui,
+  https://developers.openai.com/apps-sdk/mcp-apps-in-chatgpt)
+- **Claude Artifacts** — agent-built single-page apps rendered in a sandboxed
+  iframe beside the chat; precedent for the served-page class and for tight
+  default sandboxing of agent-authored code. <!-- assumed; not re-verified in
+  this survey pass -->
 
-Pipelines (page N's confirm feeding page N+1) stay a future extension; the
-single-page contract must not foreclose chaining, which argues for the
-uploaded document carrying the interactive `name` + a step id.
+None of them cover YA's actual coupling reason: the app living on the user's
+own dev machine inside a project checkout as committed files, reached over
+the operator's authenticated relay rather than vendor hosting.
 
 ## Open decisions
 
 - Registry location/name (`.yep/interactives.json` vs alternatives) and
   minimal v1 schema.
+- Template framework/language choices, scaffold layout, and where app subdirs
+  live (served-page vs proxied-app cases).
+- Per-app agent guide filename and required sections.
+- Whether served-page bundles commit built output (so YA serves them with no
+  toolchain present) or commit source only and rebuild on update.
+- Meta-UI channel mechanics (message schema, context payload, composer
+  delivery vs queued turn; a fallback channel for new-tab opens where no
+  embedding parent exists).
 - Embed vs new-tab open; sandbox mechanism verification (opaque-origin cookie
   behavior across target browsers).
 - Hosted-client (relay) asset serving for embedded interactives.
-- Annotation upload auth (per-interactive token shape) and delta format
-  versioning.
 - Managed-lifecycle idle-stop bound and its status surface.
 - Whether REST-kind entries get a YA-rendered landing (request console) or
   just a link.
@@ -221,9 +312,7 @@ uploaded document carrying the interactive `name` + a step id.
 
 - [[security]], [[relay-origin-and-share-gating]] — trust boundary and the
   must-not-tunnel list this extends.
-- [[attachment-storage]] — the attachment contract the annotation flow reuses.
-- [[selection-comment-ui]] — in-transcript precedent for comment/select with
-  confirm.
+- [[rich-interviews]] — the split-out interview flow and its embed seam.
 - [[vanilla-defaults]], [[session-ui-customization]], [[server-capabilities]] —
   gating and visibility discipline.
 - [[architecture-mandates]] — resource bounds for any managed lifecycle.

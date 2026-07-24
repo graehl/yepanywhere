@@ -159,3 +159,5 @@
   delay, warm adjacent scanning, and future rendered hidden-tail previews.
 - session-summary-fidelity - Bounded session list projections, complete-index
   isolation, and partial-observation nondowngrade rules.
+- agents-activity-preview - Optional bounded multi-session activity previews
+  for active and recently idle process cards on Agents.

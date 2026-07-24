@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../../i18n";
 import { UI_KEYS } from "../../../../lib/storageKeys";
@@ -32,6 +32,10 @@ if (!editRenderer.renderCollapsedPreview) {
 const renderCollapsedPreview = editRenderer.renderCollapsedPreview;
 
 describe("EditRenderer collapsed preview fallback", () => {
+  beforeEach(() => {
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+  });
+
   afterEach(() => {
     document.getSelection()?.removeAllRanges();
     cleanup();

@@ -31,7 +31,9 @@ describe("AppearanceSettings tooltip controls", () => {
     expect(row?.querySelector('input[type="range"]')).toBeTruthy();
     expect(row?.querySelector('input[type="number"]')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Native" }));
+    const nativeButton = screen.getByRole("button", { name: "Native" });
+    expect(nativeButton.classList.contains("active")).toBe(true);
+    fireEvent.click(nativeButton);
     expect(localStorage.getItem(UI_KEYS.tooltipMode)).toBe("native");
 
     const number = screen.getByRole<HTMLInputElement>("spinbutton", {

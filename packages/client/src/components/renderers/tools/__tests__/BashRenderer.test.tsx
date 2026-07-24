@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { UI_KEYS } from "../../../../lib/storageKeys";
 import { bashRenderer } from "../BashRenderer";
@@ -35,6 +35,10 @@ const renderContext = {
 };
 
 describe("BashRenderer", () => {
+  beforeEach(() => {
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+  });
+
   afterEach(() => {
     cleanup();
     window.localStorage.removeItem(UI_KEYS.tooltipMode);

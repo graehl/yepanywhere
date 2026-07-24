@@ -12,11 +12,14 @@ Appearance presents `Themed` and `Native` as an explicit two-way style
 selector. The delay slider and number field remain visible beside that selector
 in the same row:
 
-- `Themed` renders YA's tooltip layer with the active theme. Its default delay
+- `Native` is the default when the browser has no explicit saved mode. It leaves
+  ordinary `title=` tooltips to the browser, including the browser's timing and
+  colors. YA must not describe that timing as a numeric preset because it is
+  controlled by the browser/OS.
+- `Themed` renders YA's tooltip layer with the active theme. Its initial delay
   is 50 ms.
-- `Native` leaves ordinary `title=` tooltips to the browser, including the
-  browser's timing and colors. YA must not describe that timing as a numeric
-  preset because it is controlled by the browser/OS.
+- Explicitly saved `Native` and `Themed` choices remain authoritative across
+  default changes.
 - Moving the slider or entering a valid number selects `Themed`. Temporarily
   deleting the number while editing neither changes mode nor commits a delay.
 - The mode and delay are portable browser preferences. The retired session

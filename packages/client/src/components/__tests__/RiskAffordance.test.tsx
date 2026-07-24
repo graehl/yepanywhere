@@ -7,6 +7,7 @@ import {
   DEFAULT_TOOLTIP_DELAY_MS,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
 } from "../../hooks/useTooltipAppearance";
+import { UI_KEYS } from "../../lib/storageKeys";
 import "../../../test/pointerEventShim";
 import { RiskAffordance } from "../RiskAffordance";
 
@@ -14,6 +15,7 @@ describe("RiskAffordance tooltip timing", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
+    localStorage.setItem(UI_KEYS.tooltipMode, "themed");
     clearTooltipWarmth();
   });
 

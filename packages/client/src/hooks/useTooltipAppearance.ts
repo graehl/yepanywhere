@@ -68,11 +68,11 @@ function readStoredNumber(key: string): number | null {
 
 export function getTooltipMode(): TooltipMode {
   try {
-    return localStorage.getItem(UI_KEYS.tooltipMode) === "native"
-      ? "native"
-      : "themed";
+    return localStorage.getItem(UI_KEYS.tooltipMode) === "themed"
+      ? "themed"
+      : "native";
   } catch {
-    return "themed";
+    return "native";
   }
 }
 
@@ -179,7 +179,7 @@ export function useTooltipMode(): TooltipMode {
   return useSyncExternalStore(
     subscribe,
     getTooltipMode,
-    () => "themed" as const,
+    () => "native" as const,
   );
 }
 

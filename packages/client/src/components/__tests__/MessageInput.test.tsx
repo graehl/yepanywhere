@@ -700,6 +700,7 @@ describe("MessageInput", () => {
     voiceButtonState.isListening = false;
     voicePropsState.current = null;
     window.localStorage.clear();
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
   });
 
   afterEach(() => {

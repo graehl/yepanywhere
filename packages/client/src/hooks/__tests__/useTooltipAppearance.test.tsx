@@ -34,8 +34,13 @@ describe("useTooltipAppearance", () => {
     expect(getTooltipDelayMs()).toBe(100);
   });
 
-  it("keeps native mode explicit and valid delay edits select themed mode", () => {
+  it("defaults to native and valid delay edits select themed mode", () => {
     const { result } = renderHook(() => useTooltipAppearance());
+
+    expect(result.current.tooltipMode).toBe("native");
+
+    act(() => result.current.setTooltipMode("themed"));
+    expect(result.current.tooltipMode).toBe("themed");
 
     act(() => result.current.setTooltipMode("native"));
     expect(result.current.tooltipMode).toBe("native");

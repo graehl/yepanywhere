@@ -23,6 +23,7 @@ describe("TooltipLayer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
+    localStorage.setItem(UI_KEYS.tooltipMode, "themed");
     clearTooltipWarmth();
   });
 
@@ -592,8 +593,8 @@ describe("TooltipLayer", () => {
     );
   });
 
-  it("leaves title timing and presentation to the browser in native mode", () => {
-    localStorage.setItem(UI_KEYS.tooltipMode, "native");
+  it("leaves title timing and presentation to the browser by default", () => {
+    localStorage.removeItem(UI_KEYS.tooltipMode);
     render(
       <>
         <TooltipLayer />

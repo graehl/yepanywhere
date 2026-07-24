@@ -37,8 +37,8 @@ describe("FilePathLink", () => {
     expect(link.getAttribute("href")).toBe(
       "/projects/project-id/file?path=docs%2Fguide.md&line=12",
     );
-    expect(link.getAttribute("data-tooltip")).toBe("docs/guide.md:12");
-    expect(link.getAttribute("title")).toBeNull();
+    expect(link.getAttribute("title")).toBe("docs/guide.md:12");
+    expect(link.getAttribute("data-tooltip")).toBeNull();
   });
 
   it("uses only the concise native path hint in native tooltip mode", () => {

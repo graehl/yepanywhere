@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../../../lib/storageKeys";
 import { writeRenderer } from "../WriteRenderer";
 
@@ -17,6 +17,10 @@ const renderContext = {
 };
 
 describe("WriteRenderer", () => {
+  beforeEach(() => {
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+  });
+
   afterEach(() => {
     cleanup();
     window.localStorage.removeItem(UI_KEYS.tooltipMode);

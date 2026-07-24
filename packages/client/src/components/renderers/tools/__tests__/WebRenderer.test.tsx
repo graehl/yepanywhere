@@ -1,6 +1,6 @@
 import type { CodexWebRunResult } from "@yep-anywhere/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { UI_KEYS } from "../../../../lib/storageKeys";
 import { webRenderer } from "../WebRenderer";
 
@@ -48,6 +48,10 @@ const searchResult: CodexWebRunResult = {
 };
 
 describe("WebRenderer", () => {
+  beforeEach(() => {
+    window.localStorage.setItem(UI_KEYS.tooltipMode, "themed");
+  });
+
   afterEach(() => {
     cleanup();
     window.localStorage.removeItem(UI_KEYS.tooltipMode);

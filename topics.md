@@ -161,3 +161,6 @@
   isolation, and partial-observation nondowngrade rules.
 - agents-activity-preview - Optional bounded multi-session activity previews
   for active and recently idle process cards on Agents.
+- interactives - Project-affiliated ad-hoc web apps (proxied dev servers or
+  YA-served page bundles) with icon links, plus a confirm-gated annotation
+  flow returning attachment-referencing turns.

@@ -1138,6 +1138,8 @@ export function MessageInput({
   // appear without taking space out from under Send/Steer.
   const reserveMobileProjectQueueSlot =
     !forkSummaryMode && toolbarVisibility.projectQueue;
+  const reserveMobileProjectQueueNewSessionSlot =
+    reserveMobileProjectQueueSlot && !!onProjectQueueNewSession;
   const reserveMobileSessionAlternateSlot =
     !forkSummaryMode && supportsSteering;
   const collapsedActionKind =
@@ -2326,6 +2328,7 @@ export function MessageInput({
                 <MessageInputToolbar
                   {...toolbarProps}
                   onProjectQueue={undefined}
+                  onProjectQueueNewSession={undefined}
                   hidePrimaryDeliveryActions
                 />
               </div>
@@ -2364,6 +2367,27 @@ export function MessageInput({
                       <span aria-hidden="true">⇥</span>
                     </button>
                   )}
+                </div>
+              )}
+              {reserveMobileProjectQueueNewSessionSlot && (
+                <div className="message-input-keyboard-secondary-slot message-input-keyboard-project-queue-new-session-slot">
+                  <button
+                    type="button"
+                    className="message-input-keyboard-action message-input-keyboard-secondary project-queue-mode project-queue-new-session-button"
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={handleProjectQueueNewSession}
+                    disabled={disabled}
+                    aria-label={t("toolbarProjectQueueNewSessionLabel")}
+                    title={t("toolbarProjectQueueNewSessionTooltip")}
+                  >
+                    <span aria-hidden="true">⇥</span>
+                    <span
+                      className="project-queue-new-session-mark"
+                      aria-hidden="true"
+                    >
+                      +
+                    </span>
+                  </button>
                 </div>
               )}
               {reserveMobileSessionAlternateSlot && (

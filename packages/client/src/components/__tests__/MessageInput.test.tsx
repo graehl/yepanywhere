@@ -888,9 +888,10 @@ describe("MessageInput", () => {
     }
   });
 
-  it("keeps keyboard focus while More exposes attachments and Project Queue stays inline", () => {
+  it("keeps keyboard focus while More exposes utilities and Project Queue stays inline", () => {
     const viewport = installMobileKeyboardViewport();
     const onProjectQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
     const onAttach = vi.fn();
     const inputClick = vi
       .spyOn(HTMLInputElement.prototype, "click")
@@ -899,6 +900,7 @@ describe("MessageInput", () => {
       vi.fn(() => true),
       {
         onProjectQueue,
+        onProjectQueueNewSession,
         onAttach,
         projectId: "project-1",
         sessionId: "session-1",
@@ -920,6 +922,19 @@ describe("MessageInput", () => {
 
       expect(more.getAttribute("aria-expanded")).toBe("true");
       expect(document.activeElement).toBe(textarea);
+      const morePanel = document.querySelector(
+        ".message-input-keyboard-more-panel",
+      );
+      expect(
+        morePanel?.querySelector(
+          '[aria-label="Queue for Project Queue"]',
+        ),
+      ).toBeNull();
+      expect(
+        morePanel?.querySelector(
+          '[aria-label="Queue as new session for Project Queue"]',
+        ),
+      ).toBeNull();
 
       const attach = screen.getByTitle("toolbarAttachFiles");
       fireEvent.pointerDown(attach);
@@ -935,6 +950,11 @@ describe("MessageInput", () => {
           ".message-input-keyboard-project-queue-slot .project-queue-mode",
         ),
       ).toBeTruthy();
+      expect(
+        document.querySelector(
+          ".message-input-keyboard-project-queue-new-session-slot .project-queue-new-session-button",
+        ),
+      ).toBeTruthy();
       fireEvent.click(
         screen.getByRole("button", { name: "Queue for Project Queue" }),
       );
@@ -948,6 +968,7 @@ describe("MessageInput", () => {
     const viewport = installMobileKeyboardViewport();
     const onQueue = vi.fn();
     const onProjectQueue = vi.fn();
+    const onProjectQueueNewSession = vi.fn();
 
     function LiveActionsHarness() {
       const [actionsAvailable, setActionsAvailable] = useState(false);
@@ -963,6 +984,7 @@ describe("MessageInput", () => {
             onSend={vi.fn()}
             onQueue={actionsAvailable ? onQueue : undefined}
             onProjectQueue={actionsAvailable ? onProjectQueue : undefined}
+            onProjectQueueNewSession={onProjectQueueNewSession}
             supportsSteering
             draftKey="stable-mobile-actions"
             placeholder="Stable actions"
@@ -987,13 +1009,22 @@ describe("MessageInput", () => {
       const sessionAlternateSlot = document.querySelector(
         ".message-input-keyboard-session-alternate-slot",
       );
+      const projectQueueNewSessionSlot = document.querySelector(
+        ".message-input-keyboard-project-queue-new-session-slot",
+      );
       const primary = document.querySelector(
         ".message-input-keyboard-primary",
       );
 
       expect(projectQueueSlot).toBeTruthy();
+      expect(projectQueueNewSessionSlot).toBeTruthy();
       expect(sessionAlternateSlot).toBeTruthy();
       expect(projectQueueSlot?.children).toHaveLength(0);
+      expect(
+        projectQueueNewSessionSlot?.querySelector(
+          ".project-queue-new-session-button",
+        ),
+      ).toBeTruthy();
       expect(sessionAlternateSlot?.children).toHaveLength(0);
 
       fireEvent.click(

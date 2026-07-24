@@ -6095,6 +6095,10 @@ a.linkified-url:hover {
   background: var(--project-queue-action-bg);
 }
 
+.message-input-keyboard-action.project-queue-new-session-button {
+  position: relative;
+}
+
 .message-input-keyboard-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;

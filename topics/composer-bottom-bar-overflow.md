@@ -186,28 +186,30 @@ with slack**. Two latch/oscillation traps live here:
 - The compact row keeps a stable More affordance so attachments, Stop, and the
   user's other enabled toolbar controls remain discoverable without first
   knowing to dismiss the keyboard. Project Queue is the exception: when the
-  user has exposed it, its potential 48px action slot remains inline beside
-  More so the purple button is both directly reachable and a glanceable signal
-  that project-wide queue semantics currently differ from normal send. Opening
-  More must preserve textarea focus; choosing a control may dismiss the
-  keyboard when the invoked platform UI naturally requires it (for example,
-  the system file picker).
+  user has exposed it, separate potential 48px slots for its current-session
+  (`⇥`) and new-session (`⇥+`) actions remain inline beside More. Available
+  actions fill those slots so the purple buttons are both directly reachable
+  and a glanceable signal that project-wide queue semantics currently differ
+  from normal send. Opening More must preserve textarea focus; choosing a
+  control may dismiss the keyboard when the invoked platform UI naturally
+  requires it (for example, the system file picker).
 - Clearing or submitting the draft immediately restores the ordinary toolbar.
   This avoids the post-send jump from one enabled Send button to two disabled
   Queue/Steer buttons when clearing the draft and starting the provider turn
   happen together.
 - With submittable content, the configured primary action remains a large
   right-aligned control. Steering-capable sessions reserve a 48px slot for the
-  alternate Queue/Steer action, and Project Queue reserves its own 48px slot
-  when that toolbar feature is enabled and supported. An unavailable action
-  leaves its slot visually empty rather than letting the primary action grow
-  into it; when live session or project state makes the action available, its
-  square button fills the existing slot without moving or shrinking the
-  primary hit target. Non-steering sessions do not reserve a redundant
-  alternate slot: their primary control can change from Send to Queue in
-  place. Fork-summary's explicit two-submit mode may continue sharing the
-  remaining width because its membership is entered deliberately rather than
-  appearing from live state. These controls follow the same
+  alternate Queue/Steer action, and Project Queue reserves one 48px slot for
+  each of its current-session and new-session targets when that toolbar feature
+  is enabled and supported. An unavailable action leaves its slot visually
+  empty rather than letting the primary action grow into it; when live session
+  or project state makes the action available, its square button fills the
+  existing slot without moving or shrinking the primary hit target.
+  Non-steering sessions do not reserve a redundant alternate slot: their
+  primary control can change from Send to Queue in place. Fork-summary's
+  explicit two-submit mode may continue sharing the remaining width because
+  its membership is entered deliberately rather than appearing from live
+  state. These controls follow the same
   Send/Queue/Steer/fork handlers and enabled state as the ordinary toolbar.
   Restoring the viewport or leaving the textarea restores the normal measured
   toolbar; keyboard-open mode is not another overflow tier.

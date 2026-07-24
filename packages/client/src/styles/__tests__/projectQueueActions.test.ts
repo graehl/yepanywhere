@@ -1,0 +1,105 @@
+// @vitest-environment node
+
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+
+const stylesheetUrl = new URL("../index.css", import.meta.url);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getRuleDeclarations(css: string, selector: string): string {
+  const match = new RegExp(`${escapeRegExp(selector)}\\s*\\{([^}]*)\\}`).exec(
+    css,
+  );
+  expect(
+    match,
+    `${selector} should have a dedicated rule in index.css.`,
+  ).not.toBeNull();
+  return match?.[1] ?? "";
+}
+
+function getHexCustomProperty(css: string, property: string): string {
+  const rootDeclarations = getRuleDeclarations(css, ":root");
+  const match = new RegExp(
+    `${escapeRegExp(property)}:\\s*(#[0-9a-fA-F]{6})\\s*;`,
+  ).exec(rootDeclarations);
+  expect(match, `${property} should be a six-digit hex color.`).not.toBeNull();
+  return match?.[1] ?? "#000000";
+}
+
+function relativeLuminance(hex: string): number {
+  const channels = hex
+    .slice(1)
+    .match(/.{2}/g)
+    ?.map((channel) => Number.parseInt(channel, 16) / 255);
+  const [red = 0, green = 0, blue = 0] = channels ?? [];
+  const linearize = (channel: number) =>
+    channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+
+  return (
+    0.2126 * linearize(red) +
+    0.7152 * linearize(green) +
+    0.0722 * linearize(blue)
+  );
+}
+
+describe("Project Queue action CSS contract", () => {
+  it("makes the new-session action darker than the current-session action", async () => {
+    const css = await readFile(stylesheetUrl, "utf8");
+    const currentSessionColor = getHexCustomProperty(
+      css,
+      "--project-queue-action-bg",
+    );
+    const newSessionColor = getHexCustomProperty(
+      css,
+      "--project-queue-new-session-action-bg",
+    );
+    const variantDeclarations = getRuleDeclarations(
+      css,
+      ".project-queue-new-session-button",
+    );
+    const keyboardDeclarations = getRuleDeclarations(
+      css,
+      ".message-input-keyboard-action.project-queue-mode",
+    );
+    const toolbarDeclarations = getRuleDeclarations(
+      css,
+      ".send-button.project-queue-button",
+    );
+
+    expect(relativeLuminance(newSessionColor)).toBeLessThan(
+      relativeLuminance(currentSessionColor),
+    );
+    expect(variantDeclarations).toMatch(
+      /--project-queue-button-bg:\s*var\(--project-queue-new-session-action-bg\)\s*;/,
+    );
+    for (const declarations of [
+      toolbarDeclarations,
+      keyboardDeclarations,
+    ]) {
+      expect(declarations).toMatch(
+        /background:\s*var\(\s*--project-queue-button-bg,\s*var\(--project-queue-action-bg\)\s*\)\s*;/,
+      );
+    }
+  });
+
+  it("keeps the plus as a prominent high-contrast badge", async () => {
+    const css = await readFile(stylesheetUrl, "utf8");
+    const declarations = getRuleDeclarations(
+      css,
+      ".project-queue-new-session-mark",
+    );
+
+    expect(declarations).toMatch(/width:\s*14px\s*;/);
+    expect(declarations).toMatch(/height:\s*14px\s*;/);
+    expect(declarations).toMatch(/font-size:\s*12px\s*;/);
+    expect(declarations).toMatch(/font-weight:\s*900\s*;/);
+    expect(declarations).toMatch(
+      /color:\s*var\(--project-queue-new-session-action-bg\)\s*;/,
+    );
+  });
+});

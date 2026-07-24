@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Split the active-session `+` Project Queue new-session shortcut into its own
   default-off Toolbar setting so enabling current-session Project Queue does not
-  expose a cross-session submission target.
+  expose a cross-session submission target, and distinguish it from the
+  current-session action with a darker violet and prominent `+` badge.
 
 ## [0.6.2] - 2026-07-11
 

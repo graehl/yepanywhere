@@ -188,11 +188,13 @@ with slack**. Two latch/oscillation traps live here:
   knowing to dismiss the keyboard. Project Queue is the exception: when the
   user has exposed it, separate potential 48px slots for its current-session
   (`⇥`) and new-session (`⇥+`) actions remain inline beside More. Available
-  actions fill those slots so the purple buttons are both directly reachable
-  and a glanceable signal that project-wide queue semantics currently differ
-  from normal send. Opening More must preserve textarea focus; choosing a
-  control may dismiss the keyboard when the invoked platform UI naturally
-  requires it (for example, the system file picker).
+  actions fill those slots so the purple-family buttons are both directly
+  reachable and a glanceable signal that project-wide queue semantics
+  currently differ from normal send. The new-session button keeps its darker
+  violet treatment and prominent `+` badge in this compact row. Opening More
+  must preserve textarea focus; choosing a control may dismiss the keyboard
+  when the invoked platform UI naturally requires it (for example, the system
+  file picker).
 - Clearing or submitting the draft immediately restores the ordinary toolbar.
   This avoids the post-send jump from one enabled Send button to two disabled
   Queue/Steer buttons when clearing the draft and starting the provider turn

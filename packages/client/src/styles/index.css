@@ -226,6 +226,7 @@
   --provider-opencode: #9333ea;
   --provider-pi: #0d9488;
   --project-queue-action-bg: #7c3aed;
+  --project-queue-new-session-action-bg: #5b21b6;
 
   /* Semantic Colors */
   --thinking-color: var(--app-claude-orange);
@@ -6102,7 +6103,14 @@ a.linkified-url:hover {
 }
 
 .message-input-keyboard-action.project-queue-mode {
-  background: var(--project-queue-action-bg);
+  background: var(
+    --project-queue-button-bg,
+    var(--project-queue-action-bg)
+  );
+}
+
+.project-queue-new-session-button {
+  --project-queue-button-bg: var(--project-queue-new-session-action-bg);
 }
 
 .message-input-keyboard-action.project-queue-new-session-button {
@@ -6169,23 +6177,46 @@ a.linkified-url:hover {
 }
 
 .send-button.project-queue-button {
-  background: var(--project-queue-action-bg);
+  background: var(
+    --project-queue-button-bg,
+    var(--project-queue-action-bg)
+  );
   color: white;
   box-shadow:
     0 0 0 1px
-    color-mix(in srgb, var(--project-queue-action-bg) 52%, transparent),
+    color-mix(
+      in srgb,
+      var(--project-queue-button-bg, var(--project-queue-action-bg)) 52%,
+      transparent
+    ),
     0 0 0 3px
-    color-mix(in srgb, var(--project-queue-action-bg) 16%, transparent);
+    color-mix(
+      in srgb,
+      var(--project-queue-button-bg, var(--project-queue-action-bg)) 16%,
+      transparent
+    );
 }
 
 .send-button.project-queue-button:hover:not(:disabled) {
   opacity: 1;
-  background: color-mix(in srgb, var(--project-queue-action-bg) 88%, white);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-button-bg, var(--project-queue-action-bg)) 88%,
+    white
+  );
   box-shadow:
     0 0 0 1px
-    color-mix(in srgb, var(--project-queue-action-bg) 68%, transparent),
+    color-mix(
+      in srgb,
+      var(--project-queue-button-bg, var(--project-queue-action-bg)) 68%,
+      transparent
+    ),
     0 0 0 4px
-    color-mix(in srgb, var(--project-queue-action-bg) 22%, transparent);
+    color-mix(
+      in srgb,
+      var(--project-queue-button-bg, var(--project-queue-action-bg)) 22%,
+      transparent
+    );
 }
 
 .send-button.project-queue-button:disabled {
@@ -6194,19 +6225,25 @@ a.linkified-url:hover {
 
 .project-queue-new-session-mark {
   position: absolute;
-  top: 1px;
-  right: 2px;
+  top: 0;
+  right: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--project-queue-action-bg);
-  font-size: 9px;
-  font-weight: 800;
+  background: white;
+  color: var(--project-queue-new-session-action-bg);
+  font-size: 12px;
+  font-weight: 900;
   line-height: 1;
+  box-shadow: 0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--project-queue-new-session-action-bg) 42%,
+      transparent
+    );
   pointer-events: none;
 }
 

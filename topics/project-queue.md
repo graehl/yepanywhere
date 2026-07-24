@@ -116,6 +116,13 @@ the active-composer `+` shortcut for a future new session have separate
 presence settings. Enabling the current-session action must not implicitly
 enable the cross-session shortcut.
 
+The two toolbar actions must remain glanceably distinct wherever they render,
+including the ordinary composer, compact keyboard-open row, and Toolbar
+Settings specimen. The current-session action uses the standard Project Queue
+purple. The new-session action uses a darker violet and a prominent
+high-contrast `+` badge; the small mark must not be the only perceptible
+difference between two otherwise identical buttons.
+
 Project Queue UI must also be capability-gated on `/api/version` advertising
 `projectQueue`. The active-composer new-session shortcut and its Toolbar
 setting additionally require

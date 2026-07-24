@@ -69,8 +69,9 @@ Action-dependent specimens may provide invisible support context that the real
 toolbar requires to construct the control, but the visible specimen remains
 single-control: the current-session `Project Queue` row shows only its
 project-queue button, the new-session shortcut row shows only its `+` button,
-the `Now` row shows only the steering toggle, and none should leak the primary
-send button or disappear because an adjacent send context was omitted.
+including its darker violet and prominent badge treatment, the `Now` row shows
+only the steering toggle, and none should leak the primary send button or
+disappear because an adjacent send context was omitted.
 
 ## Presence slider & narrowing-priority model
 

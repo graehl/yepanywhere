@@ -550,11 +550,13 @@ export function MessageInput({
         ? t("toolbarQueueLabel")
         : t("toolbarSend");
   const mobileKeyboardActionDisplayLabel =
-    hasActiveDualActions && !forkSummaryMode
-      ? effectivePrimaryActionKind === "queue"
-        ? t("toolbarQueueShortLabel")
-        : t("toolbarSteerShortLabel")
-      : mobileKeyboardActionLabel;
+    effectivePrimaryActionKind === "steer" && !forkSummaryMode
+      ? null
+      : hasActiveDualActions && !forkSummaryMode
+        ? effectivePrimaryActionKind === "queue"
+          ? t("toolbarQueueShortLabel")
+          : t("toolbarSteerShortLabel")
+        : mobileKeyboardActionLabel;
   const mobileKeyboardActionIcon = forkSummaryMode
     ? forkSummaryMode.icon
     : effectivePrimaryActionKind === "steer"
@@ -2439,7 +2441,9 @@ export function MessageInput({
                 disabled={disabled}
                 aria-label={mobileKeyboardActionLabel}
               >
-                <span>{mobileKeyboardActionDisplayLabel}</span>
+                {mobileKeyboardActionDisplayLabel && (
+                  <span>{mobileKeyboardActionDisplayLabel}</span>
+                )}
                 <span aria-hidden="true">{mobileKeyboardActionIcon}</span>
               </button>
             </div>

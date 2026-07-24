@@ -932,4 +932,64 @@ describe("EditRenderer collapsed preview fallback", () => {
       ).toBe(true);
     });
   });
+
+  it("opens the full modal in the preview mode before transferring a selection", async () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-old text", "+# Selected heading"],
+      },
+    ];
+
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        <I18nProvider>
+          <div>
+            {renderCollapsedPreview(
+              { _structuredPatch: structuredPatch } as never,
+              { filePath: "notes.md", structuredPatch } as never,
+              false,
+              renderContext,
+            )}
+          </div>
+        </I18nProvider>
+      </SessionMetadataProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show source" }));
+    const selectedText = screen.getByText("+# Selected heading");
+    const textNode = selectedText.firstChild;
+    if (!textNode) {
+      throw new Error("Expected selectable source diff text");
+    }
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 2);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+
+    fireEvent.click(selectedText);
+
+    await waitFor(() => {
+      const modal = document.body.querySelector(".modal");
+      const selection = document.getSelection();
+      expect(modal).not.toBeNull();
+      expect(
+        modal?.querySelector(
+          '.fixed-font-render-toggle__button[aria-label="Show rendered view"]',
+        ),
+      ).not.toBeNull();
+      expect(selection?.toString()).toBe("+#");
+      expect(
+        selection?.anchorNode ? modal?.contains(selection.anchorNode) : false,
+      ).toBe(true);
+    });
+  });
 });

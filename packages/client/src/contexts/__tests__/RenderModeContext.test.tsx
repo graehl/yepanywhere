@@ -229,6 +229,35 @@ describe("RenderModeProvider", () => {
     document.getSelection()?.removeAllRanges();
   });
 
+  it("copies rendered math as one semantic MathML branch", () => {
+    const { container } = render(
+      <RenderModeProvider>
+        <MathPane id="copy-math" sourceText={"alpha $x^2$ omega"} />
+      </RenderModeProvider>,
+    );
+
+    const math = container.querySelector<HTMLElement>(".katex");
+    if (!math) {
+      throw new Error("Expected rendered KaTeX");
+    }
+    const range = document.createRange();
+    range.selectNodeContents(math);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+    const copied = new Map<string, string>();
+
+    fireEvent.copy(math, {
+      clipboardData: {
+        setData: (type: string, value: string) => copied.set(type, value),
+      },
+    });
+
+    const html = copied.get("text/html") ?? "";
+    expect(html).toContain("<math");
+    expect(html).not.toContain("aria-hidden");
+    document.getSelection()?.removeAllRanges();
+  });
+
   it("detects markdown tables in ANSI-colored unified diffs", () => {
     const sourceText = [
       "\u001b[1mdiff --git a/notes.md b/notes.md\u001b[0m",

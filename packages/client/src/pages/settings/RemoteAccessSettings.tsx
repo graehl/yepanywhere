@@ -247,14 +247,16 @@ function HostAwakeSettings({
               })}
             </p>
           )}
-          <button
-            type="button"
-            className="settings-button settings-button-secondary"
-            disabled={statusLoading || saving}
-            onClick={() => void onRefresh()}
-          >
-            {t("hostAwakeRefresh")}
-          </button>
+          {!enabled && (
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              disabled={statusLoading || saving}
+              onClick={() => void onRefresh()}
+            >
+              {t("hostAwakeRefresh")}
+            </button>
+          )}
         </div>
         <label className="toggle-switch">
           <input

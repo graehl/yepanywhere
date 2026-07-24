@@ -518,9 +518,10 @@ export function MessageInput({
   const projectQueueCtrlEnterEnabled =
     version?.clientDefaults?.projectQueueCtrlEnterEnabled ??
     DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED;
+  const projectQueueSupported = serverSupportsProjectQueue(version);
   const projectQueueShortcutAvailable =
     projectQueueCtrlEnterEnabled &&
-    serverSupportsProjectQueue(version) &&
+    projectQueueSupported &&
     toolbarVisibility.projectQueue &&
     !!onProjectQueue &&
     !forkSummaryMode;
@@ -1137,7 +1138,9 @@ export function MessageInput({
   // even before their buttons become useful, so Queue or Project Queue can
   // appear without taking space out from under Send/Steer.
   const reserveMobileProjectQueueSlot =
-    !forkSummaryMode && toolbarVisibility.projectQueue;
+    !forkSummaryMode &&
+    projectQueueSupported &&
+    toolbarVisibility.projectQueue;
   const reserveMobileProjectQueueNewSessionSlot =
     reserveMobileProjectQueueSlot && !!onProjectQueueNewSession;
   const reserveMobileSessionAlternateSlot =

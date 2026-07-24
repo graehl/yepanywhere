@@ -6,6 +6,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -21,6 +22,7 @@ interface RenderModeContextValue {
 }
 
 interface UseRenderModeToggleOptions {
+  initialMode?: RenderMode;
   participateInGlobalMode?: boolean;
   renderWhenDisabled?: boolean;
   resetDependencies?: readonly unknown[];
@@ -120,13 +122,36 @@ export function useRenderModeToggle(
   const renderWhenDisabled = options.renderWhenDisabled ?? true;
   const resetDependencies =
     options.resetDependencies ?? EMPTY_RESET_DEPENDENCIES;
+  const resetDependenciesRef = useRef(resetDependencies);
+  resetDependenciesRef.current = resetDependencies;
   const registrationId = useId();
-  const [overrideMode, setOverrideMode] = useState<RenderMode | null>(null);
+  const [overrideMode, setOverrideMode] = useState<RenderMode | null>(() =>
+    options.initialMode && options.initialMode !== globalMode
+      ? options.initialMode
+      : null,
+  );
+  const previousResetInputsRef = useRef<readonly unknown[]>([
+    canToggle,
+    resetVersion,
+    ...resetDependencies,
+  ]);
 
   useEffect(() => {
-    void canToggle;
-    void resetVersion;
-    setOverrideMode(null);
+    const resetInputs = [
+      canToggle,
+      resetVersion,
+      ...resetDependenciesRef.current,
+    ];
+    const previousResetInputs = previousResetInputsRef.current;
+    previousResetInputsRef.current = resetInputs;
+    if (
+      resetInputs.length !== previousResetInputs.length ||
+      resetInputs.some(
+        (value, index) => !Object.is(value, previousResetInputs[index]),
+      )
+    ) {
+      setOverrideMode(null);
+    }
   }, [canToggle, resetVersion, ...resetDependencies]);
 
   useEffect(() => {

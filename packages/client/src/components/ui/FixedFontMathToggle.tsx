@@ -13,7 +13,10 @@ import {
   type PublicShareContextValue,
   usePublicShareContext,
 } from "../../contexts/PublicShareContext";
-import { useRenderModeToggle } from "../../contexts/RenderModeContext";
+import {
+  type RenderMode,
+  useRenderModeToggle,
+} from "../../contexts/RenderModeContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useTooltipMode } from "../../hooks/useTooltipAppearance";
@@ -34,6 +37,7 @@ interface FixedFontMathToggleProps {
   sourceText: string;
   sourceView: ReactNode;
   renderRenderedView: (html: string) => ReactNode;
+  initialMode?: RenderMode;
   diffAware?: boolean;
   baseFilePath?: string;
   precomputedRendered?: RenderedMathResult;
@@ -206,7 +210,7 @@ function renderKatexHtml(tex: string, displayMode: boolean): string {
     return katex.renderToString(tex, {
       throwOnError: false,
       displayMode,
-      output: "html",
+      output: "htmlAndMathml",
       strict: "ignore",
       trust: false,
     });
@@ -881,6 +885,7 @@ export function FixedFontMathToggle({
   renderRenderedView,
   diffAware,
   baseFilePath,
+  initialMode,
   precomputedRendered,
   renderMode = "rich",
 }: FixedFontMathToggleProps) {
@@ -930,6 +935,7 @@ export function FixedFontMathToggle({
   const { showRendered, toggleLocalMode } = useRenderModeToggle(
     rendered.changed,
     {
+      initialMode,
       renderWhenDisabled: false,
       resetDependencies: [sourceText, renderMode],
     },
@@ -997,7 +1003,11 @@ export function FixedFontMathToggle({
     sessionMetadata?.projectId ?? publicShare?.projectId ?? "";
 
   return (
-    <div ref={copySourceRef} className="fixed-font-render-toggle">
+    <div
+      ref={copySourceRef}
+      className="fixed-font-render-toggle"
+      data-render-mode={showRendered && rendered.changed ? "rendered" : "source"}
+    >
       {showRendered && rendered.changed ? (
         // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to rendered file links inside the HTML
         // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links

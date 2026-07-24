@@ -369,6 +369,7 @@ function DiffMathView({
   diffAware = true,
   baseFilePath,
   renderMode,
+  initialMode,
   copyText,
   hiddenLineCount = 0,
 }: {
@@ -378,6 +379,7 @@ function DiffMathView({
   diffAware?: boolean;
   baseFilePath?: string;
   renderMode?: FixedFontRenderMode;
+  initialMode?: DiffSelectionSnapshot["renderMode"];
   copyText?: string;
   hiddenLineCount?: number;
 }) {
@@ -398,6 +400,7 @@ function DiffMathView({
       diffAware={diffAware}
       baseFilePath={baseFilePath}
       renderMode={effectiveRenderMode}
+      initialMode={initialMode}
       sourceView={
         <div
           className={`diff-view-container ${truncated ? "truncated" : ""}`}
@@ -730,6 +733,7 @@ function RawPatchModalContent({
     <div className="diff-modal-content" ref={contentRef}>
       <FixedFontMathToggle
         sourceText={rawPatch}
+        initialMode={selection?.renderMode}
         diffAware
         baseFilePath={targetFilePath}
         renderMode={renderMode}
@@ -909,6 +913,7 @@ function DiffModalContent({
       <DiffMathView
         sourceText={displayPatch.flatMap((h) => h.lines).join("\n")}
         baseFilePath={displayPath}
+        initialMode={selection?.renderMode}
         sourceView={
           displayHtml ? (
             <HighlightedDiff diffHtml={displayHtml} />

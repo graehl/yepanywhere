@@ -221,6 +221,40 @@ describe("RemoteAccessSettings host identity", () => {
     expect(mockHostAwakeRefetch).toHaveBeenCalledWith(true);
   });
 
+  it("offers manual status refresh only while host-awake is disabled", () => {
+    hostAwakeState.supported = true;
+    hostAwakeState.status = {
+      requestedMode: "off",
+      state: "disabled",
+      platform: "darwin",
+      support: {
+        idleSleepPrevention: true,
+        batteryFloor: true,
+        closedLidOnExternalPower: false,
+      },
+      hasInternalBattery: true,
+      powerSource: "battery",
+      batteryPercent: 75,
+      powerObservedAt: 123,
+      batteryFloorPercent: 10,
+    };
+    const view = render(<RemoteAccessSettings />);
+
+    expect(
+      screen.getByRole("button", { name: "hostAwakeRefresh" }),
+    ).toBeDefined();
+
+    hookState.settings = {
+      ...hookState.settings,
+      hostAwakeMode: "idle",
+    };
+    view.rerender(<RemoteAccessSettings />);
+
+    expect(
+      screen.queryByRole("button", { name: "hostAwakeRefresh" }),
+    ).toBeNull();
+  });
+
   it("shows and saves the battery floor only for a detected battery", async () => {
     hostAwakeState.supported = true;
     hostAwakeState.status = {

@@ -360,9 +360,12 @@ A portable host with `batteryFloor: false`, or whose battery presence is still
 ### Status sampling cadence
 
 The UI fetches host-awake status when its settings pane mounts and after a
-mutation. It may expose a manual refresh action if it displays battery level.
-The first implementation does not add a client polling loop or WebSocket event;
-the percentage is a timestamped snapshot, not a promised live gauge.
+mutation. It exposes manual refresh only while host-awake is disabled, when a
+request can perform the bounded on-demand platform probe. While enabled, the
+policy lease owns the at-most-once-per-minute sampling cadence, so the UI does
+not claim that an ordinary status read refreshed the live power sample. The
+first implementation does not add a client polling loop or WebSocket event; the
+percentage is a timestamped snapshot, not a promised live gauge.
 
 The server owns sampling:
 

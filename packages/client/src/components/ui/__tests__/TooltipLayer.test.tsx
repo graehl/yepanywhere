@@ -55,7 +55,7 @@ describe("TooltipLayer", () => {
       clientX: 10,
       clientY: 10,
     });
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS - 1));
     expect(screen.queryByRole("tooltip")).toBeNull();
 
@@ -73,7 +73,7 @@ describe("TooltipLayer", () => {
       clientY: 10,
     });
     expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
 
     fireEvent.keyDown(document, {
       key: "Shift",
@@ -115,7 +115,7 @@ describe("TooltipLayer", () => {
     expect(screen.getByRole("tooltip").textContent).toBe("Command tail");
     act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByRole("tooltip")).toBeNull();
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Command tail");
   });
 
@@ -245,7 +245,7 @@ describe("TooltipLayer", () => {
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
 
     expect(screen.getByRole("tooltip").textContent).toBe("took 1.2s");
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("took 1.2s");
   });
 
@@ -295,15 +295,15 @@ describe("TooltipLayer", () => {
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
 
     expect(screen.queryByRole("tooltip")).toBeNull();
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     fireEvent.pointerMove(target, {
       pointerType: "mouse",
       clientX: 11,
       clientY: 10,
     });
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     fireEvent.pointerOut(target, { relatedTarget: document.body });
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Visible command");
   });
 
@@ -408,7 +408,7 @@ describe("TooltipLayer", () => {
 
     fireEvent.focusOut(target);
     expect(target.getAttribute("aria-describedby")).toBeNull();
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Focused hint");
   });
 
@@ -450,7 +450,7 @@ describe("TooltipLayer", () => {
     );
     const target = screen.getByRole("button", { name: "Target" });
     const svgTarget = screen.getByRole("img", { name: "Starred" });
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Browser-owned hint");
     expect(svgTarget.querySelector("title")).toBeNull();
     expect(svgTarget.getAttribute("data-tooltip")).toBe("Starred");
@@ -472,7 +472,7 @@ describe("TooltipLayer", () => {
         new StorageEvent("storage", { key: UI_KEYS.tooltipMode }),
       );
     });
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Browser-owned hint");
     expect(svgTarget.querySelector("title")).toBeNull();
     expect(svgTarget.getAttribute("data-tooltip")).toBe("Starred");
@@ -487,9 +487,47 @@ describe("TooltipLayer", () => {
 
     await act(async () => Promise.resolve());
 
-    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("title")).toBe("");
     expect(target.getAttribute("data-tooltip")).toBe("Late hint");
     target.remove();
+  });
+
+  it("clears a detached hint when React removes its title", async () => {
+    const view = render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Transient hint">
+          Target
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Target" });
+    expect(target.getAttribute("data-tooltip")).toBe("Transient hint");
+
+    view.rerender(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Updated hint">
+          Target
+        </button>
+      </>,
+    );
+    await act(async () => Promise.resolve());
+    expect(target.getAttribute("title")).toBe("");
+    expect(target.getAttribute("data-tooltip")).toBe("Updated hint");
+
+    view.rerender(
+      <>
+        <TooltipLayer />
+        <button type="button">
+          Target
+        </button>
+      </>,
+    );
+    await act(async () => Promise.resolve());
+
+    expect(target.getAttribute("title")).toBeNull();
+    expect(target.getAttribute("data-tooltip")).toBeNull();
   });
 
   it("copies and enlarges plain text on an otherwise unused context click", () => {

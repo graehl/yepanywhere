@@ -1047,6 +1047,32 @@ describe("MessageInput", () => {
     }
   });
 
+  it("does not reserve Project Queue slots against an unsupported server", () => {
+    const viewport = installMobileKeyboardViewport();
+    versionState.version = {
+      ...versionState.version,
+      capabilities: [],
+    };
+    const textarea = renderMessageInput();
+
+    try {
+      act(() => textarea.focus());
+      act(() => viewport.setHeight(480));
+      fireEvent.change(textarea, { target: { value: "send normally" } });
+
+      expect(
+        document.querySelector(".message-input-keyboard-project-queue-slot"),
+      ).toBeNull();
+      expect(
+        document.querySelector(
+          ".message-input-keyboard-project-queue-new-session-slot",
+        ),
+      ).toBeNull();
+    } finally {
+      viewport.restore();
+    }
+  });
+
   it("uses fork summary mode with empty instructions as a valid submit", () => {
     const onSubmit = vi.fn();
     const onCancel = vi.fn();

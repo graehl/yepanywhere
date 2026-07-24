@@ -164,7 +164,7 @@ export function TooltipLayer() {
   const restoreDetachedTitles = useCallback(() => {
     for (const [target, saved] of detachedTitlesRef.current) {
       if (!target.isConnected) continue;
-      if (!target.hasAttribute("title")) {
+      if (!target.getAttribute("title")) {
         target.setAttribute("title", saved.value);
       }
       if (
@@ -200,6 +200,9 @@ export function TooltipLayer() {
       return detachedTitlesRef.current.get(target)?.value ?? "";
     }
     const existing = detachedTitlesRef.current.get(target);
+    if (liveTitle === "") {
+      return existing?.value ?? "";
+    }
     const injectedDataTooltip =
       existing?.injectedDataTooltip ??
       !target.hasAttribute("data-tooltip");
@@ -210,7 +213,7 @@ export function TooltipLayer() {
     if (injectedDataTooltip) {
       target.setAttribute("data-tooltip", liveTitle);
     }
-    target.removeAttribute("title");
+    target.setAttribute("title", "");
     return liveTitle;
   }, []);
 
@@ -396,15 +399,37 @@ export function TooltipLayer() {
         }
       }
     };
+    const forgetRemovedTitle = (target: Element) => {
+      const saved = detachedTitlesRef.current.get(target);
+      if (!saved) return;
+      detachedTitlesRef.current.delete(target);
+      if (
+        saved.injectedDataTooltip &&
+        target.getAttribute("data-tooltip") === saved.value
+      ) {
+        target.removeAttribute("data-tooltip");
+      }
+      if (activeTargetRef.current === target) {
+        hide();
+      }
+    };
     detachTitlesWithin(document);
     const titleObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === "attributes") {
-          if (
-            mutation.target instanceof Element &&
-            mutation.target.hasAttribute("title")
-          ) {
-            detachTitle(mutation.target);
+          if (mutation.target instanceof Element) {
+            if (mutation.target.hasAttribute("title")) {
+              if (
+                mutation.target.getAttribute("title") === "" &&
+                mutation.oldValue === ""
+              ) {
+                forgetRemovedTitle(mutation.target);
+              } else {
+                detachTitle(mutation.target);
+              }
+            } else {
+              forgetRemovedTitle(mutation.target);
+            }
           }
           continue;
         }
@@ -418,6 +443,7 @@ export function TooltipLayer() {
     });
     titleObserver.observe(document.documentElement, {
       attributeFilter: ["title"],
+      attributeOldValue: true,
       attributes: true,
       childList: true,
       subtree: true,

@@ -124,9 +124,13 @@ Shared helpers enforce that rule for React attributes, pointer-computed hints,
 hidden-content badges, and generated fixed-font file links.
 Themed mode proactively detaches every legacy browser `title`, including titles
 added or updated after mount, and retains its text as YA tooltip metadata for
-the entire time Themed mode is active. Only switching to Native restores those
-titles. No pointer departure, dismissal, or viewport change may reintroduce a
-browser-owned bubble while Themed mode owns tooltip presentation.
+the entire time Themed mode is active. A detached React-owned title remains as
+an empty `title=""` sentinel: it cannot produce a browser bubble, but it lets a
+later React update or removal remain observable. Removing the source title also
+removes the layer-injected `data-tooltip`; switching to Native restores only
+titles whose producers still own them. No pointer departure, dismissal, or
+viewport change may reintroduce a browser-owned bubble while Themed mode owns
+tooltip presentation.
 
 A hint that exactly repeats its target's visible text is omitted only when the
 target is measurably visible in its own scrollport, every clipping ancestor,
@@ -186,8 +190,9 @@ not the surface into a card.
 
 - Static and pointer-computed hints obey rest delay, persistent trigger/tooltip
   hover, delayed pointer departure, keyboard-visible focus, and exclusive
-  native/themed ownership. Themed mode contains no live native titles; Native
-  mode restores them.
+  native/themed ownership. Themed mode contains no nonempty native titles;
+  removing a detached source title clears its themed metadata, and Native mode
+  restores only titles still owned by their producers.
 - Keyboard-visible focus opens themed tooltips; pointer-generated focus,
   including touch focus, does not reopen a dismissed tooltip.
 - Rich explanatory tooltips likewise ignore touch pointer activity and
@@ -227,7 +232,7 @@ browser/OS UI rather than page DOM:
 | Scenario | Semantic assertion | Screenshot expectation |
 | --- | --- | --- |
 | Native ordinary hint | Target has `title`, has no `data-tooltip`, and exposes the title as an accessibility description where the browser supports that mapping | A Playwright page screenshot generally does **not** capture the native bubble, even after a real hover; absence from the image does not prove failure |
-| Themed ordinary hint | Target has `data-tooltip`, has no `title`, and a delayed hover or keyboard-visible focus creates one page-DOM `role=tooltip` surface | The tooltip is part of the page and should appear in a screenshot after it becomes visible |
+| Themed ordinary hint | Target has `data-tooltip`, has no nonempty `title` (a detached legacy source may retain `title=""`), and a delayed hover or keyboard-visible focus creates one page-DOM `role=tooltip` surface | The tooltip is part of the page and should appear in a screenshot after it becomes visible |
 | Touch activation | A real touch tap may focus and activate the target, but waiting past the configured delay must not create an ordinary themed or rich explanatory tooltip | No custom tooltip remains over the post-activation UI |
 | Rich explanation or session preview | Assert the custom surface's own content, timing, ownership, and activation contract independently of ordinary `title` ownership | These surfaces are page DOM and are screenshot-visible in either mode |
 

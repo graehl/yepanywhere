@@ -23,7 +23,15 @@ function rangeIsWithin(root: HTMLElement, range: Range): boolean {
   );
 }
 
+function removeKatexVisualBranches(fragment: DocumentFragment): void {
+  for (const visualMath of fragment.querySelectorAll(".katex-html")) {
+    visualMath.remove();
+  }
+}
+
 function removePresentation(fragment: DocumentFragment): void {
+  removeKatexVisualBranches(fragment);
+
   for (const stylesheet of fragment.querySelectorAll(
     'style, link[rel~="stylesheet"]',
   )) {

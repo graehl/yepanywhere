@@ -92,6 +92,11 @@ pair into editors such as Jira. Table headers and inline/block code still
 declare paired themed colors for correct rendering inside YA; those
 declarations never enter the explicit clipboard HTML.
 
+KaTeX display output contains both an accessible MathML branch and its styled
+visual HTML branch. Semantic clipboard HTML keeps only the MathML branch before
+removing presentation attributes, so pasted math remains portable without an
+unstyled duplicate visual tree.
+
 ### Edit preview expansion and truncation
 
 Edit diff previews expose the following interaction contract:
@@ -100,9 +105,10 @@ Edit diff previews expose the following interaction contract:
   opens the complete diff modal. Buttons and links inside the preview retain
   their own actions and do not open that modal.
 - Completing a non-collapsed text selection inside the fixed-font diff also
-  opens the complete modal. The same text remains selected by a live browser
-  range owned by the modal, so the user's next copy command copies from the
-  expanded view without requiring another selection gesture.
+  opens the complete modal in the same source or rendered representation as the
+  preview. The same text remains selected by a live browser range owned by the
+  modal, so the user's next copy command copies from the expanded view without
+  requiring another selection gesture.
 - If the preview range cannot be captured wholly inside the fixed-font content,
   the modal stays closed and the original preview selection remains intact.
 - A truncated preview shows both its existing fade and a `+N` badge whose count

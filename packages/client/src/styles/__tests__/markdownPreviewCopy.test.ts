@@ -9,6 +9,7 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import katex from "katex";
 import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -36,6 +37,10 @@ describe("Markdown preview rich-text copy", () => {
         },
       },
     ).outputText;
+    const mathHtml = katex.renderToString("x^2", {
+      output: "htmlAndMathml",
+      throwOnError: false,
+    });
     server = createServer((request, response) => {
       if (request.url === "/semantic-html-clipboard.js") {
         response.setHeader("Content-Type", "text/javascript; charset=utf-8");
@@ -65,6 +70,7 @@ describe("Markdown preview rich-text copy", () => {
           <div class="markdown-rendered">
             <table><thead><tr><th>model</th><th>n</th></tr></thead></table>
             <p>Inline <code>code</code></p>
+            <p class="math-preview">Value ${mathHtml}</p>
             <pre><code>block code</code></pre>
           </div>
         </div>
@@ -194,5 +200,21 @@ describe("Markdown preview rich-text copy", () => {
     expect(pastedHtml).not.toMatch(
       /\s(?:background|bgcolor|class|color|fill|style|stroke)=/i,
     );
+  });
+
+  it("copies KaTeX as one portable MathML branch", async () => {
+    await page.locator(".math-preview").selectText();
+    await page.keyboard.press(`${clipboardModifier}+c`);
+    const html = await page.evaluate(async () => {
+      const item = (await navigator.clipboard.read())[0];
+      if (!item) {
+        throw new Error("Browser clipboard did not contain an item");
+      }
+      return (await item.getType("text/html")).text();
+    });
+
+    expect(html).toContain("<math");
+    expect(html).not.toContain("aria-hidden");
+    expect(html).not.toContain("katex-html");
   });
 });

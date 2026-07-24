@@ -1,5 +1,6 @@
 export interface DiffSelectionSnapshot {
   end: number;
+  renderMode: "rendered" | "source";
   start: number;
   text: string;
 }
@@ -57,9 +58,11 @@ export function captureDiffSelection(
   element: HTMLElement,
 ): DiffSelectionSnapshot | null {
   const root = element.querySelector<HTMLElement>(".fixed-font-render-toggle");
+  const renderMode = root?.dataset.renderMode;
   const selection = element.ownerDocument.getSelection();
   if (
     !root ||
+    (renderMode !== "rendered" && renderMode !== "source") ||
     !selection ||
     selection.isCollapsed ||
     selection.rangeCount === 0
@@ -85,6 +88,7 @@ export function captureDiffSelection(
   return {
     start,
     end: start + text.length,
+    renderMode,
     text,
   };
 }

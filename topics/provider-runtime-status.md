@@ -48,6 +48,13 @@ can change models dynamically but cannot interrupt a retrying request, YA must
 restart that provider process rather than leave the old-model retry clock in
 control.
 
+Likewise, changing Claude effort during an ordinary active turn is a
+next-turn setting. YA accepts the selection immediately, applies it at the
+provider idle boundary before queued work, and never interrupts the current
+turn. Manual stop remains independently available; treating a configuration
+choice as a stop can discard nearly completed, already-paid-for reasoning on a
+high-cost turn.
+
 YA's initial Codex `CodexErrorInfo` normalization maps as follows:
 
 - `serverOverloaded` -> `overloaded`

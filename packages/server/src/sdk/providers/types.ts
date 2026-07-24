@@ -151,6 +151,13 @@ export interface AgentSession {
    */
   setMaxThinkingTokens?: (tokens: number | null) => Promise<void>;
   /**
+   * Change the effort used by subsequent provider responses without restarting.
+   * undefined clears the session-scoped override.
+   */
+  setEffort?: (
+    effort?: import("@yep-anywhere/shared").EffortLevel,
+  ) => Promise<void>;
+  /**
    * Interrupt the current turn gracefully without killing the process.
    * The query will stop processing the current turn and return control.
    * Only supported by Claude SDK 0.2.7+.

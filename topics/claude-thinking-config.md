@@ -12,7 +12,7 @@ Related topics: [claude provider control](claude.md),
 [cost efficiency](cost-efficiency.md),
 [provider refresh](provider-refresh.md).
 
-## Current state (verified against installed SDK, 2026-06-07)
+## Current state (verified against installed SDK, 2026-07-24)
 
 - `thinkingOptionToConfig` (`packages/shared/src/types.ts`) is the **sole**
   constructor of a `ThinkingConfig`. Every thinking-enabled option
@@ -27,6 +27,16 @@ Related topics: [claude provider control](claude.md),
 - The Claude provider passes the result straight to the Agent SDK query —
   `thinking: options.thinking`, `effort: options.effort`
   (`packages/server/src/sdk/providers/claude.ts`). No remap to a budget.
+- A pure live effort change uses the Agent SDK query's
+  `applyFlagSettings({ effortLevel })` control instead of restarting the
+  provider process. If the process is idle, YA applies the change immediately.
+  If a turn is active or waiting for input, YA accepts the selection
+  immediately but applies only the latest pending effort at the next provider
+  idle boundary, before any deferred turn is promoted. The active turn is
+  never interrupted or retroactively reconfigured by the effort selector;
+  manual stop remains a separate action. This distinction prevents a routine
+  configuration change from discarding nearly completed, already-paid-for
+  reasoning on a high-cost turn.
 - `setMaxThinkingTokens(tokens)` is wired as a Query control in the
   provider bridge (`claude.ts`, near the `Query` control handle), but it
   is a runtime SDK method, not a surfaced user control. On adaptive

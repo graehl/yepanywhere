@@ -705,6 +705,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   }) => Promise<PromptCacheRefreshResult>;
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
+  /** Function to change effort without restarting the provider process. */
+  setEffortFn?: (effort?: EffortLevel) => Promise<void>;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
   interruptFn?: () => Promise<undefined | boolean>;
   /**
@@ -841,11 +843,16 @@ export class Process {
   private _thinking: ThinkingConfig | undefined;
   /** Effort level for response quality */
   private _effort: EffortLevel | undefined;
+  /** Latest effort selected while the current provider turn is still active. */
+  private pendingEffortUpdate: { effort: EffortLevel | undefined } | null =
+    null;
 
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   private setMaxThinkingTokensFn:
     | ((tokens: number | null) => Promise<void>)
     | null;
+  /** Function to change effort without restarting the provider process. */
+  private setEffortFn: ((effort?: EffortLevel) => Promise<void>) | null;
 
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
   private interruptFn: (() => Promise<undefined | boolean>) | null;
@@ -958,6 +965,7 @@ export class Process {
     this._thinking = options.thinking;
     this._effort = options.effort;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
+    this.setEffortFn = options.setEffortFn ?? null;
     this.interruptFn = options.interruptFn ?? null;
     this.steerFn = options.steerFn ?? null;
     this.supportedModelsFn = options.supportedModelsFn ?? null;
@@ -1567,10 +1575,12 @@ export class Process {
   }
 
   /**
-   * Effort level for this process.
+   * Selected effort for subsequent responses. While a provider turn is active,
+   * this reflects the queued next-turn selection before the provider control
+   * request is applied at the turn boundary.
    */
   get effort(): EffortLevel | undefined {
-    return this._effort;
+    return this.pendingEffortUpdate?.effort ?? this._effort;
   }
 
   /**
@@ -1587,6 +1597,11 @@ export class Process {
    */
   get supportsThinkingModeChange(): boolean {
     return this.setMaxThinkingTokensFn !== null;
+  }
+
+  /** Whether this process can change effort without being restarted. */
+  get supportsEffortChange(): boolean {
+    return this.setEffortFn !== null;
   }
 
   /**
@@ -1692,6 +1707,76 @@ export class Process {
     // SDK uses null to disable, we use undefined for consistency with our types
     await this.setMaxThinkingTokensFn(tokens ?? null);
     return true;
+  }
+
+  /**
+   * Select a new effort without interrupting provider work. An idle process can
+   * apply it immediately; an active or waiting process holds the latest choice
+   * until the provider reports the turn boundary.
+   */
+  async setEffort(effort?: EffortLevel): Promise<boolean> {
+    if (!this.setEffortFn) {
+      return false;
+    }
+
+    if (
+      this._state.type === "in-turn" ||
+      this._state.type === "waiting-input"
+    ) {
+      this.pendingEffortUpdate = { effort };
+      getLogger().info(
+        {
+          event: "effort_change_queued",
+          sessionId: this._sessionId,
+          processId: this.id,
+          oldEffort: this._effort,
+          newEffort: effort,
+        },
+        `Queued effort change: ${this._effort ?? "default"} → ${effort ?? "default"}`,
+      );
+      return true;
+    }
+
+    await this.applyEffort(effort);
+    return true;
+  }
+
+  private async applyEffort(effort?: EffortLevel): Promise<void> {
+    if (!this.setEffortFn) {
+      throw new Error("Provider does not support dynamic effort changes");
+    }
+
+    getLogger().info(
+      {
+        event: "effort_change",
+        sessionId: this._sessionId,
+        processId: this.id,
+        oldEffort: this._effort,
+        newEffort: effort,
+      },
+      `Changing effort: ${this._effort ?? "default"} → ${effort ?? "default"}`,
+    );
+    await this.setEffortFn(effort);
+    this._effort = effort;
+  }
+
+  private async applyPendingEffort(): Promise<void> {
+    while (this.pendingEffortUpdate) {
+      const pending = this.pendingEffortUpdate;
+      try {
+        await this.applyEffort(pending.effort);
+      } catch (error) {
+        if (this.pendingEffortUpdate === pending) {
+          this.pendingEffortUpdate = null;
+        }
+        throw new Error("Failed to apply queued effort change", {
+          cause: error,
+        });
+      }
+      if (this.pendingEffortUpdate === pending) {
+        this.pendingEffortUpdate = null;
+      }
+    }
   }
 
   /**
@@ -3673,7 +3758,7 @@ export class Process {
           this.iteratorDone = true;
           // Don't transition to idle if we're waiting for input
           if (this._state.type !== "waiting-input") {
-            this.transitionToIdle();
+            this.transitionToIdle({ applyPendingEffort: false });
           }
           break;
         }
@@ -3787,7 +3872,11 @@ export class Process {
         // Handle special message types
         const claudeSessionState = getClaudeSessionStateChange(message);
         if (claudeSessionState) {
-          this.handleClaudeSessionStateChanged(claudeSessionState);
+          const effortUpdate =
+            this.handleClaudeSessionStateChanged(claudeSessionState);
+          if (effortUpdate) {
+            await effortUpdate;
+          }
         } else if (
           message.type === "system" &&
           message.subtype === "input_request"
@@ -3823,7 +3912,10 @@ export class Process {
               }
             }
           }
-          this.transitionToIdle();
+          const effortUpdate = this.transitionToIdle();
+          if (effortUpdate) {
+            await effortUpdate;
+          }
         }
         // Note: deferred messages are intentionally NOT promoted at completed
         // tool-result boundaries. A queued (`deferred`) item delivers at the
@@ -3867,7 +3959,10 @@ export class Process {
 
       // Don't transition to idle if we're waiting for input
       if (this._state.type !== "waiting-input") {
-        this.transitionToIdle();
+        const effortUpdate = this.transitionToIdle();
+        if (effortUpdate) {
+          await effortUpdate;
+        }
       }
     } finally {
       // Resolve exit promise on both normal completion and non-terminating errors
@@ -3916,11 +4011,13 @@ export class Process {
     this.setState({ type: "waiting-input", request });
   }
 
-  private handleClaudeSessionStateChanged(state: ClaudeSessionState): void {
+  private handleClaudeSessionStateChanged(
+    state: ClaudeSessionState,
+  ): Promise<void> | void {
     switch (state) {
       case "idle":
         if (this._state.type !== "waiting-input") {
-          this.transitionToIdle();
+          return this.transitionToIdle();
         }
         break;
 
@@ -3949,7 +4046,9 @@ export class Process {
     }
   }
 
-  private transitionToIdle(): void {
+  private transitionToIdle(options?: {
+    applyPendingEffort?: boolean;
+  }): Promise<void> | void {
     this.clearIdleTimer();
     this.clearRetryingProviderRuntimeStatus();
 
@@ -3958,6 +4057,19 @@ export class Process {
     // the short gap before the provider's durable transcript becomes visible.
     this.releaseActiveSteerEchoes();
 
+    if (
+      options?.applyPendingEffort !== false &&
+      this.pendingEffortUpdate
+    ) {
+      return this.applyPendingEffort().then(() => {
+        this.finishTransitionToIdle();
+      });
+    }
+
+    this.finishTransitionToIdle();
+  }
+
+  private finishTransitionToIdle(): void {
     // Promote deferred messages as the same stitched user turn the provider
     // receives, so the live echo and later transcript catch-up agree.
     if (this.promoteEligibleDeferredAfterTurn()) {

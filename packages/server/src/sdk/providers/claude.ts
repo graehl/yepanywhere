@@ -1744,6 +1744,8 @@ export class ClaudeProvider implements AgentProvider {
       },
       setMaxThinkingTokens: (tokens: number | null) =>
         sdkQuery.setMaxThinkingTokens(tokens),
+      setEffort: (effort?: EffortLevel) =>
+        sdkQuery.applyFlagSettings({ effortLevel: effort ?? null }),
       interrupt: async () => {
         await sdkQuery.interrupt();
         return true;

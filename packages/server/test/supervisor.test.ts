@@ -169,6 +169,104 @@ describe("Supervisor", () => {
       await supervisorWithProvider.abortProcess(process2.id);
     });
 
+    it("applies an effort change without interrupting an active turn", async () => {
+      let aborted = false;
+      let completeTurn = () => {};
+      const turnCompleted = new Promise<void>((resolve) => {
+        completeTurn = resolve;
+      });
+      const setEffort = vi.fn(async () => {});
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "effort-session",
+            };
+            await turnCompleted;
+            yield {
+              type: "result" as const,
+              session_id: options.resumeSessionId ?? "effort-session",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              completeTurn();
+            },
+            setEffort,
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "claude",
+        displayName: "Claude",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithProvider.resumeSession(
+        "effort-session",
+        "/tmp/test",
+        { text: "first" },
+        undefined,
+        {
+          thinking: { type: "adaptive", display: "summarized" },
+          effort: "low",
+        },
+      );
+      await vi.waitFor(() => {
+        expect(process.state.type).toBe("in-turn");
+      });
+
+      const updated = await supervisorWithProvider.reconfigureProcess(
+        process.id,
+        {
+          thinking: { type: "adaptive", display: "summarized" },
+          effort: "medium",
+        },
+      );
+
+      try {
+        expect(updated).toBe(process);
+        expect(startSession).toHaveBeenCalledTimes(1);
+        expect(aborted).toBe(false);
+        expect(process.effort).toBe("medium");
+        expect(setEffort).not.toHaveBeenCalled();
+
+        completeTurn();
+        await vi.waitFor(() => {
+          expect(process.state.type).toBe("idle");
+        });
+        expect(setEffort).toHaveBeenCalledWith("medium");
+      } finally {
+        await supervisorWithProvider.abortProcess(updated?.id ?? process.id);
+      }
+    });
+
     it("creates new process for different session", async () => {
       mockSdk.addScenario(createMockScenario("sess-123", "First"));
       mockSdk.addScenario(createMockScenario("sess-456", "Second"));

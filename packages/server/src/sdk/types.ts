@@ -217,6 +217,13 @@ export interface StartSessionResult {
    */
   setMaxThinkingTokens?: (tokens: number | null) => Promise<void>;
   /**
+   * Change the effort used by subsequent Claude responses without restarting.
+   * undefined clears the session-scoped override.
+   */
+  setEffort?: (
+    effort?: import("@yep-anywhere/shared").EffortLevel,
+  ) => Promise<void>;
+  /**
    * Interrupt the current turn gracefully without killing the process.
    * Only supported by Claude SDK 0.2.7+.
    */

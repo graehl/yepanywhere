@@ -967,6 +967,7 @@ export class Supervisor {
       getProviderActivity,
       getProviderRetention,
       setMaxThinkingTokens,
+      setEffort,
       interrupt,
       supportedModels,
       supportedCommands,
@@ -997,6 +998,7 @@ export class Supervisor {
         return typeof p === "function" ? p() : p;
       },
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      setEffortFn: setEffort,
       interruptFn: interrupt,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
@@ -1439,6 +1441,7 @@ export class Supervisor {
       getProviderActivity,
       getProviderRetention,
       setMaxThinkingTokens,
+      setEffort,
       interrupt,
       supportedModels,
       supportedCommands,
@@ -1468,6 +1471,7 @@ export class Supervisor {
         return typeof p === "function" ? p() : p;
       },
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      setEffortFn: setEffort,
       interruptFn: interrupt,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
@@ -1570,6 +1574,7 @@ export class Supervisor {
       getProviderActivity,
       getProviderRetention,
       setMaxThinkingTokens,
+      setEffort,
       interrupt,
       steer,
       supportedModels,
@@ -1603,6 +1608,7 @@ export class Supervisor {
         return typeof p === "function" ? p() : p;
       },
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      setEffortFn: setEffort,
       interruptFn: interrupt,
       steerFn: steer,
       supportedModelsFn: supportedModels,
@@ -1702,6 +1708,7 @@ export class Supervisor {
       getProviderActivity,
       getProviderRetention,
       setMaxThinkingTokens,
+      setEffort,
       interrupt,
       steer,
       supportedModels,
@@ -1735,6 +1742,7 @@ export class Supervisor {
         return typeof p === "function" ? p() : p;
       },
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      setEffortFn: setEffort,
       interruptFn: interrupt,
       steerFn: steer,
       supportedModelsFn: supportedModels,
@@ -2464,6 +2472,17 @@ export class Supervisor {
       return changed ? process : null;
     }
 
+    if (
+      !modelChanged &&
+      !serviceTierChanged &&
+      !thinkingChanged &&
+      effortChanged &&
+      process.supportsEffortChange
+    ) {
+      const changed = await process.setEffort(nextEffort);
+      return changed ? process : null;
+    }
+
     const effectiveProvider = this.resolveProvider({
       providerName: process.provider,
     });
@@ -2565,11 +2584,8 @@ export class Supervisor {
   }
 
   /**
-   * Queue a message to an existing session, handling thinking mode changes.
-   * If the thinking mode differs from the process's current setting, this will:
-   * 1. Abort the existing process
-   * 2. Start a new process with the new thinking settings
-   * 3. Queue the message to the new process
+   * Queue a message to an existing session, applying live configuration when
+   * the provider supports it and otherwise restarting with the new settings.
    *
    * @returns The process (possibly new), or an error object
    */
@@ -2650,6 +2666,16 @@ export class Supervisor {
             },
             "Failed to change thinking mode dynamically on queue",
           );
+        }
+      } else if (
+        !serviceTierChanged &&
+        !thinkingChanged &&
+        effortChanged &&
+        process.supportsEffortChange
+      ) {
+        const changed = await process.setEffort(requestedEffort);
+        if (!changed) {
+          throw new Error("Provider did not apply the effort change");
         }
       } else {
         // Effort changed or no dynamic support: restart process

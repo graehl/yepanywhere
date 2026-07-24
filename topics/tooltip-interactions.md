@@ -59,6 +59,10 @@ remain custom in either mode:
 - A session hover card previews session content and status. It remains a custom
   card in both modes; Themed mode derives its first-open delay from the shared
   setting, while Native mode retains its independent legacy/default delay.
+  Touch pointer entry and touch-generated compatibility mouse events do not
+  open or warm the card. Session-switch links in the Recent Sessions dropdown
+  likewise attach their full-title hint only after non-touch pointer entry, so
+  a tap cannot become a browser-native or themed hover hint.
 
 Menus, dialogs, interactive help panels, and other popovers are not tooltips
 and are outside the appearance setting. The mode name must not be interpreted
@@ -218,6 +222,8 @@ not the surface into a card.
 - Native mode leaves ordinary browser titles intact.
 - Valid slider/number edits select themed mode; an empty number draft does not.
 - Session hover cards use the 3× first-open delay and immediate warm switching.
+- Touch activation of a session row or Recent Sessions link navigates without
+  opening, warming, or leaving behind a session preview or text tooltip.
 - Secondary-click copy/enlarge respects context-menu and selection exclusions.
 - Themed tooltip text is pointer-selectable without weakening departure
   dismissal.

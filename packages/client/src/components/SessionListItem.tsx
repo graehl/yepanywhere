@@ -540,16 +540,18 @@ export function SessionListItem({
   ]);
 
   const handlePreviewEnter = useCallback(
-    (e: React.MouseEvent) => {
-      if (!showHoverCard) return;
+    (e: React.PointerEvent) => {
+      if (!showHoverCard || e.pointerType === "touch") return;
       previewCursorX.current = e.clientX;
       schedulePreviewShow();
     },
     [showHoverCard, schedulePreviewShow],
   );
 
-  const handlePreviewMove = useCallback((e: React.MouseEvent) => {
-    previewCursorX.current = e.clientX;
+  const handlePreviewMove = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") {
+      previewCursorX.current = e.clientX;
+    }
   }, []);
 
   // Only one session hovercard may be visible or pending across list surfaces.
@@ -613,7 +615,7 @@ export function SessionListItem({
   }, []);
 
   const handlePreviewLeave = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
       if (isOwnHoverCardTarget(e.relatedTarget)) return;
       handlePreviewCancel();
     },
@@ -749,9 +751,9 @@ export function SessionListItem({
     <li
       ref={liRef}
       className={liClasses}
-      onMouseEnter={showHoverCard ? handlePreviewEnter : undefined}
-      onMouseMove={showHoverCard ? handlePreviewMove : undefined}
-      onMouseLeave={showHoverCard ? handlePreviewLeave : undefined}
+      onPointerEnter={showHoverCard ? handlePreviewEnter : undefined}
+      onPointerMove={showHoverCard ? handlePreviewMove : undefined}
+      onPointerLeave={showHoverCard ? handlePreviewLeave : undefined}
       onWheel={showHoverCard ? handlePreviewCancel : undefined}
     >
       {/* Checkbox for multi-select (only shown when onSelect is provided) */}

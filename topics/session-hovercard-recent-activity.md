@@ -23,8 +23,8 @@ freshest agent line).
 
 ## Goal
 
-Hovering a session row should let the supervisor read, without opening the
-session, both ends of the conversation:
+Hovering a session row with a hover-capable pointer should let the supervisor
+read, without opening the session, both ends of the conversation:
 
 - **What it's about** — the opening user request (already shown).
 - **Where it is now** — the most recent regular agent turn (new).
@@ -269,9 +269,10 @@ when the user expresses interest:
   produce identical output.
 - **Triggers:** opening a non-running session (`useSession` `handleLoadComplete`
   when `owner === "none"`) and hovering a non-running row (`SessionListItem`,
-  debounced, once per row). Owned/external sessions are skipped — they already
-  update live, and refreshing them could clobber a fresh recap with the JSONL's
-  last turn.
+  debounced, once per row) with a non-touch pointer. Touch entry and its
+  compatibility mouse events neither show the card nor refresh its data.
+  Owned/external sessions are skipped — they already update live, and
+  refreshing them could clobber a fresh recap with the JSONL's last turn.
 
 This deliberately does not persist (no index write), so it does not survive
 reyep; the cold-cache excerpt repopulates on the next focus/hover or when the
@@ -281,11 +282,12 @@ tradeoff.
 ## Mobile preview access via the row menu (proposal — not built)
 
 Hover does not exist on touch devices, so the recent-activity preview is
-effectively **unreachable on mobile**. In practice tapping the row's `…`
-(overflow) menu *does* surface the hover card (touch synthesizes the
-`mouseenter` the card listens for), but the menu opens on top of it and covers
-most of it — accidental, not designed. So the `…` menu is the place to present
-both together, deliberately laid out.
+effectively **unreachable on mobile**. Touch-generated compatibility mouse
+events previously surfaced the card accidentally when a session row or its
+`…` menu was tapped. `SessionListItem` now listens at the pointer boundary and
+rejects touch entry, so activating a row remains pure session navigation. If a
+mobile preview is built, the `…` menu is the place to present it explicitly,
+deliberately laid out with its actions.
 
 Direction (agreed in discussion; not yet built):
 

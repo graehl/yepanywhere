@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GlobalSessionItem } from "../../api/client";
+import "../../../test/pointerEventShim";
 import { RecentSessionsDropdown } from "../RecentSessionsDropdown";
 
 const { globalSessionsState } = vi.hoisted(() => ({
@@ -98,5 +99,36 @@ describe("RecentSessionsDropdown", () => {
       ),
     ).not.toBeNull();
     expect(screen.queryByText("Shortened title...")).toBeNull();
+  });
+
+  it("keeps session-switch tooltips off touch activation", () => {
+    globalSessionsState.sessions = [session()];
+
+    render(
+      <MemoryRouter>
+        <RecentSessionsDropdown
+          currentSessionId="session-1"
+          isOpen={true}
+          onClose={vi.fn()}
+          onNavigate={vi.fn()}
+          triggerRef={triggerRef()}
+        />
+      </MemoryRouter>,
+    );
+
+    const item = screen.getByRole("link");
+    expect(item.getAttribute("title")).toBeNull();
+
+    fireEvent.pointerEnter(item, { pointerType: "touch" });
+    expect(item.getAttribute("title")).toBeNull();
+    expect(item.getAttribute("data-tooltip")).toBeNull();
+
+    fireEvent.pointerEnter(item, { pointerType: "mouse" });
+    expect(item.getAttribute("title")).toBe(
+      "Longer complete title text that should be visible in the recent sessions dropdown",
+    );
+
+    fireEvent.pointerDown(item, { pointerType: "touch" });
+    expect(item.getAttribute("title")).toBeNull();
   });
 });

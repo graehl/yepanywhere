@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import { useGlobalSessionsFeed } from "../hooks/useGlobalSessionsFeed";
+import { setElementTextTooltip } from "../hooks/useTooltipAppearance";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
@@ -193,6 +194,7 @@ export function RecentSessionsDropdown({
         <div className="recent-sessions-list">
           {recentSessions.map((session) => {
             const title = getDisplayTitle(session);
+            const titleTooltip = getTitleTooltip(session, title);
             const isBtwAside =
               !!session.parentSessionId || isBtwAsideSessionTitle(title);
             const parentSessionId = session.parentSessionId;
@@ -216,7 +218,17 @@ export function RecentSessionsDropdown({
                   onNavigate(session.id, session.projectId);
                   onClose();
                 }}
-                title={getTitleTooltip(session, title)}
+                onPointerEnter={(event) => {
+                  setElementTextTooltip(
+                    event.currentTarget,
+                    event.pointerType === "touch" ? null : titleTooltip,
+                  );
+                }}
+                onPointerDown={(event) => {
+                  if (event.pointerType === "touch") {
+                    setElementTextTooltip(event.currentTarget, null);
+                  }
+                }}
               >
                 <div className="recent-session-content">
                   <span className="recent-session-title">

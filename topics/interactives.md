@@ -62,9 +62,10 @@ Two classes, one registry:
 - **`INTERACTIVES.md`** — optional project doc whose content overrides the
   default prompt prefix injected by the Create Interactive button. Distinct
   from the machine-readable registry below.
-- **app template** — the opinionated scaffold (framework/language choices,
-  layout, registry entry, per-app agent guide, meta-UI hook) agents create
-  new interactives from.
+- **app template** — v1: a prefab list of project types plus an inherited
+  base project-setup prompt, all plain `.md` prompt documents sent to the
+  agent, which builds the intended result; no scaffold engine or template
+  config language.
 - **per-app agent guide** — the `.md` the scaffold places in an app's subdir
   telling the agent how to develop, update, and run that app; update turns
   reference it.
@@ -74,21 +75,48 @@ Two classes, one registry:
 ## App template and per-app agent guide
 
 "Create a project web app" from a session must be natural for a non-web-dev,
-so the convention defines a template for how such an app is organized:
-framework and languages (likely TS plus a to-be-chosen minimal framework),
-directory layout under a conventional project subdir, the registry entry, the
-meta-UI hook wired in, and a **per-app agent guide** — a `.md` scaffolded into
-the created app's subdir that tells the agent how to develop, update, run,
-and register that named app. A turn about the app references that guide (the
-create/update affordances prefix the composer with the reference), so "make
-the ball bounce higher" arrives carrying the app's dev context and the app
-stays maintainable across sessions. The template and guide are where the
-agent-facing instructions/skills land — they belong to the convention, not to
-YA's server code, which never needs to understand the framework choice.
+so the convention defines a template for how such an app is organized. The
+v1 mechanism is deliberately unstructured: **no config language for project
+templates**. Instead:
 
-v1 ships exactly one opinionated, friendly built-in template. Per-project
-template override is an intended later extension — recorded here so the v1
-shape does not foreclose it, deliberately not built first.
+- a **prefab list of project types** (fixed menu in v1 — e.g. game/animation
+  page, dashboard, REST tool; exact list open), and
+- an **inherited base project-setup prompt**: plain `.md` prompt documents —
+  one base md carrying the common conventions (framework and languages,
+  likely TS plus a to-be-chosen minimal framework; directory layout;
+  authoring the registry entry; creating the per-app guide; wiring the
+  meta-UI hook), with each project type's md adding its specifics on top.
+
+These prompt mds are *sent to the agent*, which builds the intended result by
+following them — the agent is the scaffold engine. Toolchain availability is
+an operator responsibility, not the convention's: the YA server operator
+ensures all YA-launched processes (e.g. the Claude TUI) can see the requisite
+node and other resources, so the prompts may assume the toolchain rather than
+detect or provision it.
+
+The prompts also instruct the agent to create a **per-app agent guide** — a
+`.md` in the created app's subdir that tells the agent how to develop,
+update, run, and register that named app. A turn about the app references
+that guide (the create/update affordances prefix the composer with the
+reference), so "make the ball bounce higher" arrives carrying the app's dev
+context and the app stays maintainable across sessions. The prompt mds and
+guide are where the agent-facing instructions land — they belong to the
+convention, not to YA's server code, which never needs to understand the
+framework choice.
+
+**In-project templates (v1, additive).** A project can extend the prefab
+menu by dropping prompt mds at a conventional path — proposed
+`interactives/templates/<name>.md`, exact path open — which YA discovers and
+shows in the create-a-web-app UI alongside the built-in project types. Each
+is an ordinary committed prompt document, same mechanism as the prefab type
+mds. The proposed path also suggests `interactives/<name>/` as the natural
+home for the app subdirs themselves; noted under open decisions.
+
+v1 otherwise ships one opinionated, friendly built-in prompt set: additive
+in-project types are v1 because discovery-and-list is cheap, while
+*overriding* the built-in base setup prompt per project remains the intended
+later extension — recorded here so the v1 shape does not foreclose it,
+deliberately not built first.
 
 ## Registration standard (the project-local config YA checks)
 
@@ -103,7 +131,7 @@ Proposed: `.yep/interactives.json` at the project root, an array of entries:
     "kind": "app",                      // "app" (proxied) | "page" (served)
     "port": 5199,                       // app: loopback port to proxy
     "path": "/",                        // app: landing path
-    "bundle": ".yep/interactives/coverage-explorer/", // page: served dir
+    "bundle": "interactives/coverage-explorer/", // page: served dir
     "start": "pnpm --dir tools/cov dev",// optional managed-lifecycle command
     "healthPath": "/"                   // optional liveness probe
   }
@@ -126,6 +154,11 @@ Contract points:
   [[session-ui-customization]].)
 - Hosted-client gating: advertise a `server-capabilities` string so older
   servers don't get dead icon affordances (see [[server-capabilities]]).
+
+Agreed layout split (2026-07-24): `.yep/` is the home for YA-managed state
+(this registry); project-authored content — the app subdirs and in-project
+template mds — lives in a visible project tree such as `interactives/`,
+curated and committed like any other source.
 
 Schema details (multiple pages per entry, auth annotations, REST-only entries
 without a UI landing page) are open; start minimal.
@@ -222,11 +255,12 @@ structured multi-round forms.
 
 ## Create Interactive button
 
-A composer-adjacent action that prefills the composer with a prompt prefix
-instructing the agent to scaffold an interactive from the app template
-(registry entry, class choice, port discipline, per-app agent guide). An
-update affordance on an existing app similarly prefixes a reference to that
-app's per-app agent guide. The default create prefix is built-in; a
+A composer-adjacent action whose type chooser lists the prefab project types
+plus any in-project templates, then prefills the composer with the base
+project-setup prompt and the chosen type's prompt (or references to
+them), so the agent builds the app to the convention. An update affordance
+on an existing app similarly prefixes a reference to that app's per-app
+agent guide. The default create prefix is built-in; a
 project overrides it by carrying `INTERACTIVES.md`, whose content precedes the
 user's turn in the composer. Because the prefix lands *in the composer* —
 visible, editable, sent verbatim only when the user sends — it is an
@@ -291,13 +325,18 @@ the operator's authenticated relay rather than vendor hosting.
 
 ## Open decisions
 
-- Registry location/name (`.yep/interactives.json` vs alternatives) and
-  minimal v1 schema.
-- Template framework/language choices, scaffold layout, and where app subdirs
-  live (served-page vs proxied-app cases).
+- Registry filename within `.yep/` (the `.yep/` home for YA-managed state is
+  agreed 2026-07-24) and minimal v1 schema.
+- The v1 prefab project-type list, and the framework/language choices and
+  layout conventions the base prompt md pins down (including where app
+  subdirs live, served-page vs proxied-app cases — `interactives/<name>/`
+  if aligned with the in-project templates path).
+- The in-project templates path (`interactives/templates/<name>.md` proposed)
+  and how template titles/descriptions surface in the create-UI menu.
 - Per-app agent guide filename and required sections.
-- Whether served-page bundles commit built output (so YA serves them with no
-  toolchain present) or commit source only and rebuild on update.
+- Whether served-page bundles commit built output (servable from a fresh
+  clone with no build step) or commit source only and rebuild on update
+  (toolchain presence is an operator guarantee either way).
 - Meta-UI channel mechanics (message schema, context payload, composer
   delivery vs queued turn; a fallback channel for new-tab opens where no
   embedding parent exists).

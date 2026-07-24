@@ -10,7 +10,13 @@ export function insertTranscriptDisplayObjects(
   }
 
   const placements = objects.flatMap((object, order) => {
-    let itemIndex = -1;
+    // An empty anchor places the object before the first item (empty-session
+    // runs); a non-empty anchor must match a loaded message or the object is
+    // omitted until its anchor is in the window.
+    if (object.placementAfterMessageId === "") {
+      return [{ itemIndex: -1, object, order }];
+    }
+    let itemIndex = Number.NEGATIVE_INFINITY;
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index];
       if (
@@ -22,7 +28,9 @@ export function insertTranscriptDisplayObjects(
         itemIndex = index;
       }
     }
-    return itemIndex < 0 ? [] : [{ itemIndex, object, order }];
+    return itemIndex === Number.NEGATIVE_INFINITY
+      ? []
+      : [{ itemIndex, object, order }];
   });
   placements.sort(
     (left, right) =>

@@ -69,6 +69,12 @@ import {
   type PendingTextareaSelectionRestore,
 } from "../lib/speechDraftTransaction";
 import {
+  applyBangCompletion,
+  getBangCompletionQuery,
+  longestCommonPrefix,
+  resolveComposerBangDraft,
+} from "../lib/bangCommands";
+import {
   getLeadingSlashQuery,
   getSlashCommandMenuParts,
   normalizeSlashCommandForMatch,
@@ -278,6 +284,20 @@ interface Props {
   };
   /** Composer shortcut for fork-after-summary using current draft as instructions. */
   onForkSummaryShortcut?: (instructions: string) => boolean | undefined;
+  /**
+   * `!!` bang-command support: routes bang drafts to a local run instead of
+   * the provider, serves tab completions, and exposes Ctrl+↑ history.
+   * Absent on composers without a wired bang path.
+   */
+  bangSupport?: {
+    onRun: (command: string) => void;
+    fetchCompletions: (
+      token: string,
+      kind: "command" | "path",
+      line: string,
+    ) => Promise<string[]>;
+    history: readonly string[];
+  };
 }
 
 export function MessageInput({
@@ -336,6 +356,7 @@ export function MessageInput({
   onDismissPromptSuggestion,
   forkSummaryMode,
   onForkSummaryShortcut,
+  bangSupport,
 }: Props) {
   const { t } = useI18n();
   const { visibility: toolbarVisibility } = useSessionToolbarPresence();
@@ -377,6 +398,13 @@ export function MessageInput({
     null,
   );
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+  const [bangCandidates, setBangCandidates] = useState<string[]>([]);
+  const [selectedBangIndex, setSelectedBangIndex] = useState(0);
+  const [dismissedBangQueryKey, setDismissedBangQueryKey] = useState<
+    string | null
+  >(null);
+  const bangHistoryIndexRef = useRef(-1);
+  const bangRecalledTextRef = useRef<string | null>(null);
   const [textareaFocused, setTextareaFocused] = useState(false);
   const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
   const [mobileKeyboardMoreOpen, setMobileKeyboardMoreOpen] = useState(false);
@@ -402,6 +430,26 @@ export function MessageInput({
     !hasExactSlashCommand &&
     dismissedSlashQuery !== slashQuery &&
     matchingSlashCommands.length > 0;
+  const bangQuery =
+    bangSupport && !collapsed ? getBangCompletionQuery(text) : null;
+  const bangQueryKey = bangQuery
+    ? `${bangQuery.kind} ${bangQuery.token}`
+    : null;
+  const showBangChip = !!bangSupport && !collapsed && text.startsWith("!!");
+  const showBangEscapedChip =
+    !!bangSupport && !collapsed && text.startsWith(" !!");
+  const showBangSuggestions =
+    !collapsed &&
+    !disabled &&
+    bangQuery !== null &&
+    bangQuery.token.length > 0 &&
+    dismissedBangQueryKey !== bangQueryKey &&
+    bangCandidates.length > 0 &&
+    !(
+      bangCandidates.length === 1 &&
+      (bangCandidates[0] === bangQuery.token ||
+        bangCandidates[0] === `${bangQuery.token}/`)
+    );
   const canSubmit = forkSummaryMode
     ? !forkSummaryMode.submitting &&
       attachments.length === 0 &&
@@ -479,6 +527,53 @@ export function MessageInput({
         ]
       : speechRangeTags;
   const speechMirrorSegments = getSpeechMirrorSegments(text, speechPendingTags);
+  const bangFetchRef = useRef(bangSupport?.fetchCompletions);
+  bangFetchRef.current = bangSupport?.fetchCompletions;
+  const bangLineRef = useRef("");
+  bangLineRef.current = text.startsWith("!!") ? text.slice(2) : "";
+  useEffect(() => {
+    const fetchCompletions = bangFetchRef.current;
+    if (!bangQueryKey || !fetchCompletions) {
+      setBangCandidates([]);
+      return;
+    }
+    const separatorIndex = bangQueryKey.indexOf(" ");
+    const kind = bangQueryKey.slice(0, separatorIndex) as "command" | "path";
+    const token = bangQueryKey.slice(separatorIndex + 1);
+    if (!token) {
+      setBangCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetchCompletions(token, kind, bangLineRef.current).then(
+        (completions) => {
+          if (!cancelled) {
+            setBangCandidates(completions);
+            setSelectedBangIndex(0);
+          }
+        },
+        () => {
+          if (!cancelled) {
+            setBangCandidates([]);
+          }
+        },
+      );
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [bangQueryKey]);
+
+  // Any edit that diverges from the last Ctrl+↑ recall resets history cycling.
+  useEffect(() => {
+    if (bangRecalledTextRef.current !== text) {
+      bangHistoryIndexRef.current = -1;
+      bangRecalledTextRef.current = null;
+    }
+  }, [text]);
+
   const slashSelectionResetKey = `${slashQuery}\0${matchingSlashCommands.length}`;
 
   useEffect(() => {
@@ -938,6 +1033,24 @@ export function MessageInput({
         return;
       }
 
+      if (bangSupport) {
+        const bangDraft = resolveComposerBangDraft(finalText);
+        if (bangDraft.kind === "empty") {
+          return;
+        }
+        if (bangDraft.kind === "bang") {
+          controls.clearInput();
+          resetCompositionMetadata();
+          setInterimTranscript("");
+          bangSupport.onRun(bangDraft.command);
+          textareaRef.current?.focus();
+          return;
+        }
+        if (bangDraft.kind === "escaped") {
+          finalText = bangDraft.text;
+        }
+      }
+
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
         const message = finalText.trim();
@@ -968,6 +1081,7 @@ export function MessageInput({
       buildSubmissionMetadata,
       resetCompositionMetadata,
       forkSummaryMode,
+      bangSupport,
     ],
   );
 
@@ -1253,6 +1367,123 @@ export function MessageInput({
   );
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    // Ctrl+↑/↓: shell-style recall of prior bang commands.
+    if (
+      e.key === "ArrowUp" &&
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey &&
+      bangSupport &&
+      bangSupport.history.length > 0 &&
+      (text === "" || text.startsWith("!!"))
+    ) {
+      e.preventDefault();
+      const nextIndex = Math.min(
+        bangHistoryIndexRef.current + 1,
+        bangSupport.history.length - 1,
+      );
+      bangHistoryIndexRef.current = nextIndex;
+      const nextText = `!!${bangSupport.history[nextIndex]}`;
+      bangRecalledTextRef.current = nextText;
+      noteComposerEdit(nextText);
+      setText(nextText);
+      return;
+    }
+    if (
+      e.key === "ArrowDown" &&
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey &&
+      bangSupport &&
+      bangHistoryIndexRef.current >= 0 &&
+      text.startsWith("!!")
+    ) {
+      e.preventDefault();
+      const nextIndex = bangHistoryIndexRef.current - 1;
+      bangHistoryIndexRef.current = nextIndex;
+      const nextText =
+        nextIndex < 0 ? "" : `!!${bangSupport.history[nextIndex]}`;
+      bangRecalledTextRef.current = nextText;
+      noteComposerEdit(nextText);
+      setText(nextText);
+      return;
+    }
+
+    // Tab always completes inside a bang draft, shell-style: accept the
+    // highlighted candidate, else fetch immediately and extend to the
+    // longest common prefix (menu opens on ambiguity).
+    if (e.key === "Tab" && !e.shiftKey && bangQuery && bangSupport) {
+      e.preventDefault();
+      const applyCandidate = (candidate: string) => {
+        const nextText = applyBangCompletion(text, bangQuery, candidate);
+        noteComposerEdit(nextText);
+        setText(nextText);
+      };
+      if (showBangSuggestions) {
+        const candidate = bangCandidates[selectedBangIndex];
+        if (candidate) {
+          applyCandidate(candidate);
+        }
+        return;
+      }
+      bangSupport
+        .fetchCompletions(bangQuery.token, bangQuery.kind, text.slice(2))
+        .then((completions) => {
+          const single = completions.length === 1 ? completions[0] : undefined;
+          if (single) {
+            applyCandidate(single);
+            return;
+          }
+          const prefix = longestCommonPrefix(completions);
+          if (prefix.length > bangQuery.token.length) {
+            const nextText = text.slice(0, bangQuery.replaceStart) + prefix;
+            noteComposerEdit(nextText);
+            setText(nextText);
+          }
+          setBangCandidates(completions);
+          setSelectedBangIndex(0);
+          setDismissedBangQueryKey(null);
+        })
+        .catch(() => {});
+      return;
+    }
+
+    if (showBangSuggestions && bangQuery) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissedBangQueryKey(bangQueryKey);
+        return;
+      }
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.ctrlKey) {
+        e.preventDefault();
+        setSelectedBangIndex((current) => {
+          const delta = e.key === "ArrowDown" ? 1 : -1;
+          return (
+            (current + delta + bangCandidates.length) % bangCandidates.length
+          );
+        });
+        return;
+      }
+      if (
+        e.key === "Enter" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        const candidate = bangCandidates[selectedBangIndex];
+        if (candidate) {
+          const nextText = applyBangCompletion(text, bangQuery, candidate);
+          noteComposerEdit(nextText);
+          setText(nextText);
+        }
+        return;
+      }
+    }
+
     if (showSlashSuggestions) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -2118,6 +2349,52 @@ export function MessageInput({
             </div>
           )}
         </div>
+
+        {(showBangChip || showBangEscapedChip) && (
+          <div
+            className={`bang-composer-chip${
+              showBangEscapedChip ? " bang-composer-chip-escaped" : ""
+            }`}
+            role="status"
+          >
+            {showBangEscapedChip
+              ? t("bangComposerEscapedChip")
+              : t("bangComposerChip")}
+          </div>
+        )}
+
+        {showBangSuggestions && (
+          <div
+            className="slash-command-menu composer-slash-command-menu bang-completion-menu"
+            role="menu"
+          >
+            {bangCandidates.map((candidate, index) => (
+              <button
+                key={candidate}
+                type="button"
+                className={`slash-command-item${
+                  index === selectedBangIndex ? " active" : ""
+                }`}
+                onMouseEnter={() => setSelectedBangIndex(index)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (!bangQuery) return;
+                  const nextText = applyBangCompletion(
+                    text,
+                    bangQuery,
+                    candidate,
+                  );
+                  noteComposerEdit(nextText);
+                  setText(nextText);
+                  textareaRef.current?.focus();
+                }}
+                role="menuitem"
+              >
+                <span>{candidate}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {showSlashSuggestions && (
           <div

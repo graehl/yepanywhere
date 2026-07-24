@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
+import type { ForkSummaryTranscriptDisplayObject } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ForkSummaryDisplayObject } from "../ForkSummaryDisplayObject";
 
@@ -12,7 +12,7 @@ vi.mock("../../i18n", () => ({
 afterEach(cleanup);
 
 function renderObject(
-  object: TranscriptDisplayObject,
+  object: ForkSummaryTranscriptDisplayObject,
   overrides: Partial<{
     onCancel: () => void;
     onToggleAutoOpen: (v: boolean) => void;
@@ -37,7 +37,7 @@ const baseObject = {
   placementAfterMessageId: "tail-1",
   sourceMessageId: "user-1",
   retainedThroughMessageId: "assistant-1",
-} satisfies Omit<TranscriptDisplayObject, "status">;
+} satisfies Omit<ForkSummaryTranscriptDisplayObject, "status">;
 
 describe("ForkSummaryDisplayObject", () => {
   it("shows progress, an auto-open toggle, and cancels while generating", () => {
@@ -60,7 +60,7 @@ describe("ForkSummaryDisplayObject", () => {
 
   it("keeps the ready link and records a follow click", () => {
     const onFollow = vi.fn();
-    const object: TranscriptDisplayObject = {
+    const object: ForkSummaryTranscriptDisplayObject = {
       ...baseObject,
       status: "ready",
       title: "Resume zh-en eval",

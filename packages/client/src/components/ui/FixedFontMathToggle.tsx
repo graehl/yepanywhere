@@ -1,3 +1,4 @@
+import { parseToonDocument } from "@yep-anywhere/shared";
 import katex from "katex";
 import {
   type ClipboardEventHandler,
@@ -654,6 +655,45 @@ function renderMarkdownTable(
   };
 }
 
+/**
+ * A TOON flat table (acli's opt-in tabular format) at this position renders
+ * as a real table, sharing the markdown-table styling. Gated on a strict
+ * header + row-count parse so ordinary output never misfires.
+ */
+function renderToonBlock(
+  lines: DiffAwareLine[],
+  start: number,
+  diffAware: boolean,
+): { end: number; html: string } | null {
+  if (diffAware) return null;
+  const headerLine = lines[start]?.content.trim() ?? "";
+  const headerMatch = headerLine.match(/^[\w.-]+\[(\d+)\]\{[^}]*\}:$/);
+  if (!headerMatch) return null;
+  const end = start + 1 + Number(headerMatch[1]);
+  if (end > lines.length) return null;
+  const tables = parseToonDocument(
+    lines
+      .slice(start, end)
+      .map((line) => line.content)
+      .join("\n"),
+  );
+  const table = tables?.length === 1 ? tables[0] : undefined;
+  if (!table) return null;
+  const headerHtml = `<thead><tr>${table.columns
+    .map((column) => `<th>${escapeHtml(column)}</th>`)
+    .join("")}</tr></thead>`;
+  const bodyHtml = table.rows
+    .map(
+      (row) =>
+        `<tr>${row.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`,
+    )
+    .join("");
+  return {
+    end,
+    html: `<div class="fixed-font-markdown-block"><table class="fixed-font-markdown-table">${headerHtml}<tbody>${bodyHtml}</tbody></table></div>`,
+  };
+}
+
 function renderMarkdownLineContent(
   content: string,
   options: RenderOptions = {},
@@ -791,6 +831,14 @@ function renderFixedFontRichContentInner(
       if (displayMath.end < lines.length) html += "\n";
       changed = true;
       index = displayMath.end;
+      continue;
+    }
+
+    const toon = renderToonBlock(lines, index, diffAware);
+    if (toon) {
+      html += toon.html;
+      changed = true;
+      index = toon.end;
       continue;
     }
 

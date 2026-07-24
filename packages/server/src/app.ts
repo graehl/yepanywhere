@@ -68,6 +68,8 @@ import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";
 import { createDeviceRoutes } from "./routes/devices.js";
 import { createFilesRoutes } from "./routes/files.js";
+import { createBangCommandsRoutes } from "./routes/bang-commands.js";
+import { BangCommandService } from "./services/BangCommandService.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { health } from "./routes/health.js";
@@ -1188,6 +1190,20 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
   app.route("/api", createSupervisorQueueRoutes(supervisor));
+  if (options.sessionMetadataService && options.dataDir) {
+    app.route(
+      "/api",
+      createBangCommandsRoutes({
+        scanner,
+        sessionMetadataService: options.sessionMetadataService,
+        bangCommandService: new BangCommandService({
+          dataDir: options.dataDir,
+          sessionMetadataService: options.sessionMetadataService,
+          eventBus: options.eventBus,
+        }),
+      }),
+    );
+  }
   app.route(
     "/api",
     createSessionsRoutes({

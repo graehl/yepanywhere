@@ -76,6 +76,7 @@ import {
 import { ExploredToolGroup } from "./blocks/ExploredToolGroup";
 import { MessageAge } from "./MessageAge";
 import { ProcessingIndicator } from "./ProcessingIndicator";
+import type { BangCommandHandlers } from "./BangCommandDisplayObject";
 import { RenderItemComponent } from "./RenderItemComponent";
 import {
   UserTurnNavigator,
@@ -549,6 +550,7 @@ interface Props {
   onCancelForkSummary?: (objectId: string) => void;
   onToggleForkSummaryAutoOpen?: (objectId: string, value: boolean) => void;
   onFollowForkSummary?: (objectId: string) => void;
+  bangCommandHandlers?: BangCommandHandlers;
 }
 
 function XIcon({ size = 14 }: { size?: number }) {
@@ -854,6 +856,7 @@ export const MessageList = memo(function MessageList({
   onCancelForkSummary,
   onToggleForkSummaryAutoOpen,
   onFollowForkSummary,
+  bangCommandHandlers,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -2508,6 +2511,7 @@ export const MessageList = memo(function MessageList({
                 onCancelForkSummary={onCancelForkSummary}
                 onToggleForkSummaryAutoOpen={onToggleForkSummaryAutoOpen}
                 onFollowForkSummary={onFollowForkSummary}
+                bangCommandHandlers={bangCommandHandlers}
               />
             );
           }

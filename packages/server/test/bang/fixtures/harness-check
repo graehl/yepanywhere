@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+/**
+ * harness-check — report installed agent-harness CLI versions and available
+ * updates. A worked example of an acli-shaped tool (~/agents
+ * topics/agent-cli.md) used by YA's bang-command tests, and genuinely
+ * usable: run `!!packages/server/test/bang/fixtures/harness-check` in a YA
+ * session to see which agent CLIs on this host have updates.
+ *
+ * Output: compact JSONL by default (non-TTY callers), `--pretty` for
+ * humans, `--md` for a renderable markdown report, `--toon` for the acli
+ * flat-table format. Latest versions come from a JSON registry file
+ * (HARNESS_CHECK_REGISTRY env or --registry <file>: {"claude": "2.1.0"});
+ * without one, latest is null and status "unknown".
+ *
+ * Implements the acli completion protocol: `harness-check --acli-complete
+ * <argv-prefix...>` prints JSONL completion candidates and exits.
+ */
+
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+
+const DEFAULT_HARNESSES = ["claude", "codex", "gemini", "grok", "opencode", "pi"];
+const FLAGS = [
+  "--pretty",
+  "--md",
+  "--toon",
+  "--registry",
+  "--harnesses",
+  "--timeout",
+];
+
+function die(message) {
+  process.stderr.write(`${JSON.stringify({ error: message })}\n`);
+  process.exit(2);
+}
+
+function completeArgv(argv) {
+  const current = argv.length > 0 ? argv[argv.length - 1] : "";
+  const previous = argv.length > 1 ? argv[argv.length - 2] : "";
+  const emit = (completion) =>
+    process.stdout.write(`${JSON.stringify({ completion })}\n`);
+  if (previous === "--registry" || previous === "--timeout") {
+    return; // Path/number values: nothing to offer; consumer falls back.
+  }
+  if (previous === "--harnesses") {
+    const parts = current.split(",");
+    const last = parts[parts.length - 1];
+    const prefix = parts.slice(0, -1).join(",");
+    for (const name of DEFAULT_HARNESSES) {
+      if (name.startsWith(last)) {
+        emit(prefix ? `${prefix},${name}` : name);
+      }
+    }
+    return;
+  }
+  for (const flag of FLAGS) {
+    if (flag.startsWith(current)) {
+      emit(flag);
+    }
+  }
+}
+
+function parseArgs(argv) {
+  const options = {
+    format: "jsonl",
+    registryPath: process.env.HARNESS_CHECK_REGISTRY || null,
+    harnesses: DEFAULT_HARNESSES,
+    timeoutMs: 5000,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--pretty") options.format = "pretty";
+    else if (arg === "--md") options.format = "md";
+    else if (arg === "--toon") options.format = "toon";
+    else if (arg === "--registry") {
+      options.registryPath = argv[++index];
+      if (!options.registryPath) die("--registry requires a file path");
+    } else if (arg === "--harnesses") {
+      const value = argv[++index];
+      if (!value) die("--harnesses requires a comma-separated list");
+      options.harnesses = value.split(",").filter(Boolean);
+    } else if (arg === "--timeout") {
+      options.timeoutMs = Number(argv[++index]);
+      if (!Number.isFinite(options.timeoutMs)) die("--timeout requires ms");
+    } else {
+      die(`unknown argument: ${arg}`);
+    }
+  }
+  return options;
+}
+
+function installedVersion(harness, timeoutMs) {
+  const result = spawnSync(harness, ["--version"], {
+    timeout: timeoutMs,
+    encoding: "utf8",
+  });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+  const match = `${result.stdout}\n${result.stderr}`.match(/\d+(?:\.\d+)+/);
+  return match ? match[0] : null;
+}
+
+function compareVersions(a, b) {
+  const as = a.split(".").map(Number);
+  const bs = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(as.length, bs.length); i += 1) {
+    const diff = (as[i] || 0) - (bs[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function checkHarnesses(options) {
+  let registry = null;
+  if (options.registryPath) {
+    try {
+      registry = JSON.parse(fs.readFileSync(options.registryPath, "utf8"));
+    } catch (error) {
+      die(`cannot read registry: ${error.message}`);
+    }
+  }
+  return options.harnesses.map((harness) => {
+    const installed = installedVersion(harness, options.timeoutMs);
+    const latest = registry ? (registry[harness] ?? null) : null;
+    const status = !installed
+      ? "not-installed"
+      : !latest
+        ? "unknown"
+        : compareVersions(installed, latest) < 0
+          ? "update-available"
+          : "up-to-date";
+    return { harness, installed, latest, status };
+  });
+}
+
+function toonCell(value) {
+  const text = value === null ? "" : String(value);
+  return /[",]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function report(rows, format) {
+  if (format === "pretty") {
+    return `${JSON.stringify(rows, null, 2)}\n`;
+  }
+  if (format === "toon") {
+    const lines = [
+      `harnesses[${rows.length}]{harness,installed,latest,status}:`,
+      ...rows.map((row) =>
+        [row.harness, row.installed, row.latest, row.status]
+          .map(toonCell)
+          .join(","),
+      ),
+    ];
+    return `${lines.join("\n")}\n`;
+  }
+  if (format === "md") {
+    const updates = rows.filter((row) => row.status === "update-available");
+    const lines = [
+      "## Harness updates",
+      "",
+      "| harness | installed | latest | status |",
+      "| --- | --- | --- | --- |",
+      ...rows.map(
+        (row) =>
+          `| ${row.harness} | ${row.installed ?? "—"} | ${row.latest ?? "—"} | ${row.status} |`,
+      ),
+      "",
+      updates.length > 0
+        ? `**${updates.length} update(s) available:** ${updates.map((row) => row.harness).join(", ")}`
+        : "**All installed harnesses are up to date.**",
+    ];
+    return `${lines.join("\n")}\n`;
+  }
+  return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+}
+
+const argv = process.argv.slice(2);
+if (argv[0] === "--acli-complete") {
+  completeArgv(argv.slice(1));
+  process.exit(0);
+}
+const options = parseArgs(argv);
+process.stdout.write(report(checkHarnesses(options), options.format));

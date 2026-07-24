@@ -1,4 +1,5 @@
 import type {
+  BangCommandTranscriptDisplayObject,
   EffortLevel,
   PermissionMode,
   PromptSuggestionMode,
@@ -21,6 +22,11 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import type { BangCommandHandlers } from "../components/BangCommandDisplayObject";
+import {
+  buildBangEchoText,
+  collectBangHistory,
+} from "../lib/bangCommands";
 import { BtwAsidePane } from "../components/BtwAsidePane";
 import { BtwAsideStickyCards } from "../components/BtwAsideStickyCards";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
@@ -2172,6 +2178,118 @@ function SessionPageContent({
   };
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
+
+  // !! bang commands: local shell runs in the project dir, never provider
+  // ingress; persisted as transcript display objects (topics/bang-commands.md).
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const runBangCommand = useCallback(
+    async (command: string) => {
+      const currentMessages = messagesRef.current;
+      const lastMessage = currentMessages[currentMessages.length - 1];
+      const placementAfterMessageId = lastMessage
+        ? ((lastMessage.uuid ?? lastMessage.id) as string | undefined) || ""
+        : "";
+      try {
+        const result = await api.runBangCommand(
+          projectId,
+          sessionId,
+          command,
+          placementAfterMessageId,
+        );
+        updateTranscriptDisplayObjectsForSession(
+          sessionId,
+          () => result.transcriptDisplayObjects,
+        );
+        setScrollTrigger((prev) => prev + 1);
+      } catch {
+        showToast(t("bangRunFailed"), "error");
+      }
+    },
+    [
+      projectId,
+      sessionId,
+      updateTranscriptDisplayObjectsForSession,
+      showToast,
+      t,
+    ],
+  );
+
+  const echoBangCommand = useCallback(
+    async (object: BangCommandTranscriptDisplayObject) => {
+      try {
+        const output = await api.fetchBangCommandOutput(
+          projectId,
+          sessionId,
+          object.id,
+        );
+        await handleSendRef.current(buildBangEchoText(object, output));
+      } catch {
+        showToast(t("bangEchoFailed"), "error");
+      }
+    },
+    [projectId, sessionId, showToast, t],
+  );
+
+  const bangCommandHandlers = useMemo<BangCommandHandlers>(
+    () => ({
+      onKill: (objectId) => {
+        void api.killBangCommand(projectId, sessionId, objectId).catch(() => {});
+      },
+      onDelete: (objectId) => {
+        void api
+          .deleteBangCommand(projectId, sessionId, objectId)
+          .then((result) => {
+            updateTranscriptDisplayObjectsForSession(
+              sessionId,
+              () => result.transcriptDisplayObjects,
+            );
+          })
+          .catch(() => {});
+      },
+      onRerun: (command) => {
+        void runBangCommand(command);
+      },
+      onRecall: (command) => {
+        draftControlsRef.current?.setDraft(`!!${command}`);
+      },
+      onEcho: (object) => {
+        void echoBangCommand(object);
+      },
+      fetchOutput: (objectId) =>
+        api.fetchBangCommandOutput(projectId, sessionId, objectId),
+    }),
+    [
+      projectId,
+      sessionId,
+      runBangCommand,
+      echoBangCommand,
+      updateTranscriptDisplayObjectsForSession,
+    ],
+  );
+
+  const bangHistory = useMemo(
+    () => collectBangHistory(session?.transcriptDisplayObjects),
+    [session?.transcriptDisplayObjects],
+  );
+
+  const composerBangSupport = useMemo(
+    () => ({
+      onRun: (command: string) => {
+        void runBangCommand(command);
+      },
+      fetchCompletions: (
+        token: string,
+        kind: "command" | "path",
+        line: string,
+      ) =>
+        api
+          .fetchBangCompletions(projectId, token, kind, line)
+          .then((result) => result.completions),
+      history: bangHistory,
+    }),
+    [projectId, runBangCommand, bangHistory],
+  );
 
   const handleQueue = async (
     text: string,
@@ -4824,6 +4942,7 @@ function SessionPageContent({
                   onCancelForkSummary={handleCancelForkSummary}
                   onToggleForkSummaryAutoOpen={handleToggleForkSummaryAutoOpen}
                   onFollowForkSummary={followForkSummary}
+                  bangCommandHandlers={bangCommandHandlers}
                   onTranscriptPositionTimestampChange={
                     setTranscriptPositionTimestampMs
                   }
@@ -5011,6 +5130,9 @@ function SessionPageContent({
                 }
                 onDraftControlsReady={handleDraftControlsReady}
                 onDraftTextChange={handleComposerDraftTextChange}
+                bangSupport={
+                  mainComposerForAside ? undefined : composerBangSupport
+                }
                 correctionActive={
                   !mainComposerForAside && correctionDraft !== null
                 }

@@ -138,15 +138,23 @@ export class SessionMetadataService {
         if (!metadata.transcriptDisplayObjects) {
           continue;
         }
-        const recovered = metadata.transcriptDisplayObjects.map((object) =>
-          object.status === "generating"
-            ? {
-                ...object,
-                status: "error" as const,
-                error: "Fork summary interrupted by server restart",
-              }
-            : object,
-        );
+        const recovered = metadata.transcriptDisplayObjects.map((object) => {
+          if (object.status === "generating") {
+            return {
+              ...object,
+              status: "error" as const,
+              error: "Fork summary interrupted by server restart",
+            };
+          }
+          if (object.kind === "bang-command" && object.status === "running") {
+            return {
+              ...object,
+              status: "killed" as const,
+              error: "Interrupted by server restart",
+            };
+          }
+          return object;
+        });
         if (
           recovered.some(
             (object, index) =>
@@ -244,6 +252,26 @@ export class SessionMetadataService {
       };
     });
     await this.save();
+  }
+
+  /** All sessions that carry display objects, for cross-session views. */
+  listTranscriptDisplayObjectSessions(): Array<{
+    sessionId: string;
+    workingProjectId?: UrlProjectId;
+    objects: TranscriptDisplayObject[];
+  }> {
+    return Object.entries(this.state.sessions).flatMap(
+      ([sessionId, metadata]) =>
+        metadata.transcriptDisplayObjects?.length
+          ? [
+              {
+                sessionId,
+                workingProjectId: metadata.workingProjectId,
+                objects: [...metadata.transcriptDisplayObjects],
+              },
+            ]
+          : [],
+    );
   }
 
   async addTranscriptDisplayObject(

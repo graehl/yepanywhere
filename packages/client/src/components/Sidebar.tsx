@@ -1029,6 +1029,13 @@ export function Sidebar({
               basePath={basePath}
             />
             <SidebarNavItem
+              to="/bang-commands"
+              icon={SidebarIcons.bang}
+              label={t("sidebarBangCommands")}
+              onClick={onNavigate}
+              basePath={basePath}
+            />
+            <SidebarNavItem
               to="/projects"
               icon={SidebarIcons.projects}
               label={t("sidebarProjects")}

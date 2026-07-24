@@ -629,17 +629,34 @@ export function getFullSessionSearchAnchorForItem(
         : null;
     }
     case "transcript_display_object": {
+      const object = item.object;
+      if (object.kind === "bang-command") {
+        const searchText = joinSearchParts([
+          object.command,
+          object.stdoutPreview,
+          object.status,
+          object.error,
+        ]);
+        return searchText
+          ? {
+              id: item.id,
+              preview: `!!${object.command}`,
+              searchText,
+              timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+            }
+          : null;
+      }
       const searchText = joinSearchParts([
-        item.object.title,
-        item.object.status,
-        item.object.error,
+        object.title,
+        object.status,
+        object.error,
       ]);
       return searchText
         ? {
             id: item.id,
             preview:
-              item.object.title ??
-              getSearchPreviewFallback(item.object.error ?? item.object.status),
+              object.title ??
+              getSearchPreviewFallback(object.error ?? object.status),
             searchText,
             timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }

@@ -862,6 +862,68 @@ export const api = {
       },
     ),
 
+  runBangCommand: (
+    projectId: string,
+    sessionId: string,
+    command: string,
+    placementAfterMessageId: string,
+  ) =>
+    fetchJSON<{
+      displayObject: TranscriptDisplayObject;
+      transcriptDisplayObjects: TranscriptDisplayObject[];
+    }>(`/projects/${projectId}/sessions/${sessionId}/bang-commands`, {
+      method: "POST",
+      body: JSON.stringify({ command, placementAfterMessageId }),
+    }),
+
+  killBangCommand: (projectId: string, sessionId: string, objectId: string) =>
+    fetchJSON<{ killed: boolean }>(
+      `/projects/${projectId}/sessions/${sessionId}/bang-commands/${objectId}/kill`,
+      { method: "POST" },
+    ),
+
+  fetchBangCommandOutput: (
+    projectId: string,
+    sessionId: string,
+    objectId: string,
+  ) =>
+    fetchJSON<{
+      stdout: string;
+      stderr: string;
+      stdoutHtml: string;
+      mode: "markdown" | "json" | "ansi" | "toon" | "raw";
+      responseTruncated: boolean;
+    }>(
+      `/projects/${projectId}/sessions/${sessionId}/bang-commands/${objectId}/output`,
+    ),
+
+  deleteBangCommand: (projectId: string, sessionId: string, objectId: string) =>
+    fetchJSON<{
+      removed: boolean;
+      transcriptDisplayObjects: TranscriptDisplayObject[];
+    }>(`/projects/${projectId}/sessions/${sessionId}/bang-commands/${objectId}`, {
+      method: "DELETE",
+    }),
+
+  fetchBangCompletions: (
+    projectId: string,
+    token: string,
+    kind: "command" | "path",
+    line: string,
+  ) =>
+    fetchJSON<{ completions: string[] }>(
+      `/projects/${projectId}/bang-completions?token=${encodeURIComponent(token)}&kind=${kind}&line=${encodeURIComponent(line)}`,
+    ),
+
+  fetchBangCommandHistory: () =>
+    fetchJSON<{
+      entries: Array<{
+        sessionId: string;
+        projectId?: string;
+        object: TranscriptDisplayObject;
+      }>;
+    }>("/bang-commands"),
+
   queueMessage: (
     sessionId: string,
     message: string,

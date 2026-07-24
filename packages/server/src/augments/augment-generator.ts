@@ -6,7 +6,13 @@
  * formatting for pending/incomplete text during streaming.
  */
 
-import { hasAnsiEscapes, renderAnsiToHtml } from "@yep-anywhere/shared";
+import {
+  hasAnsiEscapes,
+  looksLikeToon,
+  parseToonDocument,
+  renderAnsiToHtml,
+  toonDocumentToMarkdown,
+} from "@yep-anywhere/shared";
 import {
   type BundledLanguage,
   bundledLanguages,
@@ -183,6 +189,16 @@ async function renderCodeWithHighlighter(
   // would render the escapes literally.
   if (lang === "ansi" || hasAnsiEscapes(code)) {
     return renderAnsiBlock(code);
+  }
+
+  // TOON flat tables (acli's opt-in tabular format) render as real tables
+  // via the existing markdown pipeline; a failed strict parse falls through
+  // to ordinary highlighting.
+  if (lang === "toon" || (!lang && looksLikeToon(code))) {
+    const tables = parseToonDocument(code);
+    if (tables) {
+      return renderSafeMarkdown(toonDocumentToMarkdown(tables));
+    }
   }
 
   // Check if language is loaded and valid

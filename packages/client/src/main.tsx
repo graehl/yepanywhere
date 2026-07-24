@@ -18,6 +18,7 @@ import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
 import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { BangCommandsPage } from "./pages/BangCommandsPage";
 import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
 import { GitStatusPage } from "./pages/GitStatusPage";
@@ -202,6 +203,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                   element={<Navigate to="/sessions" replace />}
                 />
                 <Route path="/git-status" element={<GitStatusPage />} />
+                <Route path="/bang-commands" element={<BangCommandsPage />} />
                 <Route path="/devices" element={<EmulatorPage />} />
                 <Route path="/devices/:deviceId" element={<EmulatorPage />} />
                 <Route path="/new-session" element={<NewSessionPage />} />

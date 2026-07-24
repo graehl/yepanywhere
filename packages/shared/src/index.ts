@@ -44,6 +44,12 @@ export {
 
 // ANSI escape rendering (shared between server and client)
 export { hasAnsiEscapes, renderAnsiToHtml } from "./ansi-renderer.js";
+export {
+  looksLikeToon,
+  parseToonDocument,
+  toonDocumentToMarkdown,
+  type ToonTable,
+} from "./toon.js";
 
 export type {
   ProviderName,
@@ -375,6 +381,7 @@ export type {
   SessionOwnership,
   SessionSandboxPolicy,
   DurableRecapMessage,
+  BangCommandTranscriptDisplayObject,
   ForkSummaryTranscriptDisplayObject,
   TranscriptDisplayObject,
   AppSessionSummary,

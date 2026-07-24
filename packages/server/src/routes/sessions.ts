@@ -4755,13 +4755,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           await deps.sessionMetadataService?.updateTranscriptDisplayObject(
             sessionId,
             displayObject.id,
-            (object) => ({
-              ...object,
-              status: "ready",
-              targetSessionId: result.sessionId,
-              title,
-              error: undefined,
-            }),
+            (object) =>
+              object.kind !== "fork-summary"
+                ? object
+                : {
+                    ...object,
+                    status: "ready",
+                    targetSessionId: result.sessionId,
+                    title,
+                    error: undefined,
+                  },
           );
           emitTranscriptDisplayObjects(sessionId);
           completed = true;
@@ -4839,11 +4842,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               await deps.sessionMetadataService?.updateTranscriptDisplayObject(
                 sessionId,
                 displayObject.id,
-                (object) => ({
-                  ...object,
-                  status: "error",
-                  error: message,
-                }),
+                (object) =>
+                  object.kind !== "fork-summary"
+                    ? object
+                    : {
+                        ...object,
+                        status: "error",
+                        error: message,
+                      },
               );
               emitTranscriptDisplayObjects(sessionId);
             } catch (cleanupError) {
@@ -4944,14 +4950,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         await deps.sessionMetadataService.updateTranscriptDisplayObject(
           sessionId,
           objectId,
-          (object) => ({
-            ...object,
-            ...(typeof body.autoOpenWhenReady === "boolean"
-              ? { autoOpenWhenReady: body.autoOpenWhenReady || undefined }
-              : {}),
-            ...(action === "opened" ? { openedAt: now } : {}),
-            ...(action === "clicked" ? { clickedAt: now } : {}),
-          }),
+          (object) =>
+            object.kind !== "fork-summary"
+              ? object
+              : {
+                  ...object,
+                  ...(typeof body.autoOpenWhenReady === "boolean"
+                    ? { autoOpenWhenReady: body.autoOpenWhenReady || undefined }
+                    : {}),
+                  ...(action === "opened" ? { openedAt: now } : {}),
+                  ...(action === "clicked" ? { clickedAt: now } : {}),
+                },
         );
       if (!updated) {
         return c.json({ error: "Transcript display object not found" }, 404);

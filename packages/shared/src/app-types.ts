@@ -421,7 +421,34 @@ export interface ForkSummaryTranscriptDisplayObject {
   error?: string;
 }
 
-export type TranscriptDisplayObject = ForkSummaryTranscriptDisplayObject;
+export interface BangCommandTranscriptDisplayObject {
+  id: string;
+  kind: "bang-command";
+  createdAt: string;
+  /** Message after which the object is placed; "" places before the first item. */
+  placementAfterMessageId: string;
+  /** Shell command line as typed after the !! prefix. */
+  command: string;
+  /** Absolute project directory the command ran in. */
+  cwd: string;
+  status: "running" | "done" | "error" | "killed";
+  exitCode?: number;
+  durationMs?: number;
+  /** Bounded tail of captured output; full output is fetched on demand. */
+  stdoutPreview?: string;
+  stderrPreview?: string;
+  stdoutBytes?: number;
+  stderrBytes?: number;
+  /** True when the stored full output was capped, not merely the preview. */
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
+  /** Spawn/timeout/kill reason when status is error or killed. */
+  error?: string;
+}
+
+export type TranscriptDisplayObject =
+  | ForkSummaryTranscriptDisplayObject
+  | BangCommandTranscriptDisplayObject;
 
 export interface DurableRecapMessage extends AppMessageExtensions {
   type: "system";

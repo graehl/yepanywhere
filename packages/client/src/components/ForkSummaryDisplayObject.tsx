@@ -1,4 +1,4 @@
-import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
+import type { ForkSummaryTranscriptDisplayObject } from "@yep-anywhere/shared";
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 
@@ -16,7 +16,7 @@ export function ForkSummaryDisplayObject({
   onToggleAutoOpen,
   onFollow,
 }: {
-  object: TranscriptDisplayObject;
+  object: ForkSummaryTranscriptDisplayObject;
   targetHref?: string;
   onCancel: () => void;
   onToggleAutoOpen: (value: boolean) => void;

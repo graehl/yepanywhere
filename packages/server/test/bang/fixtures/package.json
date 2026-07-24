@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "commonjs",
+  "description": "Pins extensionless fixture scripts (harness-check) to CommonJS so they run identically in-repo and when copied to bare temp dirs, independent of Node's ESM detection."
+}

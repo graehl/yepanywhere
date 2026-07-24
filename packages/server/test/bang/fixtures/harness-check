@@ -16,8 +16,14 @@
  * <argv-prefix...>` prints JSONL completion candidates and exits.
  */
 
-import { spawnSync } from "node:child_process";
-import fs from "node:fs";
+// CommonJS on purpose: this file is extensionless and gets copied into
+// bare temp project dirs by tests. Without a nearby package.json, Node
+// defaults extensionless files to CommonJS (ESM detection varies by
+// version); the sibling fixtures/package.json pins "commonjs" for the
+// in-repo copy, which would otherwise inherit the server package's
+// "type": "module".
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
 
 const DEFAULT_HARNESSES = ["claude", "codex", "gemini", "grok", "opencode", "pi"];
 const FLAGS = [

@@ -163,6 +163,7 @@
   for active and recently idle process cards on Agents.
 - interactives - Zero-setup container for agent-built project web apps:
   opinionated template, committed project files, registry, icon links,
-  YA-server-only relay reach, and a meta-UI comment-to-agent channel.
+  YA-server-only reach (relay, or auto Cloudflare tunnel when enabled),
+  and a meta-UI comment-to-agent channel.
 - rich-interviews - Banked: multi-round structured-input interview flows;
   YA renders declared formats inline; revisit atop interactives machinery.

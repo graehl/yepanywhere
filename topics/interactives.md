@@ -3,9 +3,9 @@
 > Proposal: a zero-setup container for agent-built web apps — dev servers or
 > static page bundles scaffolded from an opinionated template and registered
 > in project-local config — that YA surfaces as persistent icon links on the
-> project's sessions and reaches through its authenticated transports, so a
-> user on a phone or tablet over relay can open them with no hosting
-> knowledge.
+> project's sessions and reaches through its authenticated transports, or an
+> auto-managed Cloudflare tunnel when enabled and discoverable, so a user on
+> a phone or tablet can open them with no hosting knowledge.
 
 Topic: interactives
 
@@ -192,17 +192,73 @@ YA manages lifecycle/visibility only; it does not own the app's code.
 
 ## Transport and serving
 
-- Proxy route shape: `/apps/:projectId/:name/*` on the main server, forwarding
-  HTTP and WebSocket upgrades to the registered loopback port.
-  `createFrontendProxy` is already a parameterized host/port HTTP+WS raw-socket
-  proxy — generalize it rather than adding a proxy dependency.
+Reach tiers, preferred in order when available:
+
+1. **Direct (LAN/Tailscale)** — the YA proxy route below, behind YA auth.
+2. **Cloudflare tunnel** — automatic when tunnel exposure is enabled *and* a
+   Cloudflare tunnel capability is discoverable ("present + authed +
+   effective"); details below.
+3. **Relay fallback** — the same YA-auth'd proxy over the existing
+   end-to-end-encrypted relay channel; always available, zero external
+   dependencies. Caveat: a *standard* (unmodified) local web app needs
+   significant tunneling-type proxying to be usable over relay — possible in
+   theory so long as the view/URL is a YA-server one (see the hosted-client
+   wrinkle under *Security*); template-scaffolded apps dodge most of it by
+   convention.
+
+The YA proxy route:
+
+- Shape: `/apps/:projectId/:name/*` on the main server, forwarding HTTP and
+  WebSocket upgrades to the registered loopback port. `createFrontendProxy`
+  is already a parameterized host/port HTTP+WS raw-socket proxy — generalize
+  it rather than adding a proxy dependency.
 - The route sits behind YA auth like `/api/*`. Over relay, requests ride the
-  existing end-to-end-encrypted channel, so the relay sees ciphertext as
-  usual.
+  E2E channel, so the relay sees ciphertext as usual.
 - **Never** reachable from public-share surfaces: public-share relay plaintext
   stays restricted to `GET /public-api/shares/...`
   ([[relay-origin-and-share-gating]]); interactives join speech/STT on the
   must-not-tunnel list.
+
+**Cloudflare tunnel tier** (direction set 2026-07-24, after kzahel suggested
+Cloudflare tunnels/ngrok as the standard localhost-exposure tools and an
+authenticated Cloudflare CLI as the agent-operable path, like `gh`): prefer
+the Cloudflare tool when it is present + authed + effective, over ad hoc
+"use relay"; fall back to relay reach otherwise. Mechanics:
+
+- The general-purpose CLI is `cloudflared` (`cloudflared tunnel --url
+  http://127.0.0.1:<port>` yields a quick `*.trycloudflare.com` URL; named
+  tunnels give stable hostnames and can front Cloudflare Access). `wrangler`
+  — the Workers/Pages CLI with `gh`-style login — has integrated tunnels but
+  scoped to `wrangler dev` Workers sessions, so discovery should test for an
+  effective tunnel capability rather than hardcode one binary name.
+- Auth comes in distinct capability levels and discovery must distinguish
+  them: **quick tunnels need no auth at all** (binary presence suffices); a
+  **named-tunnel run token** (dashboard-managed; no local `cert.pem`) can
+  only run its one tunnel, not create tunnels or hostname routes; **origin
+  cert or API auth** is what permits creating named tunnels and routing
+  hostnames. An operator already running a dashboard-managed named tunnel
+  (e.g. for a relay server) proves the account and could add interactive
+  hostnames to that tunnel via dashboard/API, but the host's run token alone
+  cannot.
+- Tunnel processes are YA-managed children under the [[architecture-mandates]]
+  idle bounds, like managed app starts.
+- Trust posture: a tunnel URL reaches the app **without YA auth** — a quick
+  tunnel is a public bearer URL; a named tunnel can add Cloudflare Access.
+  That is partly the point (a kid or guest opens the game with no YA login)
+  and a deliberate exposure change: enabling tunnels is an explicit setting,
+  default off ([[vanilla-defaults]]), and an icon whose app is
+  tunnel-exposed should show it.
+- Consistency with the hard requirement: a tunnel is *transport to the YA
+  machine*, not cloud hosting — the app and its files stay local and
+  committed. "Cloud is right out" rejects hosting, not a tunnel.
+
+**Live loop, not deploy-on-push.** The container is deliberately more
+intuitive and interactive than see-the-effect-only-on-push flows (pre-push
+hooks that build and deploy a website, Pages-style deploys): the app runs
+live on the YA machine and iteration is immediate for both agent and user. A
+push-deployed public/prod side remains a nice optional extension when a
+project defines one — a matured interactive graduating to a real deploy
+target — and is out of v1 scope.
 
 ## Security
 
@@ -235,8 +291,16 @@ Hosted-client wrinkle: on `ya.graehl.org` the client reaches the server
 through the relay tunnel, not direct HTTP, so an iframe `src` has no plain URL
 to point at; serving the interactive's assets to the hosted client needs a
 tunnel-backed URL space (service-worker-mediated fetch or blob/`srcdoc`
-injection). Open design area — direct (Tailscale/LAN) mode has no such
-problem.
+injection). The general form of this: a *standard* unmodified web app can in
+theory be carried over relay as long as its view/URL is a YA-server one —
+every fetch, asset URL, and WebSocket the app makes must resolve inside the
+YA-owned URL space so the proxy machinery can carry it over the E2E channel;
+absolute-origin assumptions break it. That is significant machinery for
+arbitrary apps, and another argument for the template: the base prompt md
+mandates relay-compatible conventions (relative URLs, no hardcoded origins,
+WS via the served path). Direct (Tailscale/LAN) mode has no such problem,
+and a Cloudflare tunnel sidesteps it entirely by giving the app a real
+public origin.
 
 ## Meta-UI protocol (comment-to-agent from the app view)
 
@@ -344,6 +408,12 @@ the operator's authenticated relay rather than vendor hosting.
   behavior across target browsers).
 - Hosted-client (relay) asset serving for embedded interactives.
 - Managed-lifecycle idle-stop bound and its status surface.
+- Tunnel exposure scope and UI (global setting vs per-interactive; quick vs
+  named tunnels; Cloudflare Access policy for non-public apps; the
+  "present + authed + effective" discovery test across the auth capability
+  levels above; tunnel-child idle bound).
+- Optional push-deployed public/prod side for a matured interactive, when a
+  project defines a deploy target.
 - Whether REST-kind entries get a YA-rendered landing (request console) or
   just a link.
 

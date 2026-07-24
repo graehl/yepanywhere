@@ -18,6 +18,35 @@ answers two questions:
 This is not a replacement for local focused testing. It is a post-push check
 that the public branch would have caught the bug class before it reaches kzahel.
 
+## Standing Remote Invariant
+
+`origin` (`graehl/yepanywhere`) is the development branch and promotion gate
+for `kzahel`. Its purpose is frequent, early CI feedback from coherent commits
+that are believed likely to pass—not storage for every commit and not a branch
+held back until release confidence. Push before full satisfaction when the
+current checkpoint probably works. Delay known-broken, super-WIP, or
+amend-likely work: avoiding a predictable follow-up force push is part of the
+intent. `origin/main` therefore need not mirror local `main`.
+
+Ordinary and force pushes to `origin` are development-state writes and do not
+require the big-effect push gate. Force pushes still use
+`--force-with-lease --force-if-includes`; skipping the gate does not justify a
+bare force. Every commit pushed to `kzahel/main` must already be reachable from
+`origin/main`. `origin/main` may lead `kzahel/main` while work is staged, but it
+may trail only when local `main` itself trails. The `kzahel` push remains
+gated.
+
+If `origin/main` diverges and a fast-forward cannot restore this invariant, a
+lease-protected force push of `origin/main` is permitted only when the
+resulting history remains consistent with `kzahel/main`. Never rewrite
+`kzahel/main` as part of that repair.
+
+On 2026-07-24, an agent pushed a reviewed commit to `kzahel/main` before
+`origin/main`, then oscillated between withholding all newer local commits and
+mirroring the full local tip. The correct decision surface is likely-green
+checkpoints: push them to `origin` freely and often, delay known-WIP work, and
+promote to `kzahel` only after the intended commit reaches `origin`.
+
 ## Current Evidence
 
 On 2026-06-04, the relay resume incompatibility bug exposed the gap:

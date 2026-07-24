@@ -36,6 +36,12 @@ runs emit no runtime warnings (e.g. React "cannot update while rendering" or
 `act(...)` notices). Fix the cause rather than suppressing the report; a
 warning that must stand needs an inline justification.
 
+Environment-dependent subprocess tests must control both the child environment
+and relevant process descriptors. In particular, Bash `BASH_ENV` probes use
+ignored stdin rather than inheriting a test runner's socket-backed stdin. See
+[subprocess environment boundaries](topics/subprocess-environment.md) for the
+runtime and hermetic-test contract.
+
 ## Reference Source
 
 `pnpm references:sync` shallow-clones upstream source into `references/` for

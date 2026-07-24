@@ -1904,6 +1904,10 @@ function agentctlSessionIdFromBash() {
   return execFileSync("bash", ["-c", agentctlProbeCommand], {
     encoding: "utf-8",
     env: process.env,
+    // Keep the fake app-server's probe aligned with an ordinary
+    // non-interactive tool shell. A socket-backed stdin can make Bash skip
+    // BASH_ENV in favor of its remote-shell startup path.
+    stdio: ["ignore", "pipe", "pipe"],
   });
 }
 

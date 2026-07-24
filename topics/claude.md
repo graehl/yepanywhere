@@ -11,6 +11,8 @@ Related topics: [session liveness and queue intent](session-liveness.md),
 [provider refresh](provider-refresh.md),
 [provider state machine](provider-state-machine.md), and
 [thinking configurability](claude-thinking-config.md).
+[Subprocess environment boundaries](subprocess-environment.md) defines the
+shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
 
 ## Contracts
 

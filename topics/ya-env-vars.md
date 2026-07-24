@@ -12,6 +12,9 @@ contract and curates the *meaningful* operator-facing vars. Deep tuning knobs
 (session-index timings, codex rescan intervals, cache TTLs) live only in
 `config.ts`.
 
+Related topic: [subprocess environment boundaries](subprocess-environment.md)
+defines child propagation, shell-startup, and hermetic-test rules.
+
 The canonical product prefix is **`YEP_`**. Existing `YA_*` and
 `YEP_ANYWHERE_*` names are compatibility aliases, not naming precedents. At the
 startup normalization boundary:

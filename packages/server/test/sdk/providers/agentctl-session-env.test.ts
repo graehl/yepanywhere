@@ -12,7 +12,14 @@ function runBash(env: NodeJS.ProcessEnv): string {
       "-c",
       `printf "original=%s agentctl=%s" "\${YA_ORIGINAL_BASH_ENV_MARKER-}" "\${AGENTCTL_SESSION_ID-}"`,
     ],
-    { encoding: "utf-8", env },
+    {
+      encoding: "utf-8",
+      env,
+      // Vitest's worker stdin is socket-backed, which can make Bash select its
+      // remote-shell startup path and skip BASH_ENV. Model an ordinary
+      // non-interactive provider tool shell explicitly.
+      stdio: ["ignore", "pipe", "pipe"],
+    },
   );
 }
 

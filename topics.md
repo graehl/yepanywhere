@@ -13,6 +13,8 @@
 - cost-efficiency - Preferring subscription/local over metered APIs; billing footgun masking.
 - ya-env-vars - Catalog of YA env vars and the canonical YEP_/YEP_MODULE_
   naming conventions.
+- subprocess-environment - Runtime child-environment, shell-startup, and
+  hermetic subprocess-test boundaries.
 - source-name-prefixes - Distinguish TypeScript module symbols from YEP_
   process environment variables and runtime globals.
 - env-vars-config - Settings UI for process-start env visibility and future

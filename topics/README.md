@@ -76,3 +76,7 @@
   channel)
 - Rich interviews (banked: multi-round structured-input flows rendered inline
   from declared formats; revisit atop interactives machinery)
+- Server plugin arch (banked no: settings-gated loadable server code;
+  monolith convenience wins absent a contributing community)
+- Project settings overrides (banked seed: project-scoped overrides beating
+  global settings; mechanically easy, visualization is the cost)

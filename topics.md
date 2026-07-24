@@ -167,3 +167,7 @@
   and a meta-UI comment-to-agent channel.
 - rich-interviews - Banked: multi-round structured-input interview flows;
   YA renders declared formats inline; revisit atop interactives machinery.
+- server-plugin-arch - Banked no: settings-gated loadable server plugins;
+  monolith convenience wins absent a contributing community.
+- project-settings-overrides - Banked seed: project-scoped settings
+  overriding global; easy mechanically, painful to visualize; no current use.

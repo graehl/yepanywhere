@@ -110,7 +110,8 @@ describe("BangCommandService", () => {
       const { completion } = await service.run({
         sessionId: SESSION,
         projectPath: projectDir,
-        command: 'echo "${AGENTCTL_SESSION_ID:-scrubbed}"',
+        command:
+          'if [ -z "$AGENTCTL_SESSION_ID" ]; then echo scrubbed; else echo leaked; fi',
         placementAfterMessageId: "",
       });
       const final = await completion;

@@ -30,8 +30,7 @@ export interface BangCommandsDeps {
 
 export type BangOutputMode = "markdown" | "json" | "ansi" | "toon" | "raw";
 
-// Constructor form avoids control-character-in-regex lint noise for the
-// deliberate ANSI CSI probe (mirrors ANSI_ESCAPE_RE in FixedFontMathToggle).
+// biome-ignore lint/complexity/useRegexLiterals: constructor form avoids noControlCharactersInRegex noise for the deliberate ANSI CSI probe (mirrors ANSI_ESCAPE_RE in FixedFontMathToggle)
 const ANSI_CSI_PROBE = new RegExp(String.raw`\x1b\[`);
 
 /**

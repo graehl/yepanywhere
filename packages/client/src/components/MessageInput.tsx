@@ -433,7 +433,7 @@ export function MessageInput({
   const bangQuery =
     bangSupport && !collapsed ? getBangCompletionQuery(text) : null;
   const bangQueryKey = bangQuery
-    ? `${bangQuery.kind} ${bangQuery.token}`
+    ? `${bangQuery.kind} ${bangQuery.token}`
     : null;
   const showBangChip = !!bangSupport && !collapsed && text.startsWith("!!");
   const showBangEscapedChip =
@@ -1366,6 +1366,48 @@ export function MessageInput({
     [text, setText, onCustomCommand, noteComposerEdit, noteDraftTextChange],
   );
 
+  // Shared Tab-complete action for bang drafts: accept the highlighted
+  // candidate, else fetch immediately and extend to the longest common
+  // prefix (menu opens on ambiguity). Reused by the Tab key and by the
+  // mobile-keyboard button, since touch keyboards have no Tab key.
+  const performBangTabComplete = (): boolean => {
+    if (!bangQuery || !bangSupport) {
+      return false;
+    }
+    const applyCandidate = (candidate: string) => {
+      const nextText = applyBangCompletion(text, bangQuery, candidate);
+      noteComposerEdit(nextText);
+      setText(nextText);
+    };
+    if (showBangSuggestions) {
+      const candidate = bangCandidates[selectedBangIndex];
+      if (candidate) {
+        applyCandidate(candidate);
+      }
+      return true;
+    }
+    bangSupport
+      .fetchCompletions(bangQuery.token, bangQuery.kind, text.slice(2))
+      .then((completions) => {
+        const single = completions.length === 1 ? completions[0] : undefined;
+        if (single) {
+          applyCandidate(single);
+          return;
+        }
+        const prefix = longestCommonPrefix(completions);
+        if (prefix.length > bangQuery.token.length) {
+          const nextText = text.slice(0, bangQuery.replaceStart) + prefix;
+          noteComposerEdit(nextText);
+          setText(nextText);
+        }
+        setBangCandidates(completions);
+        setSelectedBangIndex(0);
+        setDismissedBangQueryKey(null);
+      })
+      .catch(() => {});
+    return true;
+  };
+
   const handleKeyDown = (e: KeyboardEvent) => {
     // Ctrl+↑/↓: shell-style recall of prior bang commands.
     if (
@@ -1411,42 +1453,9 @@ export function MessageInput({
       return;
     }
 
-    // Tab always completes inside a bang draft, shell-style: accept the
-    // highlighted candidate, else fetch immediately and extend to the
-    // longest common prefix (menu opens on ambiguity).
-    if (e.key === "Tab" && !e.shiftKey && bangQuery && bangSupport) {
+    // Tab always completes inside a bang draft, shell-style.
+    if (e.key === "Tab" && !e.shiftKey && performBangTabComplete()) {
       e.preventDefault();
-      const applyCandidate = (candidate: string) => {
-        const nextText = applyBangCompletion(text, bangQuery, candidate);
-        noteComposerEdit(nextText);
-        setText(nextText);
-      };
-      if (showBangSuggestions) {
-        const candidate = bangCandidates[selectedBangIndex];
-        if (candidate) {
-          applyCandidate(candidate);
-        }
-        return;
-      }
-      bangSupport
-        .fetchCompletions(bangQuery.token, bangQuery.kind, text.slice(2))
-        .then((completions) => {
-          const single = completions.length === 1 ? completions[0] : undefined;
-          if (single) {
-            applyCandidate(single);
-            return;
-          }
-          const prefix = longestCommonPrefix(completions);
-          if (prefix.length > bangQuery.token.length) {
-            const nextText = text.slice(0, bangQuery.replaceStart) + prefix;
-            noteComposerEdit(nextText);
-            setText(nextText);
-          }
-          setBangCandidates(completions);
-          setSelectedBangIndex(0);
-          setDismissedBangQueryKey(null);
-        })
-        .catch(() => {});
       return;
     }
 
@@ -2708,6 +2717,20 @@ export function MessageInput({
                   <span aria-hidden="true">
                     {mobileKeyboardAlternateAction.icon}
                   </span>
+                </button>
+              )}
+              {bangQuery !== null && (
+                <button
+                  type="button"
+                  className="message-input-keyboard-action message-input-keyboard-secondary bang-tab-mode"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => performBangTabComplete()}
+                  disabled={disabled}
+                  aria-label={t("bangTabCompleteLabel")}
+                  title={t("bangTabCompleteLabel")}
+                >
+                  <span>Tab</span>
+                  <span aria-hidden="true">⇥</span>
                 </button>
               )}
               <button

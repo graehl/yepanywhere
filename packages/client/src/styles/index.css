@@ -5154,6 +5154,14 @@ div.bang-command-error-message {
   border-color: var(--accent-danger, #d33);
 }
 
+/* Mobile-keyboard Tab-complete action, shown only for !! drafts (touch
+   keyboards have no Tab key). */
+.message-input-keyboard-action.bang-tab-mode {
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
+  color: var(--accent-primary);
+  gap: 2px;
+}
+
 /* Composer routing chip shown while the draft starts with !! */
 .bang-composer-chip {
   padding: 2px var(--space-2);

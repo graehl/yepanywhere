@@ -154,7 +154,9 @@ Tab always completes inside a bang draft, shell-style: accept the
 highlighted candidate if the menu is open; otherwise fetch immediately,
 apply a single match (or extend to the longest common prefix), and open the
 menu on ambiguity. Typing also auto-suggests (150 ms debounce) once the
-token is non-empty.
+token is non-empty. Touch keyboards have no Tab key, so while the draft is
+a bang draft the mobile-keyboard compact action row gains a temporary
+"Tab ⇥" button that triggers the same completion action.
 
 - **Command position** — the first token, and the first token after `|`,
   `;`, or `&`: candidates are executable names from the server's PATH plus

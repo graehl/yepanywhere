@@ -4073,3 +4073,98 @@ describe("MessageInput", () => {
     }
   });
 });
+
+describe("MessageInput bang commands", () => {
+  let restoreMatchMedia: () => void;
+
+  beforeEach(() => {
+    restoreMatchMedia = installDesktopMatchMedia();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    restoreMatchMedia();
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  function bangSupport(
+    overrides: Partial<{
+      onRun: ReturnType<typeof vi.fn>;
+      fetchCompletions: ReturnType<typeof vi.fn>;
+      history: string[];
+    }> = {},
+  ) {
+    return {
+      onRun: overrides.onRun ?? vi.fn(),
+      fetchCompletions:
+        overrides.fetchCompletions ?? vi.fn(async () => [] as string[]),
+      history: overrides.history ?? [],
+    };
+  }
+
+  it("routes !! drafts to onRun instead of onSend", async () => {
+    const onSend = vi.fn();
+    const support = bangSupport();
+    const textarea = renderMessageInput(undefined, {
+      onSend,
+      bangSupport: support,
+    });
+    fireEvent.change(textarea, { target: { value: "!!git status" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(support.onRun).toHaveBeenCalledWith("git status");
+    expect(onSend).not.toHaveBeenCalled();
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("strips one leading space as the literal-!! escape and sends", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(undefined, {
+      onSend,
+      bangSupport: bangSupport(),
+    });
+    fireEvent.change(textarea, { target: { value: " !!not a command" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalled();
+    expect(onSend.mock.calls[0]?.[0]).toBe("!!not a command");
+  });
+
+  it("fetches typing-triggered completions with token, kind, and line", async () => {
+    const fetchCompletions = vi.fn(async () => ["gitalike", "gizmo"]);
+    const support = bangSupport({ fetchCompletions });
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: support,
+    });
+    fireEvent.change(textarea, { target: { value: "!!gi" } });
+    await waitFor(() =>
+      expect(fetchCompletions).toHaveBeenCalledWith("gi", "command", "gi"),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: "gizmo" })).toBeTruthy(),
+    );
+  });
+
+  it("applies a single Tab completion immediately", async () => {
+    const fetchCompletions = vi.fn(async () => ["gitalike"]);
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ fetchCompletions }),
+    });
+    fireEvent.change(textarea, { target: { value: "!!gita" } });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    await waitFor(() =>
+      expect((textarea as HTMLTextAreaElement).value).toBe("!!gitalike "),
+    );
+  });
+
+  it("recalls bang history with Ctrl+ArrowUp", () => {
+    const textarea = renderMessageInput(undefined, {
+      bangSupport: bangSupport({ history: ["git status", "ls"] }),
+    });
+    fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
+    fireEvent.keyDown(textarea, { key: "ArrowUp", ctrlKey: true });
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!ls");
+    fireEvent.keyDown(textarea, { key: "ArrowDown", ctrlKey: true });
+    expect((textarea as HTMLTextAreaElement).value).toBe("!!git status");
+  });
+});

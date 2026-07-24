@@ -1224,6 +1224,7 @@
   "bangComposerChip": "!! local command — runs in the project directory, not sent to the agent",
   "bangComposerEscapedChip": "leading space: sends as ordinary message text",
   "bangEmptyCommand": "Add a command after !!",
+  "bangTabCompleteLabel": "Tab-complete command",
   "bangRunFailed": "Failed to start local command",
   "bangEchoFailed": "Failed to load command output for echo",
   "bangHistoryTitle": "!! Command History",

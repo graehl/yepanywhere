@@ -63,6 +63,11 @@ project directory:
   composer shows a routing chip ("local command — not sent to agent") before
   send, mirroring the `/btw` invariant that routing state is shown, not
   inferred.
+- **Leading-space escape.** A draft starting with a space followed by `!!`
+  is not routed: the single leading space is stripped and the remainder
+  (beginning `!!`) goes to the provider as ordinary prompt text. There is
+  deliberately no further escape — a turn whose literal text must begin
+  with space-then-`!!` cannot be sent, an accepted non-case.
 - **Execution.** Server-side, `cwd` = the session's project directory.
   Command resolution: PATH first, then the project directory as an implicit
   final PATH entry (a project-root executable `foo` runs as `./foo`; no
@@ -97,6 +102,10 @@ project directory:
 - **Timeout.** A generous default wall-clock cap with visible kill notice;
   cancel is always available. Long-running commands (`pnpm test`) are a
   supported case, not an abuse case.
+- **Fork views may omit bang blocks.** Anchors are message ids, and
+  providers that remap ids on fork (Claude) drop the blocks from the forked
+  view. Accepted: the agent context never contained them, so a fork loses
+  nothing the model saw; the source session remains the record.
 
 ## Output rendering: markdown by default, with honest fallbacks
 
@@ -152,7 +161,9 @@ the fallbacks above are the contract; do not assume acli tools emit markdown.
   records stay immutable, and the composer remains the single editing
   surface. Keyboard path: shell-style history recall in the composer —
   Ctrl+ArrowUp cycles back through this session's prior bang commands
-  (most recent first), Ctrl+ArrowDown forward.
+  (most recent first), Ctrl+ArrowDown forward. The same shortcut is
+  expected to be useful beyond bang commands; general composer
+  message-history recall is a natural later extension.
 - **Re-run.** Convenience for the unchanged command; produces a new block at
   the current tail (no in-place output replacement — the old run stays as
   the record of what was true then).
@@ -170,9 +181,6 @@ eagerly.
 
 ## Open questions
 
-- **Escape hatch for literal `!!` text.** A message legitimately starting
-  with `!!` (rare) needs an escape; the routing chip already makes the
-  misroute visible before send. Candidate: a leading space disables routing.
 - **PTY allocation.** Running under a PTY would flip acli tools to their
   pretty-JSON human branch and make TTY-only tools behave, at the cost of
   ANSI-escape handling in output. Default no-PTY; revisit if fenced JSONL
@@ -182,9 +190,6 @@ eagerly.
 - **Single-`!` reservation.** Claude Code's own TUI uses `!` for bash mode.
   YA does not intercept `!`; keep it unclaimed so a future provider-native
   passthrough is not shadowed.
-- **Fork/compaction anchor survival.** Display-object anchors are message
-  ids; Claude forks remap uuids, so bang blocks likely do not carry into
-  forks. Acceptable for v1; note it in the fork UI if users are surprised.
 - **Surface scope.** v1 is the session-page composer only. The floating
   new-session composer (has a project, no session) and aside composers could
   gain it later; the history view's "run in project" affordance may cover

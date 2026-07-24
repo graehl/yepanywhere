@@ -537,7 +537,7 @@ export function TooltipLayer() {
         event.target,
         activeTargetRef.current,
       );
-      if (!target) return;
+      if (!target?.matches(":focus-visible")) return;
       const rect = target.getBoundingClientRect();
       activate(target, rect.left + rect.width / 2, rect.bottom);
     };

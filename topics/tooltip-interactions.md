@@ -26,6 +26,42 @@ in the same row:
   hover-card delay seeds the shared delay at one third of its stored value when
   the new delay is absent, preserving that card's prior timing.
 
+## Scope of the mode
+
+`Native` and `Themed` select the renderer for ordinary text hints. This includes
+static control labels as well as YA-computed text such as clipped commands,
+hidden output tails, elapsed times, and concise file paths:
+
+- In `Native`, the target owns a `title` and the browser/OS owns presentation,
+  timing, placement, dismissal, and input behavior.
+- In `Themed`, the target owns `data-tooltip` and YA renders the text in the
+  document. This permits a configurable delay, immediate scanning between warm
+  targets, stable placement during app scroll, selectable text, and
+  secondary-click copy/enlarge behavior.
+
+Themed tooltips therefore aim to preserve the basic semantics of native hints—
+supplemental, nonessential information opened by pointer hover or
+keyboard-visible focus—but they are not merely recolored native bubbles with a
+delay setting. The extra interaction behavior is intentional and must remain
+optional.
+
+Some YA-rendered hover surfaces cannot meaningfully become native tooltips and
+remain custom in either mode:
+
+- The risk explanation attached to externally controlled-session and
+  pending-tool warnings contains structured explanatory content. Hover or
+  keyboard focus may show that content as a rich tooltip on hover-capable
+  devices; activation opens the same explanation in a modal, which is the touch
+  path. In Themed mode the rich tooltip participates in shared timing and
+  visibility ownership. Native mode preserves its immediate custom reveal.
+- A session hover card previews session content and status. It remains a custom
+  card in both modes; Themed mode derives its first-open delay from the shared
+  setting, while Native mode retains its independent legacy/default delay.
+
+Menus, dialogs, interactive help panels, and other popovers are not tooltips
+and are outside the appearance setting. The mode name must not be interpreted
+as a global ban on app-rendered overlays.
+
 ## Themed timing
 
 The configured delay measures **pointer rest**, not merely time since entry.
@@ -34,15 +70,16 @@ tooltip remains open while the pointer moves within either its trigger or the
 tooltip itself. Leaving both starts a close grace of twice the configured delay;
 entering another tooltip trigger during that grace switches immediately.
 
-Keyboard focus uses the same configured delay. Escape, primary click, blur, and
-a deliberate pointer departure dismiss the tooltip. Other keystrokes, including
-modifier combinations used to capture a screenshot, leave a visible tooltip
-alone. Scroll—including transcript follow-scroll—also does not dismiss a
-tooltip the user may be reading. Browser re-hit-testing can emit pointer
-boundary events when scrolling moves content under a stationary pointer;
-unchanged pointer coordinates are not treated as departure. A visible tooltip
-keeps its fixed reading position during scroll and is re-clamped to the
-viewport after resize.
+Keyboard-visible focus uses the same configured delay. Pointer-generated focus,
+including touch focus, does not open a tooltip after activation. Escape,
+primary click, blur, and a deliberate pointer departure dismiss the tooltip.
+Other keystrokes, including modifier combinations used to capture a screenshot,
+leave a visible tooltip alone. Scroll—including transcript
+follow-scroll—also does not dismiss a tooltip the user may be reading. Browser
+re-hit-testing can emit pointer boundary events when scrolling moves content
+under a stationary pointer; unchanged pointer coordinates are not treated as
+departure. A visible tooltip keeps its fixed reading position during scroll and
+is re-clamped to the viewport after resize.
 
 Only a tooltip that actually became visible warms the tooltip system. After it
 closes, entering another target within six times the configured delay opens the
@@ -144,9 +181,11 @@ not the surface into a card.
 ## Verification contract
 
 - Static and pointer-computed hints obey rest delay, persistent trigger/tooltip
-  hover, delayed pointer departure, focus, and exclusive native/themed
-  ownership. Themed mode contains no live native titles; Native mode restores
-  them.
+  hover, delayed pointer departure, keyboard-visible focus, and exclusive
+  native/themed ownership. Themed mode contains no live native titles; Native
+  mode restores them.
+- Keyboard-visible focus opens themed tooltips; pointer-generated focus,
+  including touch focus, does not reopen a dismissed tooltip.
 - Once visible, a tooltip survives same-target pointer motion, transcript
   follow-scroll, scroll-generated pointer boundary events, and non-Escape
   keystrokes. Escape and a completed pointer departure still dismiss it.
@@ -173,3 +212,30 @@ not the surface into a card.
   dismissal.
 - The local and remote entry points install the same tooltip layer and
   pre-render appearance initialization.
+
+## Automation and screenshot verification
+
+Native and Themed mode require different assertions because a native tooltip is
+browser/OS UI rather than page DOM:
+
+| Scenario | Semantic assertion | Screenshot expectation |
+| --- | --- | --- |
+| Native ordinary hint | Target has `title`, has no `data-tooltip`, and exposes the title as an accessibility description where the browser supports that mapping | A Playwright page screenshot generally does **not** capture the native bubble, even after a real hover; absence from the image does not prove failure |
+| Themed ordinary hint | Target has `data-tooltip`, has no `title`, and a delayed hover or keyboard-visible focus creates one page-DOM `role=tooltip` surface | The tooltip is part of the page and should appear in a screenshot after it becomes visible |
+| Touch activation | A real touch tap may focus and activate the target, but waiting past the configured delay must not create a themed tooltip | No themed tooltip remains over the post-activation UI |
+| Rich explanation or session preview | Assert the custom surface's own content, timing, ownership, and activation contract independently of ordinary `title` ownership | These surfaces are page DOM and are screenshot-visible in either mode |
+
+Use keyboard `Tab` to verify keyboard-visible focus and a real mouse click or
+emulated touchscreen tap to verify pointer-generated focus. Programmatic
+`focus()` is not a substitute for a pointer test: browsers commonly treat it as
+`:focus-visible`, so it can produce the keyboard branch. For Native mode,
+prefer attribute and accessibility-tree assertions over screenshot matching.
+A whole-device or OS-level capture may include native browser chrome, but that
+is platform-dependent and is not a portable browser-test oracle.
+
+The touch regression sequence is specifically pointer activation followed by
+pointer-generated focus: dismissal on pointer-down is insufficient if the
+subsequent focus event schedules the hint again. Exercise that complete
+sequence, wait beyond the configured delay, and let the browser's
+`:focus-visible` result distinguish keyboard-visible from pointer-generated
+focus.

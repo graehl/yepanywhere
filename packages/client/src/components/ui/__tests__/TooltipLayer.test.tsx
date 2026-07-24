@@ -396,6 +396,9 @@ describe("TooltipLayer", () => {
       </>,
     );
     const target = screen.getByRole("button", { name: "Focus me" });
+    vi.spyOn(target, "matches").mockImplementation(
+      (selector) => selector === ":focus-visible",
+    );
 
     fireEvent.focusIn(target);
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
@@ -407,6 +410,30 @@ describe("TooltipLayer", () => {
     expect(target.getAttribute("aria-describedby")).toBeNull();
     expect(target.getAttribute("title")).toBeNull();
     expect(target.getAttribute("data-tooltip")).toBe("Focused hint");
+  });
+
+  it("does not open a themed tooltip when a touch tap focuses its target", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="Tapped hint">
+          Tap me
+        </button>
+      </>,
+    );
+    const target = screen.getByRole("button", { name: "Tap me" });
+    vi.spyOn(target, "matches").mockImplementation(
+      (selector) => selector !== ":focus-visible",
+    );
+
+    fireEvent.pointerDown(target, {
+      pointerType: "touch",
+      button: 0,
+    });
+    fireEvent.focusIn(target);
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("detaches native titles for all of themed mode and restores Native mode", () => {

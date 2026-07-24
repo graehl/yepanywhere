@@ -175,6 +175,70 @@ describe("SessionIndexService", () => {
       expect(changed).toBeNull();
       expect(getSessionSummary).toHaveBeenCalledTimes(1);
     });
+
+    it("repairs persisted Claude titles captured from meta rows", async () => {
+      const sessionId = "meta-command";
+      const filePath = join(sessionDir, `${sessionId}.jsonl`);
+      await writeFile(
+        filePath,
+        `${[
+          JSON.stringify({
+            type: "user",
+            isMeta: true,
+            message: {
+              content:
+                "<local-command-caveat>Caveat: local command messages follow.</local-command-caveat>",
+            },
+            uuid: "meta-1",
+            timestamp: "2026-07-24T17:15:43.435Z",
+          }),
+          JSON.stringify({
+            type: "user",
+            message: {
+              content:
+                "<command-name>/effort</command-name>\n" +
+                "<command-message>effort</command-message>\n" +
+                "<command-args></command-args>",
+            },
+            uuid: "command-1",
+            parentUuid: "meta-1",
+            timestamp: "2026-07-24T17:15:43.435Z",
+          }),
+        ].join("\n")}\n`,
+      );
+      const fileStats = await stat(filePath);
+      const getSessionSummary = vi.spyOn(reader, "getSessionSummary");
+      await writeFile(
+        service.getIndexPath(sessionDir),
+        JSON.stringify({
+          version: 3,
+          projectId,
+          sessions: {
+            [sessionId]: {
+              title:
+                "<local-command-caveat>Caveat: local command messages follow.</local-command-caveat>",
+              fullTitle:
+                "<local-command-caveat>Caveat: local command messages follow.</local-command-caveat>",
+              createdAt: "2026-07-24T17:15:43.435Z",
+              updatedAt: "2026-07-24T17:15:43.435Z",
+              messageCount: 2,
+              indexedBytes: fileStats.size,
+              fileMtime: fileStats.mtimeMs,
+              provider: "claude",
+            },
+          },
+        }),
+      );
+
+      const sessions = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+
+      expect(sessions[0]?.title).toBe("/effort");
+      expect(getSessionSummary).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("cache miss", () => {

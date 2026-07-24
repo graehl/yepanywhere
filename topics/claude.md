@@ -55,6 +55,10 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   inventory or another provider-native capability reports native support, or
   when a provider-specific emulation rule (separate from the Claude/`loop`
   alias here) is added.
+- Claude automatic session titles come from the first non-meta user turn.
+  When a session opens with a provider slash-command wrapper, the title is the
+  command plus its arguments; a preceding `isMeta` local-command caveat must
+  never become the visible title.
 - Live Claude activity must not depend on the original browser tab being the
   only observer. A later YA view of the same YA-owned process should receive
   enough replay, catch-up, durable transcript refresh, and liveness metadata to
@@ -346,3 +350,6 @@ Suspected contributing areas to check before declaring this fixed:
   consumers as `user-question`, carries single- and multi-select answers back
   through `updatedInput`, and ignores permission rules that would otherwise
   allow or deny the tool.
+- A Claude session that opens with an `isMeta` local-command caveat followed by
+  a slash-command wrapper uses the command and arguments as its automatic title,
+  including after loading a persisted summary index from an older YA version.

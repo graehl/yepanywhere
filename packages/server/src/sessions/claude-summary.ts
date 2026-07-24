@@ -165,7 +165,7 @@ function getTimestamp(entry: ClaudeSessionEntry): string {
 function getFirstUserTitleCandidate(
   entry: ClaudeSessionEntry,
 ): string | undefined {
-  if (entry.type !== "user") return undefined;
+  if (entry.type !== "user" || entry.isMeta === true) return undefined;
   const content = (entry as { message?: { content?: unknown } }).message
     ?.content;
   if (!content) return undefined;

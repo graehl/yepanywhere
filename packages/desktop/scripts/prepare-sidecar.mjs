@@ -166,22 +166,7 @@ try {
   const extractDir = join(tempRoot, "extract");
   mkdirSync(extractDir);
   if (process.platform === "win32") {
-    run(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "Expand-Archive -LiteralPath $env:YEP_DESKTOP_BUN_ARCHIVE -DestinationPath $env:YEP_DESKTOP_BUN_EXTRACT_DIR -Force",
-      ],
-      {
-        env: {
-          ...process.env,
-          YEP_DESKTOP_BUN_ARCHIVE: archive,
-          YEP_DESKTOP_BUN_EXTRACT_DIR: extractDir,
-        },
-      },
-    );
+    run("tar.exe", ["-xf", archive, "-C", extractDir]);
   } else {
     run("unzip", ["-q", archive, "-d", extractDir]);
   }

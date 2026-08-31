@@ -4,6 +4,7 @@
 
 ### Fixed
 - Desktop release builds now preserve workspace-level dependency overrides while assembling the bundled server, keeping frozen-lockfile CI builds reproducible.
+- Windows runtime preparation now uses the built-in archive tool instead of legacy Windows PowerShell modules, including on ARM64 development and smoke-test machines.
 
 ## [0.1.3] - 2026-08-01
 

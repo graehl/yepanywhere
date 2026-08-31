@@ -127,75 +127,86 @@ function sha256(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
-const triple = detectTargetTriple();
-const target = versions.bun.targets[triple];
-if (!target) {
-  throw new Error(`Unsupported desktop target triple: ${triple}`);
-}
-
 const binDir = join(desktopDir, "src-tauri", "binaries");
-const extension = triple.includes("windows") ? ".exe" : "";
-const bunOutput = join(binDir, `bun-${triple}${extension}`);
-const versionMarker = `${bunOutput}.version`;
-const expectedMarker = `${versions.bun.version}\n${target.sha256}\n`;
+mkdirSync(binDir, { recursive: true });
 
-if (
-  existsSync(bunOutput) &&
-  existsSync(versionMarker) &&
-  readFileSync(versionMarker, "utf8") === expectedMarker
-) {
-  console.log(`Bun ${versions.bun.version} already present for ${triple}`);
-  process.exit(0);
+async function prepareBun(targetTriple) {
+  const target = versions.bun.targets[targetTriple];
+  if (!target) {
+    throw new Error(`Unsupported desktop target triple: ${targetTriple}`);
+  }
+  const extension = targetTriple.includes("windows") ? ".exe" : "";
+  const bunOutput = join(binDir, `bun-${targetTriple}${extension}`);
+  const versionMarker = `${bunOutput}.version`;
+  const expectedMarker = `${versions.bun.version}\n${target.sha256}\n`;
+
+  if (
+    existsSync(bunOutput) &&
+    existsSync(versionMarker) &&
+    readFileSync(versionMarker, "utf8") === expectedMarker
+  ) {
+    console.log(
+      `Bun ${versions.bun.version} already present for ${targetTriple}`,
+    );
+    return;
+  }
+
+  const tempRoot = mkdtempSync(join(tmpdir(), "yep-desktop-bun-"));
+  try {
+    const archive = join(tempRoot, target.asset);
+    const url = `https://github.com/oven-sh/bun/releases/download/bun-v${versions.bun.version}/${target.asset}`;
+    console.log(
+      `Downloading Bun ${versions.bun.version} for ${targetTriple}...`,
+    );
+    await download(url, archive);
+
+    const actualHash = sha256(archive);
+    if (actualHash !== target.sha256) {
+      throw new Error(
+        `Bun archive hash mismatch: expected ${target.sha256}, got ${actualHash}`,
+      );
+    }
+
+    const extractDir = join(tempRoot, "extract");
+    mkdirSync(extractDir);
+    if (process.platform === "win32") {
+      run("tar.exe", ["-xf", archive, "-C", extractDir]);
+    } else {
+      run("unzip", ["-q", archive, "-d", extractDir]);
+    }
+    const extracted = join(
+      extractDir,
+      basename(target.asset, ".zip"),
+      targetTriple.includes("windows") ? "bun.exe" : "bun",
+    );
+    if (!existsSync(extracted)) {
+      throw new Error(`Downloaded archive did not contain ${extracted}`);
+    }
+
+    copyFileSync(extracted, bunOutput);
+    if (!targetTriple.includes("windows")) {
+      chmodSync(bunOutput, 0o755);
+    }
+    if (
+      process.platform === "darwin" &&
+      process.env.YEP_DESKTOP_SKIP_ADHOC_SIGN !== "1"
+    ) {
+      run("codesign", ["-fs", "-", bunOutput], { stdio: "inherit" });
+    }
+    writeFileSync(versionMarker, expectedMarker);
+    console.log(`Bun ${versions.bun.version} ready at ${bunOutput}`);
+  } finally {
+    rmSync(tempRoot, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 200,
+    });
+  }
 }
 
-mkdirSync(binDir, { recursive: true });
-const tempRoot = mkdtempSync(join(tmpdir(), "yep-desktop-bun-"));
-try {
-  const archive = join(tempRoot, target.asset);
-  const url = `https://github.com/oven-sh/bun/releases/download/bun-v${versions.bun.version}/${target.asset}`;
-  console.log(`Downloading Bun ${versions.bun.version} for ${triple}...`);
-  await download(url, archive);
-
-  const actualHash = sha256(archive);
-  if (actualHash !== target.sha256) {
-    throw new Error(
-      `Bun archive hash mismatch: expected ${target.sha256}, got ${actualHash}`,
-    );
-  }
-
-  const extractDir = join(tempRoot, "extract");
-  mkdirSync(extractDir);
-  if (process.platform === "win32") {
-    run("tar.exe", ["-xf", archive, "-C", extractDir]);
-  } else {
-    run("unzip", ["-q", archive, "-d", extractDir]);
-  }
-  const extracted = join(
-    extractDir,
-    basename(target.asset, ".zip"),
-    triple.includes("windows") ? "bun.exe" : "bun",
-  );
-  if (!existsSync(extracted)) {
-    throw new Error(`Downloaded archive did not contain ${extracted}`);
-  }
-
-  copyFileSync(extracted, bunOutput);
-  if (!triple.includes("windows")) {
-    chmodSync(bunOutput, 0o755);
-  }
-  if (
-    process.platform === "darwin" &&
-    process.env.YEP_DESKTOP_SKIP_ADHOC_SIGN !== "1"
-  ) {
-    run("codesign", ["-fs", "-", bunOutput], { stdio: "inherit" });
-  }
-  writeFileSync(versionMarker, expectedMarker);
-  console.log(`Bun ${versions.bun.version} ready at ${bunOutput}`);
-} finally {
-  rmSync(tempRoot, {
-    recursive: true,
-    force: true,
-    maxRetries: 10,
-    retryDelay: 200,
-  });
+const triple = detectTargetTriple();
+await prepareBun(triple);
+if (triple === "x86_64-pc-windows-msvc") {
+  await prepareBun("aarch64-pc-windows-msvc");
 }

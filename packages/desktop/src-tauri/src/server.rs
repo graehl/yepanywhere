@@ -393,7 +393,73 @@ where
     });
 }
 
-fn bun_path() -> Result<PathBuf, String> {
+#[cfg(any(windows, test))]
+const IMAGE_FILE_MACHINE_UNKNOWN_VALUE: u16 = 0;
+#[cfg(any(windows, test))]
+const IMAGE_FILE_MACHINE_ARM64_VALUE: u16 = 0xaa64;
+
+#[cfg(any(windows, test))]
+fn needs_windows_arm64_bun(process_machine: u16, native_machine: u16) -> bool {
+    process_machine != IMAGE_FILE_MACHINE_UNKNOWN_VALUE
+        && native_machine == IMAGE_FILE_MACHINE_ARM64_VALUE
+}
+
+#[cfg(windows)]
+fn windows_process_machines() -> Result<(u16, u16), String> {
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, IsWow64Process2};
+
+    let mut process_machine = IMAGE_FILE_MACHINE_UNKNOWN_VALUE;
+    let mut native_machine = IMAGE_FILE_MACHINE_UNKNOWN_VALUE;
+    let detected = unsafe {
+        IsWow64Process2(
+            GetCurrentProcess(),
+            &mut process_machine,
+            &mut native_machine,
+        )
+    };
+    if detected == 0 {
+        return Err(format!(
+            "Could not detect native Windows architecture: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok((process_machine, native_machine))
+}
+
+#[cfg(any(windows, test))]
+fn windows_arm64_bun_candidates(resource_dir: &std::path::Path) -> [PathBuf; 2] {
+    [
+        resource_dir.join("server").join("bun-windows-aarch64.exe"),
+        resource_dir
+            .join("resources")
+            .join("server")
+            .join("bun-windows-aarch64.exe"),
+    ]
+}
+
+fn bun_path(_app: &AppHandle) -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    {
+        let (process_machine, native_machine) = windows_process_machines()?;
+        if needs_windows_arm64_bun(process_machine, native_machine) {
+            let resource_dir = _app
+                .path()
+                .resource_dir()
+                .map_err(|error| format!("Could not resolve desktop resources: {error}"))?;
+            let candidates = windows_arm64_bun_candidates(&resource_dir);
+            return candidates
+                .iter()
+                .find(|candidate| candidate.exists())
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "Bundled Windows ARM64 runtime not found beneath {}",
+                        resource_dir.display()
+                    )
+                });
+        }
+    }
+
     let executable = std::env::current_exe()
         .map_err(|error| format!("Could not resolve executable: {error}"))?;
     let executable_dir = executable
@@ -488,7 +554,7 @@ fn create_server_command(
         return Ok(command);
     }
 
-    let bun = bun_path()?;
+    let bun = bun_path(app)?;
     let entry = server_entry(app)?;
     let server_dir = entry
         .parent()
@@ -913,8 +979,9 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        decide_start, redact_server_output, server_entry_candidates, ServerLifecycle, ServerPhase,
-        StartDecision, DESKTOP_READY_PREFIX,
+        decide_start, needs_windows_arm64_bun, redact_server_output, server_entry_candidates,
+        windows_arm64_bun_candidates, ServerLifecycle, ServerPhase, StartDecision,
+        DESKTOP_READY_PREFIX,
     };
 
     fn lifecycle(phase: ServerPhase, attempt: u64) -> ServerLifecycle {
@@ -996,5 +1063,22 @@ mod tests {
             candidates[1],
             Path::new("app-resources/resources/server/dist/index.js")
         );
+
+        let arm64_bun = windows_arm64_bun_candidates(Path::new("app-resources"));
+        assert_eq!(
+            arm64_bun[0],
+            Path::new("app-resources/server/bun-windows-aarch64.exe")
+        );
+        assert_eq!(
+            arm64_bun[1],
+            Path::new("app-resources/resources/server/bun-windows-aarch64.exe")
+        );
+    }
+
+    #[test]
+    fn selects_native_arm64_bun_only_for_an_emulated_windows_process() {
+        assert!(needs_windows_arm64_bun(0x8664, 0xaa64));
+        assert!(!needs_windows_arm64_bun(0, 0xaa64));
+        assert!(!needs_windows_arm64_bun(0x8664, 0x8664));
     }
 }

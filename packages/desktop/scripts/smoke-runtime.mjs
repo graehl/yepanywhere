@@ -17,14 +17,6 @@ const triple =
     : process.arch === "arm64"
       ? "aarch64-apple-darwin"
       : "x86_64-apple-darwin");
-const bun = appBundle
-  ? join(resolve(appBundle), "Contents", "MacOS", "bun")
-  : join(
-      desktopDir,
-      "src-tauri",
-      "binaries",
-      `bun-${triple}${triple.includes("windows") ? ".exe" : ""}`,
-    );
 const serverDir = appBundle
   ? join(
       resolve(appBundle),
@@ -34,6 +26,18 @@ const serverDir = appBundle
       "server",
     )
   : join(desktopDir, "src-tauri", "resources", "server");
+const bun = appBundle
+  ? join(resolve(appBundle), "Contents", "MacOS", "bun")
+  : process.platform === "win32" &&
+      process.arch === "arm64" &&
+      triple === "x86_64-pc-windows-msvc"
+    ? join(serverDir, "bun-windows-aarch64.exe")
+    : join(
+        desktopDir,
+        "src-tauri",
+        "binaries",
+        `bun-${triple}${triple.includes("windows") ? ".exe" : ""}`,
+      );
 const entry = join(serverDir, "dist", "index.js");
 
 for (const [label, path] of [

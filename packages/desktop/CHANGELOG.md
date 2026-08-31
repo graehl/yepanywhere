@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- The x64 Windows installer now includes and selects a native ARM64 Bun runtime on Windows ARM64, preventing the bundled server from crashing under x64 emulation.
 - Desktop release builds now preserve workspace-level dependency overrides while assembling the bundled server, keeping frozen-lockfile CI builds reproducible.
 - Windows runtime preparation now uses the built-in archive tool instead of legacy Windows PowerShell modules, including on ARM64 development and smoke-test machines.
 

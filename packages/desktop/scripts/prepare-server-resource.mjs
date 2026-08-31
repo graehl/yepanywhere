@@ -26,6 +26,13 @@ const resourceParent = dirname(resourceDir);
 const serverDir = join(rootDir, "packages", "server");
 const deployTarget = "../desktop/src-tauri/resources/server";
 const modulesDir = join(resourceDir, "node_modules");
+const windowsArm64BunName = "bun-windows-aarch64.exe";
+const windowsArm64Bun = join(
+  desktopDir,
+  "src-tauri",
+  "binaries",
+  "bun-aarch64-pc-windows-msvc.exe",
+);
 
 if (
   resourceDir !==
@@ -56,6 +63,21 @@ function runGit(args) {
     encoding: "utf8",
   });
   if (result.status !== 0) return "unknown";
+  return result.stdout.trim();
+}
+
+function detectTargetTriple() {
+  const explicit = process.env.TARGET_TRIPLE?.trim();
+  if (explicit) return explicit;
+  const result = spawnSync("rustc", ["--print", "host-tuple"], {
+    cwd: rootDir,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `Could not detect desktop target triple: ${result.stderr || result.stdout}`,
+    );
+  }
   return result.stdout.trim();
 }
 
@@ -253,6 +275,14 @@ cpSync(join(rootDir, "packages", "client", "dist"), join(resourceDir, "client-di
   recursive: true,
 });
 
+const targetTriple = detectTargetTriple();
+if (targetTriple === "x86_64-pc-windows-msvc") {
+  if (!existsSync(windowsArm64Bun)) {
+    throw new Error(`Windows ARM64 Bun runtime not found at ${windowsArm64Bun}`);
+  }
+  cpSync(windowsArm64Bun, join(resourceDir, windowsArm64BunName));
+}
+
 for (const name of [
   "src",
   "test",
@@ -295,6 +325,10 @@ const manifest = {
   serverPackageVersion: serverPackage.version,
   commit: runGit(["rev-parse", "HEAD"]),
   bunVersion: runtimeVersions.bun.version,
+  windowsArm64BunSha256:
+    targetTriple === "x86_64-pc-windows-msvc"
+      ? hashFile(join(resourceDir, windowsArm64BunName))
+      : undefined,
   lockfileSha256: hashFile(join(rootDir, "pnpm-lock.yaml")),
   serverEntrySha256: hashFile(join(resourceDir, "dist", "index.js")),
   clientIndexSha256: hashFile(join(resourceDir, "client-dist", "index.html")),

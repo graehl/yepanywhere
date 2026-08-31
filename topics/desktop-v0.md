@@ -226,6 +226,13 @@ NSIS is a current-user install and `/S` does not require elevation. Tauri's
 WiX MSI is an all-users managed-deployment artifact; `/qn` therefore runs from
 an elevated deployment context.
 
+The x64 Windows package runs on native x64 and Windows ARM64. It carries both
+hash-pinned Windows Bun architectures as private immutable resources. The
+native shell uses the adjacent x64 runtime on x64 Windows and selects the
+bundled native ARM64 runtime when the x64 shell is emulated on Windows ARM64;
+it does not execute x64 Bun under ARM64 emulation or download a runtime on
+first launch.
+
 The server and every descendant belong to an app-owned Windows process group
 or Job Object. Quit, restart, update, and uninstall attempt graceful shutdown
 and then terminate only that owned tree within a bounded deadline. No

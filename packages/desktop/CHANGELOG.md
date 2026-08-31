@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Desktop release builds now preserve workspace-level dependency overrides while assembling the bundled server, keeping frozen-lockfile CI builds reproducible.
+
 ## [0.1.3] - 2026-08-01
 
 ### Fixed

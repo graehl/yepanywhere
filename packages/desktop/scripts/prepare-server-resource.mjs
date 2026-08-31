@@ -203,13 +203,16 @@ try {
     join(rootDir, "pnpm-lock.yaml"),
     join(moduleWorkspace, "pnpm-lock.yaml"),
   );
+  // The lockfile records workspace-level resolution settings such as
+  // overrides. Keep the temporary install on the exact same configuration so
+  // frozen installs continue to validate after those settings move or grow.
+  cpSync(
+    join(rootDir, "pnpm-workspace.yaml"),
+    join(moduleWorkspace, "pnpm-workspace.yaml"),
+  );
   cpSync(
     join(rootDir, "package.json"),
     join(moduleWorkspace, "package.json"),
-  );
-  writeFileSync(
-    join(moduleWorkspace, "pnpm-workspace.yaml"),
-    "packages:\n  - packages/*\n",
   );
   runPnpm(
     [

@@ -170,7 +170,16 @@ async function prepareBun(targetTriple) {
     const extractDir = join(tempRoot, "extract");
     mkdirSync(extractDir);
     if (process.platform === "win32") {
-      run("tar.exe", ["-xf", archive, "-C", extractDir]);
+      const systemRoot = process.env.SystemRoot?.trim();
+      if (!systemRoot) {
+        throw new Error("SystemRoot is required to locate Windows tar.exe");
+      }
+      run(join(systemRoot, "System32", "tar.exe"), [
+        "-xf",
+        archive,
+        "-C",
+        extractDir,
+      ]);
     } else {
       run("unzip", ["-q", archive, "-d", extractDir]);
     }

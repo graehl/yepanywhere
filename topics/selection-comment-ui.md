@@ -299,6 +299,9 @@ The quote block itself:
 - While a primary pointer is dragging a selection, selection controls remain
   absent and do not chase the changing range. After pointer-down clears any
   prior controls, intermediate `selectionchange` events do no React state work.
+  The first transcript selection change suspends live-tail following; later
+  changes while following is already off do not rescan the DOM, reread scroll
+  geometry, or republish the same follow state.
   Pointer release publishes the completed range once, including for upward
   drags. Keyboard and programmatic selections still publish from
   `selectionchange`, and pressing an already visible selection control does not

@@ -1839,6 +1839,37 @@ describe("MessageList scroll and follow", () => {
     expect(onFollowingBottomChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("cancels live follow only once during a transcript selection drag", () => {
+    const onFollowingBottomChange = vi.fn();
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        onFollowingBottomChange={onFollowingBottomChange}
+      />,
+    );
+
+    const output = screen.getByText("current response");
+    fireEvent.pointerDown(output, { button: 0 });
+    const range = document.createRange();
+    range.selectNodeContents(output);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    onFollowingBottomChange.mockClear();
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+      document.dispatchEvent(new Event("selectionchange"));
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    expect(onFollowingBottomChange).toHaveBeenCalledTimes(1);
+    expect(onFollowingBottomChange).toHaveBeenCalledWith(false);
+  });
+
   it("lets an upward scroll movement cancel live follow", async () => {
     const animationFrames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

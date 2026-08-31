@@ -3892,7 +3892,7 @@ export const MessageList = memo(function MessageList({
     };
 
     const handleSelectionChange = () => {
-      if (selectionIntersectsElement(content)) {
+      if (shouldAutoScrollRef.current && selectionIntersectsElement(content)) {
         stopFollowingForUserScroll(container);
       }
     };

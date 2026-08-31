@@ -52,6 +52,7 @@
 - Register the single-instance guard before all other Tauri plugins so rapid or repeated launches focus the existing dashboard without starting a competing app instance.
 
 ### Fixed
+- Reopening the running macOS app now restores its dashboard instead of leaving the tray-only process hidden.
 - Desktop runtime preparation now handles Windows archive paths and clean CI package stores without weakening lockfile-pinned dependency selection.
 - Desktop CI now retries one failed macOS Tauri build or upload to absorb transient DMG assembly failures before requiring intervention.
 - Signed macOS packages now sign and verify native modules nested in the bundled server before app notarization.

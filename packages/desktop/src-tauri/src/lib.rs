@@ -190,11 +190,22 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::Exit => {
                 let state = app_handle.state::<server::ServerState>();
                 state.kill_sync();
             }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                let handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = windows::show_dashboard_window(&handle).await {
+                        eprintln!("Failed to activate dashboard: {error}");
+                        let _ = windows::show_main_window(&handle);
+                    }
+                });
+            }
+            _ => {}
         });
 }
 

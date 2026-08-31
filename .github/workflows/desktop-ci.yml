@@ -315,7 +315,7 @@ jobs:
             gh release delete-asset "$TAG" "$name" --yes
           done
 
-      - name: Validate latest.json updater artifact
+      - name: Normalize and validate latest.json updater artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -324,6 +324,8 @@ jobs:
             echo "::error::latest.json not found in release — auto-updates will not work for this version!"
             exit 1
           }
+          node packages/desktop/scripts/normalize-updater-json.mjs /tmp/latest.json
+          gh release upload "$TAG" /tmp/latest.json --clobber
           python3 -c "
           import json
           data = json.load(open('/tmp/latest.json'))
@@ -336,14 +338,18 @@ jobs:
               assert 'signature' in p, f'{key}: missing signature'
               assert len(p['signature']) > 10, f'{key}: signature suspiciously short'
           windows = platforms.get('windows-x86_64')
+          msi = platforms.get('windows-x86_64-msi')
           nsis = platforms.get('windows-x86_64-nsis')
           assert windows, 'missing windows-x86_64 updater entry'
+          assert msi, 'missing windows-x86_64-msi updater entry'
           assert nsis, 'missing windows-x86_64-nsis updater entry'
-          assert windows['url'].endswith(('.msi', '.exe')), 'Windows updater URL is not an installer'
+          assert windows == nsis, 'canonical Windows updater must use the primary NSIS installer'
+          assert windows['url'].endswith('.exe'), 'canonical Windows updater URL is not an executable'
+          assert msi['url'].endswith('.msi'), 'Windows MSI updater URL is not an MSI'
           assert nsis['url'].endswith('.exe'), 'Windows NSIS updater URL is not an executable'
           print(f'latest.json valid: v{data[\"version\"]} with {len(platforms)} platform(s): {list(platforms.keys())}')
           "
-          WINDOWS_URLS=$(python3 -c "import json; p=json.load(open('/tmp/latest.json'))['platforms']; print(p['windows-x86_64']['url']); print(p['windows-x86_64-nsis']['url'])")
+          WINDOWS_URLS=$(python3 -c "import json; p=json.load(open('/tmp/latest.json'))['platforms']; print(p['windows-x86_64']['url']); print(p['windows-x86_64-msi']['url'])")
           while read -r url; do
             curl --fail --location --head "$url" >/dev/null
           done <<< "$WINDOWS_URLS"

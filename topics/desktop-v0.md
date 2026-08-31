@@ -255,6 +255,12 @@ The app checks the signed Tauri updater automatically and asks before
 installing/relaunching. A tagged release fails if its signed updater artifact
 or Windows entry in `latest.json` is missing.
 
+The canonical `windows-x86_64` updater entry uses the signed NSIS artifact so
+ordinary per-user installations remain non-elevated NSIS installations across
+updates. The signed MSI remains available under `windows-x86_64-msi` for
+managed all-users deployment, but the app does not migrate an NSIS install to
+MSI during an automatic update.
+
 An available update opens and foregrounds the trusted native updater surface
 before asking to install and relaunch. A manual check also foregrounds that
 surface when the app is current or the check fails, so selecting **Check for

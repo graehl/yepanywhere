@@ -31,6 +31,10 @@ Tauri's WiX MSI is an all-users package and requires administrator
 privileges. For quiet per-user installation without elevation, use the primary
 NSIS executable with `/S`.
 
+Automatic updates also use the signed NSIS artifact, preserving the per-user,
+non-elevated installation model. The MSI remains a separate managed-deployment
+option and is not selected by the in-app updater.
+
 The NSIS uninstaller accepts `/S`; an MSI can be removed with
 `msiexec.exe /x <product-code> /qn`. Ordinary update, reinstall, and uninstall
 preserve the desktop data directory at `%USERPROFILE%\.yep-anywhere-desktop`.

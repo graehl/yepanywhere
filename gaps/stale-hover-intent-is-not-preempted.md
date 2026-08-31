@@ -13,9 +13,10 @@ CSS `:hover`, while the rich preview uses
 pointer-rest timers and clears them on processed pointer leave. Either surface
 can still appear stale when unrelated synchronous work prevents the browser
 from processing current pointer state and painting it. The demonstrated
-transcript amplifier is recorded separately in
-`gaps/transcript-hover-rerenders-message-list.md`: crossing 20 mounted rows
-caused 19 full `MessageList` commits totaling 293.3 ms.
+transcript amplifier and its corrected ownership boundary are recorded in
+`packages/client/RENDERING_PERFORMANCE.md`: crossing 20 mounted rows caused 19
+full `MessageList` commits totaling 293.3 ms before transcript position
+publication moved outside transcript React state.
 
 Treat preemption and skipping as a UI correctness requirement for ephemeral
 pointer state, whether the pointer is hovering or a button is held:
@@ -94,9 +95,13 @@ cases above must also prove edge count and order, including child-to-child
 pointer transitions that normalize to the same owning region.
 
 This was recorded rather than fixed because the requested scope was to retain
-the UI correctness principle and its diagnostic requirement. The sidebar's
-specific blocking owner and the causal identity of the remaining mouse-down
-highlight symptom still need the targeted injected trace.
+the UI correctness principle and its diagnostic requirement. The 2026-08-31
+partial fix made transcript timestamps and warm delegated text tooltips
+latest-wins, while existing selection handling already defers primary-drag
+application work until release. The sidebar's specific blocking owner, rich
+hover-surface controllers beyond the delegated text layer, and the causal
+identity of the remaining mouse-down highlight symptom still need the targeted
+injected trace.
 
 Found 2026-08-31 while diagnosing delayed mouseover feedback during active
 session rendering.

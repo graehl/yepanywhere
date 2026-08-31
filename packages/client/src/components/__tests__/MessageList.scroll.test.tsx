@@ -10,6 +10,7 @@ import {
 import { useLayoutEffect, useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { setConversationViewPreference } from "../../hooks/useConversationView";
+import { createTranscriptPositionStore } from "../../lib/transcriptPositionStore";
 import {
   installMessageListTestEnvironment,
   assistantMessage,
@@ -737,6 +738,16 @@ describe("MessageList scroll and follow", () => {
 
   it("indexes transcript rows once after scrolling settles", () => {
     const onTranscriptPositionTimestampChange = vi.fn();
+    let pendingPositionFrame: FrameRequestCallback | null = null;
+    const transcriptPositionStore = createTranscriptPositionStore({
+      request: (callback) => {
+        pendingPositionFrame = callback;
+        return 1;
+      },
+      cancel: () => {
+        pendingPositionFrame = null;
+      },
+    });
     const assistantEnd = "2026-04-26T12:04:00.000Z";
     const { container } = render(
       <MessageList
@@ -753,6 +764,7 @@ describe("MessageList scroll and follow", () => {
         onTranscriptPositionTimestampChange={
           onTranscriptPositionTimestampChange
         }
+        transcriptPositionStore={transcriptPositionStore}
       />,
     );
     Object.defineProperty(container, "scrollTop", {
@@ -841,6 +853,11 @@ describe("MessageList scroll and follow", () => {
           ([selector]) => selector === "[data-render-id]",
         ),
       ).toHaveLength(1);
+      act(() => {
+        const frame = pendingPositionFrame;
+        pendingPositionFrame = null;
+        frame?.(0);
+      });
       expect(onTranscriptPositionTimestampChange).toHaveBeenLastCalledWith(
         new Date(assistantEnd).getTime(),
       );

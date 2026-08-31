@@ -43,6 +43,12 @@ interface PointerPosition {
   y: number;
 }
 
+interface PendingTooltipHandoff {
+  target: Element;
+  anchorX: number;
+  anchorY: number;
+}
+
 interface DetachedTitle {
   value: string;
   injectedDataTooltip: boolean;
@@ -231,6 +237,9 @@ export function TooltipLayer() {
   );
   const visibilityTokenRef = useRef<symbol | null>(null);
   const lastPointerPositionRef = useRef<PointerPosition | null>(null);
+  const handoffFrameRef = useRef<number | null>(null);
+  const pendingHandoffRef = useRef<PendingTooltipHandoff | null>(null);
+  const visibleTargetRef = useRef<Element | null>(null);
   const visibleRef = useRef(false);
   const visibleTooltipRef = useRef<VisibleTooltip | null>(visible);
   visibleRef.current = visible !== null;
@@ -355,16 +364,30 @@ export function TooltipLayer() {
     savedDescriptionRef.current = null;
   }, []);
 
+  const cancelVisibleHandoff = useCallback(() => {
+    const hadPendingHandoff = pendingHandoffRef.current !== null;
+    pendingHandoffRef.current = null;
+    if (handoffFrameRef.current !== null) {
+      cancelAnimationFrame(handoffFrameRef.current);
+      handoffFrameRef.current = null;
+    }
+    if (hadPendingHandoff) {
+      activeTargetRef.current = visibleTargetRef.current;
+    }
+  }, []);
+
   const clearActive = useCallback(() => {
     clearShowTimer();
     clearHideTimer();
+    cancelVisibleHandoff();
     releaseVisibility();
     activeTargetRef.current = null;
+    visibleTargetRef.current = null;
     visibleRef.current = false;
     visibleTooltipRef.current = null;
     setEnlarged(false);
     setVisible(null);
-  }, [clearHideTimer, clearShowTimer, releaseVisibility]);
+  }, [cancelVisibleHandoff, clearHideTimer, clearShowTimer, releaseVisibility]);
 
   const hide = clearActive;
   const dismissUntilDeparture = clearActive;
@@ -405,6 +428,7 @@ export function TooltipLayer() {
       visibilityTokenRef.current ??= beginTooltipVisibility(hide);
       restoreDescription(savedDescriptionRef.current);
       savedDescriptionRef.current = appendDescriptionId(target, currentText);
+      visibleTargetRef.current = target;
       visibleRef.current = true;
       const resolvedAnchorX = finiteCoordinate(anchorX);
       const resolvedAnchorY = finiteCoordinate(anchorY);
@@ -447,6 +471,22 @@ export function TooltipLayer() {
     [clearShowTimer, show],
   );
 
+  const scheduleVisibleHandoff = useCallback(
+    (target: Element, anchorX: number, anchorY: number) => {
+      pendingHandoffRef.current = { target, anchorX, anchorY };
+      if (handoffFrameRef.current !== null) return;
+      handoffFrameRef.current = requestAnimationFrame(() => {
+        handoffFrameRef.current = null;
+        const pending = pendingHandoffRef.current;
+        pendingHandoffRef.current = null;
+        if (pending) {
+          show(pending.target, pending.anchorX, pending.anchorY);
+        }
+      });
+    },
+    [show],
+  );
+
   const activate = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
       if (areTooltipsSuppressed()) {
@@ -477,7 +517,7 @@ export function TooltipLayer() {
         return;
       }
       if (switchesVisibleTooltip) {
-        show(target, anchorX, anchorY);
+        scheduleVisibleHandoff(target, anchorX, anchorY);
         return;
       }
       if (!visibleRef.current) schedule(target, anchorX, anchorY);
@@ -489,7 +529,7 @@ export function TooltipLayer() {
       dismissUntilDeparture,
       hide,
       schedule,
-      show,
+      scheduleVisibleHandoff,
     ],
   );
 
@@ -754,6 +794,7 @@ export function TooltipLayer() {
         ? activeTargetRef.current
         : tooltipTargetFromNode(event.target, activeTargetRef.current);
       if (!target) {
+        cancelVisibleHandoff();
         if (visibleRef.current) {
           if (isPointerJitter(event, lastPointerPositionRef.current)) {
             return;
@@ -781,6 +822,18 @@ export function TooltipLayer() {
       activate(target, event.clientX, event.clientY);
     };
     const onPointerOut = (event: PointerEvent) => {
+      const pendingTarget = pendingHandoffRef.current?.target;
+      if (
+        pendingTarget &&
+        event.target instanceof Node &&
+        pendingTarget.contains(event.target) &&
+        !(
+          event.relatedTarget instanceof Node &&
+          pendingTarget.contains(event.relatedTarget)
+        )
+      ) {
+        cancelVisibleHandoff();
+      }
       const activeTarget = activeTargetRef.current;
       const dismissedTarget = movementDismissedTargetRef.current;
       if (
@@ -1033,6 +1086,7 @@ export function TooltipLayer() {
       restoreDetachedTitles();
     };
   }, [
+    cancelVisibleHandoff,
     activate,
     clearBlockedPointerActivation,
     clearHideTimer,

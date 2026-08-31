@@ -14,6 +14,7 @@ import { buildCorrectionText } from "../../lib/correctionText";
 import type { YaSourceRuntime } from "../../lib/sourceRuntime";
 import { UI_KEYS } from "../../lib/storageKeys";
 import { FakeSourceTransport } from "../../lib/transport";
+import { createTranscriptPositionStore } from "../../lib/transcriptPositionStore";
 import { setConversationViewPreference } from "../../hooks/useConversationView";
 import {
   assistantMessage,
@@ -497,6 +498,68 @@ describe("MessageList rendering", () => {
       });
     });
 
+    expect(onRender).toHaveBeenCalledTimes(initialCommitCount);
+  });
+
+  it("publishes only the latest hovered row without committing the transcript", () => {
+    let pendingFrame: FrameRequestCallback | null = null;
+    const transcriptPositionStore = createTranscriptPositionStore({
+      request: (callback) => {
+        pendingFrame = callback;
+        return 1;
+      },
+      cancel: () => {
+        pendingFrame = null;
+      },
+    });
+    const listener = vi.fn();
+    transcriptPositionStore.subscribe(listener);
+    const onRender = vi.fn();
+    const firstTimestamp = "2026-04-26T12:00:00.000Z";
+    const latestTimestamp = "2026-04-26T12:01:00.000Z";
+    const { container } = render(
+      <Profiler id="transcript" onRender={onRender}>
+        <MessageList
+          messages={[
+            userMessage("user-1", "request", firstTimestamp),
+            assistantMessage("assistant-1", "response", latestTimestamp),
+          ]}
+          transcriptPositionStore={transcriptPositionStore}
+        />
+      </Profiler>,
+    );
+    const initialCommitCount = onRender.mock.calls.length;
+    const messageList = container.querySelector<HTMLElement>(".message-list");
+    const firstRow = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const latestRow = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+
+    fireEvent.pointerOver(firstRow as HTMLElement);
+    fireEvent.pointerOver(latestRow as HTMLElement);
+    expect(transcriptPositionStore.getSnapshot()).toBeNull();
+    act(() => {
+      const frame = pendingFrame;
+      pendingFrame = null;
+      frame?.(0);
+    });
+
+    expect(transcriptPositionStore.getSnapshot()).toBe(
+      new Date(latestTimestamp).getTime(),
+    );
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(onRender).toHaveBeenCalledTimes(initialCommitCount);
+
+    fireEvent.pointerLeave(messageList as HTMLElement);
+    act(() => {
+      const frame = pendingFrame;
+      pendingFrame = null;
+      frame?.(0);
+    });
+    expect(transcriptPositionStore.getSnapshot()).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
     expect(onRender).toHaveBeenCalledTimes(initialCommitCount);
   });
 

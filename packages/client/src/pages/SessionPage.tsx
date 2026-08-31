@@ -145,6 +145,7 @@ import {
   createComposerDraftSignal,
   createComposerEditAvailabilityStore,
 } from "../lib/composerDraftSignal";
+import { createTranscriptPositionStore } from "../lib/transcriptPositionStore";
 import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { isEffortLevel } from "../lib/effortLevels";
@@ -879,6 +880,14 @@ function SessionPageContent({
     void sessionId;
     return createComposerEditAvailabilityStore();
   }, [sessionId]);
+  const transcriptPositionStore = useMemo(() => {
+    void actualSessionId;
+    return createTranscriptPositionStore();
+  }, [actualSessionId]);
+  useEffect(
+    () => () => transcriptPositionStore.dispose(),
+    [transcriptPositionStore],
+  );
   const [attachmentQuality] = useAttachmentUploadQuality();
   useEffect(() => {
     composerEditAvailabilityStore.setExternalBlockers(
@@ -2096,9 +2105,6 @@ function SessionPageContent({
       ? sessionUpdatedAt
       : lastStreamActivityAt;
   }, [sessionUpdatedAt, lastStreamActivityAt]);
-  const [transcriptPositionTimestampMs, setTranscriptPositionTimestampMs] =
-    useState<number | null>(null);
-
   useEngagementTracking({
     sessionId,
     activityAt,
@@ -5556,9 +5562,7 @@ function SessionPageContent({
                     }
                     onFollowForkSummary={followForkSummary}
                     bangCommandHandlers={bangCommandHandlers}
-                    onTranscriptPositionTimestampChange={
-                      setTranscriptPositionTimestampMs
-                    }
+                    transcriptPositionStore={transcriptPositionStore}
                     inert={isDomLingerParked}
                   />
                 </SessionViewerProvider>
@@ -5667,7 +5671,7 @@ function SessionPageContent({
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     lastActivityAt={activityAt}
-                    positionTimestampMs={transcriptPositionTimestampMs}
+                    positionTimestampStore={transcriptPositionStore}
                     sessionLiveness={sessionLiveness}
                     providerRuntimeStatus={providerRuntimeStatus}
                     isRunning={status.owner === "self"}
@@ -5794,7 +5798,7 @@ function SessionPageContent({
                 onFullPaneControlsReady={handleFullPaneControlsReady}
                 contextUsage={session?.contextUsage}
                 lastActivityAt={activityAt}
-                positionTimestampMs={transcriptPositionTimestampMs}
+                positionTimestampStore={transcriptPositionStore}
                 sessionLiveness={sessionLiveness}
                 providerRuntimeStatus={providerRuntimeStatus}
                 projectId={projectId}

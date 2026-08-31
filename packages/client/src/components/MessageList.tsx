@@ -52,6 +52,10 @@ import { selectionIntersectsElement } from "../lib/domSelection";
 import { getMessageId } from "../lib/mergeMessages";
 import type { GetSessionResult } from "../lib/sourceRuntime";
 import {
+  createTranscriptPositionStore,
+  type TranscriptPositionStore,
+} from "../lib/transcriptPositionStore";
+import {
   formatCompactRelativeAge,
   getEarliestMessageTimestampMs,
   getLatestMessageTimestampMs,
@@ -881,6 +885,7 @@ interface Props {
   onFollowingBottomChange?: (followingBottom: boolean) => void;
   scrollBehaviorMode?: SessionScrollBehaviorMode;
   inert?: boolean;
+  transcriptPositionStore?: TranscriptPositionStore;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
@@ -1460,6 +1465,7 @@ export const MessageList = memo(function MessageList({
   onFollowingBottomChange,
   scrollBehaviorMode = DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE,
   inert = false,
+  transcriptPositionStore,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
   onCancelForkSummary,
@@ -1652,16 +1658,50 @@ export const MessageList = memo(function MessageList({
   const [navMotionCue, setNavMotionCue] = useState<UserTurnNavMotionCue | null>(
     null,
   );
-  const [hoveredMarkerTimestampMs, setHoveredMarkerTimestampMs] = useState<
-    number | null
-  >(null);
-  const [hoveredRowTimestampMs, setHoveredRowTimestampMs] = useState<
-    number | null
-  >(null);
-  const [scrollPositionTimestampMs, setScrollPositionTimestampMs] = useState<
-    number | null
-  >(null);
+  const internalTranscriptPositionStore = useMemo(
+    createTranscriptPositionStore,
+    [],
+  );
+  const effectiveTranscriptPositionStore =
+    transcriptPositionStore ?? internalTranscriptPositionStore;
+  const hoveredMarkerTimestampMsRef = useRef<number | null>(null);
+  const hoveredRowTimestampMsRef = useRef<number | null>(null);
+  const scrollPositionTimestampMsRef = useRef<number | null>(null);
+  const publishTranscriptPosition = useCallback(() => {
+    effectiveTranscriptPositionStore.publish(
+      hoveredMarkerTimestampMsRef.current ??
+        hoveredRowTimestampMsRef.current ??
+        scrollPositionTimestampMsRef.current,
+    );
+  }, [effectiveTranscriptPositionStore]);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
+  useEffect(
+    () => () => {
+      if (
+        effectiveTranscriptPositionStore === internalTranscriptPositionStore
+      ) {
+        internalTranscriptPositionStore.dispose();
+      } else {
+        effectiveTranscriptPositionStore.publish(null);
+      }
+    },
+    [effectiveTranscriptPositionStore, internalTranscriptPositionStore],
+  );
+  useEffect(() => {
+    if (!onTranscriptPositionTimestampChange) return;
+    onTranscriptPositionTimestampChange(
+      effectiveTranscriptPositionStore.getSnapshot(),
+    );
+    const unsubscribe = effectiveTranscriptPositionStore.subscribe(() => {
+      onTranscriptPositionTimestampChange(
+        effectiveTranscriptPositionStore.getSnapshot(),
+      );
+    });
+    return () => {
+      unsubscribe();
+      onTranscriptPositionTimestampChange(null);
+    };
+  }, [effectiveTranscriptPositionStore, onTranscriptPositionTimestampChange]);
   const [newOutputBelowVisible, setNewOutputBelowVisible] = useState(false);
   const rememberedDisclosureStateRegistry = useMemo(() => {
     // The registry belongs to one mounted session view, even though its
@@ -1737,7 +1777,8 @@ export const MessageList = memo(function MessageList({
       lastFollowScrollTopRef.current = top;
       setIsScrolledToBottom(true);
       reportFollowingBottom(true);
-      setScrollPositionTimestampMs(null);
+      scrollPositionTimestampMsRef.current = null;
+      publishTranscriptPosition();
       setNewOutputBelowVisible(false);
 
       // Clear programmatic flag after scroll events have fired
@@ -1785,7 +1826,7 @@ export const MessageList = memo(function MessageList({
         }
       }, 50);
     },
-    [reportFollowingBottom],
+    [publishTranscriptPosition, reportFollowingBottom],
   );
 
   const clearForcedCurrentScrollTimers = useCallback(() => {
@@ -2288,7 +2329,8 @@ export const MessageList = memo(function MessageList({
     const container = content?.parentElement;
     if (!content || !container) return;
     if (isAtScrollBottom(container, content)) {
-      setScrollPositionTimestampMs(null);
+      scrollPositionTimestampMsRef.current = null;
+      publishTranscriptPosition();
       return;
     }
     const startedAtMs = isBrowserDebugPerformanceRecording()
@@ -2306,8 +2348,9 @@ export const MessageList = memo(function MessageList({
         category: "settled",
       });
     }
-    setScrollPositionTimestampMs(timestampMs);
-  }, []);
+    scrollPositionTimestampMsRef.current = timestampMs;
+    publishTranscriptPosition();
+  }, [publishTranscriptPosition]);
 
   const captureScrollSnapshot = useCallback(
     (container: HTMLElement, content: HTMLDivElement) => {
@@ -2354,9 +2397,10 @@ export const MessageList = memo(function MessageList({
 
   useEffect(() => {
     if (isScrolledToBottom) {
-      setScrollPositionTimestampMs(null);
+      scrollPositionTimestampMsRef.current = null;
+      publishTranscriptPosition();
     }
-  }, [isScrolledToBottom]);
+  }, [isScrolledToBottom, publishTranscriptPosition]);
 
   // Row-start times for the transcript hover override: hovering a row (or a
   // turn-rail marker, which wins) retargets the composer "at N ago" from the
@@ -2393,36 +2437,22 @@ export const MessageList = memo(function MessageList({
         }
         row = row.parentElement?.closest?.("[data-render-id]") ?? null;
       }
-      setHoveredRowTimestampMs((current) =>
-        current === timestampMs ? current : timestampMs,
-      );
+      hoveredRowTimestampMsRef.current = timestampMs;
+      publishTranscriptPosition();
     },
-    [rowStartTimestampsById],
+    [publishTranscriptPosition, rowStartTimestampsById],
   );
 
   const handleTranscriptPointerLeave = useCallback(() => {
-    setHoveredRowTimestampMs(null);
-  }, []);
-
-  useEffect(() => {
-    const contextualTimestampMs =
-      hoveredMarkerTimestampMs ??
-      hoveredRowTimestampMs ??
-      (isScrolledToBottom ? null : scrollPositionTimestampMs);
-    onTranscriptPositionTimestampChange?.(contextualTimestampMs);
-  }, [
-    hoveredMarkerTimestampMs,
-    hoveredRowTimestampMs,
-    isScrolledToBottom,
-    onTranscriptPositionTimestampChange,
-    scrollPositionTimestampMs,
-  ]);
-
-  useEffect(
-    () => () => {
-      onTranscriptPositionTimestampChange?.(null);
+    hoveredRowTimestampMsRef.current = null;
+    publishTranscriptPosition();
+  }, [publishTranscriptPosition]);
+  const handlePreviewTimestampChange = useCallback(
+    (timestampMs: number | null) => {
+      hoveredMarkerTimestampMsRef.current = timestampMs;
+      publishTranscriptPosition();
     },
-    [onTranscriptPositionTimestampChange],
+    [publishTranscriptPosition],
   );
   const {
     anchoredRenderIds,
@@ -4282,7 +4312,7 @@ export const MessageList = memo(function MessageList({
         forkAfterDisabled={forkAfterUserMessageDisabled}
         onCopyAnchor={onCopyUserMessage}
         canCopyAnchor={canTrimHistoryAnchor}
-        onPreviewTimestampChange={setHoveredMarkerTimestampMs}
+        onPreviewTimestampChange={handlePreviewTimestampChange}
         getRenderIdTop={transcriptRenderWindow.getRenderIdTop}
         revealRenderId={transcriptRenderWindow.revealRenderId}
         searchState={userTurnNavSearchState}

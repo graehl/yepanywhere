@@ -41,6 +41,7 @@ import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
+import type { TranscriptPositionStore } from "../lib/transcriptPositionStore";
 import {
   getDraftTextChangeMetadata,
   type DraftTextChangeMetadata,
@@ -268,6 +269,8 @@ interface Props {
   lastActivityAt?: string | null;
   /** Timestamp for the hovered/scrolled transcript position, shown near activity age. */
   positionTimestampMs?: number | null;
+  /** Latest-wins transcript position source for the status line. */
+  positionTimestampStore?: TranscriptPositionStore;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
   /** Provider-owned retry/failure status for the active turn. */
@@ -426,6 +429,7 @@ export function MessageInput({
   contextUsage,
   lastActivityAt,
   positionTimestampMs,
+  positionTimestampStore,
   sessionLiveness,
   providerRuntimeStatus,
   projectId,
@@ -3226,6 +3230,7 @@ export function MessageInput({
     contextUsage,
     lastActivityAt,
     positionTimestampMs,
+    positionTimestampStore,
     sessionLiveness,
     providerRuntimeStatus,
     showSteerNowMode: supportsSteerNow && hasActiveDualActions,

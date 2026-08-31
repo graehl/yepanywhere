@@ -25,6 +25,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useOptionalToastContext } from "../contexts/ToastContext";
@@ -115,6 +116,7 @@ import type {
   SpeechTranscriptionSettlement,
 } from "../lib/speechProviders/SpeechProvider";
 import type { SpeechCommitOutcome } from "../lib/speechDraftTransaction";
+import type { TranscriptPositionStore } from "../lib/transcriptPositionStore";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextThresholdQuickEdit } from "./ContextThresholdQuickEdit";
 import { SpeechPrefixActionCue } from "./SpeechPrefixActionCue";
@@ -142,6 +144,9 @@ const BrowserDebugToolbarButton = lazy(() =>
     default: module.BrowserDebugToolbarButton,
   })),
 );
+
+const subscribeToNoPositionStore = () => () => {};
+const getNoPositionSnapshot = () => null;
 
 // Maps a control's narrowing priority to its overflow-tier CSS class. `first`
 // collapses first (early), `mid` next, `last` collapses last; `pin` yields no
@@ -278,6 +283,8 @@ export interface MessageInputToolbarProps {
   lastActivityAt?: string | null;
   /** Hovered or scrolled transcript position timestamp for the status line. */
   positionTimestampMs?: number | null;
+  /** Latest-wins transcript position source for the status line. */
+  positionTimestampStore?: TranscriptPositionStore;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
   /** Provider-owned retry/failure status for the active turn. */
@@ -2727,6 +2734,7 @@ export function MessageInputToolbar({
   contextUsage,
   lastActivityAt,
   positionTimestampMs,
+  positionTimestampStore,
   sessionLiveness,
   providerRuntimeStatus,
   showSteerNowMode = false,
@@ -2906,10 +2914,19 @@ export function MessageInputToolbar({
     !showLastActivityPrefix &&
     lastActivityMs !== null &&
     formatCompactRelativeAge(lastActivityMs, nowMs) !== "now";
+  const storedPositionTimestampMs = useSyncExternalStore(
+    positionTimestampStore?.subscribe ?? subscribeToNoPositionStore,
+    positionTimestampStore?.getSnapshot ?? getNoPositionSnapshot,
+    positionTimestampStore?.getSnapshot ?? getNoPositionSnapshot,
+  );
+  const effectivePositionTimestampMs = positionTimestampStore
+    ? storedPositionTimestampMs
+    : positionTimestampMs;
   const positionAgeLabel =
-    positionTimestampMs === null || positionTimestampMs === undefined
+    effectivePositionTimestampMs === null ||
+    effectivePositionTimestampMs === undefined
       ? null
-      : formatCompactRelativeAge(positionTimestampMs, nowMs);
+      : formatCompactRelativeAge(effectivePositionTimestampMs, nowMs);
   const lastActivityAgeLabel =
     lastActivityMs === null
       ? null
@@ -2924,8 +2941,8 @@ export function MessageInputToolbar({
   // freshness, even when the freshness label is missing or suppressed as
   // current, so it never earns a chip.
   const hasPositionAge =
-    positionTimestampMs !== null &&
-    positionTimestampMs !== undefined &&
+    effectivePositionTimestampMs !== null &&
+    effectivePositionTimestampMs !== undefined &&
     positionAgeLabel !== null &&
     positionAgeLabel !== "now" &&
     positionAgeLabel !== lastActivityAgeLabel;
@@ -3588,7 +3605,7 @@ export function MessageInputToolbar({
         showLastActivityPrefix,
         lastActivityMs,
         lastActivityIsPast,
-        positionTimestampMs: positionTimestampMs ?? null,
+        positionTimestampMs: effectivePositionTimestampMs ?? null,
         showPositionTimestamp,
         hasPositionAge,
         hasLastActivityAge,

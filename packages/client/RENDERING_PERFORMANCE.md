@@ -101,8 +101,11 @@ stable component identity, and lower update cadence.
   and rows carrying live quote anchors remain mounted as sparse islands.
 - Native transcript scroll handlers perform only constant-time follow/intent
   bookkeeping and schedule one trailing position read. Transcript-position
-  context is measured after 200 ms of scroll rest, indexes rendered rows once,
-  and must not publish intermediate positions through session-page React state.
+  context is measured after 200 ms of scroll rest and indexes rendered rows
+  once. Settled scroll position, row hover, and turn-marker hover publish their
+  latest effective timestamp through one per-session external store at most
+  once per animation frame. The composer toolbar is the subscriber; position
+  changes must not render `MessageList`, `SessionPage`, or historical rows.
 - Selection-action geometry always reads the latest native range. Pointer drags
   defer placement until release. Non-pointer range-change, resize, and scroll
   bursts use a bounded leading/latest cadence: the first scan is immediate,
@@ -274,6 +277,15 @@ causal control that bypassed only those repeated row queries took 0.70 seconds,
 with steady steps at 21–29 ms after two transition frames. This established the
 scroll-rest measurement and one-index-per-measurement invariant above; it is
 diagnostic evidence, not a portable timing ceiling.
+
+A 2026-08-31 follow-up isolated row hover in a consented long-session tab.
+Crossing 20 mounted transcript rows produced 19 complete `MessageList` commits
+totaling 293.3 ms over 598.5 ms, with no conversation projection,
+preprocessing, or browser long task. The corrected path holds row, marker, and
+settled-scroll timestamps outside React transcript state. Its deterministic
+regression crosses multiple rows before one frame, publishes only the final
+timestamp, restores null on leave, and records zero additional transcript
+commits.
 
 A ratchet-grade three-repetition 360-turn trace on 2026-08-29 accepted the
 measured-height semantic render window and eight-unit yielded prepend. Final

@@ -32,6 +32,7 @@ import { invalidateLocalStorageValues } from "../../lib/localStorageValue";
 import type { SpeechCommitOutcome } from "../../lib/speechDraftTransaction";
 import { createClientSlashCommand } from "../../lib/slashCommands";
 import { UI_KEYS } from "../../lib/storageKeys";
+import { createTranscriptPositionStore } from "../../lib/transcriptPositionStore";
 import {
   YA_GROK_BATCH_SPEECH_METHOD,
   XAI_DIRECT_STREAMING_SPEECH_METHOD,
@@ -4067,6 +4068,41 @@ describe("MessageInput", () => {
 
     expect(screen.getByText("at 10m ago")).toBeTruthy();
     expect(screen.queryByText("1m ago")).toBeNull();
+  });
+
+  it("reads the latest frame-coalesced transcript position", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:04:00.000Z"));
+    let pendingFrame: FrameRequestCallback | null = null;
+    const positionTimestampStore = createTranscriptPositionStore({
+      request: (callback) => {
+        pendingFrame = callback;
+        return 1;
+      },
+      cancel: () => {
+        pendingFrame = null;
+      },
+    });
+
+    renderMessageInput(
+      vi.fn(() => true),
+      { positionTimestampStore },
+    );
+    positionTimestampStore.publish(
+      new Date("2026-04-26T11:50:00.000Z").getTime(),
+    );
+    positionTimestampStore.publish(
+      new Date("2026-04-26T11:54:00.000Z").getTime(),
+    );
+    expect(screen.queryByText(/at .* ago/)).toBeNull();
+
+    act(() => {
+      const frame = pendingFrame;
+      pendingFrame = null;
+      frame?.(0);
+    });
+
+    expect(screen.getByText("at 10m ago")).toBeTruthy();
   });
 
   it("suppresses transcript position age when it matches session activity age", () => {

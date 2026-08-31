@@ -360,10 +360,14 @@ describe("TooltipLayer", () => {
         <button type="button" title="Second tip">
           Second
         </button>
+        <button type="button" title="Third tip">
+          Third
+        </button>
       </>,
     );
     const first = screen.getByRole("button", { name: "First" });
     const second = screen.getByRole("button", { name: "Second" });
+    const third = screen.getByRole("button", { name: "Third" });
 
     fireEvent.pointerOver(first, {
       pointerType: "mouse",
@@ -393,9 +397,65 @@ describe("TooltipLayer", () => {
       clientX: 16,
       clientY: 10,
     });
+    fireEvent.pointerOut(second, {
+      pointerType: "mouse",
+      clientX: 30,
+      clientY: 10,
+      relatedTarget: third,
+    });
+    fireEvent.pointerOver(third, {
+      pointerType: "mouse",
+      clientX: 30,
+      clientY: 10,
+      relatedTarget: second,
+    });
+    expect(screen.getByRole("tooltip").textContent).toBe("First tip");
+    act(() => vi.advanceTimersByTime(17));
     expect(first.getAttribute("aria-describedby")).toBeNull();
-    expect(second.getAttribute("aria-describedby")).toBe("ya-global-tooltip");
-    expect(screen.getByRole("tooltip").textContent).toBe("Second tip");
+    expect(second.getAttribute("aria-describedby")).toBeNull();
+    expect(third.getAttribute("aria-describedby")).toBe("ya-global-tooltip");
+    expect(screen.getByRole("tooltip").textContent).toBe("Third tip");
+  });
+
+  it("cancels a pending warm handoff when the pointer leaves", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <button type="button" title="First tip">
+          First
+        </button>
+        <button type="button" title="Second tip">
+          Second
+        </button>
+      </>,
+    );
+    const first = screen.getByRole("button", { name: "First" });
+    const second = screen.getByRole("button", { name: "Second" });
+
+    fireEvent.pointerOver(first, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toBe("First tip");
+
+    fireEvent.pointerOver(second, {
+      pointerType: "mouse",
+      clientX: 30,
+      clientY: 10,
+    });
+    fireEvent.pointerOut(second, {
+      pointerType: "mouse",
+      clientX: 50,
+      clientY: 10,
+      relatedTarget: null,
+    });
+    act(() => vi.advanceTimersByTime(17));
+
+    expect(first.getAttribute("aria-describedby")).toBe("ya-global-tooltip");
+    expect(second.getAttribute("aria-describedby")).toBeNull();
+    expect(screen.getByRole("tooltip").textContent).toBe("First tip");
   });
 
   it("captures titles computed on pointer entry", () => {
@@ -485,6 +545,7 @@ describe("TooltipLayer", () => {
       clientX: 11,
       clientY: 10,
     });
+    act(() => vi.advanceTimersByTime(17));
     expect(screen.getByRole("tooltip").textContent).toBe(
       "oracle — Best published system.",
     );
@@ -494,6 +555,7 @@ describe("TooltipLayer", () => {
       clientX: 40,
       clientY: 10,
     });
+    act(() => vi.advanceTimersByTime(17));
     expect(screen.getByRole("tooltip").textContent).toBe("Command output tail");
 
     fireEvent.pointerOver(file, {
@@ -501,6 +563,7 @@ describe("TooltipLayer", () => {
       clientX: 41,
       clientY: 10,
     });
+    act(() => vi.advanceTimersByTime(17));
     expect(screen.getByRole("tooltip").textContent).toBe("scripts/run.mjs");
   });
 

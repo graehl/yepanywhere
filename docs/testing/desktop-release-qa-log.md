@@ -13,6 +13,126 @@ Result meanings:
   action that was not available during the run.
 - **NOT RUN** — the check was outside the completed scope; the reason is noted.
 
+## 2026-08-31 — `desktop-v0.2.0`
+
+### Scope and release identity
+
+The run exercised the existing public `desktop-v0.1.3` application, published
+`desktop-v0.2.0`, and completed signed automatic upgrades on the macOS and
+Windows testbed VMs.
+
+- Previous release: `desktop-v0.1.3`
+- New release: `desktop-v0.2.0`, commit
+  `8ee821313dbac129f55219fd1aeff68234a602b4`
+- Release page:
+  <https://github.com/kzahel/yepanywhere/releases/tag/desktop-v0.2.0>
+- Release workflow:
+  <https://github.com/kzahel/yepanywhere/actions/runs/33385313018>
+- Post-release updater hardening: commit
+  `c970af7fa6ec682303bc93134baa14b70d3de00a`
+- Test hosts: dedicated Apple Silicon macOS and Windows 11 ARM64 VMs; Windows
+  exercised the published x64 shell and its native ARM64 bundled runtime
+
+All guest inspection, capture, input, installation, and protected-desktop
+consent used target-internal Machine Control routes. Accepted desktop actions
+reported `hostInterference: none`; no host display or input route was used.
+
+### Result summary
+
+| Check | macOS | Windows |
+| --- | --- | --- |
+| Public signed `0.1.3` baseline | PASS | PASS — primary per-user NSIS |
+| Signed feed advertises `0.2.0` | PASS | PASS |
+| Automatic update window foregrounded | PASS | PASS |
+| Signed download, install, and relaunch | PASS | PASS after feed repair |
+| Installed app reports `0.2.0` | PASS | PASS |
+| Packaged runtime starts; dashboard returns HTTP 200 | PASS | PASS |
+| Native runtime selected on ARM64 | PASS | PASS |
+| Existing project and session state preserved | PASS | PASS |
+| Windows remains a non-elevated NSIS install | N/A | PASS after feed repair |
+| Explicit Quit removes the app and bundled runtime | PASS | PASS |
+| Tagged release workflow | PASS | PASS |
+
+### Release construction and CI
+
+The release candidate incorporated a contributor's latest pushed changes
+before the version commit and tag were created. Local release checks passed
+with no warnings: desktop script tests, 24 Rust tests, Clippy, repository lint,
+and formatting. Desktop CI passed for Apple Silicon macOS, Intel macOS, and
+Windows. The general CI run's single FileViewer timing failure passed ten
+isolated repetitions and its failed job passed on rerun.
+
+The post-release metadata fix added three normalization tests, bringing the
+desktop script suite to five passing tests. Repository lint and formatting
+remained clean. Both general CI and Desktop CI passed on the exact hardening
+commit:
+
+- <https://github.com/kzahel/yepanywhere/actions/runs/33390280466>
+- <https://github.com/kzahel/yepanywhere/actions/runs/33390280467>
+
+### Published artifact checks
+
+| Artifact | SHA-256 | Guest validation |
+| --- | --- | --- |
+| `YepAnywhere_0.2.0_aarch64.dmg` | `e4feaa1caed8f2d45ce6bdcd4e38f2817df0ea64ae613f11303b11abf6d9035b` | Gatekeeper acceptance, strict code signature, automatic update |
+| `YepAnywhere_0.2.0_x64-setup.exe` | `e4c8d82d8075f7f216deae74e8b4a72d30fcbcdf5841d4106ab93c0d880a323f` | Valid Authenticode-installed app, signed automatic update |
+| `YepAnywhere_0.2.0_x64_en-US.msi` | `5c6c016c1fac96491bda54ab41bcd6428943016e1f9fe7bc5f1b198e3f59115e` | Published managed-deployment artifact; initial updater selection exposed the feed defect below |
+
+The public updater route returned version `0.2.0`, a nonempty signature, and
+the matching platform artifact. After repair, canonical
+`windows-x86_64` metadata is identical to `windows-x86_64-nsis` and resolves
+to the setup executable. The separate `windows-x86_64-msi` record remains
+available for managed deployment.
+
+### macOS automatic update
+
+The public signed `0.1.3` application passed Gatekeeper and strict code-sign
+verification, launched one bundled runtime, and served the existing Projects
+dashboard. Its automatic update window offered `0.2.0`; selecting **Install
+and Restart** downloaded the signed updater archive and relaunched a new app
+process at `0.2.0`. Gatekeeper and strict signature verification still passed,
+the dashboard returned HTTP 200, and the existing project and session were
+present. Explicit target-internal Quit left zero app and bundled-runtime
+processes.
+
+### Windows updater finding and repair
+
+The first `0.1.3` NSIS-to-`0.2.0` update selected Tauri's canonical
+`windows-x86_64` entry, which pointed to the all-users MSI. The MSI required
+UAC and installed a healthy signed `0.2.0` application, including the native
+ARM64 Bun fix, but it left both a stale per-user `0.1.3` NSIS registration and
+a machine-wide `0.2.0` MSI registration. This violated the primary per-user
+NSIS installation contract.
+
+Commit `c970af7fa` normalizes generated updater metadata so the canonical
+Windows entry copies the signed NSIS entry while preserving the MSI under its
+explicit key. Release finalization now publishes and validates that mapping,
+and the public `desktop-v0.2.0` `latest.json` asset was repaired in place. No
+application binary or signature changed.
+
+The mixed test installation was then removed without touching desktop data,
+and the public `0.1.3` NSIS baseline was installed again. Its installer and
+installed app had valid Authenticode signatures and exactly one per-user
+`0.1.3` uninstall registration. The automatic updater again foregrounded
+`0.2.0`; **Install and Restart** completed while eight consecutive internal
+desktop observations remained on the ordinary `Default` desktop, with no UAC
+transition.
+
+The relaunched application had all of the expected release properties:
+
+- app version `0.2.0` with a valid Authenticode signature;
+- exactly one app process and one bundled Bun process;
+- `bun-windows-aarch64.exe`, SHA-256
+  `c48ea01208766207606927a320d640371140dca51e9963367779b32d18460716`;
+- dashboard HTTP 200;
+- exactly one `0.2.0` per-user NSIS uninstall registration and no MSI
+  registration; and
+- the existing project and session still visible after relaunch.
+
+Explicit target-internal Quit then left zero app and bundled-runtime
+processes. This completes the automatic download/install portion that the
+`desktop-v0.1.2` QA run had left as required follow-up.
+
 ## 2026-08-01 — `desktop-v0.1.2`
 
 ### Scope and release identity

@@ -39,9 +39,9 @@ and the existing prompted Tauri updater.
 
 ## Windows Distribution
 
-The signed per-user NSIS executable is the primary download and supports `/S`
-for quiet installation without elevation. The MSI is a secondary all-users
-artifact for elevated managed deployment and supports `/qn`.
+The signed per-user NSIS executable is the only Windows download and supports
+`/S` for quiet installation without elevation. Windows releases do not publish
+an MSI or another installer that requires administrator access.
 
 Release tags require the Tauri updater signing key and complete Windows
 code-signing credentials. CI validates the Windows updater entries, signature,

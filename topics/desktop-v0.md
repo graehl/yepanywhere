@@ -225,13 +225,10 @@ malicious same-user process able to inspect YA or Bun process memory.
 
 ## Windows Lifecycle And Install Contract
 
-The NSIS executable is the primary v0 Windows installer and supports quiet
-installation. If an MSI is published, its quiet installation path is tested
-too.
-
-NSIS is a current-user install and `/S` does not require elevation. Tauri's
-WiX MSI is an all-users managed-deployment artifact; `/qn` therefore runs from
-an elevated deployment context.
+The NSIS executable is the only v0 Windows installer and supports quiet
+installation. It is a current-user install, and `/S` does not require
+elevation. Windows releases must not publish an MSI or another installer that
+requires administrator access.
 
 The x64 Windows package runs on native x64 and Windows ARM64. It carries both
 hash-pinned Windows Bun architectures as private immutable resources. The
@@ -253,13 +250,12 @@ Windows user profile.
 
 The app checks the signed Tauri updater automatically and asks before
 installing/relaunching. A tagged release fails if its signed updater artifact
-or Windows entry in `latest.json` is missing.
+or Windows entry in `latest.json` is missing, or if an MSI artifact or updater
+entry is present.
 
 The canonical `windows-x86_64` updater entry uses the signed NSIS artifact so
 ordinary per-user installations remain non-elevated NSIS installations across
-updates. The signed MSI remains available under `windows-x86_64-msi` for
-managed all-users deployment, but the app does not migrate an NSIS install to
-MSI during an automatic update.
+updates. The app does not offer or migrate to a machine-wide installer.
 
 An available update opens and foregrounds the trusted native updater surface
 before asking to install and relaunch. A manual check also foregrounds that

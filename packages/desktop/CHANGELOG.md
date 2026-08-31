@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
-- Windows automatic updates now retain the primary per-user NSIS installation instead of switching to the elevated MSI and leaving duplicate uninstall registrations.
+- Windows releases and automatic updates now use only the per-user NSIS installer; the elevated MSI is no longer published.
 
 ## [0.2.0] - 2026-08-31
 

@@ -2,7 +2,6 @@ import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const WINDOWS_CANONICAL_KEY = "windows-x86_64";
-const WINDOWS_MSI_KEY = "windows-x86_64-msi";
 const WINDOWS_NSIS_KEY = "windows-x86_64-nsis";
 
 function requirePlatform(platforms, key, extension) {
@@ -28,13 +27,17 @@ export function normalizeDesktopUpdaterMetadata(metadata) {
   }
 
   const platforms = metadata.platforms;
-  const nsis = requirePlatform(platforms, WINDOWS_NSIS_KEY, ".exe");
-  const canonical = platforms[WINDOWS_CANONICAL_KEY];
-
-  if (!platforms[WINDOWS_MSI_KEY] && canonical?.url?.endsWith(".msi")) {
-    platforms[WINDOWS_MSI_KEY] = structuredClone(canonical);
+  const msiEntry = Object.entries(platforms).find(
+    ([key, entry]) =>
+      key.toLowerCase().includes("msi") ||
+      (typeof entry?.url === "string" &&
+        entry.url.toLowerCase().endsWith(".msi")),
+  );
+  if (msiEntry) {
+    throw new Error(`MSI updater entries are unsupported: ${msiEntry[0]}`);
   }
 
+  const nsis = requirePlatform(platforms, WINDOWS_NSIS_KEY, ".exe");
   platforms[WINDOWS_CANONICAL_KEY] = structuredClone(nsis);
   return metadata;
 }
@@ -50,7 +53,10 @@ async function main(args) {
   await writeFile(path, `${JSON.stringify(metadata, null, 2)}\n`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main(process.argv.slice(2)).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;

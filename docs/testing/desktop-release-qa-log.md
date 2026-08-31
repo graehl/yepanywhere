@@ -76,13 +76,13 @@ commit:
 | --- | --- | --- |
 | `YepAnywhere_0.2.0_aarch64.dmg` | `e4feaa1caed8f2d45ce6bdcd4e38f2817df0ea64ae613f11303b11abf6d9035b` | Gatekeeper acceptance, strict code signature, automatic update |
 | `YepAnywhere_0.2.0_x64-setup.exe` | `e4c8d82d8075f7f216deae74e8b4a72d30fcbcdf5841d4106ab93c0d880a323f` | Valid Authenticode-installed app, signed automatic update |
-| `YepAnywhere_0.2.0_x64_en-US.msi` | `5c6c016c1fac96491bda54ab41bcd6428943016e1f9fe7bc5f1b198e3f59115e` | Published managed-deployment artifact; initial updater selection exposed the feed defect below |
+| `YepAnywhere_0.2.0_x64_en-US.msi` | `5c6c016c1fac96491bda54ab41bcd6428943016e1f9fe7bc5f1b198e3f59115e` | Initially published; removed after it exposed the elevated feed path below |
 
 The public updater route returned version `0.2.0`, a nonempty signature, and
 the matching platform artifact. After repair, canonical
 `windows-x86_64` metadata is identical to `windows-x86_64-nsis` and resolves
-to the setup executable. The separate `windows-x86_64-msi` record remains
-available for managed deployment.
+to the setup executable. A follow-up maintainer decision removed the MSI asset
+and updater record entirely so the release has no elevated installer path.
 
 ### macOS automatic update
 
@@ -104,11 +104,13 @@ ARM64 Bun fix, but it left both a stale per-user `0.1.3` NSIS registration and
 a machine-wide `0.2.0` MSI registration. This violated the primary per-user
 NSIS installation contract.
 
-Commit `c970af7fa` normalizes generated updater metadata so the canonical
-Windows entry copies the signed NSIS entry while preserving the MSI under its
-explicit key. Release finalization now publishes and validates that mapping,
-and the public `desktop-v0.2.0` `latest.json` asset was repaired in place. No
-application binary or signature changed.
+Commit `c970af7fa` first normalized generated updater metadata so the canonical
+Windows entry copied the signed NSIS entry. After the maintainer confirmed
+that no elevated installation path was desired, Windows packaging became
+NSIS-only, release finalization began rejecting MSI artifacts and metadata,
+and the MSI was removed from the public `desktop-v0.2.0` release. The public
+`latest.json` asset was repaired in place. No application binary or signature
+changed.
 
 The mixed test installation was then removed without touching desktop data,
 and the public `0.1.3` NSIS baseline was installed again. Its installer and

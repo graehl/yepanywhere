@@ -13,30 +13,18 @@ checked only when the normal provider/session UI needs it.
 
 ## Windows installation
 
-The signed `YepAnywhere_<version>_x64-setup.exe` NSIS artifact is the primary
+The signed `YepAnywhere_<version>_x64-setup.exe` NSIS artifact is the only
 installer. Interactive installation is the default. Quiet installation uses:
 
 ```powershell
 .\YepAnywhere_<version>_x64-setup.exe /S
 ```
 
-If the MSI artifact is used for managed deployment:
+Windows releases publish only this non-elevated NSIS installer. Automatic
+updates use the same signed NSIS artifact and do not request administrator
+access.
 
-```powershell
-# Run from an elevated deployment shell.
-msiexec.exe /i .\YepAnywhere_<version>_x64_en-US.msi /qn
-```
-
-Tauri's WiX MSI is an all-users package and requires administrator
-privileges. For quiet per-user installation without elevation, use the primary
-NSIS executable with `/S`.
-
-Automatic updates also use the signed NSIS artifact, preserving the per-user,
-non-elevated installation model. The MSI remains a separate managed-deployment
-option and is not selected by the in-app updater.
-
-The NSIS uninstaller accepts `/S`; an MSI can be removed with
-`msiexec.exe /x <product-code> /qn`. Ordinary update, reinstall, and uninstall
+The NSIS uninstaller accepts `/S`. Ordinary update, reinstall, and uninstall
 preserve the desktop data directory at `%USERPROFILE%\.yep-anywhere-desktop`.
 Remove that directory only when an explicit full data reset is intended.
 

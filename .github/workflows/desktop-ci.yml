@@ -324,6 +324,10 @@ jobs:
             echo "::error::latest.json not found in release — auto-updates will not work for this version!"
             exit 1
           }
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Eiq '\.msi$'; then
+            echo "::error::Windows MSI artifacts are unsupported; publish only the non-elevated NSIS installer."
+            exit 1
+          fi
           node packages/desktop/scripts/normalize-updater-json.mjs /tmp/latest.json
           gh release upload "$TAG" /tmp/latest.json --clobber
           python3 -c "
@@ -338,21 +342,18 @@ jobs:
               assert 'signature' in p, f'{key}: missing signature'
               assert len(p['signature']) > 10, f'{key}: signature suspiciously short'
           windows = platforms.get('windows-x86_64')
-          msi = platforms.get('windows-x86_64-msi')
           nsis = platforms.get('windows-x86_64-nsis')
           assert windows, 'missing windows-x86_64 updater entry'
-          assert msi, 'missing windows-x86_64-msi updater entry'
           assert nsis, 'missing windows-x86_64-nsis updater entry'
           assert windows == nsis, 'canonical Windows updater must use the primary NSIS installer'
           assert windows['url'].endswith('.exe'), 'canonical Windows updater URL is not an executable'
-          assert msi['url'].endswith('.msi'), 'Windows MSI updater URL is not an MSI'
           assert nsis['url'].endswith('.exe'), 'Windows NSIS updater URL is not an executable'
+          assert not any('msi' in key.lower() for key in platforms), 'MSI updater key is unsupported'
+          assert not any(p['url'].lower().endswith('.msi') for p in platforms.values()), 'MSI updater URL is unsupported'
           print(f'latest.json valid: v{data[\"version\"]} with {len(platforms)} platform(s): {list(platforms.keys())}')
           "
-          WINDOWS_URLS=$(python3 -c "import json; p=json.load(open('/tmp/latest.json'))['platforms']; print(p['windows-x86_64']['url']); print(p['windows-x86_64-msi']['url'])")
-          while read -r url; do
-            curl --fail --location --head "$url" >/dev/null
-          done <<< "$WINDOWS_URLS"
+          WINDOWS_URL=$(python3 -c "import json; print(json.load(open('/tmp/latest.json'))['platforms']['windows-x86_64']['url'])")
+          curl --fail --location --head "$WINDOWS_URL" >/dev/null
 
       - name: Update release body with download table
         env:
@@ -376,7 +377,7 @@ jobs:
             echo "|----------|-|"
             echo "| macOS (Apple Silicon) | [.dmg](${BASE}/YepAnywhere_${VERSION}_aarch64.dmg) |"
             echo "| macOS (Intel) | [.dmg](${BASE}/YepAnywhere_${VERSION}_x64.dmg) |"
-            echo "| Windows | [.exe](${BASE}/YepAnywhere_${VERSION}_x64-setup.exe) · [.msi](${BASE}/YepAnywhere_${VERSION}_x64_en-US.msi) |"
+            echo "| Windows | [.exe](${BASE}/YepAnywhere_${VERSION}_x64-setup.exe) |"
           } > /tmp/release-body.md
 
           gh release edit "$TAG" --notes-file /tmp/release-body.md

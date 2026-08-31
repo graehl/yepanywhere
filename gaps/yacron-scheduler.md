@@ -7,7 +7,10 @@ so due work still has no punctual owner unless a user invokes that protocol
 explicitly.
 
 Missing feature: implement yacron's single-owner scheduler/store and agent CLI,
-then support either or both explicit deployment variants. The standalone
+using [`agent-command-runtime.md`](../topics/agent-command-runtime.md) for the
+integrated supervised-session launcher rather than adding another desktop
+sidecar or global YA command. Then support either or both explicit deployment
+variants. The standalone
 variant may launch harnesses directly but cannot claim Project Queue or atomic
 project exclusivity. The integrated variant requires a durable profile-scoped
 provider service that owns patient/deferred input, FIFO project admission,

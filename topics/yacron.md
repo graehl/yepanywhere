@@ -13,6 +13,7 @@ Status: **proposal only; nothing is implemented (2026-08-27).**
 Related:
 [provider host API](provider-host-api.md),
 [Project Queue sketches](project-queue.sketches.md),
+[agent command runtime](agent-command-runtime.md),
 [new-session agent tooling](new-session-agent-tooling.md),
 [Routines](routines.md),
 [session sandboxing](session-sandboxing.md),
@@ -205,6 +206,15 @@ yacron pause|resume|cancel|delete <id>
 yacron history <id>
 yacron subscribe '*'|<schedule-id>...|<occurrence-id>
 ```
+
+The command vocabulary remains `yacron` regardless of deployment. An
+integrated YA installation may project that launcher as an alias into the
+shared runtime specified by
+[agent command runtime](agent-command-runtime.md), using the same scoped
+endpoint discovery as other YA commands. Standalone yacron still includes a
+normally installed CLI because it must work without a YA server or supervised
+provider session. This is packaging reuse only: neither launcher owns a second
+scheduler, store, timer, or authorization policy.
 
 Calling `schedule` creates an enabled entry. That call is the activation act;
 there is no later scan, import, approval, or UI enable step. Read commands do
@@ -485,14 +495,20 @@ than a `YEP_*` configuration name. Yacron derives any internal encoded project
 id from the root rather than exposing a second public identity. The marker is a
 cooperative classification hint, not an authentication capability.
 
-When enabled, YA also adds `yacron` to PATH for eligible unsandboxed sessions
-and may inject a short instruction fragment explaining how to schedule,
-inspect, and revise entries. Tool advertisement and the discoverable UI are
-separate: yacron itself is opt-in, but its required management UI is always
-available once enabled so every entry remains visible and controllable. PATH
-and injected agent instructions remain configurable and default-off under YA's
-vanilla-defaults contract. Agent access remains inert until enabled; after that,
-a successful mutation through the CLI, UI, or direct API activates the entry.
+Yacron service enablement does not grant every agent access. A YA session must
+separately request its yacron capabilities; only an eligible unsandboxed launch
+then receives `yacron` on PATH through the shared server-instance command
+directory specified by `agent-command-runtime.md`, a launch token scoped to its
+effective read/modify operations, and any matching instruction fragment.
+Process ancestry is not the authorization boundary. A global new-session
+default may seed the request but never changes an existing session.
+
+Tool advertisement and the discoverable UI are separate: yacron itself is
+opt-in, but its required management UI is always available once the service is
+enabled so every entry remains visible and controllable. Per-session PATH and
+injected agent instructions remain default-off under YA's vanilla-defaults
+contract. Agent access remains inert until granted; after that, a successful
+mutation through the CLI, UI, or direct API activates the entry.
 
 ## YA management UI
 

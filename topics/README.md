@@ -105,5 +105,8 @@
 - Session wake turns (authenticated automation endpoint queues a user turn
   into one session; agentctl job-completion client, resume-on-wake gates,
   provider-CLI fallback rules)
+- Agent command runtime (proposal: one npm/desktop-bundled `ya-agent`
+  dispatcher, per-session PATH and scoped authority, private input, and shared
+  delivery for session-access and integrated yacron clients)
 - User authorization attestations (sketch: opt-in signed turns or a Linux-
   bounded capability inbox for only predeclared authorization gates)

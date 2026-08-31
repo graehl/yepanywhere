@@ -19,6 +19,13 @@ First launch must not download or install YA, Bun, Claude Code, Codex, or a
 package manager. A desktop update replaces the shell, runtime, and bundled YA
 artifact together. Provider software remains externally managed.
 
+The proposed [agent command runtime](agent-command-runtime.md) preserves this
+contract. Its JavaScript implementation is another bundled server resource,
+and its temporary provider-facing wrapper invokes the desktop's existing Bun by
+absolute path. It does not add Bun, YA, or agent commands to the user's global
+`PATH`, require another `externalBin`, or create a separately updated desktop
+artifact.
+
 The desktop release and bundled YA build remain independently versioned. In a
 desktop-created dashboard, **Settings → About** reports both values as
 **Desktop** and **Bundled YA**. The native package metadata is authoritative

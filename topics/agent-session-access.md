@@ -11,7 +11,9 @@ Status: direction proposal, 2026-08-24. Nothing is implemented; the
 script layer, the search route, and the boss conventions below are
 candidate work, not contracts. The launch-time half (PATH injection,
 capability fragment, scoped endpoint channel, virgin instruction scope) lives in
-[`new-session-agent-tooling.md`](new-session-agent-tooling.md).
+[`new-session-agent-tooling.md`](new-session-agent-tooling.md). Packaging and
+dispatch use the proposed shared
+[`agent command runtime`](agent-command-runtime.md).
 
 See also:
 [`core-service-api.md`](core-service-api.md) — the external-consumer
@@ -46,25 +48,34 @@ reachable from localhost with no credential; the loopback bind is the
 trust boundary (`core-service-api.md`, resolved decision 3).
 
 The proposal is therefore not a second orchestration API but a supported,
-scoped consumer of the existing application service: a handful of shipped
-scripts (indicative names —
-`ya-sessions`, `ya-transcript`, `ya-search`, `ya-send`, `ya-new`) that
-wrap those routes, plus the D3 API documentation deliverable already
-named in `core-service-api.md`. This matches the standing layering rule:
-REST, CLI, MCP, and skills are consumers or adapters over one
-application service, never independent orchestration implementations
-(`cross-host-delegation.md`).
+scoped consumer of the existing application service: proposed `ya-agent`
+subcommands (`sessions`, `transcript`, `search`, `send`, and `new`) that wrap
+those routes, plus the D3 API documentation deliverable already named in
+`core-service-api.md`. The shared dispatcher and PATH projection are owned by
+`agent-command-runtime.md`. This matches the standing layering rule: REST,
+CLI, MCP, and skills are consumers or adapters over one application service,
+never independent orchestration implementations (`cross-host-delegation.md`).
 
-The scripts never guess `localhost`, a port, or the active profile. A launch
-with agent tooling enabled receives the originating server's exact child-
-reachable base URL and an ephemeral API token through the channel owned by
-`new-session-agent-tooling.md`. The token authorizes only the catalog,
-transcript/search, message, session-create, and Project Queue operations the
-shipped scripts expose. It is not the operator's general login credential and
-cannot call settings, permission approval, provider control, or other ambient
-administration routes. Multiple servers and auth-enabled loopback listeners
-therefore remain unambiguous even though the ordinary single-server default
-also happens to accept unauthenticated loopback requests.
+The scripts never guess `localhost`, a port, or the active profile. A session
+must explicitly request these access capabilities; an eligible provider launch
+then receives the originating server's exact child-reachable base URL and an
+ephemeral launch token through the channel owned by
+`new-session-agent-tooling.md`. The token authorizes only the requested and
+effective catalog, transcript/search, message, session-create, and Project
+Queue operations the shipped scripts expose. It is not the operator's general
+login credential and cannot call settings, permission approval, provider
+control, or other ambient administration routes. Multiple servers and auth-
+enabled loopback listeners therefore remain unambiguous even though the
+ordinary single-server default also happens to accept unauthenticated loopback
+requests.
+
+That last fact limits what the per-session option can claim. It controls YA's
+supported command projection and the new capability-required agent routes; it
+does not remove the host authority an ordinary unsandboxed same-user process
+already has through existing auth-off loopback `/api/*` routes. A sandboxed
+session can have a real denial boundary only when localhost authentication and
+its network confinement remain enforced. Changing the general loopback trust
+model is separate from adding these commands.
 
 Scripts speak canonical YA session ids (usually equal to the provider
 session id), per `AGENTS.md` § Provider Session Identity. Provider-native
@@ -130,9 +141,10 @@ restated in any implementation's docs:
   the ownership rules in `session-wake.md` § Provider-CLI injection
   fallback apply verbatim.
 - **Scoped launch authority.** A tool-enabled child receives only its own
-  short-lived API token and exact server endpoint. The scripts do not recover
-  another process's credentials, fall back to a guessed port, or broaden the
-  token when one operation is unavailable.
+  short-lived API token and exact server endpoint. Server-side capability scope,
+  not process ancestry, authenticates it. The scripts do not recover another
+  process's credentials, fall back to a guessed port, or broaden the token when
+  one operation is unavailable.
 
 ## Rejected: YA-written filesystem/git mirror
 

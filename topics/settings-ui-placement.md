@@ -188,6 +188,23 @@ UI should state directly.
   sessions and queued messages; a session is excluded only when its reload-safe
   provider host can detach without losing YA-owned queued input.
 
+## Proposed setting placement
+
+- **New Session → Agent access → Allow private input requests.** Proposal only;
+  nothing is implemented. This default-off per-session control requests the
+  narrowly scoped `ya-agent private-input` command and previews the exact
+  `[Client capabilities]` fragment that an eligible launch will receive. It
+  shows an ineligibility reason for unsupported provider, executor, or sandbox
+  placements rather than silently granting broader access.
+- **Settings → New-session defaults → Allow private input requests.** Optional
+  convenience for future sessions only, also default-off. It seeds the New
+  Session form; it does not modify existing sessions, independently grant API
+  authority, or inject agent context. The session value takes effect on its
+  next eligible provider launch. Resumed-transcript copy must stay provider-
+  specific until the existing placement gap is normalized. The command,
+  capability authentication, lifecycle, file lifetime, and security boundary
+  are specified in [agent command runtime](agent-command-runtime.md).
+
 ## Server-definitive settings and constants
 
 Status: **contract, not yet implemented (2026-08-05).** No option or constant

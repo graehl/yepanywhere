@@ -394,22 +394,19 @@ where
 }
 
 #[cfg(any(windows, test))]
-const IMAGE_FILE_MACHINE_UNKNOWN_VALUE: u16 = 0;
-#[cfg(any(windows, test))]
 const IMAGE_FILE_MACHINE_ARM64_VALUE: u16 = 0xaa64;
 
 #[cfg(any(windows, test))]
-fn needs_windows_arm64_bun(process_machine: u16, native_machine: u16) -> bool {
-    process_machine != IMAGE_FILE_MACHINE_UNKNOWN_VALUE
-        && native_machine == IMAGE_FILE_MACHINE_ARM64_VALUE
+fn needs_windows_arm64_bun(compiled_for_x86_64: bool, native_machine: u16) -> bool {
+    compiled_for_x86_64 && native_machine == IMAGE_FILE_MACHINE_ARM64_VALUE
 }
 
 #[cfg(windows)]
-fn windows_process_machines() -> Result<(u16, u16), String> {
+fn windows_native_machine() -> Result<u16, String> {
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, IsWow64Process2};
 
-    let mut process_machine = IMAGE_FILE_MACHINE_UNKNOWN_VALUE;
-    let mut native_machine = IMAGE_FILE_MACHINE_UNKNOWN_VALUE;
+    let mut process_machine = 0;
+    let mut native_machine = 0;
     let detected = unsafe {
         IsWow64Process2(
             GetCurrentProcess(),
@@ -423,7 +420,7 @@ fn windows_process_machines() -> Result<(u16, u16), String> {
             std::io::Error::last_os_error()
         ));
     }
-    Ok((process_machine, native_machine))
+    Ok(native_machine)
 }
 
 #[cfg(any(windows, test))]
@@ -440,8 +437,11 @@ fn windows_arm64_bun_candidates(resource_dir: &std::path::Path) -> [PathBuf; 2] 
 fn bun_path(_app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(windows)]
     {
-        let (process_machine, native_machine) = windows_process_machines()?;
-        if needs_windows_arm64_bun(process_machine, native_machine) {
+        let native_machine = windows_native_machine()?;
+        // Current Windows 11 ARM64 builds can report IMAGE_FILE_MACHINE_UNKNOWN
+        // for an emulated x64 process, so the shell's compile target is the
+        // authoritative process architecture here.
+        if needs_windows_arm64_bun(cfg!(target_arch = "x86_64"), native_machine) {
             let resource_dir = _app
                 .path()
                 .resource_dir()
@@ -1077,8 +1077,8 @@ mod tests {
 
     #[test]
     fn selects_native_arm64_bun_only_for_an_emulated_windows_process() {
-        assert!(needs_windows_arm64_bun(0x8664, 0xaa64));
-        assert!(!needs_windows_arm64_bun(0, 0xaa64));
-        assert!(!needs_windows_arm64_bun(0x8664, 0x8664));
+        assert!(needs_windows_arm64_bun(true, 0xaa64));
+        assert!(!needs_windows_arm64_bun(false, 0xaa64));
+        assert!(!needs_windows_arm64_bun(true, 0x8664));
     }
 }

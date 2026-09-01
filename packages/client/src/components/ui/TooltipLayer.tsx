@@ -9,11 +9,14 @@ import { createPortal } from "react-dom";
 import {
   areTooltipsSuppressed,
   beginTooltipVisibility,
+  cancelTooltipIntent,
   COMPOSER_TYPING_TOOLTIP_SUPPRESSION_MS,
   endTooltipVisibility,
   exceedsTooltipPointerJitter,
   getEffectiveTooltipDelayMs,
   getTooltipDelayMs,
+  hasCurrentPointerIntent,
+  scheduleTooltipIntent,
   subscribeTooltipSuppression,
   suppressTooltipsFor,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
@@ -227,7 +230,7 @@ export function TooltipLayer() {
   const detachedTitlesRef = useRef(new Map<Element, DetachedTitle>());
   const detachedSvgTitlesRef = useRef(new Map<Element, DetachedSvgTitle>());
   const savedDescriptionRef = useRef<SavedDescription | null>(null);
-  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentOwnerRef = useRef(Symbol("delegated-tooltip-intent"));
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blockedActivationTimerRef = useRef<ReturnType<
     typeof setTimeout
@@ -237,7 +240,6 @@ export function TooltipLayer() {
   );
   const visibilityTokenRef = useRef<symbol | null>(null);
   const lastPointerPositionRef = useRef<PointerPosition | null>(null);
-  const handoffFrameRef = useRef<number | null>(null);
   const pendingHandoffRef = useRef<PendingTooltipHandoff | null>(null);
   const visibleTargetRef = useRef<Element | null>(null);
   const visibleRef = useRef(false);
@@ -246,9 +248,7 @@ export function TooltipLayer() {
   visibleTooltipRef.current = visible;
 
   const clearShowTimer = useCallback(() => {
-    if (!showTimerRef.current) return;
-    clearTimeout(showTimerRef.current);
-    showTimerRef.current = null;
+    cancelTooltipIntent(intentOwnerRef.current);
   }, []);
 
   const clearHideTimer = useCallback(() => {
@@ -364,22 +364,9 @@ export function TooltipLayer() {
     savedDescriptionRef.current = null;
   }, []);
 
-  const cancelVisibleHandoff = useCallback(() => {
-    const hadPendingHandoff = pendingHandoffRef.current !== null;
-    pendingHandoffRef.current = null;
-    if (handoffFrameRef.current !== null) {
-      cancelAnimationFrame(handoffFrameRef.current);
-      handoffFrameRef.current = null;
-    }
-    if (hadPendingHandoff) {
-      activeTargetRef.current = visibleTargetRef.current;
-    }
-  }, []);
-
   const clearActive = useCallback(() => {
     clearShowTimer();
     clearHideTimer();
-    cancelVisibleHandoff();
     releaseVisibility();
     activeTargetRef.current = null;
     visibleTargetRef.current = null;
@@ -387,7 +374,7 @@ export function TooltipLayer() {
     visibleTooltipRef.current = null;
     setEnlarged(false);
     setVisible(null);
-  }, [cancelVisibleHandoff, clearHideTimer, clearShowTimer, releaseVisibility]);
+  }, [clearHideTimer, clearShowTimer, releaseVisibility]);
 
   const hide = clearActive;
   const dismissUntilDeparture = clearActive;
@@ -412,7 +399,6 @@ export function TooltipLayer() {
       anchorY: number,
       forcedThemed = false,
     ) => {
-      showTimerRef.current = null;
       if (activeTargetRef.current !== target || !target.isConnected) return;
       const currentText =
         target.getAttribute("data-tooltip") ??
@@ -455,36 +441,49 @@ export function TooltipLayer() {
     [detachTitle, dismissUntilDeparture, hide],
   );
 
+  const scheduleWithDelay = useCallback(
+    (target: Element, anchorX: number, anchorY: number, delayMs: number) => {
+      const pending = { target, anchorX, anchorY };
+      pendingHandoffRef.current = pending;
+      scheduleTooltipIntent(
+        intentOwnerRef.current,
+        delayMs,
+        () => {
+          if (pendingHandoffRef.current !== pending) return;
+          pendingHandoffRef.current = null;
+          if (
+            !hasCurrentPointerIntent(target) &&
+            !target.matches(":focus-visible")
+          ) {
+            activeTargetRef.current = visibleTargetRef.current;
+            return;
+          }
+          show(target, anchorX, anchorY);
+        },
+        (replacementOwner) => {
+          if (pendingHandoffRef.current !== pending) return;
+          pendingHandoffRef.current = null;
+          if (replacementOwner !== intentOwnerRef.current) {
+            activeTargetRef.current = visibleTargetRef.current;
+          }
+        },
+      );
+    },
+    [show],
+  );
+
   const schedule = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
-      clearShowTimer();
-      const delayMs = getEffectiveTooltipDelayMs();
-      if (delayMs === 0) {
-        show(target, anchorX, anchorY);
-      } else {
-        showTimerRef.current = setTimeout(
-          () => show(target, anchorX, anchorY),
-          delayMs,
-        );
-      }
+      scheduleWithDelay(target, anchorX, anchorY, getEffectiveTooltipDelayMs());
     },
-    [clearShowTimer, show],
+    [scheduleWithDelay],
   );
 
   const scheduleVisibleHandoff = useCallback(
     (target: Element, anchorX: number, anchorY: number) => {
-      pendingHandoffRef.current = { target, anchorX, anchorY };
-      if (handoffFrameRef.current !== null) return;
-      handoffFrameRef.current = requestAnimationFrame(() => {
-        handoffFrameRef.current = null;
-        const pending = pendingHandoffRef.current;
-        pendingHandoffRef.current = null;
-        if (pending) {
-          show(pending.target, pending.anchorX, pending.anchorY);
-        }
-      });
+      scheduleWithDelay(target, anchorX, anchorY, 0);
     },
-    [show],
+    [scheduleWithDelay],
   );
 
   const activate = useCallback(
@@ -794,7 +793,7 @@ export function TooltipLayer() {
         ? activeTargetRef.current
         : tooltipTargetFromNode(event.target, activeTargetRef.current);
       if (!target) {
-        cancelVisibleHandoff();
+        clearShowTimer();
         if (visibleRef.current) {
           if (isPointerJitter(event, lastPointerPositionRef.current)) {
             return;
@@ -832,7 +831,7 @@ export function TooltipLayer() {
           pendingTarget.contains(event.relatedTarget)
         )
       ) {
-        cancelVisibleHandoff();
+        clearShowTimer();
       }
       const activeTarget = activeTargetRef.current;
       const dismissedTarget = movementDismissedTargetRef.current;
@@ -1086,10 +1085,10 @@ export function TooltipLayer() {
       restoreDetachedTitles();
     };
   }, [
-    cancelVisibleHandoff,
     activate,
     clearBlockedPointerActivation,
     clearHideTimer,
+    clearShowTimer,
     detachTitle,
     detachSvgTitle,
     dismissUntilDeparture,

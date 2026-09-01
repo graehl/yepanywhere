@@ -33,6 +33,21 @@ function RichTooltipTarget() {
   );
 }
 
+function NamedRichTooltipTarget({ name }: { name: string }) {
+  const [open, setOpen] = useState(false);
+  const trigger = useTooltipTrigger({ open, onOpenChange: setOpen });
+  return (
+    <button
+      type="button"
+      data-open={open}
+      onPointerEnter={trigger.onPointerEnter}
+      onPointerMove={trigger.onPointerMove}
+    >
+      {name}
+    </button>
+  );
+}
+
 describe("useTooltipTrigger", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -70,5 +85,31 @@ describe("useTooltipTrigger", () => {
     });
     act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
     expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+  });
+
+  it("publishes only the latest rich tooltip target", () => {
+    render(
+      <>
+        <NamedRichTooltipTarget name="First" />
+        <NamedRichTooltipTarget name="Second" />
+      </>,
+    );
+    const first = screen.getByRole("button", { name: "First" });
+    const second = screen.getByRole("button", { name: "Second" });
+
+    fireEvent.pointerEnter(first, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerEnter(second, {
+      pointerType: "mouse",
+      clientX: 30,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(first.dataset.open).toBe("false");
+    expect(second.dataset.open).toBe("true");
   });
 });

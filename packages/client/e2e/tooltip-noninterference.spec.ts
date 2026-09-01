@@ -142,6 +142,26 @@ for (const viewport of [
 
     await own.hover({ position: { x: 20, y: 20 } });
     await expect(tooltip).toHaveText("Open the intended card action");
+    const sweepTargets = page.locator("#scan-targets button");
+    await sweepTargets.evaluateAll((targets) => {
+      for (const target of targets) {
+        target.setAttribute(
+          "data-pending-tooltip",
+          target.getAttribute("data-tooltip") ?? "",
+        );
+        target.removeAttribute("data-tooltip");
+      }
+    });
+    await sweepTargets.nth(2).hover();
+    await sweepTargets.evaluateAll((targets) => {
+      for (const target of targets) {
+        target.setAttribute(
+          "data-tooltip",
+          target.getAttribute("data-pending-tooltip") ?? "",
+        );
+        target.removeAttribute("data-pending-tooltip");
+      }
+    });
     const sweep = await page.evaluate(async () => {
       const tooltip = document.querySelector("#ya-global-tooltip");
       const targets = Array.from(
@@ -159,7 +179,8 @@ for (const viewport of [
         childList: true,
         subtree: true,
       });
-      targets.forEach((target, index) => {
+      const frameText: string[] = [];
+      for (const [index, target] of targets.entries()) {
         target.dispatchEvent(
           new PointerEvent("pointerover", {
             bubbles: true,
@@ -169,23 +190,30 @@ for (const viewport of [
             pointerType: "mouse",
           }),
         );
-      });
-      const beforeFrame = tooltip.textContent ?? "";
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
+        if (index === 0) {
+          const busyUntil = performance.now() + 120;
+          while (performance.now() < busyUntil) {
+            // Keep the first stale publication queued behind a long render.
+          }
+        }
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+        frameText.push(tooltip.textContent ?? "");
+      }
       observer.disconnect();
       return {
-        beforeFrame,
         finalText: tooltip.textContent ?? "",
+        frameText,
         observed,
       };
     });
-    expect(sweep.beforeFrame).not.toContain("Sweep target");
     expect(sweep.finalText).toBe("Sweep target three");
+    expect(sweep.frameText[0]).not.toBe("Sweep target one");
+    expect(sweep.frameText[1]).not.toBe("Sweep target two");
     expect(sweep.observed).not.toContain("Sweep target one");
     expect(sweep.observed).not.toContain("Sweep target two");
 

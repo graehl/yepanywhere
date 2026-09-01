@@ -8,10 +8,13 @@ import {
 import {
   areTooltipsSuppressed,
   beginTooltipVisibility,
+  cancelTooltipIntent,
   endTooltipVisibility,
   exceedsTooltipPointerJitter,
   getEffectiveTooltipDelayMs,
   getTooltipDelayMs,
+  hasCurrentPointerIntent,
+  scheduleTooltipIntent,
   subscribeTooltipSuppression,
   TOOLTIP_CLOSE_DELAY_MULTIPLIER,
   useTooltipMode,
@@ -36,7 +39,7 @@ export function useTooltipTrigger({
   delayMultiplier = 1,
 }: TooltipTriggerOptions) {
   const tooltipMode = useTooltipMode();
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentOwnerRef = useRef(Symbol("rich-tooltip-intent"));
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibilityTokenRef = useRef<symbol | null>(null);
   const pointerRootRef = useRef<HTMLElement | null>(null);
@@ -46,10 +49,7 @@ export function useTooltipTrigger({
   openRef.current = open;
 
   const clearTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+    cancelTooltipIntent(intentOwnerRef.current);
   }, []);
 
   const clearCloseTimer = useCallback(() => {
@@ -73,9 +73,15 @@ export function useTooltipTrigger({
   }, [clearCloseTimer, clearTimer, onOpenChange, releaseVisibility]);
 
   const show = useCallback(() => {
-    timerRef.current = null;
     if (areTooltipsSuppressed()) {
       close();
+      return;
+    }
+    const pointerRoot = pointerRootRef.current;
+    if (
+      !focusWithinRef.current &&
+      (!pointerRoot || !hasCurrentPointerIntent(pointerRoot))
+    ) {
       return;
     }
     if (!visibilityTokenRef.current && tooltipMode === "themed") {
@@ -93,10 +99,10 @@ export function useTooltipTrigger({
         ? 0
         : getEffectiveTooltipDelayMs(delayMultiplier);
     if (delayMs === 0) {
-      show();
-      return;
+      scheduleTooltipIntent(intentOwnerRef.current, 0, show);
+    } else {
+      scheduleTooltipIntent(intentOwnerRef.current, delayMs, show);
     }
-    timerRef.current = setTimeout(show, delayMs);
   }, [clearTimer, delayMultiplier, show, tooltipMode]);
 
   const scheduleClose = useCallback(() => {

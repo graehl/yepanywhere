@@ -106,6 +106,12 @@ stable component identity, and lower update cadence.
   latest effective timestamp through one per-session external store at most
   once per animation frame. The composer toolbar is the subscriber; position
   changes must not render `MessageList`, `SessionPage`, or historical rows.
+- YA-rendered pointer tooltips share one pending publication slot across text,
+  rich explanations, and session hover cards. Dwell intent is replaceable;
+  zero-delay handoffs publish at most once per animation frame; and every
+  pointer publication rechecks the browser's current `:hover` state. Recovery
+  from main-thread backlog therefore skips crossed targets, and a stale session
+  target cannot begin preview refresh work.
 - Selection-action geometry always reads the latest native range. Pointer drags
   defer placement until release. Non-pointer range-change, resize, and scroll
   bursts use a bounded leading/latest cadence: the first scan is immediate,

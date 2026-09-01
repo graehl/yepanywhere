@@ -16,8 +16,11 @@ import type { SessionStatus } from "../types";
 import {
   areTooltipsSuppressed,
   beginTooltipVisibility,
+  cancelTooltipIntent,
   endTooltipVisibility,
+  hasCurrentPointerIntent,
   isTooltipWarm,
+  scheduleTooltipIntent,
   subscribeTooltipSuppression,
 } from "./useTooltipAppearance";
 
@@ -58,7 +61,7 @@ export function useSessionHoverCardController<T extends HTMLElement>({
   const refreshOwner = refreshPreview?.owner;
   const refreshAvailable =
     refreshPreview !== undefined && refreshPreview.available !== false;
-  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentOwnerRef = useRef(Symbol("session-hovercard-intent"));
   const visibilityTokenRef = useRef<symbol | null>(null);
   const cursorXRef = useRef<number | null>(null);
   const refreshInFlightRef = useRef(false);
@@ -71,9 +74,7 @@ export function useSessionHoverCardController<T extends HTMLElement>({
   const anchorRef = useRef<SessionHoverCardAnchor | null>(null);
 
   const clearShowTimer = useCallback(() => {
-    if (!showTimerRef.current) return;
-    clearTimeout(showTimerRef.current);
-    showTimerRef.current = null;
+    cancelTooltipIntent(intentOwnerRef.current);
   }, []);
 
   const releaseVisibility = useCallback(() => {
@@ -123,10 +124,11 @@ export function useSessionHoverCardController<T extends HTMLElement>({
     }
     clearShowTimer();
     const delayMs = isTooltipWarm() ? warmShowDelayMs : showDelayMs;
-    showTimerRef.current = setTimeout(() => {
-      showTimerRef.current = null;
-      const rect = targetRef.current?.getBoundingClientRect();
-      if (!rect) return;
+    const target = targetRef.current;
+    if (!target) return;
+    scheduleTooltipIntent(intentOwnerRef.current, delayMs, () => {
+      if (!target.isConnected || !hasCurrentPointerIntent(target)) return;
+      const rect = target.getBoundingClientRect();
       refreshIdlePreview();
       announceActiveSessionHoverCard(hoverCardId);
       visibilityTokenRef.current ??= beginTooltipVisibility(clear);
@@ -139,7 +141,7 @@ export function useSessionHoverCardController<T extends HTMLElement>({
       };
       anchorRef.current = nextAnchor;
       setAnchor(nextAnchor);
-    }, delayMs);
+    });
   }, [
     clear,
     clearShowTimer,

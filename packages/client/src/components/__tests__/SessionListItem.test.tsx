@@ -955,6 +955,55 @@ describe("SessionListItem links", () => {
     refreshSpy.mockRestore();
   });
 
+  it("publishes only the latest pending session preview", () => {
+    vi.useFakeTimers();
+    const refreshSpy = vi
+      .spyOn(api, "refreshSessionPreview")
+      .mockResolvedValue(undefined as never);
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="First idle row"
+              initialPrompt="First idle prompt"
+              provider="claude"
+              mode="compact"
+            />
+            <SessionListItem
+              sessionId="session-2"
+              projectId="project-1"
+              title="Second idle row"
+              initialPrompt="Second idle prompt"
+              provider="claude"
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+    const first = screen
+      .getByRole("link", { name: /First idle row/ })
+      .closest("li");
+    const second = screen
+      .getByRole("link", { name: /Second idle row/ })
+      .closest("li");
+
+    fireEvent.pointerEnter(first!, { pointerType: "mouse", clientX: 20 });
+    fireEvent.pointerEnter(second!, { pointerType: "mouse", clientX: 20 });
+    act(() => vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS));
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).toHaveBeenCalledWith("project-1", "session-2");
+    expect(screen.queryByText("First idle prompt")).toBeNull();
+    expect(screen.getByText("Second idle prompt")).toBeTruthy();
+
+    refreshSpy.mockRestore();
+  });
+
   it("opens the capable session-filtered share manager from the menu", async () => {
     const getPublicShares = vi.spyOn(api, "getPublicShares").mockResolvedValue({
       items: [],

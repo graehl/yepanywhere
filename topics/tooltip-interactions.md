@@ -135,14 +135,25 @@ even within the boundary-jitter allowance. This lets glossary definitions, file
 paths, and other annotated output remain discoverable when the enclosing output
 block also exposes a hidden-tail hint.
 
-Warm delegated-tooltip handoff is latest-wins within an animation frame. A
-pointer sweep may replace the pending target any number of times before the
-frame, but the layer releases at most the previously published target and
-publishes only the final connected target. No intermediate target may become
-visible or acquire the shared tooltip description. Leaving the pending target
-before that frame cancels its handoff; the previously published target keeps
-ownership until the ordinary departure dismissal runs. Cold targets already
-use one replaceable dwell timer, so crossing them before reveal remains silent.
+All YA-rendered pointer tooltip surfaces share one pending publication slot.
+This includes delegated text, rich explanations, and session hover cards. A
+new target replaces any unpublished dwell intent from any of those surfaces;
+zero-delay and warm handoffs share one animation-frame callback and publish
+only its final target. At publication, the target must still match the
+browser's current `:hover` state. Keyboard-visible focus is the deliberate
+non-pointer exception. Thus queued pointer events processed after a main-thread
+stall cannot replay an obsolete tooltip or trigger an obsolete session-preview
+refresh.
+
+For a warm delegated-tooltip handoff, the layer releases at most the previously
+published target and publishes only the final connected target. No intermediate
+target may become visible or acquire the shared tooltip description. Leaving
+the pending target before that frame cancels its handoff; the previously
+published target keeps ownership until the ordinary departure dismissal runs.
+Cold targets use the same replaceable publication slot with their dwell delay,
+so crossing them before reveal remains silent. Browser-native titles and
+CSS-only hover affordances remain browser-owned and need no application
+publication queue.
 
 Pointer transparency, not early dismissal, is the mechanism here. WCAG 2.2
 success criterion 1.4.13 requires author-rendered hover content to stay

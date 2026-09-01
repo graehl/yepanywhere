@@ -59,6 +59,77 @@ const tooltipSuppressionHolds = new Set<symbol>();
 let warmUntilMs = 0;
 let tooltipSuppressedUntilMs = 0;
 
+interface PendingTooltipIntent {
+  owner: symbol;
+  timerId: ReturnType<typeof setTimeout> | null;
+  frameId: number | null;
+  publish: () => void;
+  onCancel?: (replacementOwner: symbol | null) => void;
+}
+
+let pendingTooltipIntent: PendingTooltipIntent | null = null;
+
+function cancelPendingTooltipIntent(replacementOwner: symbol | null): void {
+  const pending = pendingTooltipIntent;
+  if (!pending) return;
+  pendingTooltipIntent = null;
+  if (pending.timerId !== null) clearTimeout(pending.timerId);
+  if (pending.frameId !== null) cancelAnimationFrame(pending.frameId);
+  pending.onCancel?.(replacementOwner);
+}
+
+export function cancelTooltipIntent(owner: symbol): void {
+  if (pendingTooltipIntent?.owner === owner) cancelPendingTooltipIntent(null);
+}
+
+function publishPendingTooltipIntent(): void {
+  const pending = pendingTooltipIntent;
+  if (!pending) return;
+  pendingTooltipIntent = null;
+  pending.publish();
+}
+
+export function scheduleTooltipIntent(
+  owner: symbol,
+  delayMs: number,
+  publish: () => void,
+  onCancel?: (replacementOwner: symbol | null) => void,
+): void {
+  if (delayMs <= 0 && pendingTooltipIntent?.frameId != null) {
+    const previous = pendingTooltipIntent;
+    pendingTooltipIntent = {
+      owner,
+      timerId: null,
+      frameId: previous.frameId,
+      publish,
+      onCancel,
+    };
+    previous.onCancel?.(owner);
+    return;
+  }
+  cancelPendingTooltipIntent(owner);
+  const pending: PendingTooltipIntent = {
+    owner,
+    timerId: null,
+    frameId: null,
+    publish,
+    onCancel,
+  };
+  pendingTooltipIntent = pending;
+  if (delayMs > 0) {
+    pending.timerId = setTimeout(publishPendingTooltipIntent, delayMs);
+  } else {
+    pending.frameId = requestAnimationFrame(publishPendingTooltipIntent);
+  }
+}
+
+export function hasCurrentPointerIntent(target: Element): boolean {
+  if (target.matches(":hover")) return true;
+  const ownerDocument = target.ownerDocument;
+  if (ownerDocument.documentElement.matches(":hover")) return false;
+  return typeof ownerDocument.elementFromPoint !== "function";
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -296,6 +367,7 @@ export function subscribeTooltipSuppression(listener: () => void): () => void {
 }
 
 function dismissVisibleTooltips(): void {
+  cancelPendingTooltipIntent(null);
   const dismissers = new Set([
     ...tooltipSuppressionListeners,
     ...visibleTooltipDismissers.values(),
@@ -373,6 +445,7 @@ export function endTooltipVisibility(token: symbol, nowMs = Date.now()): void {
 
 /** Clears process-local hover state after navigation/tests or a hard reset. */
 export function clearTooltipWarmth(): void {
+  cancelPendingTooltipIntent(null);
   visibleTooltipDismissers.clear();
   visibleTooltipTokens.clear();
   tooltipSuppressionHolds.clear();

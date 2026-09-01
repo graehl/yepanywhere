@@ -308,8 +308,11 @@ when the user expresses interest:
   refreshing them could clobber a fresh recap with the JSONL's last turn.
 - **One hover controller:** list rows and non-list destinations share one hook
   for refresh deduplication, pointer-rest delay/warmth, global visibility
-  ownership, anchoring, suppression, pointer intent, and departure into the card. A caller
-  owns only policy specific to its surface: list menu suppression and
+  ownership, anchoring, suppression, pointer intent, and departure into the
+  card. Its unpublished intent also shares the global YA tooltip publication
+  slot: another text, rich, or session target preempts it, and publication
+  rechecks the browser's current `:hover` state before refreshing or opening.
+  A caller owns only policy specific to its surface: list menu suppression and
   scroll-ancestor dismissal remain in `SessionListItem`; a non-list target may
   dismiss on any scroll.
 

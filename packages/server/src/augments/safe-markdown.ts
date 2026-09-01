@@ -17,12 +17,15 @@ const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const ALLOWED_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
 
 const IMAGE_EXTENSIONS = new Set([
+  "apng",
+  "avif",
   "png",
   "jpg",
   "jpeg",
   "gif",
   "webp",
   "bmp",
+  "ico",
   "tiff",
   "tif",
   "svg",

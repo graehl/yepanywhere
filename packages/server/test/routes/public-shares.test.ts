@@ -196,6 +196,44 @@ describe("public share public routes", () => {
     ).toBe(0);
   });
 
+  it("renders transcript media Markdown before publishing a live share", async () => {
+    const mediaMarkdown = [
+      "[raster](/project/output/frame.png)",
+      "[vector](/project/output/frame.svg)",
+      "[video](/project/output/clip.webm)",
+    ].join("\n");
+    const session = makeSession({
+      messages: [makeAssistantMessage(mediaMarkdown)],
+    });
+    const { secret } = await service.createShare({
+      mode: "live",
+      title: "Live media",
+      source: { projectId, sessionId: "session-1" },
+    });
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => session),
+      getPublicSharesEnabled: () => true,
+    });
+
+    const response = await app.request(`/${secret}`);
+    const body = (await response.json()) as PublicSessionShareResponse;
+    const textBlock = (body.session.messages[0] as AppAssistantMessage).message
+      .content[0] as { _html?: string };
+
+    expect(response.status).toBe(200);
+    expect(textBlock._html).toContain('data-ya-resource="local-media"');
+    expect(textBlock._html).toContain(
+      'data-ya-path="/project/output/frame.png"',
+    );
+    expect(textBlock._html).toContain(
+      'data-ya-path="/project/output/frame.svg"',
+    );
+    expect(textBlock._html).toContain(
+      'data-ya-path="/project/output/clip.webm"',
+    );
+  });
+
   it("streams one frozen revision through the compact wire format", async () => {
     const snapshot = makeSession({ title: "Streamed snapshot" });
     const { secret } = await service.createShare({
@@ -1206,14 +1244,14 @@ describe("public share owner routes", () => {
 
   it("creates new shares when the feature is enabled", async () => {
     const routeProjectId = projectId;
+    const frozenSession = makeSession({
+      projectId: routeProjectId,
+      messages: [makeAssistantMessage("[vector](/project/output/frame.svg)")],
+    });
     const app = createPublicShareRoutes({
       publicShareService: service,
-      loadSession: vi.fn(async () =>
-        makeSession({ projectId: routeProjectId }),
-      ),
-      loadCompleteSession: vi.fn(async () =>
-        makeSession({ projectId: routeProjectId }),
-      ),
+      loadSession: vi.fn(async () => frozenSession),
+      loadCompleteSession: vi.fn(async () => frozenSession),
       getRelayConfig: () => ({
         url: DEFAULT_RELAY_URL,
         username: "host-one",
@@ -1247,6 +1285,15 @@ describe("public share owner routes", () => {
     expect(
       service.getSessionShareStatus(routeProjectId, "session-1").activeCount,
     ).toBe(1);
+    const frozen = await service.getFrozenShareBySecret(
+      createdUrl.pathname.split("/").at(-1)!,
+    );
+    expect(frozen).toBeTruthy();
+    const frozenTextBlock = (frozen!.session.messages[0] as AppAssistantMessage)
+      .message.content[0] as { _html?: string };
+    expect(frozenTextBlock._html).toContain(
+      'data-ya-path="/project/output/frame.svg"',
+    );
 
     const management = createPublicShareManagementRoutes({
       publicShareService: service,

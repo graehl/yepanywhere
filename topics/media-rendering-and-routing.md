@@ -278,6 +278,13 @@ full-screen viewer behavior are aligned without flattening those two roles.
 
 ### Read-only shares
 
+- **Public-share transcript media** — live responses and newly captured frozen
+  revisions carry the safe server-rendered Markdown augment, without private
+  project-path discovery. The public client rewrites its semantic local-media
+  links to share-scoped file routes before activation. Recognized assets cover
+  the supported image set (APNG, AVIF, BMP, GIF, ICO, JPEG, PNG, SVG, TIFF,
+  and WebP) and video set (AVI, MKV, MOV, MP4, OGV, and WebM); authorization
+  and served MIME types must remain aligned with Markdown recognition.
 - **Public-share file viewer** — on a shared session page, clicking a file opens
   the same `FileViewer`, but backed by a share-scoped source
   (`publicShareFileViewerSource.ts`) that fetches `/public-api/shares/:secret/

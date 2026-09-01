@@ -29,12 +29,15 @@ export interface ParseLocalResourceOptions {
 const FALLBACK_BASE_URL = "http://localhost";
 const WINDOWS_DRIVE_PATHNAME_PATTERN = /^\/([A-Za-z]:[\\/].*)$/;
 const IMAGE_EXTENSIONS = new Set([
+  "apng",
+  "avif",
   "png",
   "jpg",
   "jpeg",
   "gif",
   "webp",
   "bmp",
+  "ico",
   "tiff",
   "tif",
   "svg",

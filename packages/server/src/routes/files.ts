@@ -169,6 +169,7 @@ const MIME_TYPES: Record<string, string> = {
   ".eslintrc": "application/json",
   ".babelrc": "application/json",
   // Image files
+  ".apng": "image/apng",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -196,6 +197,10 @@ const MIME_TYPES: Record<string, string> = {
   ".ogg": "audio/ogg",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".avi": "video/x-msvideo",
+  ".mkv": "video/x-matroska",
+  ".ogv": "video/ogg",
 };
 
 /** Extensions that are considered text files */

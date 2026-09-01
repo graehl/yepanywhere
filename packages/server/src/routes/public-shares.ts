@@ -27,6 +27,7 @@ import {
   type PublicShareCapture,
   type PublicShareService,
 } from "../services/PublicShareService.js";
+import { augmentTextBlocks } from "../augments/markdown-augments.js";
 import { augmentEditToolUses } from "../sessions/persisted-augments.js";
 import type { Message } from "../supervisor/types.js";
 import {
@@ -118,14 +119,20 @@ const PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS = new Set([
 const PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS = new Set([
   ".apng",
   ".avif",
+  ".avi",
   ".bmp",
   ".gif",
+  ".ico",
   ".jpeg",
   ".jpg",
+  ".mkv",
   ".mov",
   ".mp4",
+  ".ogv",
   ".png",
   ".svg",
+  ".tif",
+  ".tiff",
   ".webm",
   ".webp",
 ]);
@@ -153,6 +160,13 @@ function getPublicShareReadiness(deps: PublicSharePublicRoutesDeps): {
     relayStatus,
     canCreate: enabled && configured && remoteAccessEnabled && storageReady,
   };
+}
+
+async function augmentPublicShareMessages(messages: Message[]): Promise<void> {
+  await Promise.all([
+    augmentTextBlocks(messages),
+    augmentEditToolUses(messages),
+  ]);
 }
 
 function parsePositiveIntegerQuery(
@@ -1129,8 +1143,14 @@ export async function captureCompletePublicShare(
   projectId: UrlProjectId,
   sessionId: string,
 ): Promise<PublicShareCapture | null> {
-  const capture = await deps.publicShareService.captureCompleteSession(() =>
-    deps.loadCompleteSession(projectId, sessionId),
+  const capture = await deps.publicShareService.captureCompleteSession(
+    async () => {
+      const session = await deps.loadCompleteSession(projectId, sessionId);
+      if (session) {
+        await augmentPublicShareMessages(session.messages as Message[]);
+      }
+      return session;
+    },
   );
   if (!capture) return null;
 
@@ -1662,7 +1682,7 @@ export function createPublicSharePublicRoutes(
       return notFound(c);
     }
 
-    await augmentEditToolUses(response.session.messages as Message[]);
+    await augmentPublicShareMessages(response.session.messages as Message[]);
     response.share.activeViewerCount = viewerId
       ? deps.publicShareService.recordViewerHeartbeat(record, viewerId)
       : deps.publicShareService.getActiveViewerCount(record);

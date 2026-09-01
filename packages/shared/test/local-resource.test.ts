@@ -82,6 +82,37 @@ describe("local resource parsing", () => {
     });
   });
 
+  it.each([
+    ["apng", "image"],
+    ["avif", "image"],
+    ["bmp", "image"],
+    ["gif", "image"],
+    ["ico", "image"],
+    ["jpeg", "image"],
+    ["jpg", "image"],
+    ["png", "image"],
+    ["svg", "image"],
+    ["tif", "image"],
+    ["tiff", "image"],
+    ["webp", "image"],
+    ["avi", "video"],
+    ["mkv", "video"],
+    ["mov", "video"],
+    ["mp4", "video"],
+    ["ogv", "video"],
+    ["webm", "video"],
+  ])("classifies .%s local-image paths as %s", (extension, mediaType) => {
+    expect(
+      parseLocalResourceHref(
+        `/api/local-image?path=%2Ftmp%2Fasset.${extension}`,
+      ),
+    ).toMatchObject({
+      kind: "local-media",
+      mediaType,
+      path: `/tmp/asset.${extension}`,
+    });
+  });
+
   it("parses project file routes", () => {
     expect(
       parseLocalResourceHref(

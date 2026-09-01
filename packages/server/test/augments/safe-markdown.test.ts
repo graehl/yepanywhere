@@ -434,6 +434,34 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain('data-ya-media-type="video"');
   });
 
+  it.each([
+    ["apng", "image"],
+    ["avif", "image"],
+    ["bmp", "image"],
+    ["gif", "image"],
+    ["ico", "image"],
+    ["jpeg", "image"],
+    ["jpg", "image"],
+    ["png", "image"],
+    ["svg", "image"],
+    ["tif", "image"],
+    ["tiff", "image"],
+    ["webp", "image"],
+    ["avi", "video"],
+    ["mkv", "video"],
+    ["mov", "video"],
+    ["mp4", "video"],
+    ["ogv", "video"],
+    ["webm", "video"],
+  ])("recognizes .%s as local %s media", (extension, mediaType) => {
+    const html = renderSafeMarkdown(
+      `[asset](/tmp/rendered-media.${extension})`,
+    );
+
+    expect(html).toContain('data-ya-resource="local-media"');
+    expect(html).toContain(`data-ya-media-type="${mediaType}"`);
+  });
+
   it("resolves relative local file links against a base directory", () => {
     const html = renderSafeMarkdown("[peer](docs/peer.md)", {
       localFileBasePath: "/workspace/project",

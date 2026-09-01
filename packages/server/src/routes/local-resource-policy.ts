@@ -52,12 +52,15 @@ export const LOCAL_FILE_CONTENT_TYPES: Record<string, string> = {
 };
 
 export const LOCAL_MEDIA_CONTENT_TYPES: Record<string, string> = {
+  ".apng": "image/apng",
+  ".avif": "image/avif",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
   ".tiff": "image/tiff",
   ".tif": "image/tiff",
   ".svg": "image/svg+xml",

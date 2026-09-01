@@ -108,6 +108,11 @@ default placement. **Manage all public shares** opens the global pane from a
 searchable row beside the Settings control. Merely opening either pane creates
 no link.
 
+The manager keeps every scope and share-type label readable beside its action
+buttons when horizontal space is available. At phone width, the filter block
+uses the full modal width above the inventory so labels and actions remain
+distinct rather than overlapping.
+
 Global management is optional newer-server functionality gated by the
 permanent `public-share-management` capability. Without it, a current client
 keeps the existing per-session popup and destructive Settings toggle, hides

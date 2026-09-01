@@ -12,7 +12,7 @@
 .managerLayout {
   display: grid;
   gap: 14px;
-  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-columns: clamp(190px, 25%, 210px) minmax(0, 1fr);
 }
 
 .managerSidebar,
@@ -251,11 +251,14 @@
 
   .managerLayout {
     gap: 10px;
-    grid-template-columns: 154px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .managerSidebar {
-    padding-right: 10px;
+    border-bottom: 1px solid var(--border-color);
+    border-right: 0;
+    padding-bottom: 10px;
+    padding-right: 0;
   }
 
   .filterButton {

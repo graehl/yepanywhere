@@ -280,3 +280,68 @@ test("left and right click open the same share manager", async ({
   ).toHaveCount(0);
   await expect(dialog.getByRole("group", { name: "Show" })).toHaveCount(0);
 });
+
+test("share type labels fit beside creation actions", async ({
+  page,
+  baseURL,
+}) => {
+  await configureRemoteAccess(baseURL, {
+    username: "public-share-layout-e2e",
+    password: "public-share-password-123",
+    relayUrl: "ws://127.0.0.1:9/ws",
+  });
+  await putJson(baseURL, "/api/settings", { publicSharesEnabled: true });
+  await page.route("**/api/public-shares/status", async (route) => {
+    const response = await route.fetch();
+    const status = await response.json();
+    await route.fulfill({ response, json: { ...status, canCreate: true } });
+  });
+
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
+  await dismissOnboardingIfVisible(page);
+  await expect(
+    page.getByRole("main").getByText("Previous message"),
+  ).toBeVisible({ timeout: 10000 });
+  await page
+    .locator("header.session-header")
+    .getByLabel("Session options")
+    .click();
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+
+  const dialog = page.getByRole("dialog");
+  const liveFilter = dialog.getByRole("button", {
+    name: "Live",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Create and copy Live link" }),
+  ).toBeVisible();
+  await expect(liveFilter).toBeVisible();
+  await expect
+    .poll(() =>
+      liveFilter.evaluate((button) => button.scrollWidth <= button.clientWidth),
+    )
+    .toBe(true);
+
+  const captureDirectory = process.env.YEP_PUBLIC_SHARE_CAPTURE_DIR;
+  if (captureDirectory) {
+    mkdirSync(captureDirectory, { recursive: true });
+    await page.screenshot({
+      path: join(captureDirectory, "desktop-1000x600.png"),
+    });
+  }
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(liveFilter).toBeVisible();
+  await expect
+    .poll(() =>
+      liveFilter.evaluate((button) => button.scrollWidth <= button.clientWidth),
+    )
+    .toBe(true);
+  if (captureDirectory) {
+    await page.screenshot({
+      path: join(captureDirectory, "mobile-375x812.png"),
+    });
+  }
+});

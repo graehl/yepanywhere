@@ -17,10 +17,12 @@ import {
   userMessage,
 } from "./MessageList.test-support";
 import { MessageList } from "../MessageList";
+import { setRecentProjectPathLinksPreference } from "../../hooks/useRecentProjectPathLinks";
 
 installMessageListTestEnvironment();
 
 afterEach(() => {
+  act(() => setRecentProjectPathLinksPreference(false));
   vi.unstubAllGlobals();
 });
 
@@ -428,6 +430,51 @@ describe("MessageList reverse search", () => {
       expect(container.querySelector('[data-render-id="user-old"]')).toBeNull();
     });
     stop();
+  });
+
+  it("drops an active older-page search when basename linking changes", async () => {
+    const stalePageRead = deferred<ReturnType<typeof historyPage>>();
+    const readOlderPage = vi
+      .fn<(cursor: string) => Promise<ReturnType<typeof historyPage>>>()
+      .mockImplementationOnce(() => stalePageRead.promise)
+      .mockResolvedValueOnce(historyPage([], null));
+    render(
+      <MessageList
+        messages={[userMessage("user-recent", "recent request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="loaded-boundary"
+        onReadOlderSearchPage={readOlderPage as never}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Reverse search user turns",
+      }),
+      { target: { value: "stale projection needle" } },
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    await waitFor(() => expect(readOlderPage).toHaveBeenCalledOnce());
+
+    act(() => setRecentProjectPathLinksPreference(true));
+    await act(async () => {
+      stalePageRead.resolve(
+        historyPage(
+          [userMessage("user-stale", "stale projection needle")],
+          null,
+        ),
+      );
+      await stalePageRead.promise;
+    });
+
+    expect(screen.queryByText("Older result")).toBeNull();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search older" }),
+    );
+    await waitFor(() => expect(readOlderPage).toHaveBeenCalledTimes(2));
   });
 
   it("keeps the latest historical selection when hydrations settle out of order", async () => {

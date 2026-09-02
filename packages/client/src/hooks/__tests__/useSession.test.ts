@@ -936,6 +936,11 @@ describe("useSession completion reconciliation", () => {
           ownership: { owner: "self"; processId: string };
           processState: "in-turn";
           pendingInputRequest: null;
+          deferredMessages: Array<{
+            tempId: string;
+            content: string;
+            timestamp: string;
+          }>;
         }) => void)
       | undefined;
     apiMocks.getSessionMetadata.mockImplementation(
@@ -962,12 +967,20 @@ describe("useSession completion reconciliation", () => {
         ownership: { owner: "self", processId: "proc-a" },
         processState: "in-turn",
         pendingInputRequest: null,
+        deferredMessages: [
+          {
+            tempId: "sess-a-queued",
+            content: "session A queue",
+            timestamp: "2026-09-02T00:00:00.000Z",
+          },
+        ],
       });
       await wakeReconciliation;
     });
 
     expect(result.current.status).toEqual({ owner: "none" });
     expect(result.current.processState).toBe("idle");
+    expect(result.current.deferredMessages).toEqual([]);
   });
 
   it("keeps authoritative idle over a pending-input fallback snapshot", async () => {

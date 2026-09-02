@@ -1023,11 +1023,11 @@ export function useSession(
       ) {
         return;
       }
-      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
-      setDeferredMessages(data.deferredMessages ?? []);
       if (!isRuntimeSnapshotCurrent(snapshotToken)) {
         return;
       }
+      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
+      setDeferredMessages(data.deferredMessages ?? []);
       const metadataProcessState = parseProcessState(data.processState);
       setStatus(data.ownership);
       if (metadataProcessState) {
@@ -2493,11 +2493,11 @@ export function useSession(
     const snapshotToken = beginRuntimeSnapshot();
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
-      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
-      setDeferredMessages(data.deferredMessages ?? []);
       if (!isRuntimeSnapshotCurrent(snapshotToken)) {
         return;
       }
+      reportProviderRuntimeStatus(sessionId, data.providerRuntimeStatus);
+      setDeferredMessages(data.deferredMessages ?? []);
       const metadataProcessState = parseProcessState(data.processState);
       if (data.ownership.owner !== "self") {
         setStatus({ owner: "none" });

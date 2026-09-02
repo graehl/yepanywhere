@@ -212,6 +212,7 @@ export function useMessageListIsearch({
         userTurnSearch.caseSensitive,
         thinkingItemsVisible,
         conversationViewEnabled,
+        recentProjectPathLinksEnabled,
         historySearchContextKey,
         provider,
       ])

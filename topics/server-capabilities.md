@@ -306,7 +306,12 @@ route. The client requires it together with provider `supportsForkSession`
 before rendering header Clone or direct per-turn Fork. When absent, the whole
 unified surface is hidden and no fork request is made; legacy server parsing is
 not treated as a client fallback. This transitional gate was introduced in
-`0.7.1` and is reviewed after 2026-09-01.
+`0.7.1`. Its 2026-09-02 optional-feature review covered stable `v0.8.0`
+(2026-08-31) and `v0.7.0` (2026-07-25); no other stable release fell in the
+preceding 14 days. `v0.8.0` has the server-resolved intent contract, while
+`v0.7.0` lacks it. Because a latest-two release still needs the fallback, the
+client gate and server advertisement remain, with the next review due
+2026-10-01.
 
 For authenticated public-share management, `public-share-management`
 advertises compact inventory plus opaque-id single-link and confirmed global

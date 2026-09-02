@@ -2072,7 +2072,7 @@ export const SERVER_CAPABILITIES = {
     },
     lifecycle: {
       kind: "transitional",
-      reviewAfter: "2026-09-01",
+      reviewAfter: "2026-10-01",
       removeClientGateWhen:
         "The optional hosted-client support corpus contains no server without server-resolved fork intents and the Maintainer approves removal.",
       removeServerAdvertisementWhen:

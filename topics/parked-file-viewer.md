@@ -36,7 +36,11 @@ message or tool row that opened it.
 
 - **Open** — the viewer owns the session's transcript row. The live session
   remains mounted behind it, while the composer remains visible and operable
-  directly below it.
+  directly below it. The covered transcript keeps its last committed render
+  frame and pauses progressive hydration instead of reconciling hidden session
+  updates. Session data, status, composer controls, and managed-viewer sources
+  remain live; parking or closing the viewer reveals the latest buffered
+  transcript snapshot and resumes hydration.
 - **Parked** — the viewer remains mounted but is not interactive or visible;
   the live session and composer are visible and operable.
 - **Closed** — the viewer is destroyed and its controller disappears.

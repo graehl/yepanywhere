@@ -76,6 +76,10 @@ stable component identity, and lower update cadence.
   boundary and must not wait for the transcript. Prefix-changing pagination and
   trimming remain immediate because their scroll corrections are coupled to the
   new transcript structure.
+- An open managed viewer covers the transcript and holds its last committed
+  projection stable. Incoming session data continues to buffer and surrounding
+  controls and viewer sources remain live, but transcript reconciliation and
+  progressive hydration resume only after the viewer is parked or closed.
 - Conditional UI controls must not run an expensive render only to decide
   whether the control exists. Prefer transforms that return structured metadata
   such as `{ html, changed }`, and pass that first completed scan into the

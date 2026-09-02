@@ -111,6 +111,24 @@ export function SessionViewerProvider({
   );
 }
 
+/** Keeps covered transcript props stable while its managed viewer is open. */
+export function SessionViewerTranscriptGate({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const sessionId = useSessionViewerSessionId();
+  const controller = useSessionViewerController();
+  const viewerOpen = Boolean(
+    controller?.sessionId === sessionId && !controller.minimized,
+  );
+  const renderedChildrenRef = useRef(children);
+  if (!viewerOpen) {
+    renderedChildrenRef.current = children;
+  }
+  return renderedChildrenRef.current;
+}
+
 export function SessionManagedViewerHost({
   sessionId,
   inactive = false,

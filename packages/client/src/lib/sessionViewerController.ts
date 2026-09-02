@@ -45,23 +45,38 @@ export type SessionViewerControllerState = SessionViewerRegistration & {
 
 let current: SessionViewerControllerState | null = null;
 const listeners = new Set<() => void>();
+let resumeRevision = 0;
 
 function emit(): void {
   for (const listener of listeners) listener();
 }
 
+function openSessionId(
+  state: SessionViewerControllerState | null,
+): string | null {
+  return state && !state.minimized ? state.sessionId : null;
+}
+
+function replaceCurrent(next: SessionViewerControllerState | null): void {
+  const previousOpenSessionId = openSessionId(current);
+  const nextOpenSessionId = openSessionId(next);
+  if (previousOpenSessionId && previousOpenSessionId !== nextOpenSessionId) {
+    resumeRevision += 1;
+  }
+  current = next;
+  emit();
+}
+
 function closeViewer(id: string): void {
   if (current?.id !== id) return;
   const onClose = current.onClose;
-  current = null;
-  emit();
+  replaceCurrent(null);
   onClose?.();
 }
 
 function setMinimized(id: string, minimized: boolean): void {
   if (current?.id !== id || current.minimized === minimized) return;
-  current = { ...current, minimized };
-  emit();
+  replaceCurrent({ ...current, minimized });
 }
 
 export function minimizeSessionViewer(id: string): void {
@@ -97,21 +112,18 @@ export function presentSessionViewer(
 ): void {
   const previous = current;
   const minimized = previous?.id === registration.id && previous.minimized;
-  current = toController(registration, Boolean(minimized));
-  emit();
+  replaceCurrent(toController(registration, Boolean(minimized)));
   if (previous && previous.id !== registration.id) previous.onClose?.();
 }
 
 export function clearSessionViewer(id: string): void {
   if (current?.id !== id) return;
-  current = null;
-  emit();
+  replaceCurrent(null);
 }
 
 export function clearCurrentSessionViewer(): void {
   if (!current) return;
-  current = null;
-  emit();
+  replaceCurrent(null);
 }
 
 function subscribe(listener: () => void): () => void {
@@ -125,4 +137,20 @@ function getSnapshot(): SessionViewerControllerState | null {
 
 export function useSessionViewerController(): SessionViewerControllerState | null {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function isSessionViewerOpen(sessionId: string | null): boolean {
+  return sessionId !== null && openSessionId(current) === sessionId;
+}
+
+/**
+ * Notify transcript work only when a covering viewer stops being open.
+ * Opening the viewer deliberately leaves the covered transcript unchanged.
+ */
+export function useSessionViewerResumeRevision(): number {
+  return useSyncExternalStore(
+    subscribe,
+    () => resumeRevision,
+    () => resumeRevision,
+  );
 }

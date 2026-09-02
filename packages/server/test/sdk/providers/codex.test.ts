@@ -29,6 +29,7 @@ import {
   it,
   vi,
 } from "vitest";
+import type { CodexPlanToolMode } from "@yep-anywhere/shared";
 import { compileTranscriptProjection } from "../../../../client/src/lib/transcriptProjection/compiler.ts";
 import { getLogger } from "../../../src/logging/logger.js";
 import { getCodexCommonPaths } from "../../../src/sdk/cli-detection.js";
@@ -37,7 +38,6 @@ import {
   CodexProvider,
   type CodexProviderConfig,
 } from "../../../src/sdk/providers/codex.js";
-import type { CodexPlanToolMode } from "../../../src/sdk/providers/codex-plan-tool.js";
 import {
   codexAgentMessageDeltaFixtures,
   codexContextCompactionFixtures,

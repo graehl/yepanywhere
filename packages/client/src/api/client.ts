@@ -8,6 +8,7 @@ import type {
   ClaudeAdditionalModelSelection,
   ClaudeSteerBackgroundBashSettings,
   ClientDefaults,
+  CodexPlanToolMode,
   CodexReasoningSummary,
   ConnectionsResponse,
   CreatePublicFileShareRequest,
@@ -1966,6 +1967,8 @@ export interface ServerSettings {
   lifecycleWebhookDryRun?: boolean;
   /** Reasoning-summary mode applied when Codex app-server sessions start. */
   codexReasoningSummary?: CodexReasoningSummary;
+  /** Stored Codex plan-tool override; null clears it to the startup fallback. */
+  codexPlanToolMode?: CodexPlanToolMode | null;
   /** How the server handles Codex CLI updates */
   codexUpdatePolicy?: "auto" | "notify" | "off";
   /** Keep eligible local Linux Codex runtimes across YA server reloads. */

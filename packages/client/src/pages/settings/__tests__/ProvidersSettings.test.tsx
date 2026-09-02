@@ -14,6 +14,7 @@ import {
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+  CODEX_PLAN_TOOL_SETTING_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   IDLE_REAP_HOURS_SETTING_CAPABILITY,
   RELOAD_SAFE_CODEX_RUNTIME_CAPABILITY,
@@ -200,6 +201,40 @@ describe("ProvidersSettings additional models", () => {
         ) as HTMLSelectElement
       ).value,
     ).toBe("concise");
+  });
+
+  it("hides the Codex plan-tool setting from older servers", () => {
+    render(<ProvidersSettings />);
+
+    expect(screen.queryByText("providersCodexPlanToolTitle")).toBeNull();
+  });
+
+  it("inherits the Codex plan-tool fallback and saves exact overrides", async () => {
+    versionState.capabilities = [CODEX_PLAN_TOOL_SETTING_CAPABILITY];
+    render(<ProvidersSettings />);
+    const select = screen.getByLabelText(
+      "providersCodexPlanToolAria",
+    ) as HTMLSelectElement;
+
+    expect(select.value).toBe("inherit");
+
+    for (const mode of ["enabled", "disabled", "provider-default"] as const) {
+      fireEvent.change(select, { target: { value: mode } });
+      await waitFor(() => {
+        expect(mockUpdateSetting).toHaveBeenLastCalledWith(
+          "codexPlanToolMode",
+          mode,
+        );
+      });
+    }
+
+    fireEvent.change(select, { target: { value: "inherit" } });
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenLastCalledWith(
+        "codexPlanToolMode",
+        null,
+      );
+    });
   });
 
   it("shows the Never notch as -1", () => {

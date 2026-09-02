@@ -336,6 +336,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "session-sandbox-network-firewall",
     introducedIn: "0.7.2",
   },
+  codexPlanToolSetting: {
+    id: 53,
+    direction: "server",
+    name: "codex-plan-tool-setting",
+    introducedIn: "0.8.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

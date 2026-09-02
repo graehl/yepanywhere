@@ -93,6 +93,13 @@ capability is version-implied from `0.7.2`, while source-ahead servers advertise
 the positive ID explicitly. Its fallback remains until a separate
 compatibility-floor review approves removal.
 
+`codex-plan-tool-setting` owns the optional `codexPlanToolMode` field on the
+existing settings read and write routes. Stable releases `v0.8.0` and `v0.7.0`
+lack the field and permanent ID 53. Without the capability, clients hide the
+Codex plan-tool control and make no unsupported settings write. It is
+version-implied from `0.8.1`; existing settings and capability meanings are
+unchanged.
+
 The additive top-level `transcriptSnapshotUpdatedAt` field on existing session
 detail responses is a reader snapshot receipt, not a new feature capability.
 The core compatibility corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0`
@@ -433,9 +440,10 @@ the same ledger:
 | 50 | server | 0.7.2 | `attachment-only-session-messages` |
 | 51 | server | 0.7.2 | `public-file-shares` |
 | 52 | server | 0.7.2 | `session-sandbox-network-firewall` |
+| 53 | server | 0.8.1 | `codex-plan-tool-setting` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 53; retired rows stay in the ledger as reserved IDs.
+ID 54; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

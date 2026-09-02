@@ -411,6 +411,62 @@ describe("Settings Routes", () => {
       },
     );
 
+    it.each(["provider-default", "disabled", "enabled"] as const)(
+      "persists the %s Codex plan-tool mode",
+      async (codexPlanToolMode) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codexPlanToolMode }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+          codexPlanToolMode,
+        });
+      },
+    );
+
+    it("clears the Codex plan-tool mode to its startup fallback", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codexPlanToolMode: null }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        codexPlanToolMode: undefined,
+      });
+    });
+
+    it.each(["sometimes", "", true, 1])(
+      "rejects invalid Codex plan-tool mode %j",
+      async (codexPlanToolMode) => {
+        const routes = createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        });
+
+        const response = await routes.request("/", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codexPlanToolMode }),
+        });
+
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toContain("codexPlanToolMode");
+        expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+      },
+    );
+
     it("persists the reload-safe Codex opt-in", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

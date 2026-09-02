@@ -14,6 +14,7 @@ import type {
   ClaudeAdditionalModelSelection,
   ClaudeSteerBackgroundBashSettings,
   ClientDefaults,
+  CodexPlanToolMode,
   CodexReasoningSummary,
   HelperTargetConfig,
   HostIdentity,
@@ -41,6 +42,7 @@ import {
   isHostAwakeBatteryFloorPercent,
   isHostAwakeMode,
   isCodexReasoningSummary,
+  isCodexPlanToolMode,
   parseClaudeAdditionalModelSelections,
   parseClaudeSteerBackgroundBashSettings,
 } from "@yep-anywhere/shared";
@@ -195,6 +197,8 @@ export interface ServerSettings {
   lifecycleWebhookDryRun?: boolean;
   /** Reasoning-summary mode applied when Codex app-server sessions start. */
   codexReasoningSummary: CodexReasoningSummary;
+  /** Stored Codex plan-tool override; absent inherits the startup fallback. */
+  codexPlanToolMode?: CodexPlanToolMode;
   /**
    * How the server handles Codex CLI updates:
    * - "auto": automatically run `npm install -g <pkg>@latest` when an update
@@ -402,6 +406,9 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   )
     ? settings.codexReasoningSummary
     : DEFAULT_CODEX_REASONING_SUMMARY;
+  normalized.codexPlanToolMode = isCodexPlanToolMode(settings.codexPlanToolMode)
+    ? settings.codexPlanToolMode
+    : undefined;
   normalized.codexReloadSafeSessions =
     typeof settings.codexReloadSafeSessions === "boolean"
       ? settings.codexReloadSafeSessions

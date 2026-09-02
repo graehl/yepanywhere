@@ -173,11 +173,15 @@ Current source refresh, 2026-09-02:
   `5adb68a49933ae446bf11935662c83dba55a0804`, respectively. Root
   compatibility and expected-protocol markers now record `0.152.1`.
 - Codex 0.152 makes `update_plan` opt-in. YA continues to render emitted
-  `turn/plan/updated` notifications as checklist progress, but the default
-  `YEP_CODEX_UPDATE_PLAN=provider-default` adds no thread override and
-  therefore preserves Codex's own configuration. Explicit `disabled` and
-  `enabled` values inject the matching `tools.update_plan.enabled` value for
-  every new, resumed, and forked YA thread.
+  `turn/plan/updated` notifications as checklist progress. **Settings →
+  Providers → Codex → Plan checklist tool** persists `provider-default`,
+  `disabled`, or `enabled`; an unset preference inherits
+  `YEP_CODEX_UPDATE_PLAN`, whose default is `provider-default`. Provider
+  default adds no thread override. Explicit disabled or enabled values inject
+  the matching `tools.update_plan.enabled` value for every new, resumed, and
+  forked YA thread. Enabling makes the tool available but does not force Codex
+  to publish a plan; disabling removes structured checklist updates without
+  suppressing ordinary prose planning. Existing checklist rows are unchanged.
 - `pnpm codex:protocol:check` is clean: none of the generated types in YA's
   consumed subset changed. The wider app-server protocol adds optional shell
   command timeouts, two authentication-recovery notifications, account and

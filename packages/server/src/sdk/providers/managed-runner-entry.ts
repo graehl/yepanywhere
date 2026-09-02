@@ -17,12 +17,12 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_SUBAGENT_MAX_DEPTH,
+  type CodexPlanToolMode,
   type CodexReasoningSummary,
   type SubagentMaxDepth,
 } from "@yep-anywhere/shared";
 import { prepareSessionSandbox } from "../../session-sandbox.js";
 import { CodexProvider } from "./codex.js";
-import type { CodexPlanToolMode } from "./codex-plan-tool.js";
 import { startFakeProviderSession } from "./provider-runtime-fake.js";
 import type { ProviderSessionStartResult } from "./provider-session-owner.js";
 import {

@@ -8,6 +8,7 @@ import {
   DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_SUBAGENT_MAX_DEPTH,
   type ClaudeAdditionalModelSelection,
+  type CodexPlanToolMode,
   type CodexReasoningSummary,
   type SubagentMaxDepth,
 } from "@yep-anywhere/shared";
@@ -18,7 +19,6 @@ import {
 } from "./provider-runtime-host.js";
 // Types
 import type { AgentProvider, ProviderName } from "./types.js";
-import type { CodexPlanToolMode } from "./codex-plan-tool.js";
 export type {
   AgentProvider,
   AgentSession,

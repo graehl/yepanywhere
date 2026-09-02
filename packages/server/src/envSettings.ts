@@ -380,7 +380,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "YEP_CODEX_UPDATE_PLAN",
     group: "Providers & features",
     description:
-      "Codex plan-tool launch override (provider-default|disabled|enabled). Default provider-default preserves Codex configuration.",
+      "Fallback for the Codex Plan checklist tool setting (provider-default|disabled|enabled). A saved provider setting takes precedence.",
   },
   {
     name: "OLLAMA_URL",

@@ -9,6 +9,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
+  type CodexPlanToolMode,
   DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_SUBAGENT_MAX_DEPTH,
   canonicalInvocationName,
@@ -50,7 +51,6 @@ import {
 import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
-import type { CodexPlanToolMode } from "./codex-plan-tool.js";
 import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import type {
   ProviderActivitySnapshot,

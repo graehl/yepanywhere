@@ -13,6 +13,7 @@ import {
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+  CODEX_PLAN_TOOL_SETTING_CAPABILITY,
   CODEX_REASONING_SUMMARIES,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   DEFAULT_CODEX_REASONING_SUMMARY,
@@ -26,10 +27,12 @@ import {
   SUBAGENT_MAX_DEPTH_SETTING_CAPABILITY,
   MAX_CLAUDE_ADDITIONAL_MODEL_ID_LENGTH,
   isCodexReasoningSummary,
+  isCodexPlanToolMode,
   isValidClaudeAdditionalModelId,
   isValidClaudeAdditionalModelLabel,
   normalizeIdleReapHours,
   type ClaudeAdditionalModelSelection,
+  type CodexPlanToolMode,
   type CodexReasoningSummary,
   type HelperTargetConfig,
   type ModelInfo,
@@ -880,6 +883,54 @@ function CodexReasoningSummarySetting({
   );
 }
 
+type CodexPlanToolSelection = CodexPlanToolMode | "inherit";
+
+function CodexPlanToolSetting({
+  value,
+  updateSetting,
+}: {
+  value: CodexPlanToolMode | undefined;
+  updateSetting: UpdateServerSetting;
+}) {
+  const { t } = useI18n();
+  const selection: CodexPlanToolSelection = value ?? "inherit";
+  const labels: Record<CodexPlanToolSelection, string> = {
+    inherit: t("providersCodexPlanToolInherit"),
+    "provider-default": t("providersCodexPlanToolProviderDefault"),
+    enabled: t("providersCodexPlanToolEnabled"),
+    disabled: t("providersCodexPlanToolDisabled"),
+  };
+
+  return (
+    <SettingsItem
+      id="provider-codex-plan-tool"
+      label={t("providersCodexPlanToolTitle")}
+      description={t("providersCodexPlanToolDescription")}
+      keywords={["update_plan", "plan", "checklist", "tasks", "todo"]}
+      valueText={labels[selection]}
+    >
+      <select
+        className="settings-select"
+        aria-label={t("providersCodexPlanToolAria")}
+        value={selection}
+        onChange={(event) => {
+          if (event.target.value === "inherit") {
+            void updateSetting("codexPlanToolMode", null);
+          } else if (isCodexPlanToolMode(event.target.value)) {
+            void updateSetting("codexPlanToolMode", event.target.value);
+          }
+        }}
+      >
+        {(Object.keys(labels) as CodexPlanToolSelection[]).map((mode) => (
+          <option key={mode} value={mode}>
+            {labels[mode]}
+          </option>
+        ))}
+      </select>
+    </SettingsItem>
+  );
+}
+
 function OllamaSettings() {
   const { settings } = useServerSettings();
   const useFullPrompt = settings?.ollamaUseFullSystemPrompt ?? false;
@@ -1366,6 +1417,10 @@ export function ProvidersSettings() {
     version,
     CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   );
+  const supportsCodexPlanToolSetting = serverHasCapability(
+    version,
+    CODEX_PLAN_TOOL_SETTING_CAPABILITY,
+  );
   const supportsClaudeGateway = serverHasCapability(
     version,
     CLAUDE_GATEWAY_CAPABILITY,
@@ -1682,6 +1737,12 @@ export function ProvidersSettings() {
                   settings?.codexReasoningSummary ??
                   DEFAULT_CODEX_REASONING_SUMMARY
                 }
+                updateSetting={updateSetting}
+              />
+            )}
+            {provider.id === "codex" && supportsCodexPlanToolSetting && (
+              <CodexPlanToolSetting
+                value={settings?.codexPlanToolMode ?? undefined}
                 updateSetting={updateSetting}
               />
             )}

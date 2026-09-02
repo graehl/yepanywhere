@@ -9,6 +9,7 @@ import {
   CLAUDE_GATEWAY_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_AGENT_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+  CODEX_PLAN_TOOL_SETTING_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   GIT_DIRTY_FILE_EDITOR_CAPABILITY,
   GIT_INCLUSIVE_TO_HEAD_CAPABILITY,
@@ -106,6 +107,12 @@ describe("Version Routes", () => {
   it("advertises the Codex reasoning-summary setting", () => {
     expect(getServerCapabilities()).toContain(
       CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+    );
+  });
+
+  it("advertises the Codex plan-tool setting", () => {
+    expect(getServerCapabilities()).toContain(
+      CODEX_PLAN_TOOL_SETTING_CAPABILITY,
     );
   });
 

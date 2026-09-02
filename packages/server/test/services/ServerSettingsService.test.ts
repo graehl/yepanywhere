@@ -229,6 +229,34 @@ describe("ServerSettingsService", () => {
     expect(service.getSetting("codexReasoningSummary")).toBe("auto");
   });
 
+  it("inherits the Codex plan-tool fallback until an override is saved", async () => {
+    const service = new ServerSettingsService({ dataDir: testDir });
+    await service.initialize();
+
+    expect(service.getSetting("codexPlanToolMode")).toBeUndefined();
+    await service.updateSettings({ codexPlanToolMode: "enabled" });
+
+    const reloaded = new ServerSettingsService({ dataDir: testDir });
+    await reloaded.initialize();
+    expect(reloaded.getSetting("codexPlanToolMode")).toBe("enabled");
+  });
+
+  it("drops an invalid persisted Codex plan-tool override", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: { codexPlanToolMode: "sometimes" },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("codexPlanToolMode")).toBeUndefined();
+  });
+
   it("defaults Claude steer backgrounding to every Bash command", async () => {
     const service = new ServerSettingsService({ dataDir: testDir });
     await service.initialize();

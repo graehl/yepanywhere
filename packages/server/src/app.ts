@@ -176,7 +176,7 @@ import {
   getProvider,
   isProviderRuntimeHostAvailable,
 } from "./sdk/providers/index.js";
-import type { CodexPlanToolMode } from "./sdk/providers/codex-plan-tool.js";
+import type { CodexPlanToolMode } from "@yep-anywhere/shared";
 import type { AgentProvider } from "./sdk/providers/types.js";
 import type {
   ClaudeSDK,
@@ -520,7 +520,9 @@ export function createApp(options: AppOptions): AppResult {
       ).some((metadata) => metadata.provider === "claude-ollama"),
     getProviderRuntimeSnapshot: () => ({
       codexCliPath: options.codexCliPath,
-      codexPlanToolMode: options.codexPlanToolMode,
+      codexPlanToolMode:
+        options.serverSettingsService?.getSetting("codexPlanToolMode") ??
+        options.codexPlanToolMode,
       codexReasoningSummary: options.serverSettingsService?.getSetting(
         "codexReasoningSummary",
       ),

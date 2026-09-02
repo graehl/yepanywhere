@@ -6,6 +6,7 @@ import {
   CACHE_MISS_BILLING_EXPECTED_EXPIRY_CAPABILITY,
   CACHE_MISS_BILLING_IGNORE_AFTER_CAPABILITY,
   CLAUDE_GATEWAY_DISABLE_PLAN_MODE_CAPABILITY,
+  CODEX_PLAN_TOOL_SETTING_CAPABILITY,
   CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
   CODEX_STREAM_DURABLE_ID_ALIGNMENT_CAPABILITY,
   DEVICE_BRIDGE_CAPABILITY,
@@ -434,6 +435,26 @@ describe("server capability advertisements", () => {
       serverHasCapability(
         { current: "0.7.0-741-gabcdef", ...advertisement },
         CODEX_REASONING_SUMMARY_SETTING_CAPABILITY,
+      ),
+    ).toBe(true);
+  });
+
+  it("encodes the source-ahead Codex plan-tool setting by permanent ID", () => {
+    const advertisement = encodeVersionedServerCapabilities(
+      [CODEX_PLAN_TOOL_SETTING_CAPABILITY],
+      "0.8.0-3-gabcdef",
+    );
+
+    expect(advertisement).toEqual({
+      capabilityEncoding: CAPABILITY_ID_ENCODING_VERSION,
+      capabilityBits: [
+        [1, 2 ** (CAPABILITY_ID_ALLOCATIONS.codexPlanToolSetting.id % 32)],
+      ],
+    });
+    expect(
+      serverHasCapability(
+        { current: "0.8.0-3-gabcdef", ...advertisement },
+        CODEX_PLAN_TOOL_SETTING_CAPABILITY,
       ),
     ).toBe(true);
   });

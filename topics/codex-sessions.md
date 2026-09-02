@@ -114,12 +114,16 @@ changes the entry sequence and must not reuse that projection. A caller can
 therefore mutate its private array without poisoning the reader's retained
 entries or making a different snapshot appear unchanged.
 
-Plain-JSONL cold and incremental reads consume exactly the byte count from the
-source stat used for that pass. Bytes appended after that observation belong to
-a later pass. A short read fails rather than publishing entries under a byte
-boundary the reader did not consume. A complete JSON record without its final
-newline may be accepted; an incomplete trailing record remains provisional and
-is combined with the next append.
+Plain-JSONL cold and incremental reads decode bounded byte chunks while
+retaining UTF-8 decoder state and incomplete JSONL lines across chunk boundaries;
+they never materialize a whole rollout or appended suffix as one JavaScript
+string. Each pass consumes exactly the byte count from its source stat. Bytes
+appended after that observation belong to a later pass. A short read fails
+rather than publishing entries under a byte boundary the reader did not consume.
+A complete JSON record without its final newline may be accepted; an incomplete
+trailing record remains provisional and is combined with the next append. Once
+head metadata has identified a rollout, a detail-read failure is reported as a
+reader failure rather than being converted into session absence.
 
 Cache invalidation advances the reader's cache revision before clearing
 retained entries. Work started under an older revision may finish its file read

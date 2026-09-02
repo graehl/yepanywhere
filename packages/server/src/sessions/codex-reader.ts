@@ -14,6 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { TextDecoder } from "node:util";
 import {
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
@@ -122,6 +123,7 @@ const DEFAULT_SLOW_LOG_THRESHOLD_MS = 250;
 const CODEX_HEAD_SUMMARY_MAX_LINES = 200;
 const CODEX_HEAD_SUMMARY_MAX_BYTES = 1024 * 1024;
 const CODEX_FULL_SUMMARY_CACHE_MAX_ENTRIES = 256;
+const CODEX_ENTRY_READ_CHUNK_BYTES = 1024 * 1024;
 const LOG_ENTRY_READS = process.env.CODEX_READER_LOG_PARSE === "true";
 
 function isCompressedCodexSessionFile(filePath: string): boolean {
@@ -232,13 +234,6 @@ interface CodexParsedEntrySnapshot {
   partialLine: string;
   readLinesMs: number;
   parseMs: number;
-  lineCount: number;
-  maxLineLength: number;
-}
-
-interface CodexParsedJsonlChunk {
-  entries: CodexSessionEntry[];
-  partialLine: string;
   lineCount: number;
   maxLineLength: number;
 }
@@ -434,39 +429,6 @@ interface CodexSummaryStreamRead {
   readMode: SessionSummaryReadMode;
   stoppedEarly: boolean;
   stopReason: CodexSummaryStreamMetrics["stopReason"];
-}
-
-function parseCodexJsonlChunk(
-  chunk: string,
-  mayEndWithPartialLine: boolean,
-): CodexParsedJsonlChunk {
-  const lines = chunk.split("\n");
-  const trailingLine = mayEndWithPartialLine ? (lines.pop() ?? "") : "";
-  const entries: CodexSessionEntry[] = [];
-  const lineCount = lines.length + (trailingLine ? 1 : 0);
-  let maxLineLength = trailingLine.length;
-
-  for (const line of lines) {
-    maxLineLength = Math.max(maxLineLength, line.length);
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const entry = parseCodexSessionEntry(trimmed);
-    if (entry) {
-      entries.push(entry);
-    }
-  }
-
-  if (trailingLine.trim()) {
-    const trailingEntry = parseCodexSessionEntry(trailingLine.trim());
-    if (trailingEntry) {
-      entries.push(trailingEntry);
-      return { entries, partialLine: "", lineCount, maxLineLength };
-    }
-  }
-
-  return { entries, partialLine: trailingLine, lineCount, maxLineLength };
 }
 
 class CodexAgentMappingCollector {
@@ -836,8 +798,17 @@ export class CodexSessionReader implements ISessionReader {
           },
         },
       };
-    } catch {
-      return null;
+    } catch (error) {
+      getLogger().error(
+        {
+          event: "codex_session_detail_read_failed",
+          sessionId,
+          filePath: sessionFile.filePath,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "CODEX_READER: detail read failed",
+      );
+      throw error;
     }
   }
 
@@ -1551,16 +1522,13 @@ export class CodexSessionReader implements ISessionReader {
       !isCompressedCodexSessionFile(filePath) &&
       cached.size < stats.size
     ) {
-      const readStartedAt = Date.now();
-      const appended = await this.readFileRange(
+      const parsed = await this.readPlainEntryRange(
         filePath,
         cached.size,
         stats.size - cached.size,
+        Date.now(),
+        cached.partialLine,
       );
-      const readLinesMs = Date.now() - readStartedAt;
-      const parseStartedAt = Date.now();
-      const parsed = parseCodexJsonlChunk(cached.partialLine + appended, true);
-      const parseMs = Date.now() - parseStartedAt;
 
       if (
         revision !== this.entryCacheRevision ||
@@ -1590,8 +1558,8 @@ export class CodexSessionReader implements ISessionReader {
         cacheMode: "read-write",
         cacheStatus: "append",
         stats,
-        readLinesMs,
-        parseMs,
+        readLinesMs: parsed.readLinesMs,
+        parseMs: parsed.parseMs,
         lineCount: parsed.lineCount,
         parsedEntries: parsed.entries.length,
         dedupedEntries: cached.entries.length,
@@ -1717,17 +1685,77 @@ export class CodexSessionReader implements ISessionReader {
       };
     }
 
-    const content = await this.readFileRange(filePath, 0, Number(stats.size));
-    const readLinesMs = Date.now() - readStartedAt;
-    const parseStartedAt = Date.now();
-    const parsed = parseCodexJsonlChunk(content, true);
+    return this.readPlainEntryRange(
+      filePath,
+      0,
+      Number(stats.size),
+      readStartedAt,
+    );
+  }
+
+  private async readPlainEntryRange(
+    filePath: string,
+    start: number,
+    length: number,
+    readStartedAt = Date.now(),
+    initialPartialLine = "",
+  ): Promise<CodexParsedEntrySnapshot> {
+    const entries: CodexSessionEntry[] = [];
+    let partialLine = initialPartialLine;
+    let lineCount = 0;
+    let maxLineLength = 0;
+    let parseMs = 0;
+
+    const parseText = (text: string, final: boolean): void => {
+      const parseStartedAt = Date.now();
+      const lines = `${partialLine}${text}`.split("\n");
+      partialLine = lines.pop() ?? "";
+
+      for (const line of lines) {
+        lineCount += 1;
+        maxLineLength = Math.max(maxLineLength, line.length);
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const entry = parseCodexSessionEntry(trimmed);
+        if (entry) entries.push(entry);
+      }
+
+      if (final && partialLine) {
+        lineCount += 1;
+        maxLineLength = Math.max(maxLineLength, partialLine.length);
+        const entry = parseCodexSessionEntry(partialLine.trim());
+        if (entry) {
+          entries.push(entry);
+          partialLine = "";
+        }
+      }
+      parseMs += Date.now() - parseStartedAt;
+    };
+
+    const decoder = new TextDecoder("utf-8");
+    let totalBytesRead = 0;
+    while (totalBytesRead < length) {
+      const bytesToRead = Math.min(
+        CODEX_ENTRY_READ_CHUNK_BYTES,
+        length - totalBytesRead,
+      );
+      const buffer = await this.readFileRange(
+        filePath,
+        start + totalBytesRead,
+        bytesToRead,
+      );
+      totalBytesRead += buffer.length;
+      parseText(decoder.decode(buffer, { stream: true }), false);
+    }
+    parseText(decoder.decode(), true);
+
     return {
-      entries: parsed.entries,
-      partialLine: parsed.partialLine,
-      readLinesMs,
-      parseMs: Date.now() - parseStartedAt,
-      lineCount: parsed.lineCount,
-      maxLineLength: parsed.maxLineLength,
+      entries,
+      partialLine,
+      readLinesMs: Math.max(0, Date.now() - readStartedAt - parseMs),
+      parseMs,
+      lineCount,
+      maxLineLength,
     };
   }
 
@@ -2294,9 +2322,9 @@ export class CodexSessionReader implements ISessionReader {
     filePath: string,
     start: number,
     length: number,
-  ): Promise<string> {
+  ): Promise<Buffer> {
     if (length <= 0) {
-      return "";
+      return Buffer.alloc(0);
     }
 
     const handle = await open(filePath, "r");
@@ -2318,7 +2346,7 @@ export class CodexSessionReader implements ISessionReader {
           `Codex transcript changed during bounded read: expected ${length} bytes, read ${totalBytesRead}`,
         );
       }
-      return buffer.toString("utf-8");
+      return buffer;
     } finally {
       await handle.close();
     }

@@ -46,7 +46,7 @@ interface CodexEntryReadInternals {
     filePath: string,
     start: number,
     length: number,
-  ): Promise<string>;
+  ): Promise<Buffer>;
 }
 
 function zstdCompressed(content: string): Buffer {
@@ -1408,6 +1408,85 @@ describe("CodexSessionReader - OSS Support", () => {
     ).toHaveLength(2);
   });
 
+  it("loads an appended suffix without one whole-suffix string", async () => {
+    const sessionId = "bounded-append-rollout";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${[
+        JSON.stringify({
+          type: "session_meta",
+          timestamp: now,
+          payload: {
+            id: sessionId,
+            cwd: "/test/project",
+            timestamp: now,
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: now,
+          payload: { type: "user_message", message: "first" },
+        }),
+      ].join("\n")}\n`,
+    );
+    await expect(
+      reader.getSession(sessionId, "test-project" as UrlProjectId),
+    ).resolves.not.toBeNull();
+
+    const maxReadBytes = 1024 * 1024;
+    const assistantText = `before-${"😀".repeat(300_000)}-after`;
+    await appendFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          id: "assistant-appended",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: assistantText }],
+        },
+      })}\n`,
+    );
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    vi.spyOn(internals, "readFileRange").mockImplementation(
+      async (filePath, start, length) => {
+        if (length > maxReadBytes) {
+          throw new RangeError("Invalid string length");
+        }
+        return originalReadFileRange(filePath, start, length);
+      },
+    );
+
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(loaded?.data.provider).toBe("codex");
+    if (loaded?.data.provider !== "codex") {
+      throw new Error("Expected the appended Codex detail read");
+    }
+    expect(loaded.data.session.entries).toHaveLength(3);
+    expect(
+      loaded.data.session.entries.find(
+        (entry) =>
+          entry.type === "response_item" &&
+          entry.payload.type === "message" &&
+          entry.payload.id === "assistant-appended",
+      ),
+    ).toMatchObject({
+      payload: {
+        content: [{ type: "output_text", text: assistantText }],
+      },
+    });
+  });
+
   it("reuses the normalized Codex prefix after an append", async () => {
     const sessionId = "normalized-append-cache";
     const now = new Date().toISOString();
@@ -1777,6 +1856,89 @@ describe("CodexSessionReader - OSS Support", () => {
       uuid: "edit-call-result",
       type: "user",
     });
+  });
+
+  it("cold-loads a rollout without one whole-file string", async () => {
+    const sessionId = "bounded-cold-rollout";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    const maxReadBytes = 1024 * 1024;
+    const assistantText = `before-${"😀".repeat(300_000)}-after`;
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: { type: "user_message", message: "load history" },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          id: "assistant-1",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: assistantText }],
+        },
+      }),
+    ];
+    await writeFile(sessionPath, `${lines.join("\n")}\n`);
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    vi.spyOn(internals, "readFileRange").mockImplementation(
+      async (filePath, start, length) => {
+        if (length > maxReadBytes) {
+          throw new RangeError("Invalid string length");
+        }
+        return originalReadFileRange(filePath, start, length);
+      },
+    );
+
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(loaded?.data.provider).toBe("codex");
+    if (loaded?.data.provider !== "codex") {
+      throw new Error("Expected the cold Codex detail read");
+    }
+    expect(loaded.data.session.entries).toHaveLength(3);
+    expect(
+      loaded.data.session.entries.find(
+        (entry) =>
+          entry.type === "response_item" &&
+          entry.payload.type === "message" &&
+          entry.payload.id === "assistant-1",
+      ),
+    ).toMatchObject({
+      payload: {
+        content: [{ type: "output_text", text: assistantText }],
+      },
+    });
+  });
+
+  it("surfaces detail read failures for a discovered rollout", async () => {
+    const sessionId = "failed-detail-read";
+    await createSessionFile(sessionId, "openai", "gpt-5");
+    const internals = reader as unknown as CodexEntryReadInternals;
+    vi.spyOn(internals, "readFileRange").mockRejectedValue(
+      new Error("simulated detail read failure"),
+    );
+
+    await expect(
+      reader.getSession(sessionId, "test-project" as UrlProjectId),
+    ).rejects.toThrow("simulated detail read failure");
   });
 
   it("accepts a complete final entry without a trailing newline", async () => {

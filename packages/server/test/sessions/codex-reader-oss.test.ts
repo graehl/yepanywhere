@@ -2449,6 +2449,64 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(reader.getEntryCacheStats().partialLineBytes).toBe(0);
   });
 
+  it("finishes a UTF-8 code point split across appended ranges", async () => {
+    const sessionId = "provisional-utf8-entry";
+    const now = new Date().toISOString();
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    const sessionMeta = JSON.stringify({
+      type: "session_meta",
+      timestamp: now,
+      payload: {
+        id: sessionId,
+        cwd: "/test/project",
+        timestamp: now,
+        model_provider: "openai",
+      },
+    });
+    const message = Buffer.from(
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "user_message",
+          message: "before-😀-after",
+        },
+      }),
+    );
+    const emojiStart = message.indexOf(Buffer.from("😀"));
+    expect(emojiStart).toBeGreaterThan(0);
+    const splitAt = emojiStart + 1;
+
+    await writeFile(
+      sessionPath,
+      Buffer.concat([
+        Buffer.from(`${sessionMeta}\n`),
+        message.subarray(0, splitAt),
+      ]),
+    );
+    await reader.getSession(sessionId, "test-project" as UrlProjectId);
+    expect(reader.getEntryCacheStats().partialLineBytes).toBe(splitAt);
+
+    await appendFile(
+      sessionPath,
+      Buffer.concat([message.subarray(splitAt), Buffer.from("\n")]),
+    );
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(
+      loaded?.data.session.entries.find(
+        (entry) =>
+          entry.type === "event_msg" && entry.payload.type === "user_message",
+      ),
+    ).toMatchObject({
+      payload: { message: "before-😀-after" },
+    });
+    expect(reader.getEntryCacheStats().partialLineBytes).toBe(0);
+  });
+
   it("coalesces overlapping appends without duplicating the final response", async () => {
     const sessionId = "concurrent-append-cache";
     const now = new Date().toISOString();

@@ -329,7 +329,6 @@ jobs:
             exit 1
           fi
           node packages/desktop/scripts/normalize-updater-json.mjs /tmp/latest.json
-          gh release upload "$TAG" /tmp/latest.json --clobber
           python3 -c "
           import json
           data = json.load(open('/tmp/latest.json'))
@@ -354,6 +353,7 @@ jobs:
           "
           WINDOWS_URL=$(python3 -c "import json; print(json.load(open('/tmp/latest.json'))['platforms']['windows-x86_64']['url'])")
           curl --fail --location --head "$WINDOWS_URL" >/dev/null
+          gh release upload "$TAG" /tmp/latest.json --clobber
 
       - name: Update release body with download table
         env:

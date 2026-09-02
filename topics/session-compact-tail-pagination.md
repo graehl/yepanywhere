@@ -77,6 +77,13 @@ explicit bound it uses the server default of two. `beforeMessageId` remains the
 explicit older-page cursor. Load older deliberately requests fixed two-boundary
 pages independent of the initial-history preference.
 
+An anchorless full-history response is authoritative for the loaded window and
+replaces any retained same-tab transcript. Warm reconciliation may merge only
+when the request actually carried `afterMessageId`; a cached message id omitted
+from an Unlimited request cannot turn its response into catch-up. This keeps an
+upgrade that changes durable message ids from retaining old-id and new-id copies
+of the same provider rows.
+
 If an `afterMessageId` request fails at transport, relay, decode, or server
 handling rather than returning a response, the mounted client performs one
 uncursored request with the same compact-tail bounds inside the existing

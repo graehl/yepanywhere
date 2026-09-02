@@ -367,6 +367,75 @@ describe("useSessionMessages cache", () => {
     );
   });
 
+  it("replaces a warm Codex transcript for anchorless Unlimited history", async () => {
+    enableSessionTranscriptCache();
+    window.localStorage.setItem(
+      UI_KEYS.sessionInitialHistoryCompactions,
+      "unlimited",
+    );
+    invalidateLocalStorageValues(UI_KEYS.sessionInitialHistoryCompactions);
+    const codexHistory = (messageIds: [string, string]): GetSessionResult => {
+      const response = sessionResponse(messageIds[0]);
+      return {
+        ...response,
+        session: { ...response.session, provider: "codex", messageCount: 2 },
+        messages: [
+          {
+            uuid: messageIds[0],
+            type: "user",
+            timestamp: "2026-05-04T00:00:00.000Z",
+            message: { role: "user", content: "same user turn" },
+          },
+          {
+            uuid: messageIds[1],
+            type: "assistant",
+            timestamp: "2026-05-04T00:01:00.000Z",
+            message: { role: "assistant", content: "same response" },
+          },
+        ],
+        pagination: undefined,
+      };
+    };
+    apiMocks.getSession
+      .mockResolvedValueOnce(codexHistory(["codex-0-old", "codex-1-old"]))
+      .mockResolvedValueOnce(
+        codexHistory(["codex-byte-100-new", "codex-byte-200-new"]),
+      );
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        codexStreamDurableIdAlignment: true,
+      }),
+    );
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        codexStreamDurableIdAlignment: true,
+      }),
+    );
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        fullHistory: true,
+        fullHistoryReason: "browser initial history preference",
+      },
+    );
+    expect(
+      second.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["codex-byte-100-new", "codex-byte-200-new"]);
+  });
+
   it("enables active-window trimming by default while following the tail", async () => {
     apiMocks.getSession.mockResolvedValueOnce(activeWindowSessionResponse(31));
     const rendered = renderHook(() =>

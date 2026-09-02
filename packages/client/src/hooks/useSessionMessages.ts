@@ -938,18 +938,17 @@ export function useSessionMessages(
       setLoading(true);
     }
 
-    initialAfterMessageId = readStoreLastMessageId();
+    const initialHistoryRequest = buildInitialHistoryRequest({
+      projectId,
+      sessionId,
+      compactBoundaries: initialHistoryCompactions,
+      afterMessageId: readStoreLastMessageId(),
+      tailTurns: effectiveTailTurns,
+      tailFrom,
+    });
+    initialAfterMessageId = initialHistoryRequest.afterMessageId;
     sourceApi
-      .getSession(
-        buildInitialHistoryRequest({
-          projectId,
-          sessionId,
-          compactBoundaries: initialHistoryCompactions,
-          afterMessageId: initialAfterMessageId,
-          tailTurns: effectiveTailTurns,
-          tailFrom,
-        }),
-      )
+      .getSession(initialHistoryRequest)
       .then(async (data) => {
         if (cancelled) return;
         if (warmLoad) {

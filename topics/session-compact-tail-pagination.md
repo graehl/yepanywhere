@@ -33,16 +33,26 @@ For `tailCompactions=2`, the intended shapes are:
 ### Compact scope and turn selectors
 
 An uncursored session-detail read is authorized to inspect only the last two
-compaction windows by default. `tailTurns` and `tailFrom` select a smaller
-suffix inside that compact scope; they do not authorize reading across its
-older boundary. This distinction matters because one provider turn can contain
-multiple compactions and thousands of normalized rows, so a turn count is not
-itself a safe response-size bound.
+compaction windows by default. The browser's Performance setting may request
+one through twenty recent compact boundaries instead, or use Unlimited to send
+`fullHistory=1`. The preference is browser-local: `null` represents Unlimited
+in application state and the literal `unlimited` represents it in local
+storage. The existing default remains two so upgrading does not broaden an
+initial load.
+
+`tailTurns` and `tailFrom` select a smaller suffix inside the compact scope;
+they do not authorize reading across its older boundary. This distinction
+matters because one provider turn can contain multiple compactions and
+thousands of normalized rows, so a turn count is not itself a safe response-
+size bound.
 
 The effective start is the later of the compact-boundary start and the
 turn-selector start. Consequently, `tailTurns=20` means "up to twenty turns
 within the authorized compact scope," not "return twenty turns even if that
-crosses older compactions."
+crosses older compactions." The browser preserves that twenty-turn narrowing
+for the unchanged default of two boundaries. A custom compact-boundary value
+uses the requested compact scope without that implicit turn selector, while
+Unlimited requests true full history.
 
 `fullHistory=1` is the explicit authorization to remove the default compact
 scope. It may be combined with `tailTurns` or `tailFrom` so the server selects
@@ -59,10 +69,13 @@ the default or explicitly requested compact window.
 | `fullHistory=1` | full transcript |
 | `fullHistory=1&tailTurns=20` | last 20 turns across the full transcript |
 
-`afterMessageId` remains an incremental cursor rather than an initial history
-scope. If that cursor cannot be found, the route falls back to the default
-two-compaction tail. `beforeMessageId` remains the explicit older-page cursor
-and returns another compact-boundary-shaped page.
+The setting applies to initial loads, reconnect catch-up, and bounded recovery
+from a stale or missing incremental cursor. `afterMessageId` remains an
+incremental cursor rather than an initial history scope. If that cursor cannot
+be found, the route keeps the explicitly requested compact bound; with no
+explicit bound it uses the server default of two. `beforeMessageId` remains the
+explicit older-page cursor. Load older deliberately requests fixed two-boundary
+pages independent of the initial-history preference.
 
 If an `afterMessageId` request fails at transport, relay, decode, or server
 handling rather than returning a response, the mounted client performs one
@@ -73,6 +86,20 @@ it creates no timer or internal retry loop. Later external activity may start
 another coalesced attempt. Diagnostics are available in development or during
 explicit remote-log collection, limited to one report per route per 30
 seconds, and state how many failures were suppressed.
+
+### Provider-bounded source windows
+
+A provider may omit a known-hidden source prefix before normalization when it
+can preserve a source-backed older-history cursor. A compact-boundary start uses
+the boundary's stable message id. If a turn selector narrows the visible window
+past that boundary, the cursor encodes the first visible row's source position
+without replacing that row's durable message identity. In either case
+`hasOlderMessages` and `truncatedBeforeMessageId` remain authoritative.
+`totalMessageCount` and `totalCompactions` describe the reader's available
+source window rather than the complete provider file because skipped bytes were
+intentionally never normalized or counted. The route rejects a provider-bounded
+response whose omitted prefix lacks the older-history boolean or cursor instead
+of presenting the suffix as the beginning of the session.
 
 ## Why This Matters
 
@@ -96,6 +123,15 @@ Nth boundary from the end of that prefix and reports `hasOlderMessages: true`.
 The next older-page request can then fetch the pre-boundary prefix. This may
 require one additional page compared with the former full-prefix behavior, but
 it keeps every page shaped like the requested compact tail.
+
+For a large plain Codex rollout with a fresh indexed summary, the cursor carries
+an absolute source byte position. The reader scans backward in fixed blocks from
+that position and parses only the preceding page. Reaching fewer than N prior
+boundaries reads `[0, cursor)` and completes traversal without rereading the
+newer suffix. Load older and older-history reverse search issue the same fixed
+two-boundary request, so both traverse an incompletely loaded rollout through
+this blockwise path. Old, unparseable, compressed, or stale-summary cases retain
+the complete-reader and stale-cursor recovery behavior.
 
 The session transcript treats a visible older-page control as demand to reveal
 at least one earlier real user turn, or to reach the beginning of history. One

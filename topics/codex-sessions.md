@@ -80,8 +80,9 @@ There are two main YA surfaces over the same rollout tree:
   recursively finding rollout files, reading first-line `session_meta`, and
   grouping by canonical cwd.
 - `packages/server/src/sessions/codex-reader.ts` lists and loads Codex sessions
-  for a project. Listing also needs rollout metadata; loading a session reads
-  the full JSONL and normalizes entries for rendering.
+  for a project. Listing also needs rollout metadata. Detail loading normalizes
+  either a complete rollout or an authorized compact-tail source window for
+  rendering.
 
 `ProjectScanner` and route-level provider catalogs try to share this work
 within a request path, while `SessionIndexService` persists provider-neutral
@@ -124,6 +125,50 @@ A complete JSON record without its final newline may be accepted; an incomplete
 trailing record remains provisional and is combined with the next append. Once
 head metadata has identified a rollout, a detail-read failure is reported as a
 reader failure rather than being converted into session absence.
+
+### Compact-tail source reads
+
+For an uncursored compact-tail detail request over a large plain rollout, the
+reader can avoid parsing and retaining the hidden prefix. The optimization is
+eligible when the file is larger than 2 MiB times the requested compact-boundary
+count and a cached session summary matches the captured rollout activity time.
+It scans backward from the captured end of file in fixed 1 MiB blocks, carrying
+only the JSONL fragment that crosses each block boundary, until it finds the
+requested Nth `compacted` record.
+
+If the boundary exists, the reader parses only from that record through the
+captured end. It tags parsed entries with their absolute source byte offsets so
+normalized fallback identities remain stable across bounded and complete reads.
+Compact-boundary ids encode that offset explicitly. If the route's turn selector
+starts later than the compact boundary, it returns a source cursor for the first
+visible row without replacing that row's durable message identity. The bounded
+suffix is not published as a complete-entry cache snapshot. The route also
+requires an omitted prefix to retain an older-history cursor; it fails rather
+than presenting the suffix as the start of the session.
+
+A source-backed `beforeMessageId` continues the same reverse scan from the
+cursor byte instead of the end of file. The reader finds the requested Nth
+preceding `compacted` record and parses only the range from that boundary up to,
+but not including, the cursor. If fewer than N preceding boundaries exist, it
+reads only `[0, cursor)` and marks that page as the beginning of history. The
+ordinary Load older control and older-history reverse search both use this path
+through the same two-boundary session-detail request.
+
+If the initial file has fewer requested boundaries, the summary is absent or
+stale, the size crossover is not met, the source is compressed, or the located
+range does not begin with a compact record, the reader uses the complete forward
+path. Old or unparseable older-page cursors also use that established fallback.
+This preserves the contract that fewer than N initial boundaries returns the
+complete transcript while keeping valid plain-rollout pages blockwise.
+
+A three-repetition diagnostic on the 538,524,921-byte recovery rollout measured
+the detail read after an equivalent full-summary warm-up. The complete reader
+took 4.07–4.38 seconds, retained 192,108 entries, and added 1.03–1.04 GB RSS.
+The two-boundary tail took 30.5–30.7 ms for 855 entries and added 13–17 MB RSS;
+the preceding two-boundary page took 37.7–39.4 ms for 1,503 entries and added
+22–24 MB RSS. Both bounded modes retained zero complete-entry cache bytes. The
+shared host had one non-overlapping agent and production services, so these are
+diagnostic relative results rather than ratchet-grade absolute timings.
 
 Cache invalidation advances the reader's cache revision before clearing
 retained entries. Work started under an older revision may finish its file read

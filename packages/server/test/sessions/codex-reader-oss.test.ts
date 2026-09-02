@@ -13,11 +13,13 @@ import { fileURLToPath } from "node:url";
 import * as zlib from "node:zlib";
 import type { CodexSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import {
   getCodexMessageSourceByteCursor,
   normalizeSession,
+  parseCodexSourceByteCursor,
 } from "../../src/sessions/normalization.js";
 import type { SummaryParserClient } from "../../src/sessions/summary-parser-worker-client.js";
 import type { SessionSummary } from "../../src/supervisor/types.js";
@@ -39,6 +41,7 @@ const itIfWindows = process.platform === "win32" ? it : it.skip;
 
 interface CodexEntryReadInternals {
   entryReadOwners: Map<string, { joinedCallers: number }>;
+  readCompactTailSnapshot(...args: unknown[]): Promise<unknown>;
   buildSessionSummaryFromEntries(
     sessionId: string,
     projectId: UrlProjectId,
@@ -2172,6 +2175,84 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(tailBoundaryId).toBe(matchingFullBoundary?.uuid);
   });
 
+  it("accepts only well-formed safe source byte cursors", () => {
+    expect(parseCodexSourceByteCursor("codex-cursor-byte-42")).toBe(42);
+    expect(
+      parseCodexSourceByteCursor(
+        "codex-compacted-byte-314-2026-09-02T04:00:00.000Z",
+      ),
+    ).toBe(314);
+
+    for (const cursor of [
+      "codex-cursor-byte--1",
+      "codex-cursor-byte-1.5",
+      "codex-cursor-byte-12junk",
+      "codex-cursor-byte-9007199254740992",
+      "codex-compacted-3-2026-09-02T04:00:00.000Z",
+    ]) {
+      expect(parseCodexSourceByteCursor(cursor)).toBeNull();
+    }
+  });
+
+  it("uses the complete reader when the summary hint is stale", async () => {
+    const sessionId = "stale-compact-tail-summary";
+    await createSessionFile(sessionId, "openai", "gpt-5");
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary).not.toBeNull();
+    if (!summary) throw new Error("Expected the indexed summary hint");
+
+    const compactTailRead = vi.spyOn(
+      reader as unknown as CodexEntryReadInternals,
+      "readCompactTailSnapshot",
+    );
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 1,
+        summaryHint: {
+          ...summary,
+          updatedAt: "2000-01-01T00:00:00.000Z",
+        },
+      },
+    );
+
+    expect(compactTailRead).not.toHaveBeenCalled();
+    expect(loaded?.readWindow).toBeUndefined();
+    expect(loaded?.data.session.entries[0]?.type).toBe("session_meta");
+  });
+
+  it("uses the complete reader for a source cursor past end of file", async () => {
+    const sessionId = "past-end-source-cursor";
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    await createSessionFile(sessionId, "openai", "gpt-5");
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary).not.toBeNull();
+    if (!summary) throw new Error("Expected the indexed summary hint");
+    const stats = await stat(sessionPath);
+
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 1,
+        beforeMessageId: `codex-cursor-byte-${Number(stats.size) + 1}`,
+        summaryHint: summary,
+      },
+    );
+
+    expect(loaded?.readWindow).toBeUndefined();
+    expect(loaded?.data.session.entries[0]?.type).toBe("session_meta");
+  });
+
   it("keeps the forward reader below the compact-tail crossover", async () => {
     const sessionId = "small-compact-tail";
     await createSessionFile(sessionId, "openai", "gpt-5");
@@ -2273,10 +2354,21 @@ describe("CodexSessionReader - OSS Support", () => {
     vi.spyOn(internals, "readFileRange").mockRejectedValue(
       new Error("simulated detail read failure"),
     );
+    const errorLog = vi
+      .spyOn(getLogger(), "error")
+      .mockImplementation(() => undefined);
 
     await expect(
       reader.getSession(sessionId, "test-project" as UrlProjectId),
     ).rejects.toThrow("simulated detail read failure");
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "codex_session_detail_read_failed",
+        sessionId,
+        error: "simulated detail read failure",
+      }),
+      "CODEX_READER: detail read failed",
+    );
   });
 
   it("accepts a complete final entry without a trailing newline", async () => {

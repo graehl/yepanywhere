@@ -2427,6 +2427,69 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("rejects a bounded Codex window without a source cursor", async () => {
+    const project = { ...createProject(), provider: "codex" as const };
+    const summary = { ...createSummary(), provider: "codex" as const };
+    const compactEntries: CodexSessionEntry[] = [1, 2, 3].flatMap((index) => [
+      {
+        type: "compacted",
+        timestamp: `2026-03-10T09:4${index}:00.000Z`,
+        payload: { message: `Compact ${index}.` },
+      },
+      {
+        type: "event_msg",
+        timestamp: `2026-03-10T09:4${index}:30.000Z`,
+        payload: { type: "user_message", message: `Turn ${index}.` },
+      },
+    ]);
+    const loaded: LoadedSession = {
+      summary,
+      transcriptSnapshotUpdatedAt: summary.updatedAt,
+      readWindow: {
+        kind: "compact-tail",
+        omittedPrefix: true,
+        startByte: 100,
+        compactBoundaries: 2,
+      },
+      data: {
+        provider: "codex",
+        session: { entries: compactEntries },
+      },
+    };
+    const reader = {
+      getSession: vi.fn(async () => loaded),
+    } as unknown as CodexSessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      codexReaderFactory: vi.fn(() => reader),
+      sessionIndexService: {
+        getCachedSessionSummary: vi.fn(async () => summary),
+      } as unknown as NonNullable<SessionsDeps["sessionIndexService"]>,
+    });
+
+    const errorLog = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?tailCompactions=2`,
+    );
+
+    expect(response.status).toBe(500);
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          "Provider compact-window read did not expose its source cursor",
+      }),
+    );
+  });
+
   it("preserves the cursor from a provider compact-tail read window", async () => {
     const project = { ...createProject(), provider: "grok" as const };
     const messages: Message[] = [

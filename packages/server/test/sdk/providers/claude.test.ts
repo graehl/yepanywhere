@@ -45,7 +45,9 @@ describe("ClaudeProvider.yaModelIdForReported", () => {
     expect(claudeProvider.yaModelIdForReported("claude-haiku-4-5")).toBe(
       "haiku",
     );
-    expect(claudeProvider.yaModelIdForReported("claude-fable-5")).toBe("fable");
+    expect(claudeProvider.yaModelIdForReported("claude-fable-5-1")).toBe(
+      "fable",
+    );
   });
 
   it("matches the family regardless of component order (version-first ids)", () => {
@@ -280,9 +282,10 @@ describe("ClaudeProvider model list", () => {
   it("merges the live Fable row into the stable fable alias", () => {
     const models = mergeClaudeModels([
       {
-        id: "claude-fable-5[1m]",
-        name: "Fable 5",
-        description: "SDK-reported Fable",
+        id: "claude-fable-5-1[1m]",
+        name: "Fable",
+        description:
+          "Fable 5.1 · Most capable for your hardest and longest-running tasks",
         supportsEffort: true,
         supportedEffortLevels: ["low", "medium", "high"],
         supportsAdaptiveThinking: true,
@@ -291,10 +294,13 @@ describe("ClaudeProvider model list", () => {
       },
     ]);
 
-    expect(models.map((model) => model.id)).not.toContain("claude-fable-5[1m]");
+    expect(models.map((model) => model.id)).not.toContain(
+      "claude-fable-5-1[1m]",
+    );
     expect(models.find((model) => model.id === "fable")).toMatchObject({
       name: "Fable",
-      description: "SDK-reported Fable",
+      description:
+        "Fable 5.1 · Most capable for your hardest and longest-running tasks",
       contextWindow: 1_000_000,
       supportsAdaptiveThinking: true,
       supportsFastMode: false,

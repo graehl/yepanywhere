@@ -119,8 +119,22 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
   retain the provider-native capability controls that are known without a
   handshake.
 - When the live catalog spells the current Fable model as a concrete extended
-  id such as `claude-fable-5[1m]`, YA transfers its live capabilities to the
+  id such as `claude-fable-5-1[1m]`, YA transfers its live capabilities to the
   stable `fable` selection rather than showing a duplicate concrete row.
+- Fable progress updates between tool calls are non-empty `thinking` blocks,
+  not Claude `task_progress` lifecycle messages or Codex `UpdatePlan`
+  checklists. YA's enabled-thinking modes already request `display:
+  "summarized"`, which includes those updates, and the transcript projection
+  already renders every non-empty thinking block. Under `summarized`, the API
+  deliberately does not identify which blocks are progress versus summarized
+  reasoning, so YA must not infer that distinction from prose or reclassify
+  them as task/plan events. The dedicated `display: "updates"` API beta would
+  make every non-empty thinking block a progress update, but Agent SDK 0.3.258
+  excludes that value and bundled Claude Code 2.1.258 rejects
+  `--thinking-display updates`; expose a distinct progress presentation only
+  after the supported SDK surface carries the mode. Sources: [Fable 5.1
+  progress updates](https://platform.claude.com/docs/en/models/fable-5-1/whats-new-fable-5-1#progress-updates-between-tool-calls-beta)
+  and [thinking display](https://platform.claude.com/docs/en/build-with-claude/thinking#progress-updates).
 - Claude's primary model catalog remains the provider-native, latest-oriented
   experience. Previous concrete versions and custom exact ids appear only
   after a server-persisted, individual opt-in in Providers settings; projected

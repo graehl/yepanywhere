@@ -707,6 +707,41 @@ Previous-model registry review:
 6. Use read-only catalog and lifecycle checks routinely. Do not spend tokens
    on live model turns without explicit approval.
 
+Current source refresh, 2026-09-02:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.251` to `0.3.258`;
+  the SDK-native executable reports Claude Code `2.1.258`. Claude Code 2.1.257
+  made `claude-fable-5-1` the default Fable model; 2.1.258 contains follow-up
+  launch and remote-session fixes.
+- An authenticated no-turn handshake reports the concrete model as
+  `claude-fable-5-1[1m]`, with display name `Fable` and description `Fable 5.1
+  · Most capable for your hardest and longest-running tasks`. The existing
+  family matcher folds that row into YA's stable `fable` selection while
+  retaining the live description, 1M context, and provider capabilities.
+- The public `SDKMessage` union has no added or removed members. Additive SDK
+  fields and controls are `ModelUsage.thinkingTokens`, system-prompt snapshots,
+  `Query.updateSettings()`, summary/full context-usage detail, model-catalog
+  `behavesAs`, time-format/time-zone settings, and background MCP task
+  `resource_links`. Existing messages and unknown fields continue to pass
+  through; the specialized MCP links are not yet presented and are tracked in
+  `gaps/claude-task-resource-links.md`.
+- Fable 5.1's user-facing progress updates are non-empty `thinking` blocks
+  immediately before tool calls, not Claude `task_progress` lifecycle events
+  and not Codex `UpdatePlan` checklists. YA already requests `display:
+  "summarized"` whenever thinking is enabled and renders every non-empty
+  thinking block, so no message normalization or new renderer is required.
+  The API's dedicated `display: "updates"` beta would permit a progress-only
+  status presentation, but Agent SDK 0.3.258's types expose only `summarized`
+  and `omitted`, and bundled Claude Code 2.1.258 rejects
+  `--thinking-display updates`. YA does not route around that unsupported
+  surface. Recheck when the Agent SDK exposes `updates`.
+- No token-consuming Fable turn was run. The no-turn handshake, SDK declaration
+  diff, bundled-binary version check, and a no-turn CLI rejection probe establish
+  the catalog and supported control surface without spending model tokens.
+
+Status: Claude Code 2.1.258 / SDK 0.3.258 package, Fable 5.1 catalog, message
+union, controls, and progress-display compatibility are refreshed.
+
 Current source refresh, 2026-08-29:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.223` to `0.3.251`;
@@ -1162,7 +1197,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.251` | `0.3.251` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.258` | `0.3.258` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

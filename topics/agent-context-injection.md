@@ -14,7 +14,7 @@ evidence trail live in
 
 Related topics: [cache-aware session bootstrap](cache-aware-session-bootstrap.md),
 [provider context economics](provider-context-economics.md),
-[agent command runtime](agent-command-runtime.md),
+[agent command runtime sketch](agent-command-runtime.sketches.md),
 [emulated slash commands](emulated-slash-commands.md),
 [injected-message visibility](injected-message-visibility.md),
 [synthetic-turn injection](synthetic-turn-injection.md), and
@@ -47,13 +47,9 @@ enabled `[Client capabilities]` fragments before the free-form
 `[Global instructions]` block. The server passes that result as
 `globalInstructions`; provider adapters decide where it enters model context.
 
-The proposed [agent command runtime](agent-command-runtime.md) reuses this
-composition for exact-preview command advertisements. Those fragments are
-launch-derived: a requested per-session capability contributes text only when
-the specific provider/executor/sandbox launch also receives the matching
-command and scoped authority. A global new-session default may seed that
-request but never injects context independently. This is proposed behavior,
-not part of the current LaTeX-only implementation.
+Candidate command-advertisement behavior is recorded in the
+[agent command runtime sketch](agent-command-runtime.sketches.md); it is not
+part of the current LaTeX-only implementation.
 
 | Provider path | Placement | New process | Resumed process |
 |---|---|---:|---:|

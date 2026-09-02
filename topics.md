@@ -361,6 +361,6 @@
 - managed-remote-executors - Manual-SSH-first managed execution with an
   injected provider-neutral runner, controller-prepared Git workspaces,
   Codex-first proof, and no target upstream credentials.
-- agent-command-runtime - Per-session launch capability grants for one
+- agent-command-runtime.sketches - Candidate per-session launch capability grants for one
   npm/desktop-bundled YA command dispatcher, private input, and shared
   session-access/yacron delivery without process-tree authentication.

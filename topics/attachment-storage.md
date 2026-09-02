@@ -36,18 +36,9 @@ exclude only hides the symptom from `git status`; it does not address checkout
 growth, synchronization, backups, privacy, or ownership of the project
 namespace.
 
-### Proposed private input is not an attachment
-
-The proposed [agent command runtime](agent-command-runtime.md) can collect a
-PIN or short-lived credential without turning it into an upload. Its helper
-materializes a bounded, owner-only temporary file on the provider execution
-host and returns only that path to the agent. The value is not appended to a
-provider message, upload metadata, transcript, approval audit, file viewer, or
-public share, and its lifetime ends on a short expiry or provider teardown.
-
-Uploading a text file remains an explicit, durable attachment operation and
-therefore explicit agent context. It is a useful manual workaround, but it is
-not the same privacy or retention contract as private input.
+Candidate private-input behavior is recorded separately in the
+[agent command runtime sketch](agent-command-runtime.sketches.md); it is not a
+current attachment-storage contract.
 
 ## Release History And Pre-Correction Behavior
 
@@ -197,7 +188,7 @@ behavior.
 ## Related Topics
 
 - [Project Directory Storage](project-directory-storage.md)
-- [Agent Command Runtime](agent-command-runtime.md)
+- [Agent Command Runtime Sketch](agent-command-runtime.sketches.md)
 - [Storage Settings](storage-settings.md)
 - [Session Media Handles](session-media-handles.md)
 - [Security](security.md)

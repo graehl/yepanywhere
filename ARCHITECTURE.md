@@ -128,7 +128,7 @@ section below for what would have to change at higher fan-out.
   host/worker protocols, stable same-user discovery, headless bootstrap,
   attach-or-start recovery, bounded session turns, receipts, and the
   authenticated Hono adapter.
-- [`topics/agent-command-runtime.md`](topics/agent-command-runtime.md) —
+- [`topics/agent-command-runtime.sketches.md`](topics/agent-command-runtime.sketches.md) —
   proposal for one npm/desktop-bundled `ya-agent` dispatcher, per-session PATH
   and scoped-authority projection, private input, and reuse by session-access
   and yacron clients without parallel service logic.

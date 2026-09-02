@@ -13,7 +13,7 @@ candidate work, not contracts. The launch-time half (PATH injection,
 capability fragment, scoped endpoint channel, virgin instruction scope) lives in
 [`new-session-agent-tooling.md`](new-session-agent-tooling.md). Packaging and
 dispatch use the proposed shared
-[`agent command runtime`](agent-command-runtime.md).
+[`agent command runtime sketch`](agent-command-runtime.sketches.md).
 
 See also:
 [`core-service-api.md`](core-service-api.md) — the external-consumer
@@ -52,7 +52,7 @@ scoped consumer of the existing application service: proposed `ya-agent`
 subcommands (`sessions`, `transcript`, `search`, `send`, and `new`) that wrap
 those routes, plus the D3 API documentation deliverable already named in
 `core-service-api.md`. The shared dispatcher and PATH projection are owned by
-`agent-command-runtime.md`. This matches the standing layering rule: REST,
+`agent-command-runtime.sketches.md`. This matches the standing layering rule: REST,
 CLI, MCP, and skills are consumers or adapters over one application service,
 never independent orchestration implementations (`cross-host-delegation.md`).
 

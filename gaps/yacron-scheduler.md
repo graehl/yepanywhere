@@ -7,7 +7,7 @@ so due work still has no punctual owner unless a user invokes that protocol
 explicitly.
 
 Missing feature: implement yacron's single-owner scheduler/store and agent CLI,
-using [`agent-command-runtime.md`](../topics/agent-command-runtime.md) for the
+using the [agent command runtime sketch](../topics/agent-command-runtime.sketches.md) for the
 integrated supervised-session launcher rather than adding another desktop
 sidecar or global YA command. Then support either or both explicit deployment
 variants. The standalone

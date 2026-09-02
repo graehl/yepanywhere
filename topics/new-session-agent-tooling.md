@@ -12,7 +12,7 @@ consumer-side story (what the scripts do against the server) is
 [`agent-session-access.md`](agent-session-access.md); this topic owns
 what YA injects into a session at launch. Packaging, desktop delivery, the
 shared `ya-agent` dispatcher, and private input live in
-[`agent-command-runtime.md`](agent-command-runtime.md). The one concrete missing
+[`agent-command-runtime.sketches.md`](agent-command-runtime.sketches.md). The one concrete missing
 feature — the virgin instruction-scope option — is tracked in
 [`gaps/virgin-new-session-option.md`](../gaps/virgin-new-session-option.md).
 
@@ -27,7 +27,7 @@ channels and namespace contract;
 per-session credential precedent;
 [`session-sandboxing.md`](session-sandboxing.md) — the existing
 per-session provider-state redirection precedent;
-[`agent-command-runtime.md`](agent-command-runtime.md) — command packaging,
+[`agent-command-runtime.sketches.md`](agent-command-runtime.sketches.md) — command packaging,
 server-instance PATH launchers, desktop behavior, and capability-scoped
 dispatch;
 [`ask-session.md`](ask-session.md) — the first planned consumer of the
@@ -39,7 +39,7 @@ scheduled-prompt consumer that also requires the launch project marker;
 ## PATH, authority, and tool advertisement
 
 Ship the agent-facing implementation with the YA server artifacts used by both
-the npm and desktop distributions. `agent-command-runtime.md` owns one private
+the npm and desktop distributions. The agent-command runtime sketch owns one private
 server-instance command directory and the `ya-agent` dispatcher. When at least
 one requested command capability is effective for a provider launch, expose
 that directory to the supervised session through the channels that already

@@ -13,7 +13,7 @@ Status: **proposal only; nothing is implemented (2026-08-27).**
 Related:
 [provider host API](provider-host-api.md),
 [Project Queue sketches](project-queue.sketches.md),
-[agent command runtime](agent-command-runtime.md),
+[agent command runtime sketch](agent-command-runtime.sketches.md),
 [new-session agent tooling](new-session-agent-tooling.md),
 [Routines](routines.md),
 [session sandboxing](session-sandboxing.md),
@@ -210,7 +210,7 @@ yacron subscribe '*'|<schedule-id>...|<occurrence-id>
 The command vocabulary remains `yacron` regardless of deployment. An
 integrated YA installation may project that launcher as an alias into the
 shared runtime specified by
-[agent command runtime](agent-command-runtime.md), using the same scoped
+[agent command runtime sketch](agent-command-runtime.sketches.md), using the same scoped
 endpoint discovery as other YA commands. Standalone yacron still includes a
 normally installed CLI because it must work without a YA server or supervised
 provider session. This is packaging reuse only: neither launcher owns a second
@@ -498,7 +498,7 @@ cooperative classification hint, not an authentication capability.
 Yacron service enablement does not grant every agent access. A YA session must
 separately request its yacron capabilities; only an eligible unsandboxed launch
 then receives `yacron` on PATH through the shared server-instance command
-directory specified by `agent-command-runtime.md`, a launch token scoped to its
+directory specified by `agent-command-runtime.sketches.md`, a launch token scoped to its
 effective read/modify operations, and any matching instruction fragment.
 Process ancestry is not the authorization boundary. A global new-session
 default may seed the request but never changes an existing session.

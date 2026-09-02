@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  CodexSessionEntry,
   DurableRecapMessage,
   ProviderName,
   TranscriptDisplayObject,
@@ -24,6 +25,7 @@ import {
 import type { UserMessage } from "../../src/sdk/types.js";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type { GrokSessionReader } from "../../src/sessions/grok-reader.js";
+import { tagCodexEntrySourceByteOffset } from "../../src/sessions/normalization.js";
 import type {
   ISessionReader,
   LoadedSession,
@@ -73,8 +75,10 @@ function createSummary(): SessionSummary {
 }
 
 function createLoadedCodexSession(): LoadedSession {
+  const summary = createSummary();
   return {
-    summary: createSummary(),
+    summary,
+    transcriptSnapshotUpdatedAt: summary.updatedAt,
     data: {
       provider: "codex",
       session: {
@@ -95,13 +99,15 @@ function createLoadedGrokSession(
     },
   ],
 ): LoadedSession {
+  const summary = {
+    ...createSummary(),
+    provider: "grok" as const,
+    model: "grok-build",
+    ...summaryOverrides,
+  };
   return {
-    summary: {
-      ...createSummary(),
-      provider: "grok",
-      model: "grok-build",
-      ...summaryOverrides,
-    },
+    summary,
+    transcriptSnapshotUpdatedAt: summary.updatedAt,
     data: {
       provider: "grok",
       session: { messages },
@@ -1380,13 +1386,13 @@ describe("Sessions metadata route", () => {
       "grok-native-id",
       project.id,
       undefined,
-      { includeOrphans: true },
+      { includeOrphans: true, tailCompactions: 2 },
     );
     expect(vi.mocked(grokReader.getSession)).toHaveBeenCalledWith(
       "grok-native-id",
       project.id,
       undefined,
-      { includeOrphans: true },
+      { includeOrphans: true, tailCompactions: 2 },
     );
   });
 
@@ -1818,7 +1824,7 @@ describe("Sessions metadata route", () => {
         "sess-1",
         transcriptProject.id,
         undefined,
-        { includeOrphans: false },
+        { includeOrphans: false, tailCompactions: 2 },
       );
       expect(detail.messages[0].message.content[0]._html as string).toContain(
         `data-ya-project-id="${workingProject.id}"`,
@@ -2287,6 +2293,414 @@ describe("Sessions metadata route", () => {
         expect.objectContaining({ name: "usage" }),
       ]),
     );
+  });
+
+  it("passes cached summary hints into bounded Codex detail reads", async () => {
+    const project = { ...createProject(), provider: "codex" as const };
+    const summary = { ...createSummary(), provider: "codex" as const };
+    const getSession = vi.fn(async () => createLoadedCodexSession());
+    const reader = { getSession } as unknown as CodexSessionReader;
+    const getCachedSessionSummary = vi.fn(async () => summary);
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      codexReaderFactory: vi.fn(() => reader),
+      sessionIndexService: {
+        getCachedSessionSummary,
+      } as unknown as NonNullable<SessionsDeps["sessionIndexService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?tailCompactions=12`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(getCachedSessionSummary).toHaveBeenCalledWith(
+      project.sessionDir,
+      project.id,
+      "sess-1",
+      reader,
+    );
+    expect(getSession).toHaveBeenCalledWith("sess-1", project.id, undefined, {
+      includeOrphans: false,
+      tailCompactions: 12,
+      summaryHint: summary,
+    });
+  });
+
+  it("uses a source cursor when turn narrowing starts inside a Codex compact tail", async () => {
+    const project = { ...createProject(), provider: "codex" as const };
+    const summary = {
+      ...createSummary(),
+      messageCount: 23,
+      provider: "codex" as const,
+    };
+    const tagEntry = (entry: CodexSessionEntry, offset: number) =>
+      tagCodexEntrySourceByteOffset(entry, offset);
+    const entries: CodexSessionEntry[] = [
+      tagEntry(
+        {
+          type: "compacted",
+          timestamp: "2026-03-10T09:40:00.000Z",
+          payload: { message: "Older compact summary." },
+        },
+        100,
+      ),
+      ...Array.from({ length: 21 }, (_, index) =>
+        tagEntry(
+          {
+            type: "event_msg",
+            timestamp: new Date(
+              Date.UTC(2026, 2, 10, 9, 41 + index),
+            ).toISOString(),
+            payload: {
+              type: "user_message",
+              message: `Turn ${index + 1}`,
+            },
+          },
+          200 + index,
+        ),
+      ),
+      tagEntry(
+        {
+          type: "compacted",
+          timestamp: "2026-03-10T10:10:00.000Z",
+          payload: { message: "Current compact summary." },
+        },
+        500,
+      ),
+    ];
+    const loaded: LoadedSession = {
+      summary,
+      transcriptSnapshotUpdatedAt: summary.updatedAt,
+      readWindow: {
+        kind: "compact-tail",
+        omittedPrefix: true,
+        startByte: 100,
+        compactBoundaries: 2,
+      },
+      data: {
+        provider: "codex",
+        session: { entries },
+      },
+    };
+    const getSession = vi.fn(async () => loaded);
+    const reader = { getSession } as unknown as CodexSessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      codexReaderFactory: vi.fn(() => reader),
+      sessionIndexService: {
+        getCachedSessionSummary: vi.fn(async () => summary),
+      } as unknown as NonNullable<SessionsDeps["sessionIndexService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?tailCompactions=2&tailTurns=20`,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.messages[0]?.uuid).toMatch(/^codex-event-byte-201-/);
+    expect(body.pagination).toMatchObject({
+      hasOlderMessages: true,
+      truncatedBeforeMessageId: "codex-cursor-byte-201",
+      returnedMessageCount: 21,
+      totalCompactions: 2,
+    });
+    expect(getSession).toHaveBeenCalledWith("sess-1", project.id, undefined, {
+      includeOrphans: false,
+      tailCompactions: 2,
+      summaryHint: summary,
+    });
+  });
+
+  it("preserves the cursor from a provider compact-tail read window", async () => {
+    const project = { ...createProject(), provider: "grok" as const };
+    const messages: Message[] = [
+      {
+        uuid: "compact-1",
+        type: "system",
+        subtype: "compact_boundary",
+        timestamp: "2026-03-10T09:45:00.000Z",
+      },
+      {
+        uuid: "middle-user",
+        type: "user",
+        timestamp: "2026-03-10T09:46:00.000Z",
+        message: { role: "user", content: "Middle turn." },
+      },
+      {
+        uuid: "compact-2",
+        type: "system",
+        subtype: "compact_boundary",
+        timestamp: "2026-03-10T09:47:00.000Z",
+      },
+      {
+        uuid: "tail-assistant",
+        type: "assistant",
+        timestamp: "2026-03-10T09:48:00.000Z",
+        message: { role: "assistant", content: "Current tail." },
+      },
+    ];
+    const loaded: LoadedSession = {
+      ...createLoadedGrokSession({ messageCount: messages.length }, messages),
+      readWindow: {
+        kind: "compact-tail",
+        omittedPrefix: true,
+        startByte: 1024,
+        compactBoundaries: 2,
+      },
+    };
+    const reader = {
+      getSession: vi.fn(async () => loaded),
+    } as unknown as GrokSessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      grokReaderFactory: vi.fn(() => reader),
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?tailCompactions=2`,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.pagination).toMatchObject({
+      hasOlderMessages: true,
+      truncatedBeforeMessageId: "compact-1",
+      returnedMessageCount: messages.length,
+      totalCompactions: 2,
+    });
+  });
+
+  it("preserves provider-bounded older pages without reapplying their end cursor", async () => {
+    const project = { ...createProject(), provider: "grok" as const };
+    const middleMessages: Message[] = [
+      {
+        uuid: "compact-older",
+        type: "system",
+        subtype: "compact_boundary",
+        timestamp: "2026-03-10T09:41:00.000Z",
+      },
+      {
+        uuid: "older-user",
+        type: "user",
+        timestamp: "2026-03-10T09:42:00.000Z",
+        message: { role: "user", content: "Older turn." },
+      },
+      {
+        uuid: "compact-newer",
+        type: "system",
+        subtype: "compact_boundary",
+        timestamp: "2026-03-10T09:43:00.000Z",
+      },
+      {
+        uuid: "newer-user",
+        type: "user",
+        timestamp: "2026-03-10T09:44:00.000Z",
+        message: { role: "user", content: "Newer turn." },
+      },
+    ];
+    const firstMessages: Message[] = [
+      {
+        uuid: "first-user",
+        type: "user",
+        timestamp: "2026-03-10T09:39:00.000Z",
+        message: { role: "user", content: "First turn." },
+      },
+      {
+        uuid: "compact-first",
+        type: "system",
+        subtype: "compact_boundary",
+        timestamp: "2026-03-10T09:40:00.000Z",
+      },
+      {
+        uuid: "pre-middle-user",
+        type: "user",
+        timestamp: "2026-03-10T09:40:30.000Z",
+        message: { role: "user", content: "Before middle." },
+      },
+    ];
+    const getSession = vi.fn(
+      async (
+        _sessionId: string,
+        _projectId: UrlProjectId,
+        _afterMessageId?: string,
+        options?: { beforeMessageId?: string },
+      ): Promise<LoadedSession> => {
+        if (options?.beforeMessageId === "page-end-middle") {
+          return {
+            ...createLoadedGrokSession(
+              { messageCount: middleMessages.length },
+              middleMessages,
+            ),
+            readWindow: {
+              kind: "compact-page",
+              omittedPrefix: true,
+              startByte: 100,
+              endByte: 500,
+              compactBoundaries: 2,
+            },
+          };
+        }
+        return {
+          ...createLoadedGrokSession(
+            { messageCount: firstMessages.length },
+            firstMessages,
+          ),
+          readWindow: {
+            kind: "compact-page",
+            omittedPrefix: false,
+            startByte: 0,
+            endByte: 100,
+            compactBoundaries: 2,
+          },
+        };
+      },
+    );
+    const reader = { getSession } as unknown as GrokSessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      grokReaderFactory: vi.fn(() => reader),
+    });
+
+    const middleResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?tailCompactions=2&beforeMessageId=page-end-middle`,
+    );
+    const middleBody = await middleResponse.json();
+
+    expect(middleResponse.status).toBe(200);
+    expect(middleBody.messages.map((message: Message) => message.uuid)).toEqual(
+      middleMessages.map((message) => message.uuid),
+    );
+    expect(middleBody.pagination).toMatchObject({
+      hasOlderMessages: true,
+      truncatedBeforeMessageId: "compact-older",
+      returnedMessageCount: middleMessages.length,
+      totalCompactions: 2,
+    });
+    expect(getSession).toHaveBeenNthCalledWith(
+      1,
+      "sess-1",
+      project.id,
+      undefined,
+      {
+        includeOrphans: false,
+        tailCompactions: 2,
+        beforeMessageId: "page-end-middle",
+      },
+    );
+
+    const firstResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?tailCompactions=2&beforeMessageId=compact-older`,
+    );
+    const firstBody = await firstResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstBody.messages.map((message: Message) => message.uuid)).toEqual(
+      firstMessages.map((message) => message.uuid),
+    );
+    expect(firstBody.pagination).toMatchObject({
+      hasOlderMessages: false,
+      returnedMessageCount: firstMessages.length,
+      totalCompactions: 1,
+    });
+    expect(firstBody.pagination.truncatedBeforeMessageId).toBeUndefined();
+    expect(getSession).toHaveBeenNthCalledWith(
+      2,
+      "sess-1",
+      project.id,
+      undefined,
+      {
+        includeOrphans: false,
+        tailCompactions: 2,
+        beforeMessageId: "compact-older",
+      },
+    );
+  });
+
+  it("keeps a requested compact bound after an incremental anchor miss", async () => {
+    const project = { ...createProject(), provider: "grok" as const };
+    const messages: Message[] = [
+      {
+        uuid: "prefix-user",
+        type: "user",
+        timestamp: "2026-03-10T09:45:00.000Z",
+        message: { role: "user", content: "Keep this prefix." },
+      },
+      ...[1, 2, 3].map(
+        (index): Message => ({
+          uuid: `compact-${index}`,
+          type: "system",
+          subtype: "compact_boundary",
+          timestamp: `2026-03-10T09:4${index}:00.000Z`,
+        }),
+      ),
+      {
+        uuid: "tail-assistant",
+        type: "assistant",
+        timestamp: "2026-03-10T09:49:00.000Z",
+        message: { role: "assistant", content: "Current tail." },
+      },
+    ];
+    const getSession = vi.fn(async () =>
+      createLoadedGrokSession({ messageCount: messages.length }, messages),
+    );
+    const reader = { getSession } as unknown as GrokSessionReader;
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      grokReaderFactory: vi.fn(() => reader),
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?afterMessageId=missing&tailCompactions=12`,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.messages[0]?.uuid).toBe("prefix-user");
+    expect(body.pagination).toMatchObject({
+      hasOlderMessages: false,
+      totalCompactions: 3,
+      returnedMessageCount: messages.length,
+    });
+    expect(getSession).toHaveBeenCalledWith("sess-1", project.id, "missing", {
+      includeOrphans: false,
+    });
   });
 
   it("computes detail unread from pre-overlay updatedAt so a recap never flips unread", async () => {

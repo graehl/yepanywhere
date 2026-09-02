@@ -69,6 +69,89 @@ interface CodexToolUseConversion {
 const CODEX_CONTEXT_COMPACTED_DEDUPE_WINDOW_MS = 5000;
 const CODEX_PROVIDER_FORK_TURN_ID = Symbol("codexProviderForkTurnId");
 const CODEX_NORMALIZATION_SOURCE = Symbol("codexNormalizationSource");
+const CODEX_SOURCE_BYTE_OFFSET = Symbol("codexSourceByteOffset");
+const CODEX_MESSAGE_SOURCE_BYTE_OFFSET = Symbol("codexMessageSourceByteOffset");
+
+type CodexEntryWithSourceByteOffset = CodexSessionEntry & {
+  [CODEX_SOURCE_BYTE_OFFSET]?: number;
+};
+
+type MessageWithCodexSourceByteOffset = Message & {
+  [CODEX_MESSAGE_SOURCE_BYTE_OFFSET]?: number;
+};
+
+/** Keep plain-rollout message identities stable across bounded and full reads. */
+export function tagCodexEntrySourceByteOffset(
+  entry: CodexSessionEntry,
+  sourceByteOffset: number,
+): CodexSessionEntry {
+  Object.defineProperty(entry, CODEX_SOURCE_BYTE_OFFSET, {
+    configurable: false,
+    enumerable: false,
+    value: sourceByteOffset,
+    writable: false,
+  });
+  return entry;
+}
+
+function tagCodexMessageSourceByteOffset(
+  message: Message,
+  entry: CodexSessionEntry,
+): Message {
+  const sourceByteOffset = (entry as CodexEntryWithSourceByteOffset)[
+    CODEX_SOURCE_BYTE_OFFSET
+  ];
+  if (sourceByteOffset === undefined) return message;
+  Object.defineProperty(message, CODEX_MESSAGE_SOURCE_BYTE_OFFSET, {
+    configurable: false,
+    enumerable: false,
+    value: sourceByteOffset,
+    writable: false,
+  });
+  return message;
+}
+
+function codexEntryPosition(
+  entry: CodexSessionEntry,
+  fallbackIndex: number,
+): string {
+  const sourceByteOffset = (entry as CodexEntryWithSourceByteOffset)[
+    CODEX_SOURCE_BYTE_OFFSET
+  ];
+  return sourceByteOffset === undefined
+    ? String(fallbackIndex)
+    : `byte-${sourceByteOffset}`;
+}
+
+/** Recover the plain-rollout byte cursor carried by bounded-history paging. */
+export function parseCodexSourceByteCursor(cursor: string): number | null {
+  const match = /^codex-(?:compacted|cursor)-byte-(\d+)(?:-|$)/.exec(cursor);
+  if (!match?.[1]) return null;
+  const sourceByteOffset = Number(match[1]);
+  return Number.isSafeInteger(sourceByteOffset) && sourceByteOffset >= 0
+    ? sourceByteOffset
+    : null;
+}
+
+/**
+ * Return a source cursor for the first visible Codex message in a bounded read.
+ * Compact boundaries retain their real message id; narrower turn windows use an
+ * opaque cursor so durable message identity remains unchanged.
+ */
+export function getCodexMessageSourceByteCursor(
+  message: Message,
+): string | undefined {
+  const sourceByteOffset = (message as MessageWithCodexSourceByteOffset)[
+    CODEX_MESSAGE_SOURCE_BYTE_OFFSET
+  ];
+  if (sourceByteOffset === undefined) return undefined;
+
+  const messageId =
+    message.uuid ?? (typeof message.id === "string" ? message.id : undefined);
+  return messageId && parseCodexSourceByteCursor(messageId) === sourceByteOffset
+    ? messageId
+    : `codex-cursor-byte-${sourceByteOffset}`;
+}
 
 type MessageWithCodexForkTurnId = Message & {
   [CODEX_PROVIDER_FORK_TURN_ID]?: string;
@@ -427,6 +510,7 @@ function convertCodexEntries(
         clientUserMessageId,
       );
       if (msg) {
+        tagCodexMessageSourceByteOffset(msg, entry);
         attachCodexProviderForkTurnId(
           msg,
           getCodexResponseItemTurnId(entry.payload),
@@ -451,6 +535,7 @@ function convertCodexEntries(
     } else if (entry.type === "compacted") {
       const msg = convertCodexCompactedEntry(entry, state.messageIndex++);
       if (msg) {
+        tagCodexMessageSourceByteOffset(msg, entry);
         if (isCodexCorrelationDebugEnabled()) {
           logCodexCorrelationDebug({
             sessionId,
@@ -509,6 +594,7 @@ function convertCodexEntries(
           sessionId,
         );
         if (msg) {
+          tagCodexMessageSourceByteOffset(msg, entry);
           if (isCodexCorrelationDebugEnabled()) {
             logCodexCorrelationDebug({
               sessionId,
@@ -679,6 +765,17 @@ function cloneCodexStateMessage(message: Message): Message {
         }
       : {}),
   };
+  const sourceByteOffset = (message as MessageWithCodexSourceByteOffset)[
+    CODEX_MESSAGE_SOURCE_BYTE_OFFSET
+  ];
+  if (sourceByteOffset !== undefined) {
+    Object.defineProperty(cloned, CODEX_MESSAGE_SOURCE_BYTE_OFFSET, {
+      configurable: false,
+      enumerable: false,
+      value: sourceByteOffset,
+      writable: false,
+    });
+  }
   attachCodexProviderForkTurnId(cloned, getCodexProviderForkTurnId(message));
   return cloned;
 }
@@ -936,7 +1033,7 @@ function convertCodexResponseItem(
   clientUserMessageId?: string,
 ): Message | null {
   const payload = entry.payload;
-  const positionalUuid = `codex-${index}-${entry.timestamp}`;
+  const positionalUuid = `codex-${codexEntryPosition(entry, index)}-${entry.timestamp}`;
   const uuid = codexDurableResponseItemUuid(
     payload,
     positionalUuid,
@@ -1592,7 +1689,7 @@ function convertCodexCompactedEntry(
   entry: CodexCompactedEntry,
   index: number,
 ): Message {
-  const uuid = `codex-compacted-${index}-${entry.timestamp}`;
+  const uuid = `codex-compacted-${codexEntryPosition(entry, index)}-${entry.timestamp}`;
   const providerMessage =
     typeof entry.payload.message === "string"
       ? entry.payload.message.trim()
@@ -1620,7 +1717,7 @@ function convertCodexEventMsg(
   sessionId: string,
 ): Message | null {
   const payloadUnknown: unknown = entry.payload;
-  const uuid = `codex-event-${index}-${entry.timestamp}`;
+  const uuid = `codex-event-${codexEntryPosition(entry, index)}-${entry.timestamp}`;
 
   if (isCodexExecCommandEndPayload(payloadUnknown)) {
     const context = toolCallContexts.get(payloadUnknown.call_id);

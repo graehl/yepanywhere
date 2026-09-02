@@ -12,13 +12,16 @@ import type { Message } from "../supervisor/types.js";
 export interface PaginationInfo {
   /** Whether there are older messages not included in this response */
   hasOlderMessages: boolean;
-  /** Total message count in the full session */
+  /**
+   * Total normalized rows in the reader's available source window. This is the
+   * full-session count unless a provider skipped a known-hidden prefix.
+   */
   totalMessageCount: number;
   /** Number of messages returned in this response */
   returnedMessageCount: number;
   /** UUID of the first returned message (pass as beforeMessageId to load previous chunk) */
   truncatedBeforeMessageId?: string;
-  /** Total number of compact_boundary entries in the session */
+  /** Number of compact boundaries in the reader's available source window. */
   totalCompactions: number;
   /** Total number of user turns in the full session, when turn slicing was used */
   totalUserTurns?: number;

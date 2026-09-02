@@ -34,7 +34,9 @@ import { getSessionDetailRetentionDefaults } from "../lib/sessionDetail/sessionD
 import { isClientLogCollectionActive } from "../lib/diagnostics";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import {
+  DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS,
   getSessionActiveWindowTrimEnabled,
+  getSessionInitialHistoryCompactions,
   getSessionScrollBehaviorMode,
   getSessionTranscriptCacheEnabled,
   recordLastSessionTranscriptBytes,
@@ -57,7 +59,7 @@ import {
   clearDefaultSessionDetailMemoryCache,
   type SessionDetailEntryKeyInput,
 } from "../lib/sessionDetail/sessionDetailStore";
-import type { GetSessionResult } from "../lib/sourceRuntime";
+import type { GetSessionInput, GetSessionResult } from "../lib/sourceRuntime";
 import type {
   AgentContent,
   AgentContentMap,
@@ -85,6 +87,43 @@ const DEFAULT_INITIAL_TAIL_TURNS = 20;
 const INCREMENTAL_REFRESH_DIAGNOSTIC_INTERVAL_MS = 30_000;
 const OLDER_USER_TURN_LOAD_PAGE_LIMIT = 8;
 const SAME_ID_STREAM_REPLACEMENT_DELAY_MS = 100;
+const INITIAL_HISTORY_FULL_REASON = "browser initial history preference";
+
+function buildInitialHistoryRequest(options: {
+  projectId: string;
+  sessionId: string;
+  compactBoundaries: number | null;
+  afterMessageId?: string;
+  tailTurns?: number;
+  tailFrom?: string;
+}): GetSessionInput {
+  const {
+    projectId,
+    sessionId,
+    compactBoundaries,
+    afterMessageId,
+    tailTurns,
+    tailFrom,
+  } = options;
+  if (compactBoundaries === null) {
+    return {
+      projectId,
+      sessionId,
+      fullHistory: true,
+      fullHistoryReason: INITIAL_HISTORY_FULL_REASON,
+      ...(tailTurns !== undefined ? { tailTurns } : {}),
+      ...(tailFrom ? { tailFrom } : {}),
+    };
+  }
+  return {
+    projectId,
+    sessionId,
+    tailCompactions: compactBoundaries,
+    ...(afterMessageId ? { afterMessageId } : {}),
+    ...(tailTurns !== undefined ? { tailTurns } : {}),
+    ...(tailFrom ? { tailFrom } : {}),
+  };
+}
 
 function isDocumentVisibleForScrollMemory(): boolean {
   return (
@@ -283,8 +322,13 @@ export function useSessionMessages(
     onTranscriptReconciled,
     onLoadError,
   } = options;
+  const initialHistoryCompactions = getSessionInitialHistoryCompactions();
   const effectiveTailTurns =
-    tailTurns ?? (tailFrom ? undefined : DEFAULT_INITIAL_TAIL_TURNS);
+    tailTurns ??
+    (tailFrom ||
+    initialHistoryCompactions !== DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS
+      ? undefined
+      : DEFAULT_INITIAL_TAIL_TURNS);
   const runtime = useCurrentSourceRuntime();
   const sourceKey = runtime.sourceKey;
   const sourceSummary = runtime.summary;
@@ -293,10 +337,18 @@ export function useSessionMessages(
       sourceKey,
       projectId,
       sessionId,
+      initialHistoryCompactions,
       tailTurns: effectiveTailTurns,
       tailFrom,
     }),
-    [effectiveTailTurns, projectId, sessionId, sourceKey, tailFrom],
+    [
+      effectiveTailTurns,
+      initialHistoryCompactions,
+      projectId,
+      sessionId,
+      sourceKey,
+      tailFrom,
+    ],
   );
   const coordinator = useMemo(
     () =>
@@ -830,7 +882,7 @@ export function useSessionMessages(
     markReloadPerfPhase("session_initial_load_start", {
       projectId,
       sessionId,
-      tailCompactions: 2,
+      tailCompactions: initialHistoryCompactions,
       tailTurns: effectiveTailTurns,
       tailFrom,
       restoredFromSnapshot: initialLoad.restoredFromSnapshot,
@@ -888,14 +940,16 @@ export function useSessionMessages(
 
     initialAfterMessageId = readStoreLastMessageId();
     sourceApi
-      .getSession({
-        projectId,
-        sessionId,
-        afterMessageId: initialAfterMessageId,
-        tailCompactions: 2,
-        tailTurns: effectiveTailTurns,
-        tailFrom,
-      })
+      .getSession(
+        buildInitialHistoryRequest({
+          projectId,
+          sessionId,
+          compactBoundaries: initialHistoryCompactions,
+          afterMessageId: initialAfterMessageId,
+          tailTurns: effectiveTailTurns,
+          tailFrom,
+        }),
+      )
       .then(async (data) => {
         if (cancelled) return;
         if (warmLoad) {
@@ -966,6 +1020,7 @@ export function useSessionMessages(
     projectId,
     sessionId,
     effectiveTailTurns,
+    initialHistoryCompactions,
     tailFrom,
     detailedLoadingProgress,
     onLoadComplete,
@@ -1135,13 +1190,13 @@ export function useSessionMessages(
                   sessionId,
                   afterMessageId,
                 }
-              : {
+              : buildInitialHistoryRequest({
                   projectId,
                   sessionId,
-                  tailCompactions: 2,
+                  compactBoundaries: initialHistoryCompactions,
                   tailTurns: effectiveTailTurns,
                   tailFrom,
-                },
+                }),
           );
           markReloadPerfPhase("session_incremental_fetch_data_ready", {
             ...perfDetail,
@@ -1201,13 +1256,15 @@ export function useSessionMessages(
             },
           );
           try {
-            const data = await sourceApi.getSession({
-              projectId,
-              sessionId,
-              tailCompactions: 2,
-              tailTurns: effectiveTailTurns,
-              tailFrom,
-            });
+            const data = await sourceApi.getSession(
+              buildInitialHistoryRequest({
+                projectId,
+                sessionId,
+                compactBoundaries: initialHistoryCompactions,
+                tailTurns: effectiveTailTurns,
+                tailFrom,
+              }),
+            );
             markReloadPerfPhase(
               "session_incremental_reconciliation_data_ready",
               {
@@ -1271,6 +1328,7 @@ export function useSessionMessages(
     [
       coordinator,
       effectiveTailTurns,
+      initialHistoryCompactions,
       notifyTranscriptReconciled,
       projectId,
       sessionId,
@@ -1329,13 +1387,15 @@ export function useSessionMessages(
             break;
           }
           staleCursorRecoveryAttempted = true;
-          const refreshedTail = await sourceApi.getSession({
-            projectId,
-            sessionId,
-            tailCompactions: 2,
-            tailTurns: effectiveTailTurns,
-            tailFrom,
-          });
+          const refreshedTail = await sourceApi.getSession(
+            buildInitialHistoryRequest({
+              projectId,
+              sessionId,
+              compactBoundaries: initialHistoryCompactions,
+              tailTurns: effectiveTailTurns,
+              tailFrom,
+            }),
+          );
           sourceSummary.reportProviderRuntimeStatusSnapshot(
             coordinator.buildProviderRuntimeStatusSnapshot(refreshedTail),
           );
@@ -1383,6 +1443,7 @@ export function useSessionMessages(
   }, [
     coordinator,
     effectiveTailTurns,
+    initialHistoryCompactions,
     projectId,
     reportStoreDivergence,
     sessionId,

@@ -9,6 +9,7 @@ import { useServerSettings } from "../../hooks/useServerSettings";
 import {
   getLastSessionTranscriptBytes,
   getSessionTranscriptMemoryStats,
+  MAX_SESSION_INITIAL_HISTORY_COMPACTIONS,
   TRANSCRIPT_CACHE_BUDGET_MB_STOPS,
   TRANSCRIPT_CACHE_TTL_HOUR_STOPS,
   TYPICAL_SESSION_TRANSCRIPT_BYTES,
@@ -50,10 +51,12 @@ export function PerformanceSettings() {
   const {
     sessionDomLingerEnabled,
     sessionActiveWindowTrimEnabled,
+    sessionInitialHistoryCompactions,
     sessionTranscriptCacheBudgetMb,
     sessionTranscriptCacheTtlHours,
     setSessionDomLingerEnabled,
     setSessionActiveWindowTrimEnabled,
+    setSessionInitialHistoryCompactions,
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
   } = useSessionPerformanceSettings();
@@ -75,9 +78,21 @@ export function PerformanceSettings() {
   const [savingHostProcessObservability, setSavingHostProcessObservability] =
     useState(false);
 
+  const [historyDraftIndex, setHistoryDraftIndex] = useState<number | null>(
+    null,
+  );
   const [budgetDraftIndex, setBudgetDraftIndex] = useState<number | null>(null);
   const [ttlDraftIndex, setTtlDraftIndex] = useState<number | null>(null);
 
+  const historyIndex =
+    historyDraftIndex ??
+    (sessionInitialHistoryCompactions === null
+      ? MAX_SESSION_INITIAL_HISTORY_COMPACTIONS
+      : sessionInitialHistoryCompactions - 1);
+  const historyCompactions =
+    historyIndex === MAX_SESSION_INITIAL_HISTORY_COMPACTIONS
+      ? null
+      : historyIndex + 1;
   const budgetIndex =
     budgetDraftIndex ??
     nearestStopIndex(
@@ -93,6 +108,15 @@ export function PerformanceSettings() {
   const budgetMb = TRANSCRIPT_CACHE_BUDGET_MB_STOPS[budgetIndex] ?? 0;
   const ttlHours = TRANSCRIPT_CACHE_TTL_HOUR_STOPS[ttlIndex] ?? 1;
 
+  const historyLabel =
+    historyCompactions === null
+      ? t("performanceInitialHistoryUnlimitedValue")
+      : t(
+          historyCompactions === 1
+            ? "performanceInitialHistoryCompactionValue"
+            : "performanceInitialHistoryCompactionsValue",
+          { count: historyCompactions },
+        );
   const budgetLabel =
     budgetMb === 0
       ? t("commonOff")
@@ -131,6 +155,15 @@ export function PerformanceSettings() {
         })
       : null;
 
+  const commitHistory = useCallback(
+    (index: number) => {
+      setHistoryDraftIndex(null);
+      setSessionInitialHistoryCompactions(
+        index === MAX_SESSION_INITIAL_HISTORY_COMPACTIONS ? null : index + 1,
+      );
+    },
+    [setSessionInitialHistoryCompactions],
+  );
   const commitBudget = useCallback(
     (index: number) => {
       setBudgetDraftIndex(null);
@@ -171,6 +204,7 @@ export function PerformanceSettings() {
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
       sessionActiveWindowTrimEnabled,
+      sessionInitialHistoryCompactions,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -181,6 +215,7 @@ export function PerformanceSettings() {
       sessionLoadingProgressEnabled,
       sessionDomLingerEnabled,
       sessionActiveWindowTrimEnabled,
+      sessionInitialHistoryCompactions,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -194,6 +229,9 @@ export function PerformanceSettings() {
       setSessionDomLingerEnabled(snapshot.sessionDomLingerEnabled);
       setSessionActiveWindowTrimEnabled(
         snapshot.sessionActiveWindowTrimEnabled,
+      );
+      setSessionInitialHistoryCompactions(
+        snapshot.sessionInitialHistoryCompactions,
       );
       setSessionTranscriptCacheBudgetMb(
         snapshot.sessionTranscriptCacheBudgetMb,
@@ -217,6 +255,7 @@ export function PerformanceSettings() {
       setSessionLoadingProgressEnabled,
       setSessionDomLingerEnabled,
       setSessionActiveWindowTrimEnabled,
+      setSessionInitialHistoryCompactions,
       setSessionTranscriptCacheBudgetMb,
       setSessionTranscriptCacheTtlHours,
       setStableToolPreviewRendering,
@@ -291,6 +330,25 @@ export function PerformanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("performanceInitialHistoryTitle")}
+          description={t("performanceInitialHistoryDescription")}
+          valueText={historyLabel}
+          className="settings-item--wide-control"
+        >
+          <div className="settings-item-actions">
+            <CommittedRangeInput
+              min={0}
+              max={MAX_SESSION_INITIAL_HISTORY_COMPACTIONS}
+              step={1}
+              value={historyIndex}
+              onDraftChange={setHistoryDraftIndex}
+              onCommit={commitHistory}
+              aria-label={t("performanceInitialHistoryTitle")}
+            />
+            <span className="settings-input-unit">{historyLabel}</span>
+          </div>
         </SettingsItem>
         <SettingsItem
           label={t("performanceTranscriptCacheTitle")}

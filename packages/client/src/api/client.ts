@@ -95,9 +95,11 @@ import { fetchJSON } from "./sourceApiFetch";
 /** Pagination metadata for compact-boundary-based session loading */
 export interface PaginationInfo {
   hasOlderMessages: boolean;
+  /** Full-session count unless the provider omitted a known-hidden prefix. */
   totalMessageCount: number;
   returnedMessageCount: number;
   truncatedBeforeMessageId?: string;
+  /** Full-session count unless the provider omitted a known-hidden prefix. */
   totalCompactions: number;
   totalUserTurns?: number;
   truncatedBy?: "compact_boundary" | "user_turn";

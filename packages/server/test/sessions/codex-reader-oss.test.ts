@@ -15,7 +15,10 @@ import type { CodexSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
-import { normalizeSession } from "../../src/sessions/normalization.js";
+import {
+  getCodexMessageSourceByteCursor,
+  normalizeSession,
+} from "../../src/sessions/normalization.js";
 import type { SummaryParserClient } from "../../src/sessions/summary-parser-worker-client.js";
 import type { SessionSummary } from "../../src/supervisor/types.js";
 import { getCodexRolloutActivityTimeMs } from "../../src/utils/codexRolloutFiles.js";
@@ -972,12 +975,21 @@ describe("CodexSessionReader - OSS Support", () => {
     );
 
     const summaries = await reader.listSessions("test-project" as UrlProjectId);
-    expect(summaries.map((summary) => summary.id)).toContain(sessionId);
+    const summary = summaries.find((candidate) => candidate.id === sessionId);
+    expect(summary).toBeDefined();
+    if (!summary) throw new Error("Expected the compressed rollout summary");
 
     const session = await reader.getSession(
       sessionId,
       "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: "codex-cursor-byte-1",
+        summaryHint: summary,
+      },
     );
+    expect(session?.readWindow).toBeUndefined();
     expect(session?.summary.title).toBe("Hello compressed history");
     expect(session?.data.session.entries).toHaveLength(2);
   });
@@ -1926,6 +1938,332 @@ describe("CodexSessionReader - OSS Support", () => {
         content: [{ type: "output_text", text: assistantText }],
       },
     });
+  });
+
+  it("reverse-reads a large plain rollout from the requested compact tail", async () => {
+    const sessionId = "reverse-compact-tail";
+    const compactTimestamps = [
+      "2026-09-02T01:00:00.000Z",
+      "2026-09-02T02:00:00.000Z",
+      "2026-09-02T03:00:00.000Z",
+      "2026-09-02T04:00:00.000Z",
+      "2026-09-02T05:00:00.000Z",
+    ];
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: "2026-09-02T00:00:00.000Z",
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: "2026-09-02T00:00:00.000Z",
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-09-02T00:00:01.000Z",
+        payload: { type: "user_message", message: "first turn" },
+      }),
+      JSON.stringify({
+        type: "world_state",
+        timestamp: "2026-09-02T00:00:02.000Z",
+        payload: { full: true, state: { filler: "x".repeat(5 * 1024 * 1024) } },
+      }),
+      ...compactTimestamps.flatMap((timestamp, index) => [
+        JSON.stringify({
+          type: "compacted",
+          timestamp,
+          payload: { message: `compact ${index + 1}` },
+        }).replace('"type":"compacted"', '"type": "compacted"'),
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: timestamp.replace("00.000Z", "01.000Z"),
+          payload: { type: "user_message", message: `turn ${index + 1}` },
+        }),
+        ...(index === 3
+          ? [
+              JSON.stringify({
+                type: "world_state",
+                timestamp: "2026-09-02T04:00:02.000Z",
+                payload: {
+                  full: true,
+                  state: { filler: "y".repeat(2 * 1024 * 1024) },
+                },
+              }),
+            ]
+          : []),
+      ]),
+    ];
+    await writeFile(sessionPath, `${lines.join("\n")}\n`);
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary).not.toBeNull();
+    if (!summary) throw new Error("Expected the indexed summary hint");
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    const ranges: Array<{ start: number; length: number }> = [];
+    vi.spyOn(internals, "readFileRange").mockImplementation(
+      async (filePath, start, length) => {
+        ranges.push({ start, length });
+        return originalReadFileRange(filePath, start, length);
+      },
+    );
+
+    const loadedTail = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      { tailCompactions: 2, summaryHint: summary },
+    );
+    expect(loadedTail?.readWindow).toMatchObject({
+      kind: "compact-tail",
+      omittedPrefix: true,
+      compactBoundaries: 2,
+    });
+    if (
+      !loadedTail ||
+      (loadedTail.data.provider !== "codex" &&
+        loadedTail.data.provider !== "codex-oss")
+    ) {
+      throw new Error("Expected the compact-tail detail read");
+    }
+    expect(loadedTail.data.session.entries.map((entry) => entry.type)).toEqual([
+      "compacted",
+      "event_msg",
+      "world_state",
+      "compacted",
+      "event_msg",
+    ]);
+    expect(ranges.length).toBeGreaterThan(1);
+    expect(ranges[1]?.start).toBeLessThan(ranges[0]?.start ?? 0);
+    expect(ranges.every((range) => range.start > 0)).toBe(true);
+    expect(reader.getEntryCacheStats().sessions).toBe(0);
+
+    const normalizedTail = normalizeSession(loadedTail);
+    const tailBoundaryId = normalizedTail.messages[0]?.uuid;
+    expect(tailBoundaryId).toMatch(/^codex-compacted-byte-\d+-/);
+    if (!tailBoundaryId || loadedTail.readWindow?.kind !== "compact-tail") {
+      throw new Error("Expected a source-backed compact-tail cursor");
+    }
+
+    const narrowedCursor = normalizedTail.messages[1]
+      ? getCodexMessageSourceByteCursor(normalizedTail.messages[1])
+      : undefined;
+    expect(narrowedCursor).toMatch(/^codex-cursor-byte-\d+$/);
+    if (!narrowedCursor) {
+      throw new Error("Expected a source cursor for the narrowed turn window");
+    }
+    const narrowedOlderPage = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: narrowedCursor,
+        summaryHint: summary,
+      },
+    );
+    expect(narrowedOlderPage?.readWindow).toMatchObject({
+      kind: "compact-page",
+      omittedPrefix: true,
+      compactBoundaries: 2,
+    });
+    if (
+      !narrowedOlderPage ||
+      (narrowedOlderPage.data.provider !== "codex" &&
+        narrowedOlderPage.data.provider !== "codex-oss")
+    ) {
+      throw new Error("Expected an older page before the narrowed turn cursor");
+    }
+    expect(
+      narrowedOlderPage.data.session.entries.map((entry) => entry.type),
+    ).toEqual(["compacted", "event_msg", "compacted"]);
+
+    const olderPage = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: tailBoundaryId,
+        summaryHint: summary,
+      },
+    );
+    expect(olderPage?.readWindow).toMatchObject({
+      kind: "compact-page",
+      omittedPrefix: true,
+      endByte: loadedTail.readWindow.startByte,
+      compactBoundaries: 2,
+    });
+    if (
+      !olderPage ||
+      (olderPage.data.provider !== "codex" &&
+        olderPage.data.provider !== "codex-oss") ||
+      olderPage.readWindow?.kind !== "compact-page"
+    ) {
+      throw new Error("Expected the first bounded older page");
+    }
+    expect(olderPage.data.session.entries.map((entry) => entry.type)).toEqual([
+      "compacted",
+      "event_msg",
+      "compacted",
+      "event_msg",
+    ]);
+
+    const olderBoundaryId = normalizeSession(olderPage).messages[0]?.uuid;
+    expect(olderBoundaryId).toMatch(/^codex-compacted-byte-\d+-/);
+    if (!olderBoundaryId) {
+      throw new Error("Expected the next source-backed older-page cursor");
+    }
+    const firstPage = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: olderBoundaryId,
+        summaryHint: summary,
+      },
+    );
+    expect(firstPage?.readWindow).toMatchObject({
+      kind: "compact-page",
+      omittedPrefix: false,
+      startByte: 0,
+      endByte: olderPage.readWindow.startByte,
+      compactBoundaries: 2,
+    });
+    if (
+      !firstPage ||
+      (firstPage.data.provider !== "codex" &&
+        firstPage.data.provider !== "codex-oss")
+    ) {
+      throw new Error("Expected the beginning older page");
+    }
+    expect(firstPage.data.session.entries[0]?.type).toBe("session_meta");
+    expect(
+      firstPage.data.session.entries.filter(
+        (entry) => entry.type === "compacted",
+      ),
+    ).toHaveLength(1);
+    expect(reader.getEntryCacheStats().sessions).toBe(0);
+
+    const loadedFull = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: `codex-compacted-3-${compactTimestamps[3]}`,
+        summaryHint: summary,
+      },
+    );
+    expect(loadedFull?.readWindow).toBeUndefined();
+    expect(loadedFull).not.toBeNull();
+    if (!loadedFull)
+      throw new Error("Expected the legacy-cursor fallback read");
+    const matchingFullBoundary = normalizeSession(loadedFull).messages.find(
+      (message) => message.timestamp === compactTimestamps[3],
+    );
+    expect(tailBoundaryId).toBe(matchingFullBoundary?.uuid);
+  });
+
+  it("keeps the forward reader below the compact-tail crossover", async () => {
+    const sessionId = "small-compact-tail";
+    await createSessionFile(sessionId, "openai", "gpt-5");
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary).not.toBeNull();
+    if (!summary) throw new Error("Expected the small rollout summary");
+
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      { tailCompactions: 1, summaryHint: summary },
+    );
+
+    expect(loaded?.readWindow).toBeUndefined();
+    if (
+      !loaded ||
+      (loaded.data.provider !== "codex" && loaded.data.provider !== "codex-oss")
+    ) {
+      throw new Error("Expected the complete Codex detail read");
+    }
+    expect(loaded.data.session.entries[0]?.type).toBe("session_meta");
+  });
+
+  it("falls back to a complete read when the large rollout has too few compactions", async () => {
+    const sessionId = "sparse-large-compact-tail";
+    const sessionPath = join(testDir, `${sessionId}.jsonl`);
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: "2026-09-02T00:00:00.000Z",
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: "2026-09-02T00:00:00.000Z",
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "world_state",
+        timestamp: "2026-09-02T00:00:01.000Z",
+        payload: { full: true, state: { filler: "x".repeat(5 * 1024 * 1024) } },
+      }),
+      JSON.stringify({
+        type: "compacted",
+        timestamp: "2026-09-02T01:00:00.000Z",
+        payload: { message: "only compact" },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: "2026-09-02T01:00:01.000Z",
+        payload: { type: "user_message", message: "current tail" },
+      }),
+    ];
+    await writeFile(sessionPath, `${lines.join("\n")}\n`);
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary).not.toBeNull();
+    if (!summary) throw new Error("Expected the indexed summary hint");
+
+    const internals = reader as unknown as CodexEntryReadInternals;
+    const originalReadFileRange = internals.readFileRange.bind(reader);
+    const ranges: Array<{ start: number; length: number }> = [];
+    vi.spyOn(internals, "readFileRange").mockImplementation(
+      async (filePath, start, length) => {
+        ranges.push({ start, length });
+        return originalReadFileRange(filePath, start, length);
+      },
+    );
+
+    const loaded = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+      undefined,
+      { tailCompactions: 2, summaryHint: summary },
+    );
+
+    expect(loaded?.readWindow).toBeUndefined();
+    if (
+      !loaded ||
+      (loaded.data.provider !== "codex" && loaded.data.provider !== "codex-oss")
+    ) {
+      throw new Error("Expected the complete Codex detail read");
+    }
+    expect(loaded.data.session.entries[0]?.type).toBe("session_meta");
+    expect(ranges.some((range) => range.start > 0)).toBe(true);
+    expect(ranges.some((range) => range.start === 0)).toBe(true);
   });
 
   it("surfaces detail read failures for a discovered rollout", async () => {

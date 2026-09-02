@@ -20,6 +20,9 @@ import { UI_KEYS } from "../lib/storageKeys";
 
 const DEFAULT_SESSION_DOM_LINGER_ENABLED = false;
 const DEFAULT_SESSION_ACTIVE_WINDOW_TRIM_ENABLED = true;
+export const DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS = 2;
+export const MAX_SESSION_INITIAL_HISTORY_COMPACTIONS = 20;
+export type SessionInitialHistoryCompactions = number | null;
 
 /** Budget 0 disables the cache (matching the old default-off toggle). */
 const DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB = 0;
@@ -76,12 +79,26 @@ const sessionActiveWindowTrimStore = createLocalStorageBoolean(
   UI_KEYS.sessionActiveWindowTrim,
   DEFAULT_SESSION_ACTIVE_WINDOW_TRIM_ENABLED,
 );
+const sessionInitialHistoryCompactionsStore = createLocalStorageValue(
+  UI_KEYS.sessionInitialHistoryCompactions,
+  String(DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS),
+  (raw) => {
+    if (raw === "unlimited") return raw;
+    const value = Number(raw);
+    return Number.isInteger(value) &&
+      value >= 1 &&
+      value <= MAX_SESSION_INITIAL_HISTORY_COMPACTIONS
+      ? String(value)
+      : undefined;
+  },
+);
 const performancePreferenceStores = [
   sessionDomLingerStore,
   sessionTranscriptCacheBudgetMbStore,
   sessionTranscriptCacheTtlHoursStore,
   sessionScrollBehaviorStore,
   sessionActiveWindowTrimStore,
+  sessionInitialHistoryCompactionsStore,
 ] as const;
 
 // Canonical home is the memory-cache facade so non-hook consumers (client
@@ -135,17 +152,34 @@ function getSnapshot() {
     String(getSessionTranscriptCacheTtlHours()),
     getSessionScrollBehaviorMode(),
     getSessionActiveWindowTrimEnabled() ? "1" : "0",
+    sessionInitialHistoryCompactionsStore.read(),
   ].join(":");
 }
 
 function parseSnapshot(snapshot: string) {
-  const [domLinger, budgetMb, ttlHours, scrollBehavior, activeWindowTrim] =
-    snapshot.split(":");
+  const [
+    domLinger,
+    budgetMb,
+    ttlHours,
+    scrollBehavior,
+    activeWindowTrim,
+    initialHistoryCompactions,
+  ] = snapshot.split(":");
   const parsedBudget = Number(budgetMb);
   const parsedTtl = Number(ttlHours);
   const sessionTranscriptCacheBudgetMb = Number.isFinite(parsedBudget)
     ? parsedBudget
     : DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB;
+  const parsedInitialHistoryCompactions = Number(initialHistoryCompactions);
+  const sessionInitialHistoryCompactions =
+    initialHistoryCompactions === "unlimited"
+      ? null
+      : Number.isInteger(parsedInitialHistoryCompactions) &&
+          parsedInitialHistoryCompactions >= 1 &&
+          parsedInitialHistoryCompactions <=
+            MAX_SESSION_INITIAL_HISTORY_COMPACTIONS
+        ? parsedInitialHistoryCompactions
+        : DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS;
   return {
     sessionDomLingerEnabled: domLinger !== "0",
     sessionTranscriptCacheBudgetMb,
@@ -155,6 +189,7 @@ function parseSnapshot(snapshot: string) {
       : DEFAULT_TRANSCRIPT_CACHE_TTL_HOURS,
     sessionScrollBehaviorMode: parseSessionScrollBehaviorMode(scrollBehavior),
     sessionActiveWindowTrimEnabled: activeWindowTrim !== "0",
+    sessionInitialHistoryCompactions,
   };
 }
 
@@ -180,6 +215,13 @@ export function getSessionScrollBehaviorMode(): SessionScrollBehaviorMode {
 
 export function getSessionActiveWindowTrimEnabled(): boolean {
   return sessionActiveWindowTrimStore.read();
+}
+
+export function getSessionInitialHistoryCompactions(): SessionInitialHistoryCompactions {
+  const stored = sessionInitialHistoryCompactionsStore.read();
+  return stored === "unlimited"
+    ? null
+    : Number(stored) || DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS;
 }
 
 function applySessionDetailRetentionPreferences(): void {
@@ -211,6 +253,22 @@ export function setSessionDomLingerPreference(enabled: boolean): void {
 
 export function setSessionActiveWindowTrimPreference(enabled: boolean): void {
   sessionActiveWindowTrimStore.set(enabled);
+}
+
+export function setSessionInitialHistoryCompactionsPreference(
+  compactBoundaries: SessionInitialHistoryCompactions,
+): void {
+  if (compactBoundaries === null) {
+    sessionInitialHistoryCompactionsStore.set("unlimited");
+    return;
+  }
+  const normalized = Number.isFinite(compactBoundaries)
+    ? Math.min(
+        MAX_SESSION_INITIAL_HISTORY_COMPACTIONS,
+        Math.max(1, Math.round(compactBoundaries)),
+      )
+    : DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS;
+  sessionInitialHistoryCompactionsStore.set(String(normalized));
 }
 
 export function setSessionTranscriptCacheBudgetMbPreference(
@@ -282,7 +340,8 @@ export function useSessionPerformanceSettings() {
   const snapshot = useSyncExternalStore(
     subscribe,
     getSnapshot,
-    () => `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}:1`,
+    () =>
+      `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}:1:${DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS}`,
   );
   const settings = useMemo(() => parseSnapshot(snapshot), [snapshot]);
 
@@ -306,6 +365,10 @@ export function useSessionPerformanceSettings() {
     setSessionActiveWindowTrimPreference,
     [],
   );
+  const setSessionInitialHistoryCompactions = useCallback(
+    setSessionInitialHistoryCompactionsPreference,
+    [],
+  );
 
   return {
     ...settings,
@@ -314,5 +377,6 @@ export function useSessionPerformanceSettings() {
     setSessionTranscriptCacheTtlHours,
     setSessionScrollBehaviorMode,
     setSessionActiveWindowTrimEnabled,
+    setSessionInitialHistoryCompactions,
   };
 }

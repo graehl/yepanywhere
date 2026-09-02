@@ -71,7 +71,9 @@ import {
 } from "./codex-user-turn-provenance.js";
 import {
   normalizeSession,
+  parseCodexSourceByteCursor,
   tagCodexEntriesNormalizationSource,
+  tagCodexEntrySourceByteOffset,
 } from "./normalization.js";
 import { SummaryParserClient } from "./summary-parser-worker-client.js";
 import type {
@@ -124,6 +126,7 @@ const CODEX_HEAD_SUMMARY_MAX_LINES = 200;
 const CODEX_HEAD_SUMMARY_MAX_BYTES = 1024 * 1024;
 const CODEX_FULL_SUMMARY_CACHE_MAX_ENTRIES = 256;
 const CODEX_ENTRY_READ_CHUNK_BYTES = 1024 * 1024;
+const CODEX_COMPACT_TAIL_ESTIMATED_BYTES_PER_BOUNDARY = 2 * 1024 * 1024;
 const LOG_ENTRY_READS = process.env.CODEX_READER_LOG_PARSE === "true";
 
 function isCompressedCodexSessionFile(filePath: string): boolean {
@@ -223,6 +226,25 @@ interface CodexEntrySnapshot {
   entries: CodexSessionEntry[];
   transcriptSnapshotUpdatedAt: string;
 }
+
+interface CodexCompactTailSnapshot extends CodexEntrySnapshot {
+  kind: "compact-tail";
+  omittedPrefix: true;
+  startByte: number;
+  compactBoundaries: number;
+}
+
+interface CodexCompactPageSnapshot extends CodexEntrySnapshot {
+  kind: "compact-page";
+  omittedPrefix: boolean;
+  startByte: number;
+  endByte: number;
+  compactBoundaries: number;
+}
+
+type CodexCompactWindowSnapshot =
+  | CodexCompactTailSnapshot
+  | CodexCompactPageSnapshot;
 
 interface CodexEntryReadOwner {
   promise: Promise<CodexEntryCache | null>;
@@ -756,27 +778,59 @@ export class CodexSessionReader implements ISessionReader {
     sessionId: string,
     projectId: UrlProjectId,
     afterMessageId?: string,
-    _options?: GetSessionOptions,
+    options?: GetSessionOptions,
   ): Promise<LoadedSession | null> {
     const sessionFile = await this.findSessionFile(sessionId);
     if (!sessionFile) return null;
 
     try {
-      const transcriptSnapshot = await this.readEntries(
-        sessionId,
-        sessionFile.filePath,
-        {
+      const requestedTailCompactions = options?.tailCompactions;
+      const beforeMessageId = options?.beforeMessageId;
+      const summaryHint = options?.summaryHint;
+      let compactWindow: CodexCompactWindowSnapshot | null = null;
+      if (
+        afterMessageId === undefined &&
+        Number.isInteger(requestedTailCompactions) &&
+        requestedTailCompactions !== undefined &&
+        requestedTailCompactions > 0 &&
+        (summaryHint?.provider === "codex" ||
+          summaryHint?.provider === "codex-oss")
+      ) {
+        const stats = await stat(sessionFile.filePath);
+        const snapshotUpdatedAt = new Date(
+          getCodexRolloutActivityTimeMs(sessionFile.filePath, stats),
+        ).toISOString();
+        if (summaryHint.updatedAt === snapshotUpdatedAt) {
+          compactWindow = beforeMessageId
+            ? await this.readCompactPageSnapshot(
+                sessionFile.filePath,
+                stats,
+                requestedTailCompactions,
+                beforeMessageId,
+              )
+            : await this.readCompactTailSnapshot(
+                sessionFile.filePath,
+                stats,
+                requestedTailCompactions,
+              );
+        }
+      }
+
+      const transcriptSnapshot =
+        compactWindow ??
+        (await this.readEntries(sessionId, sessionFile.filePath, {
           purpose: "detail",
           cache: true,
-        },
-      );
+        }));
       const { entries, transcriptSnapshotUpdatedAt } = transcriptSnapshot;
-      const summary = await this.buildSessionSummaryFromEntries(
-        sessionId,
-        projectId,
-        entries,
-        transcriptSnapshotUpdatedAt,
-      );
+      const summary = compactWindow
+        ? cloneSessionSummary(summaryHint ?? null)
+        : await this.buildSessionSummaryFromEntries(
+            sessionId,
+            projectId,
+            entries,
+            transcriptSnapshotUpdatedAt,
+          );
       if (!summary) return null;
 
       // Filter entries if needed (for incremental fetching)
@@ -788,11 +842,35 @@ export class CodexSessionReader implements ISessionReader {
         // Logic to filter entries would go here if strict incremental loading is needed
       }
 
+      const provider = compactWindow
+        ? summary.provider === "codex-oss"
+          ? "codex-oss"
+          : "codex"
+        : this.determineProviderFromEntries(entries);
       return {
         summary,
         transcriptSnapshotUpdatedAt,
+        ...(compactWindow
+          ? {
+              readWindow:
+                compactWindow.kind === "compact-tail"
+                  ? {
+                      kind: compactWindow.kind,
+                      omittedPrefix: compactWindow.omittedPrefix,
+                      startByte: compactWindow.startByte,
+                      compactBoundaries: compactWindow.compactBoundaries,
+                    }
+                  : {
+                      kind: compactWindow.kind,
+                      omittedPrefix: compactWindow.omittedPrefix,
+                      startByte: compactWindow.startByte,
+                      endByte: compactWindow.endByte,
+                      compactBoundaries: compactWindow.compactBoundaries,
+                    },
+            }
+          : {}),
         data: {
-          provider: this.determineProviderFromEntries(entries),
+          provider,
           session: {
             entries: finalEntries,
           },
@@ -1693,6 +1771,154 @@ export class CodexSessionReader implements ISessionReader {
     );
   }
 
+  private async findCompactTailStart(
+    filePath: string,
+    fileSize: number,
+    compactBoundaries: number,
+  ): Promise<number | null> {
+    let position = fileSize;
+    let rightPartial = Buffer.alloc(0);
+    let found = 0;
+
+    while (position > 0) {
+      const start = Math.max(0, position - CODEX_ENTRY_READ_CHUNK_BYTES);
+      const block = await this.readFileRange(filePath, start, position - start);
+      const combined =
+        rightPartial.length > 0 ? Buffer.concat([block, rightPartial]) : block;
+      const firstNewline = combined.indexOf(0x0a);
+      if (start > 0 && firstNewline < 0) {
+        rightPartial = Buffer.from(combined);
+        position = start;
+        continue;
+      }
+
+      const completeStart = start === 0 ? 0 : firstNewline + 1;
+      let lineEnd = combined.length;
+      while (lineEnd > completeStart) {
+        if (combined[lineEnd - 1] === 0x0a) {
+          lineEnd -= 1;
+          continue;
+        }
+        const previousNewline = combined.lastIndexOf(0x0a, lineEnd - 1);
+        const lineStart = Math.max(completeStart, previousNewline + 1);
+        const line = combined.subarray(lineStart, lineEnd);
+        if (line.includes('"compacted"')) {
+          try {
+            const candidate = JSON.parse(line.toString("utf8")) as {
+              type?: unknown;
+            };
+            if (candidate.type === "compacted") {
+              found += 1;
+              if (found === compactBoundaries) {
+                return start + lineStart;
+              }
+            }
+          } catch {
+            // A provisional or malformed line is not a usable boundary.
+          }
+        }
+        lineEnd = previousNewline >= completeStart ? previousNewline : 0;
+      }
+
+      rightPartial =
+        start > 0
+          ? Buffer.from(combined.subarray(0, firstNewline))
+          : Buffer.alloc(0);
+      position = start;
+    }
+
+    return null;
+  }
+
+  private async readCompactTailSnapshot(
+    filePath: string,
+    stats: Awaited<ReturnType<typeof stat>>,
+    compactBoundaries: number,
+  ): Promise<CodexCompactTailSnapshot | null> {
+    const fileSize = Number(stats.size);
+    if (
+      isCompressedCodexSessionFile(filePath) ||
+      fileSize <=
+        CODEX_COMPACT_TAIL_ESTIMATED_BYTES_PER_BOUNDARY * compactBoundaries
+    ) {
+      return null;
+    }
+
+    const startByte = await this.findCompactTailStart(
+      filePath,
+      fileSize,
+      compactBoundaries,
+    );
+    if (startByte === null || startByte <= 0) {
+      return null;
+    }
+
+    const parsed = await this.readPlainEntryRange(
+      filePath,
+      startByte,
+      fileSize - startByte,
+    );
+    if (parsed.entries[0]?.type !== "compacted") {
+      return null;
+    }
+
+    return {
+      entries: parsed.entries,
+      transcriptSnapshotUpdatedAt: new Date(
+        getCodexRolloutActivityTimeMs(filePath, stats),
+      ).toISOString(),
+      kind: "compact-tail",
+      omittedPrefix: true,
+      startByte,
+      compactBoundaries,
+    };
+  }
+
+  private async readCompactPageSnapshot(
+    filePath: string,
+    stats: Awaited<ReturnType<typeof stat>>,
+    compactBoundaries: number,
+    beforeMessageId: string,
+  ): Promise<CodexCompactPageSnapshot | null> {
+    const fileSize = Number(stats.size);
+    const endByte = parseCodexSourceByteCursor(beforeMessageId);
+    if (
+      isCompressedCodexSessionFile(filePath) ||
+      endByte === null ||
+      endByte <= 0 ||
+      endByte > fileSize
+    ) {
+      return null;
+    }
+
+    const locatedStartByte = await this.findCompactTailStart(
+      filePath,
+      endByte,
+      compactBoundaries,
+    );
+    const startByte = locatedStartByte ?? 0;
+    const parsed = await this.readPlainEntryRange(
+      filePath,
+      startByte,
+      endByte - startByte,
+    );
+    if (locatedStartByte !== null && parsed.entries[0]?.type !== "compacted") {
+      return null;
+    }
+
+    return {
+      entries: parsed.entries,
+      transcriptSnapshotUpdatedAt: new Date(
+        getCodexRolloutActivityTimeMs(filePath, stats),
+      ).toISOString(),
+      kind: "compact-page",
+      omittedPrefix: startByte > 0,
+      startByte,
+      endByte,
+      compactBoundaries,
+    };
+  }
+
   private async readPlainEntryRange(
     filePath: string,
     start: number,
@@ -1702,6 +1928,7 @@ export class CodexSessionReader implements ISessionReader {
   ): Promise<CodexParsedEntrySnapshot> {
     const entries: CodexSessionEntry[] = [];
     let partialLine = initialPartialLine;
+    let partialLineStart = start - Buffer.byteLength(initialPartialLine);
     let lineCount = 0;
     let maxLineLength = 0;
     let parseMs = 0;
@@ -1712,12 +1939,16 @@ export class CodexSessionReader implements ISessionReader {
       partialLine = lines.pop() ?? "";
 
       for (const line of lines) {
+        const lineStart = partialLineStart;
+        partialLineStart += Buffer.byteLength(line) + 1;
         lineCount += 1;
         maxLineLength = Math.max(maxLineLength, line.length);
         const trimmed = line.trim();
         if (!trimmed) continue;
         const entry = parseCodexSessionEntry(trimmed);
-        if (entry) entries.push(entry);
+        if (entry) {
+          entries.push(tagCodexEntrySourceByteOffset(entry, lineStart));
+        }
       }
 
       if (final && partialLine) {
@@ -1725,7 +1956,7 @@ export class CodexSessionReader implements ISessionReader {
         maxLineLength = Math.max(maxLineLength, partialLine.length);
         const entry = parseCodexSessionEntry(partialLine.trim());
         if (entry) {
-          entries.push(entry);
+          entries.push(tagCodexEntrySourceByteOffset(entry, partialLineStart));
           partialLine = "";
         }
       }

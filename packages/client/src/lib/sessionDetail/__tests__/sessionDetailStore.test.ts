@@ -85,6 +85,12 @@ describe("SessionDetailMemoryCache", () => {
     expect(getSessionDetailEntryKey(storeKey)).toBe(
       "host%3Aa:project-a:session-a",
     );
+    expect(
+      getSessionDetailEntryKey({
+        ...storeKey,
+        initialHistoryCompactions: null,
+      }),
+    ).toBe("host%3Aa:project-a:session-a?initialHistory=unlimited");
 
     const stats = store.getStats();
     expect(stats.entryCount).toBe(1);

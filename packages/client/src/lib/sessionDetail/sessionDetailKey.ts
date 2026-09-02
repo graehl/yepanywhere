@@ -4,6 +4,7 @@ export interface SessionDetailEntryKeyInput {
   sourceKey: ClientSummarySourceKey;
   projectId: string;
   sessionId: string;
+  initialHistoryCompactions?: number | null;
   tailTurns?: number;
   tailFrom?: string;
 }
@@ -16,6 +17,7 @@ export function getSessionDetailEntryKey({
   sourceKey,
   projectId,
   sessionId,
+  initialHistoryCompactions,
   tailTurns,
   tailFrom,
 }: SessionDetailEntryKeyInput): string {
@@ -25,6 +27,9 @@ export function getSessionDetailEntryKey({
     encodeKeyPart(sessionId),
   ].join(":");
   const variant = [
+    initialHistoryCompactions !== undefined
+      ? `initialHistory=${initialHistoryCompactions ?? "unlimited"}`
+      : "",
     tailTurns !== undefined ? `tailTurns=${tailTurns}` : "",
     tailFrom ? `tailFrom=${encodeKeyPart(tailFrom)}` : "",
   ]

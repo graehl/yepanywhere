@@ -83,6 +83,12 @@ export function toSessionListSummary(
 export interface GetSessionOptions {
   /** Include orphaned tool use detection (default: true, only applicable for Claude) */
   includeOrphans?: boolean;
+  /** Bound a provider-native detail read to this many recent compactions. */
+  tailCompactions?: number;
+  /** Bound an older-page read to source content before this normalized id. */
+  beforeMessageId?: string;
+  /** Fresh indexed metadata that permits a provider to skip its historical prefix. */
+  summaryHint?: SessionSummary;
 }
 
 export type SessionSummaryReadMode = "full" | "head";
@@ -104,6 +110,21 @@ export interface LoadedSession {
   summary: SessionSummary;
   /** Source timestamp captured with the transcript rows in this snapshot. */
   transcriptSnapshotUpdatedAt: string;
+  /** Provider read window used to avoid retaining known-hidden source bytes. */
+  readWindow?:
+    | {
+        kind: "compact-tail";
+        omittedPrefix: true;
+        startByte: number;
+        compactBoundaries: number;
+      }
+    | {
+        kind: "compact-page";
+        omittedPrefix: boolean;
+        startByte: number;
+        endByte: number;
+        compactBoundaries: number;
+      };
   data: UnifiedSession;
 }
 

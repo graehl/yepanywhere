@@ -218,6 +218,7 @@ function defaultStoreEntryKey(projectId = "proj-1", sessionId = "sess-1") {
     sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
     projectId,
     sessionId,
+    initialHistoryCompactions: 2,
     tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
   };
 }
@@ -231,6 +232,7 @@ function runtimeStoreEntryKey(
     sourceKey: runtime.sourceKey,
     projectId,
     sessionId,
+    initialHistoryCompactions: 2,
     tailTurns: DEFAULT_INITIAL_TAIL_TURNS,
   };
 }
@@ -318,6 +320,51 @@ describe("useSessionMessages cache", () => {
     configureSessionDetailRetention(DEFAULT_SESSION_DETAIL_RETENTION);
     __resetSessionLoadCacheForTest();
     resetClientSummaryStoreForTests();
+  });
+
+  it("uses the configured bounded initial compact history", async () => {
+    window.localStorage.setItem(UI_KEYS.sessionInitialHistoryCompactions, "12");
+    invalidateLocalStorageValues(UI_KEYS.sessionInitialHistoryCompactions);
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      undefined,
+      expect.objectContaining({
+        tailCompactions: 12,
+        tailTurns: undefined,
+      }),
+    );
+  });
+
+  it("uses an explicit full-history request for unlimited initial history", async () => {
+    window.localStorage.setItem(
+      UI_KEYS.sessionInitialHistoryCompactions,
+      "unlimited",
+    );
+    invalidateLocalStorageValues(UI_KEYS.sessionInitialHistoryCompactions);
+    apiMocks.getSession.mockResolvedValueOnce(sessionResponse("msg-1"));
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        fullHistory: true,
+        fullHistoryReason: "browser initial history preference",
+      },
+    );
   });
 
   it("enables active-window trimming by default while following the tail", async () => {
@@ -2836,6 +2883,64 @@ describe("useSessionMessages cache", () => {
       rendered.result.current.messages.map((message) => message.uuid),
     ).toEqual(["older-user", "older-assistant", "current-user"]);
     expect(rendered.result.current.olderLoadContinuationRequired).toBe(false);
+  });
+
+  it("reads older search pages through the fixed compact cursor path", async () => {
+    apiMocks.getSession
+      .mockResolvedValueOnce({
+        ...sessionResponse("current-user"),
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "codex-compacted-byte-500-current",
+          totalMessageCount: 1,
+          returnedMessageCount: 1,
+          totalCompactions: 2,
+        },
+      })
+      .mockResolvedValueOnce({
+        ...sessionResponse("older-user"),
+        messages: [
+          {
+            uuid: "older-user",
+            type: "user",
+            timestamp: "2026-05-03T23:58:00.000Z",
+            message: { role: "user", content: "older request" },
+          },
+        ],
+        pagination: {
+          hasOlderMessages: true,
+          truncatedBeforeMessageId: "codex-compacted-byte-100-older",
+          totalMessageCount: 1,
+          returnedMessageCount: 1,
+          totalCompactions: 2,
+        },
+      });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({ projectId: "proj-1", sessionId: "sess-1" }),
+    );
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    const page = await rendered.result.current.readOlderSearchPage(
+      "codex-compacted-byte-500-current",
+    );
+
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      {
+        tailCompactions: 2,
+        beforeMessageId: "codex-compacted-byte-500-current",
+      },
+    );
+    expect(page?.messages.map((message) => message.uuid)).toEqual([
+      "older-user",
+    ]);
+    expect(
+      rendered.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["current-user"]);
   });
 
   it("recovers older history after a stale pagination cursor", async () => {

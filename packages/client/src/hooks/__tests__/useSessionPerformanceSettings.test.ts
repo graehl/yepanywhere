@@ -20,6 +20,7 @@ import {
   getSessionActiveWindowTrimEnabled,
   getSessionScrollBehaviorMode,
   getSessionDomLingerEnabled,
+  getSessionInitialHistoryCompactions,
   getSessionTranscriptMemoryStats,
   getSessionTranscriptCacheBudgetMb,
   getSessionTranscriptCacheEnabled,
@@ -96,12 +97,14 @@ describe("useSessionPerformanceSettings", () => {
     expect(result.current.sessionTranscriptCacheTtlHours).toBe(1);
     expect(result.current.sessionScrollBehaviorMode).toBe("live-tail");
     expect(result.current.sessionActiveWindowTrimEnabled).toBe(true);
+    expect(result.current.sessionInitialHistoryCompactions).toBe(2);
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
     expect(getSessionTranscriptCacheTtlHours()).toBe(1);
     expect(getSessionScrollBehaviorMode()).toBe("live-tail");
     expect(getSessionActiveWindowTrimEnabled()).toBe(true);
+    expect(getSessionInitialHistoryCompactions()).toBe(2);
   });
 
   it("persists and publishes an explicit active-window trim opt-out", () => {
@@ -135,6 +138,59 @@ describe("useSessionPerformanceSettings", () => {
     });
 
     expect(result.current.sessionActiveWindowTrimEnabled).toBe(false);
+  });
+
+  it("persists bounded and unlimited initial history values", () => {
+    const { result: first } = renderHook(() => useSessionPerformanceSettings());
+    const { result: second } = renderHook(() =>
+      useSessionPerformanceSettings(),
+    );
+
+    act(() => {
+      first.current.setSessionInitialHistoryCompactions(12);
+    });
+    expect(first.current.sessionInitialHistoryCompactions).toBe(12);
+    expect(second.current.sessionInitialHistoryCompactions).toBe(12);
+    expect(getSessionInitialHistoryCompactions()).toBe(12);
+    expect(localStorage.getItem(UI_KEYS.sessionInitialHistoryCompactions)).toBe(
+      "12",
+    );
+
+    act(() => {
+      first.current.setSessionInitialHistoryCompactions(null);
+    });
+    expect(first.current.sessionInitialHistoryCompactions).toBeNull();
+    expect(second.current.sessionInitialHistoryCompactions).toBeNull();
+    expect(getSessionInitialHistoryCompactions()).toBeNull();
+    expect(localStorage.getItem(UI_KEYS.sessionInitialHistoryCompactions)).toBe(
+      "unlimited",
+    );
+  });
+
+  it("updates initial history from another tab and rejects invalid storage", () => {
+    const { result } = renderHook(() => useSessionPerformanceSettings());
+
+    localStorage.setItem(UI_KEYS.sessionInitialHistoryCompactions, "20");
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: UI_KEYS.sessionInitialHistoryCompactions,
+          newValue: "20",
+        }),
+      );
+    });
+    expect(result.current.sessionInitialHistoryCompactions).toBe(20);
+
+    localStorage.setItem(UI_KEYS.sessionInitialHistoryCompactions, "9999");
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: UI_KEYS.sessionInitialHistoryCompactions,
+          newValue: "9999",
+        }),
+      );
+    });
+    expect(result.current.sessionInitialHistoryCompactions).toBe(2);
   });
 
   it("seeds the budget from the legacy boolean toggle", () => {

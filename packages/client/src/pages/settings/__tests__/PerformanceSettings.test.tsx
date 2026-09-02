@@ -8,6 +8,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { invalidateLocalStorageValues } from "../../../lib/localStorageValue";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import { PerformanceSettings } from "../PerformanceSettings";
 
@@ -49,6 +50,7 @@ vi.mock("../../../hooks/useServerSettings", () => ({
 describe("PerformanceSettings", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    invalidateLocalStorageValues();
     undoMocks.useSettingsUndoBaseline.mockClear();
     serverMocks.settings.hostProcessObservabilityEnabled = true;
     serverMocks.updateSetting.mockClear();
@@ -73,6 +75,54 @@ describe("PerformanceSettings", () => {
     expect(window.localStorage.getItem(UI_KEYS.sessionActiveWindowTrim)).toBe(
       "false",
     );
+  });
+
+  it("persists bounded and unlimited initial history values", () => {
+    render(<PerformanceSettings />);
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "performanceInitialHistoryTitle",
+    });
+    expect(slider.value).toBe("1");
+
+    fireEvent.change(slider, { target: { value: "11" } });
+    fireEvent.pointerUp(slider);
+    expect(
+      window.localStorage.getItem(UI_KEYS.sessionInitialHistoryCompactions),
+    ).toBe("12");
+
+    fireEvent.change(slider, { target: { value: "20" } });
+    fireEvent.pointerUp(slider);
+    expect(
+      window.localStorage.getItem(UI_KEYS.sessionInitialHistoryCompactions),
+    ).toBe("unlimited");
+  });
+
+  it("includes initial history in the pane undo baseline", () => {
+    render(<PerformanceSettings />);
+    const initialCall = undoMocks.useSettingsUndoBaseline.mock.calls[0];
+    const initialState = initialCall?.[0];
+    expect(initialState?.sessionInitialHistoryCompactions).toBe(2);
+
+    const slider = screen.getByRole<HTMLInputElement>("slider", {
+      name: "performanceInitialHistoryTitle",
+    });
+    fireEvent.change(slider, { target: { value: "20" } });
+    fireEvent.pointerUp(slider);
+    expect(
+      window.localStorage.getItem(UI_KEYS.sessionInitialHistoryCompactions),
+    ).toBe("unlimited");
+
+    const latestCall = undoMocks.useSettingsUndoBaseline.mock.calls.at(-1);
+    const restore = latestCall?.[1];
+    act(() => {
+      restore?.(initialState);
+    });
+
+    expect(
+      window.localStorage.getItem(UI_KEYS.sessionInitialHistoryCompactions),
+    ).toBe("2");
+    expect(slider.value).toBe("1");
   });
 
   it("includes active-window trimming in the pane undo baseline", () => {

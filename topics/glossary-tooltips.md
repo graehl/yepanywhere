@@ -561,6 +561,12 @@ artifact to already-received blocks. A stale completion is ignored when its
 project, governing source path, or dependency version no longer matches the
 current render.
 
+Intermediate artifact-state renders that produce the same effective HTML do
+not reinsert it or discard imperatively hydrated descendants. When ready
+annotation genuinely changes the generated HTML, the owning renderer may
+replace it, but embedded media already loaded for that document remounts from
+its renderer-lifetime entry without another fetch or a collapsed frame.
+
 For a bounded valid glossary graph, initial path validation, parsing, and
 compilation should complete in under one second on the project's ordinary
 development baseline. This is a cold-work budget rather than permission to

@@ -39,4 +39,21 @@ describe("MarkdownPreview", () => {
     expect(handleCopy).toHaveBeenCalledOnce();
     expect(setData).not.toHaveBeenCalled();
   });
+
+  it("preserves imperatively mounted media when the HTML is unchanged", () => {
+    const html = '<span class="local-media-inline-preview"></span>';
+    const { container, rerender } = render(
+      <MarkdownPreview ariaLabel="Initial preview" html={html} />,
+    );
+    const mediaRoot = container.querySelector(".local-media-inline-preview");
+    if (!mediaRoot) {
+      throw new Error("Expected inline media preview root");
+    }
+    const image = document.createElement("img");
+    mediaRoot.append(image);
+
+    rerender(<MarkdownPreview ariaLabel="Updated preview" html={html} />);
+
+    expect(container.querySelector("img")).toBe(image);
+  });
 });

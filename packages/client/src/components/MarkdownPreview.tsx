@@ -165,6 +165,10 @@ export const MarkdownPreview = memo(
       }
       return annotateGlossaryHtml(html, glossary.result.artifact).html;
     }, [glossary, html]);
+    const renderedMarkup = useMemo(
+      () => ({ __html: renderedHtml }),
+      [renderedHtml],
+    );
     return (
       <div
         className={classes}
@@ -179,7 +183,7 @@ export const MarkdownPreview = memo(
         <div
           className="markdown-rendered"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered markdown is sanitized
-          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+          dangerouslySetInnerHTML={renderedMarkup}
         />
       </div>
     );

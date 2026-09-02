@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { toUrlProjectId } from "@yep-anywhere/shared";
+import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../i18n";
@@ -17,7 +18,12 @@ import {
 } from "../../lib/sessionViewerController";
 import { ImageViewer } from "../ImageViewer";
 import imageViewerStyles from "../ImageViewer.module.css";
-import { LocalFileModal, LocalMediaModal } from "../LocalMediaModal";
+import {
+  LocalFileModal,
+  LocalMediaModal,
+  type LocalMediaSource,
+  useLocalMediaInlinePreviews,
+} from "../LocalMediaModal";
 import localMediaStyles from "../LocalMediaModal.module.css";
 import { SessionViewerProvider } from "../SessionManagedViewer";
 
@@ -67,6 +73,24 @@ function MediaViewerControllerProbe() {
       Restore image viewer
     </button>
   ) : null;
+}
+
+function InlineMediaPreviewHarness({
+  html,
+  source,
+}: {
+  html: string;
+  source: LocalMediaSource;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLocalMediaInlinePreviews(rootRef, "stable-file-version", source);
+  return (
+    <div
+      ref={rootRef}
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: test fixture mirrors sanitized Markdown output
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 describe("LocalMediaModal loading transitions", () => {
@@ -126,6 +150,53 @@ describe("LocalMediaModal loading transitions", () => {
 
     imageBlob.resolve(new Blob(["png"], { type: "image/png" }));
     expect(await screen.findByRole("img", { name: "first.png" })).toBeTruthy();
+  });
+
+  it("reuses inline media when generated HTML is replaced", async () => {
+    const createObjectUrl = vi.fn(() => "blob:shared-plot");
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectUrl,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const fetchBlob = vi.fn(
+      async () => new Blob(["png"], { type: "image/png" }),
+    );
+    const source = { fetchBlob };
+    const previews = ["first", "second"]
+      .map(
+        (label) =>
+          `<span data-label="${label}" class="local-media-inline-preview" data-media-path="/tmp/plot.png" data-media-type="image" data-expanded="true"></span>`,
+      )
+      .join("");
+    const { container, rerender } = render(
+      <InlineMediaPreviewHarness html={previews} source={source} />,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("img")).toHaveLength(2),
+    );
+    expect(fetchBlob).toHaveBeenCalledOnce();
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+
+    rerender(
+      <InlineMediaPreviewHarness
+        html={`<p>Annotated</p>${previews}`}
+        source={source}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("img")).toHaveLength(2),
+    );
+    expect(fetchBlob).toHaveBeenCalledOnce();
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(
+      Array.from(container.querySelectorAll("img"), (image) => image.src),
+    ).toEqual(["blob:shared-plot", "blob:shared-plot"]);
   });
 
   it("keeps the decoded image visible until its replacement is ready", async () => {

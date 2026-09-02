@@ -99,6 +99,13 @@ and the route it pulls from.
   `local-media-inline-preview` placeholders emitted by the server Markdown
   augment; it's wired from `blocks/TextBlock.tsx` and
   `renderers/blocks/TextRenderer.tsx`. Route: `/api/local-image`. Relay-safe.
+  Within one mounted renderer and file version, repeated placeholders for the
+  same path and media type share one in-flight or loaded blob and object URL.
+  Replacing generated Markdown HTML, including glossary annotation, remounts
+  those previews from the loaded entry without an empty or zero-height frame;
+  changing the renderer source tears the entry down and revokes its URL. This
+  narrow renderer-lifetime reuse does not extend to modals, downloads, or
+  other media surfaces.
 - **Legacy path-backed ViewImage result** — a historical result without a
   media handle still opens its path through `LocalMediaModal` and
   `/api/local-image`. New live and durable results snapshot permitted paths

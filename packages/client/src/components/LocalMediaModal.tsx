@@ -1396,6 +1396,15 @@ export function useLocalMediaInlinePreviews(
     const root = rootRef.current;
     if (!root) return;
     const objectUrls = new Set<string>();
+    const loadedMedia = new Map<
+      string,
+      { objectUrl: string; sizing: ImageSizing }
+    >();
+    const pendingMedia = new Map<
+      string,
+      Promise<{ objectUrl: string; sizing: ImageSizing }>
+    >();
+    let disposed = false;
 
     const getInlineMediaType = (element: HTMLElement) => {
       const mediaType = element.getAttribute("data-media-type");
@@ -1456,6 +1465,41 @@ export function useLocalMediaInlinePreviews(
       }
     };
 
+    const loadMedia = (
+      path: string,
+      mediaType: LocalResourceMediaType,
+    ): Promise<{ objectUrl: string; sizing: ImageSizing }> => {
+      const cacheKey = `${mediaType}\0${path}`;
+      const loaded = loadedMedia.get(cacheKey);
+      if (loaded) return Promise.resolve(loaded);
+
+      const pending = pendingMedia.get(cacheKey);
+      if (pending) return pending;
+
+      const request = fetchLocalMediaBlob(
+        path,
+        mediaSource,
+        "inline",
+        transport,
+      )
+        .then(async (blob) => {
+          const objectUrl = URL.createObjectURL(blob);
+          objectUrls.add(objectUrl);
+          const sizing = await describeImageSizing(blob, path);
+          const media = { objectUrl, sizing };
+          if (disposed) {
+            objectUrls.delete(objectUrl);
+            URL.revokeObjectURL(objectUrl);
+          } else {
+            loadedMedia.set(cacheKey, media);
+          }
+          return media;
+        })
+        .finally(() => pendingMedia.delete(cacheKey));
+      pendingMedia.set(cacheKey, request);
+      return request;
+    };
+
     const refresh = () => {
       syncDefaultExpansion();
       const elements = Array.from(
@@ -1470,19 +1514,31 @@ export function useLocalMediaInlinePreviews(
         element.dataset.inlineMounted = "true";
         element.replaceChildren();
 
+        const cacheKey = `${mediaType}\0${path}`;
+        const loaded = loadedMedia.get(cacheKey);
+        if (loaded) {
+          renderInlinePreview(
+            element,
+            path,
+            mediaType,
+            loaded.objectUrl,
+            loaded.sizing,
+          );
+          continue;
+        }
+
         const loading = document.createElement("span");
         loading.className = inlinePreviewClass.loading;
         loading.textContent = "Loading...";
         element.append(loading);
 
-        fetchLocalMediaBlob(path, mediaSource, "inline", transport)
-          .then(async (blob) => {
-            const objectUrl = URL.createObjectURL(blob);
-            objectUrls.add(objectUrl);
-            const sizing = await describeImageSizing(blob, path);
+        loadMedia(path, mediaType)
+          .then(({ objectUrl, sizing }) => {
+            if (disposed || !element.isConnected) return;
             renderInlinePreview(element, path, mediaType, objectUrl, sizing);
           })
           .catch((err) => {
+            if (disposed || !element.isConnected) return;
             const error = document.createElement("span");
             error.className = inlinePreviewClass.error;
             error.textContent =
@@ -1501,6 +1557,7 @@ export function useLocalMediaInlinePreviews(
       subtree: true,
     });
     return () => {
+      disposed = true;
       observer.disconnect();
       for (const url of objectUrls) {
         URL.revokeObjectURL(url);

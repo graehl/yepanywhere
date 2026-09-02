@@ -50,6 +50,7 @@ import {
 import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
+import type { CodexPlanToolMode } from "./codex-plan-tool.js";
 import { stripYaControlPlaneCredentials } from "./env-filter.js";
 import type {
   ProviderActivitySnapshot,
@@ -1148,6 +1149,8 @@ export class CodexProvider implements AgentProvider {
   } | null = null;
   private getConfiguredReasoningSummary: () => CodexReasoningSummary = () =>
     DEFAULT_CODEX_REASONING_SUMMARY;
+  private getConfiguredPlanToolMode: () => CodexPlanToolMode = () =>
+    "provider-default";
   private getConfiguredSubagentMaxDepth: () => SubagentMaxDepth = () =>
     DEFAULT_SUBAGENT_MAX_DEPTH;
 
@@ -1169,6 +1172,10 @@ export class CodexProvider implements AgentProvider {
 
   setReasoningSummaryGetter(getter: () => CodexReasoningSummary): void {
     this.getConfiguredReasoningSummary = getter;
+  }
+
+  setPlanToolModeGetter(getter: () => CodexPlanToolMode): void {
+    this.getConfiguredPlanToolMode = getter;
   }
 
   setSubagentMaxDepthGetter(getter: () => SubagentMaxDepth): void {
@@ -3364,13 +3371,6 @@ export class CodexProvider implements AgentProvider {
     // of advertising a browser that fails during backend discovery.
     const config: NonNullable<ThreadStartParams["config"]> = {
       model_reasoning_summary: this.getConfiguredReasoningSummary(),
-      // Codex 0.152 made update_plan opt-in. YA renders its plan notifications,
-      // so keep the tool available across new, resumed, and forked threads.
-      tools: {
-        update_plan: {
-          enabled: true,
-        },
-      },
       skills: {
         config: [
           {
@@ -3380,6 +3380,14 @@ export class CodexProvider implements AgentProvider {
         ],
       },
     };
+    const planToolMode = this.getConfiguredPlanToolMode();
+    if (planToolMode !== "provider-default") {
+      config.tools = {
+        update_plan: {
+          enabled: planToolMode === "enabled",
+        },
+      };
+    }
     const subagentMaxDepth = this.getConfiguredSubagentMaxDepth();
     if (subagentMaxDepth !== null) {
       config.agents = { max_depth: subagentMaxDepth };

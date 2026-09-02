@@ -22,6 +22,7 @@ import {
 } from "@yep-anywhere/shared";
 import { prepareSessionSandbox } from "../../session-sandbox.js";
 import { CodexProvider } from "./codex.js";
+import type { CodexPlanToolMode } from "./codex-plan-tool.js";
 import { startFakeProviderSession } from "./provider-runtime-fake.js";
 import type { ProviderSessionStartResult } from "./provider-session-owner.js";
 import {
@@ -31,6 +32,7 @@ import {
 } from "./provider-runtime-stdio.js";
 
 interface ManagedRunnerRuntimeConfig {
+  codexPlanToolMode?: CodexPlanToolMode;
   codexReasoningSummary?: CodexReasoningSummary;
   subagentMaxDepth?: SubagentMaxDepth;
 }
@@ -87,6 +89,9 @@ async function createSession(
   });
   provider.setReasoningSummaryGetter(
     () => config.codexReasoningSummary ?? DEFAULT_CODEX_REASONING_SUMMARY,
+  );
+  provider.setPlanToolModeGetter(
+    () => config.codexPlanToolMode ?? "provider-default",
   );
   provider.setSubagentMaxDepthGetter(
     () => config.subagentMaxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH,

@@ -7,6 +7,10 @@ import "./startupEnv.js";
 import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "./defaults.js";
 import { captureStartupEnvSettings } from "./envSettings.js";
 import { getDefaultCodexSessionsDir } from "./projects/codex-scanner.js";
+import {
+  parseCodexPlanToolMode,
+  type CodexPlanToolMode,
+} from "./sdk/providers/codex-plan-tool.js";
 import type { PermissionMode } from "./sdk/types.js";
 import {
   parseSummaryParserWorkerMode,
@@ -44,6 +48,8 @@ export interface Config {
   desktopRuntime: boolean;
   /** Desktop-provided Codex CLI path. When set, it is authoritative. */
   codexCliPath?: string;
+  /** YA's thread-scope override for Codex update_plan availability. */
+  codexPlanToolMode: CodexPlanToolMode;
   /** Directory where Claude projects are stored */
   claudeProjectsDir: string;
   /** Claude sessions directory (~/.claude/projects) */
@@ -318,6 +324,9 @@ export function loadConfig(): Config {
     dataDir,
     desktopRuntime,
     codexCliPath,
+    codexPlanToolMode: parseCodexPlanToolMode(
+      process.env.YEP_CODEX_UPDATE_PLAN,
+    ),
     claudeProjectsDir: process.env.CLAUDE_PROJECTS_DIR ?? claudeSessionsDir,
     claudeSessionsDir,
     geminiSessionsDir,

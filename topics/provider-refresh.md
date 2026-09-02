@@ -166,14 +166,18 @@ possible.
 Current source refresh, 2026-09-02:
 
 - Installed Codex is `0.152.1`; the official `rust-v0.152.0` and
-  `rust-v0.152.1` sources are commits
+  `rust-v0.152.1` annotated tag objects are
   `7f6bee13af649d0da23ac0c2bf5c83f571fcd611` and
-  `3c6cfbab81e44218c729dc8c6b304cb760d1b8a1`. Root compatibility and
-  expected-protocol markers now record `0.152.1`.
-- Codex 0.152 makes `update_plan` opt-in. YA consumes
-  `turn/plan/updated` and renders it as checklist progress, so every new,
-  resumed, and forked YA thread now explicitly enables the tool instead of
-  silently losing that surface after the CLI upgrade.
+  `3c6cfbab81e44218c729dc8c6b304cb760d1b8a1`; they peel to commits
+  `316795b3cf2a45e90d121d9f46499d4658b2645c` and
+  `5adb68a49933ae446bf11935662c83dba55a0804`, respectively. Root
+  compatibility and expected-protocol markers now record `0.152.1`.
+- Codex 0.152 makes `update_plan` opt-in. YA continues to render emitted
+  `turn/plan/updated` notifications as checklist progress, but the default
+  `YEP_CODEX_UPDATE_PLAN=provider-default` adds no thread override and
+  therefore preserves Codex's own configuration. Explicit `disabled` and
+  `enabled` values inject the matching `tools.update_plan.enabled` value for
+  every new, resumed, and forked YA thread.
 - `pnpm codex:protocol:check` is clean: none of the generated types in YA's
   consumed subset changed. The wider app-server protocol adds optional shell
   command timeouts, two authentication-recovery notifications, account and
@@ -196,8 +200,9 @@ Current source refresh, 2026-09-02:
   from 2026-04-17 and 2026-04-18; they predate this upgrade and are not schema
   failures.
 
-Status: Codex 0.152.1 app-server compatibility is refreshed, and YA preserves
-plan/checklist progress across the upstream default change.
+Status: Codex 0.152.1 app-server compatibility is refreshed, and plan-tool
+availability follows provider behavior unless the operator selects an explicit
+YA override.
 
 Current source refresh, 2026-08-29:
 

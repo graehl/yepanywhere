@@ -176,6 +176,7 @@ import {
   getProvider,
   isProviderRuntimeHostAvailable,
 } from "./sdk/providers/index.js";
+import type { CodexPlanToolMode } from "./sdk/providers/codex-plan-tool.js";
 import type { AgentProvider } from "./sdk/providers/types.js";
 import type {
   ClaudeSDK,
@@ -404,6 +405,8 @@ export interface AppOptions {
   enabledProviders?: string[];
   /** Explicit Codex CLI path supplied by an embedding runtime such as desktop. */
   codexCliPath?: string;
+  /** Thread-scope Codex plan-tool override; provider default when omitted. */
+  codexPlanToolMode?: CodexPlanToolMode;
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled?: boolean;
   /** Validated server-routed speech backends for capability advertisement. */
@@ -517,6 +520,7 @@ export function createApp(options: AppOptions): AppResult {
       ).some((metadata) => metadata.provider === "claude-ollama"),
     getProviderRuntimeSnapshot: () => ({
       codexCliPath: options.codexCliPath,
+      codexPlanToolMode: options.codexPlanToolMode,
       codexReasoningSummary: options.serverSettingsService?.getSetting(
         "codexReasoningSummary",
       ),

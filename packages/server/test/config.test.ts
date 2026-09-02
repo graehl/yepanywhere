@@ -140,6 +140,31 @@ describe("loadConfig codex paths", () => {
     expect(config.codexCliPath).toBeUndefined();
   });
 
+  it("defaults the Codex plan tool to provider behavior", async () => {
+    const { loadConfig } = await import("../src/config.js");
+
+    expect(loadConfig().codexPlanToolMode).toBe("provider-default");
+  });
+
+  it.each(["provider-default", "disabled", "enabled"] as const)(
+    "parses the %s Codex plan-tool override",
+    async (mode) => {
+      vi.stubEnv("YEP_CODEX_UPDATE_PLAN", mode);
+      const { loadConfig } = await import("../src/config.js");
+
+      expect(loadConfig().codexPlanToolMode).toBe(mode);
+    },
+  );
+
+  it("rejects an invalid Codex plan-tool override", async () => {
+    vi.stubEnv("YEP_CODEX_UPDATE_PLAN", "sometimes");
+    const { loadConfig } = await import("../src/config.js");
+
+    expect(() => loadConfig()).toThrow(
+      "YEP_CODEX_UPDATE_PLAN must be one of: provider-default, disabled, enabled",
+    );
+  });
+
   it("defaults Codex summary parser worker on when unset", async () => {
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();

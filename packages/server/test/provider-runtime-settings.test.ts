@@ -103,4 +103,24 @@ describe("provider runtime settings", () => {
     });
     expect(getSetting).toHaveBeenCalledWith("codexReasoningSummary");
   });
+
+  it.each([
+    ["provider-default", undefined],
+    ["disabled", false],
+    ["enabled", true],
+  ] as const)("applies the %s Codex plan-tool mode", (mode, enabled) => {
+    createApp({
+      sdk: new MockClaudeSDK(),
+      codexPlanToolMode: mode,
+    });
+
+    const config = getCodexThreadConfig();
+    if (enabled === undefined) {
+      expect(config).not.toHaveProperty("tools.update_plan");
+    } else {
+      expect(config).toMatchObject({
+        tools: { update_plan: { enabled } },
+      });
+    }
+  });
 });

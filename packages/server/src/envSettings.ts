@@ -377,6 +377,12 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
       "Add an absolute compose-time marker before or after provider-bound user turns (before|after). The Message Delivery setting overrides it.",
   },
   {
+    name: "YEP_CODEX_UPDATE_PLAN",
+    group: "Providers & features",
+    description:
+      "Codex plan-tool launch override (provider-default|disabled|enabled). Default provider-default preserves Codex configuration.",
+  },
+  {
     name: "OLLAMA_URL",
     group: "Providers & features",
     description:

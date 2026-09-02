@@ -1036,6 +1036,7 @@ async function startServer() {
     claudeSummaryParserWorkerMode: config.claudeSummaryParserWorkerMode,
     codexSummaryParserWorkerMode: config.codexSummaryParserWorkerMode,
     codexCliPath: config.codexCliPath,
+    codexPlanToolMode: config.codexPlanToolMode,
     voiceInputEnabled: config.voiceInputEnabled,
     speechBackendRegistry,
     xaiSttApiKey: config.xaiSttApiKey,

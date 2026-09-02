@@ -300,6 +300,24 @@ describe("renderSafeMarkdown — embedded HTML", () => {
     expect(html).not.toMatch(/\s(?:on\w+|style)=/i);
     expect(html).not.toMatch(/(?:href|src)="(?:javascript|data):/i);
   });
+
+  it("does not admit SVG animation links", () => {
+    const html = renderSafeMarkdown(`
+<svg>
+  <a href="#safe">
+    <animate
+      attributeName="href"
+      values="#safe;javascript:alert(1)"
+      dur="1ms"
+      fill="freeze"
+    ></animate>
+    <text>open</text>
+  </a>
+</svg>
+`);
+
+    expect(html).not.toMatch(/<(?:svg|animate|text)\b/i);
+  });
 });
 
 describe("parseMarkdownSourceSpans", () => {

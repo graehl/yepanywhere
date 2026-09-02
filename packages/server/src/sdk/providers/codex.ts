@@ -3364,6 +3364,13 @@ export class CodexProvider implements AgentProvider {
     // of advertising a browser that fails during backend discovery.
     const config: NonNullable<ThreadStartParams["config"]> = {
       model_reasoning_summary: this.getConfiguredReasoningSummary(),
+      // Codex 0.152 made update_plan opt-in. YA renders its plan notifications,
+      // so keep the tool available across new, resumed, and forked threads.
+      tools: {
+        update_plan: {
+          enabled: true,
+        },
+      },
       skills: {
         config: [
           {

@@ -163,6 +163,42 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-09-02:
+
+- Installed Codex is `0.152.1`; the official `rust-v0.152.0` and
+  `rust-v0.152.1` sources are commits
+  `7f6bee13af649d0da23ac0c2bf5c83f571fcd611` and
+  `3c6cfbab81e44218c729dc8c6b304cb760d1b8a1`. Root compatibility and
+  expected-protocol markers now record `0.152.1`.
+- Codex 0.152 makes `update_plan` opt-in. YA consumes
+  `turn/plan/updated` and renders it as checklist progress, so every new,
+  resumed, and forked YA thread now explicitly enables the tool instead of
+  silently losing that surface after the CLI upgrade.
+- `pnpm codex:protocol:check` is clean: none of the generated types in YA's
+  consumed subset changed. The wider app-server protocol adds optional shell
+  command timeouts, two authentication-recovery notifications, account and
+  rate-limit banner metadata, and an `openaiForm` MCP elicitation variant.
+  YA does not call `thread/shellCommand`; its rate-limit normalizers tolerate
+  the extra fields; and authentication progress and MCP form presentation
+  remain separate UI design work rather than compatibility requirements.
+- App-server's new notification-media omission is disabled by default, and YA
+  does not enable it, so live image and audio notification behavior is
+  unchanged. The restored-thread working-directory fix also does not alter YA:
+  every start, resume, and fork request already supplies an explicit `cwd`.
+- The no-token `model/list` probe returns the same eight visible model ids,
+  with Sol default and `priority` as the only advertised service tier. Dynamic
+  upgrade metadata now points GPT-5.4 and GPT-5.4 Mini to Terra and Luna; YA's
+  existing catalog normalizer already accepts those targets, so fallback
+  models need no change.
+- All 2,445,815 entries across 1,041 local Codex rollouts parse with no malformed
+  lines, now including 0.151.0 sessions. No 0.152.x rollout has been written
+  yet. The stricter provenance audit still reports two old unpaired user events
+  from 2026-04-17 and 2026-04-18; they predate this upgrade and are not schema
+  failures.
+
+Status: Codex 0.152.1 app-server compatibility is refreshed, and YA preserves
+plan/checklist progress across the upstream default change.
+
 Current source refresh, 2026-08-29:
 
 - Installed Codex is `0.151.0`; the official `rust-v0.151.0` source is commit

@@ -4853,6 +4853,46 @@ describe("CodexProvider Event Normalization", () => {
     expect(fork).toMatchObject({ config: expectedConfig });
   });
 
+  it("keeps Codex plan progress enabled for every thread path", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadStartParams: (
+        options: { cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadResumeParams: (
+        options: { resumeSessionId: string; cwd: string },
+        sessionId: string,
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+      createThreadForkParams: (
+        options: { sessionId: string; cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+      ) => Record<string, unknown>;
+    };
+    const policy = {
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    };
+    const expectedConfig = {
+      tools: { update_plan: { enabled: true } },
+    };
+
+    const start = provider.createThreadStartParams({ cwd: "/tmp" }, policy);
+    const resume = provider.createThreadResumeParams(
+      { resumeSessionId: "thread-1", cwd: "/tmp" },
+      "thread-1",
+      policy,
+    );
+    const fork = provider.createThreadForkParams(
+      { sessionId: "thread-1", cwd: "/tmp" },
+      policy,
+    );
+
+    expect(start).toMatchObject({ config: expectedConfig });
+    expect(resume).toMatchObject({ config: expectedConfig });
+    expect(fork).toMatchObject({ config: expectedConfig });
+  });
+
   it("pins thread-scope reasoning effort via config when effort is requested", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (

@@ -75,6 +75,14 @@ Menus, dialogs, interactive help panels, and other popovers are not tooltips
 and are outside the appearance setting. The mode name must not be interpreted
 as a global ban on app-rendered overlays.
 
+The composer bottom bar's quick-hide surface is one such contextual popover.
+It repeats the control's current native or themed hint beside a **Hide** button
+instead of making an ordinary tooltip interactive. Touch long-press opens it
+for every customizable interactive control while preserving any specialized
+long-press action. Desktop right-click opens it only where the control has no
+special context action. While this surface is open, ordinary tooltip rendering
+is suppressed so the two hint presentations cannot overlap.
+
 ## Themed timing
 
 The configured delay measures **pointer rest**, not merely time since entry.
@@ -300,6 +308,9 @@ not the surface into a card.
 
 ## Verification contract
 
+- Bottom-bar long-press exposes the hint plus Hide for ordinary and specialized
+  controls without replacing a specialized mobile action; desktop right-click
+  does so only for ordinary controls. Hide uses the toolbar presence setting.
 - Static and pointer-computed hints obey rest delay, persistent trigger/tooltip
   hover, delayed pointer departure, keyboard-visible focus, and exclusive
   native/themed ownership. Themed mode contains no nonempty native titles;

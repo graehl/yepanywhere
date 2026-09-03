@@ -324,3 +324,58 @@
     transparent
   );
 }
+
+.hidePopover {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  box-sizing: border-box;
+  max-width: min(520px, calc(100vw - 16px));
+  align-items: stretch;
+  padding: 3px;
+  border: 1px solid var(--tooltip-border);
+  border-radius: 5px;
+  background: var(--tooltip-background);
+  color: var(--tooltip-foreground);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+}
+
+.hidePopoverTooltip {
+  min-width: 0;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+  padding: 3px 5px;
+  font-family: var(--font-ui);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hidePopoverAction {
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 4px 9px;
+  border: 1px solid currentcolor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: 600 var(--font-size-xs) / 1 var(--font-ui);
+  cursor: pointer;
+}
+
+.hidePopoverAction:hover,
+.hidePopoverAction:focus-visible {
+  background: var(--tooltip-foreground);
+  color: var(--tooltip-background);
+  outline: none;
+}
+
+@media (pointer: coarse) {
+  .hidePopoverAction {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

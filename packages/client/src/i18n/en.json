@@ -304,6 +304,7 @@
   "appearanceToolbarPresenceShownCaption": "Always visible on the toolbar.",
   "appearanceToolbarActivateControl": "Edit {control}",
   "appearanceToolbarHide": "Hide",
+  "toolbarHideControlMenuAria": "Toolbar control actions",
   "appearanceToolbarOff": "Off",
   "appearanceToolbarShowAlways": "Show always",
   "appearanceToolbarDefaultActionTitle": "Default Busy Send",

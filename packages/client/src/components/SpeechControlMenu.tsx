@@ -29,6 +29,11 @@ import {
 import type { SpeechSmartTurnSettings } from "../lib/speechProviders/SpeechProvider";
 import { prewarmYaServerSpeechBackend } from "../lib/speechProviders/YaServerProvider";
 
+interface DataAttributes {
+  "data-session-toolbar-control"?: string;
+  "data-session-toolbar-special-context"?: "true";
+}
+
 interface SpeechControlMenuProps {
   trigger: ReactNode;
   showMethodSelector: boolean;
@@ -41,6 +46,7 @@ interface SpeechControlMenuProps {
   onPointerNearTrigger?: () => void;
   onBeforeOpen?: () => void;
   onBeforeCaptureChange?: () => void;
+  rootDataAttributes?: DataAttributes;
 }
 
 const LONG_PRESS_MS = 500;
@@ -66,6 +72,7 @@ export function SpeechControlMenu({
   onPointerNearTrigger,
   onBeforeOpen,
   onBeforeCaptureChange,
+  rootDataAttributes,
 }: SpeechControlMenuProps) {
   const { t } = useI18n();
   const micDeviceSelectId = useId();
@@ -350,6 +357,7 @@ export function SpeechControlMenu({
       ref={rootRef}
       role="presentation"
       className={`speech-control-menu${open ? " is-open" : ""}`}
+      {...rootDataAttributes}
       onClickCapture={handleClickCapture}
       onContextMenu={handleContextMenu}
       onPointerDown={handlePointerDown}

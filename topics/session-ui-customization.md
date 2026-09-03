@@ -44,6 +44,13 @@ client default, `hidden` is an explicit local hide, and `first`/`mid`/`last`/
 becomes the default for devices with no explicit local override. Resetting
 toolbar presence clears local overrides and returns that browser to following
 the server client default.
+Customizable interactive controls in the session bottom bar also expose a
+contextual quick-hide surface beside their hint. Touch long-press always adds a
+**Hide** action, including for controls whose long-press already performs a
+special action; the existing action continues to run. On desktop, right-click
+opens quick hide only when the control has no special context action. Hide
+writes the same `hidden` presence value as the Toolbar settings pane, so every
+rendered copy disappears together and the pane remains the recovery path.
 `conversationView` is the narrow client-only exception: both its mode and its
 toolbar-presence override remain browser-local and are not sent to older servers
 as a new client-default key. The control defaults shown at the `last` narrowing

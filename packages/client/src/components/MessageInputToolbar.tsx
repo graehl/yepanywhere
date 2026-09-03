@@ -27,6 +27,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useOptionalToastContext } from "../contexts/ToastContext";
 import { ConversationViewIcon } from "./ConversationViewIcon";
@@ -46,6 +47,7 @@ import {
   useMeasuredComposerOverflow,
 } from "../hooks/useMessageInputToolbarLayout";
 import {
+  beginTooltipSuppression,
   getTextTooltipAttributes,
   useTooltipMode,
 } from "../hooks/useTooltipAppearance";
@@ -719,6 +721,7 @@ export interface MessageInputToolbarViewProps {
   t: ToolbarTranslate;
   refs?: MessageInputToolbarLayoutRefs;
   visibility: SessionToolbarVisibility;
+  onHideControl?: (key: SessionToolbarVisibilityKey) => void;
   /** Per-control narrowing priority; defaults to the built-in tiers when absent. */
   priority?: SessionToolbarPriority;
   isCompactStatusMode?: boolean;
@@ -824,11 +827,13 @@ function LazyBrowserDebugToolbarButton({
   control,
   className,
   menuItem = false,
+  dataAttributes,
 }: {
   t: ToolbarTranslate;
   control: ToolbarBrowserDebugControl;
   className: string;
   menuItem?: boolean;
+  dataAttributes?: ToolbarControlMarker;
 }) {
   const icon = (
     <BrowserDebugLeaseIcon
@@ -844,6 +849,7 @@ function LazyBrowserDebugToolbarButton({
     <button
       type="button"
       className={className}
+      {...dataAttributes}
       onClick={control.onToggle}
       title={control.title}
       aria-label={control.title}
@@ -867,10 +873,177 @@ function LazyBrowserDebugToolbarButton({
         onToggle={control.onToggle}
         onReactivate={control.onReactivate}
         onReload={control.onReload}
+        dataAttributes={dataAttributes}
       >
         {icon}
       </BrowserDebugToolbarButton>
     </Suspense>
+  );
+}
+
+const TOOLBAR_HIDE_TOUCH_CONTEXT_WINDOW_MS = 1_500;
+const TOOLBAR_HIDE_VIEWPORT_MARGIN_PX = 8;
+const TOOLBAR_HIDE_TARGET_GAP_PX = 6;
+
+interface ToolbarHidePopoverState {
+  key: SessionToolbarVisibilityKey;
+  target: HTMLElement;
+  tooltip: string;
+  touch: boolean;
+}
+
+interface ToolbarControlMarker {
+  "data-session-toolbar-control"?: SessionToolbarVisibilityKey;
+  "data-session-toolbar-special-context"?: "true";
+}
+
+function getToolbarControlTooltip(
+  eventTarget: Element,
+  controlTarget: HTMLElement,
+): string {
+  let candidate: Element | null = eventTarget;
+  while (candidate && controlTarget.contains(candidate)) {
+    const tooltip = candidate.getAttribute("data-tooltip")?.trim();
+    if (tooltip) return tooltip;
+    const title = candidate.getAttribute("title")?.trim();
+    if (title) return title;
+    if (candidate === controlTarget) break;
+    candidate = candidate.parentElement;
+  }
+
+  for (const descendant of controlTarget.querySelectorAll(
+    "[data-tooltip], [title]",
+  )) {
+    const tooltip = descendant.getAttribute("data-tooltip")?.trim();
+    if (tooltip) return tooltip;
+    const title = descendant.getAttribute("title")?.trim();
+    if (title) return title;
+  }
+
+  return (
+    controlTarget.getAttribute("aria-label")?.trim() ||
+    controlTarget
+      .querySelector<HTMLElement>("[aria-label]")
+      ?.getAttribute("aria-label")
+      ?.trim() ||
+    controlTarget.textContent?.trim() ||
+    ""
+  );
+}
+
+function ToolbarHidePopover({
+  state,
+  t,
+  onClose,
+  onHide,
+}: {
+  state: ToolbarHidePopoverState;
+  t: ToolbarTranslate;
+  onClose: () => void;
+  onHide: (key: SessionToolbarVisibilityKey) => void;
+}) {
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const hideButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useEffect(() => beginTooltipSuppression(), []);
+
+  useLayoutEffect(() => {
+    const popover = popoverRef.current;
+    if (!popover || !state.target.isConnected) {
+      onClose();
+      return;
+    }
+    const targetRect = state.target.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    const maxLeft = Math.max(
+      TOOLBAR_HIDE_VIEWPORT_MARGIN_PX,
+      window.innerWidth - TOOLBAR_HIDE_VIEWPORT_MARGIN_PX - popoverRect.width,
+    );
+    const centeredLeft =
+      targetRect.left + targetRect.width / 2 - popoverRect.width / 2;
+    const aboveTop =
+      targetRect.top - TOOLBAR_HIDE_TARGET_GAP_PX - popoverRect.height;
+    const belowTop = targetRect.bottom + TOOLBAR_HIDE_TARGET_GAP_PX;
+    setPosition({
+      left: Math.min(
+        maxLeft,
+        Math.max(TOOLBAR_HIDE_VIEWPORT_MARGIN_PX, centeredLeft),
+      ),
+      top:
+        aboveTop >= TOOLBAR_HIDE_VIEWPORT_MARGIN_PX
+          ? aboveTop
+          : Math.min(
+              belowTop,
+              window.innerHeight -
+                TOOLBAR_HIDE_VIEWPORT_MARGIN_PX -
+                popoverRect.height,
+            ),
+    });
+    if (!state.touch) {
+      hideButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [onClose, state]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        popoverRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+      state.target.focus({ preventScroll: true });
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [onClose, state.target]);
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      className={toolbarModuleStyles.hidePopover}
+      role="dialog"
+      aria-label={t("toolbarHideControlMenuAria")}
+      style={
+        position
+          ? { left: position.left, top: position.top }
+          : { visibility: "hidden" }
+      }
+    >
+      <span className={toolbarModuleStyles.hidePopoverTooltip}>
+        {state.tooltip}
+      </span>
+      <button
+        ref={hideButtonRef}
+        type="button"
+        className={toolbarModuleStyles.hidePopoverAction}
+        onClick={() => {
+          onClose();
+          onHide(state.key);
+        }}
+      >
+        {t("appearanceToolbarHide")}
+      </button>
+    </div>,
+    document.body,
   );
 }
 
@@ -1117,6 +1290,7 @@ export function MessageInputToolbarView({
   t,
   refs,
   visibility,
+  onHideControl,
   priority,
   isCompactStatusMode = false,
   modeControl,
@@ -1140,6 +1314,22 @@ export function MessageInputToolbarView({
   hidePrimaryDeliveryActions = false,
 }: MessageInputToolbarViewProps) {
   const tooltipMode = useTooltipMode();
+  const [hidePopover, setHidePopover] =
+    useState<ToolbarHidePopoverState | null>(null);
+  const lastTouchAtRef = useRef(0);
+  const closeHidePopover = useCallback(() => setHidePopover(null), []);
+  const toolbarControlMarker = (
+    key: SessionToolbarVisibilityKey,
+    hasSpecialContextAction = false,
+  ): ToolbarControlMarker =>
+    onHideControl
+      ? {
+          "data-session-toolbar-control": key,
+          "data-session-toolbar-special-context": hasSpecialContextAction
+            ? "true"
+            : undefined,
+        }
+      : {};
   const normalizedWaveformButtonBackgroundOpacity = Math.min(
     100,
     Math.max(0, waveformButtonBackgroundOpacityPercent),
@@ -1361,7 +1551,10 @@ export function MessageInputToolbarView({
       return null;
     }
     return (
-      <span className={className}>
+      <span
+        className={className}
+        {...toolbarControlMarker("contextUsage", true)}
+      >
         <ContextThresholdQuickEdit
           usage={actionsControl.contextUsage}
           model={actionsControl.contextModel}
@@ -1380,6 +1573,7 @@ export function MessageInputToolbarView({
       <button
         type="button"
         className={className}
+        {...toolbarControlMarker("btw")}
         onClick={actionsControl.btw.onClick}
         disabled={actionsControl.disabled || actionsControl.voiceDisabled}
         aria-label={actionsControl.btw.title}
@@ -1396,7 +1590,11 @@ export function MessageInputToolbarView({
       return null;
     }
     return (
-      <label className={className} title={t("toolbarSteerNowTooltip")}>
+      <label
+        className={className}
+        title={t("toolbarSteerNowTooltip")}
+        {...toolbarControlMarker("steerNow")}
+      >
         <input
           type="checkbox"
           checked={!!actionsControl.send.steerNowEnabled}
@@ -1449,6 +1647,7 @@ export function MessageInputToolbarView({
           (!menu || isPriorityCollapsible("projectQueue")) && (
             <button
               type="button"
+              {...toolbarControlMarker("projectQueue")}
               onClick={projectQueue.onProjectQueue}
               disabled={disabled}
               className={classNameFor("projectQueue")}
@@ -1465,6 +1664,7 @@ export function MessageInputToolbarView({
             isPriorityCollapsible("projectQueueNewSessionShortcut")) && (
             <button
               type="button"
+              {...toolbarControlMarker("projectQueueNewSessionShortcut")}
               onClick={projectQueue.onProjectQueueNewSession}
               disabled={disabled}
               className={classNameFor(
@@ -1644,6 +1844,46 @@ export function MessageInputToolbarView({
     if (!action || !event.currentTarget.contains(action)) return;
     fileViewerController.minimize();
   };
+  const handleToolbarTouchStartCapture = () => {
+    lastTouchAtRef.current = Date.now();
+  };
+  const handleToolbarContextMenuCapture = (
+    event: MouseEvent<HTMLDivElement>,
+  ) => {
+    if (!onHideControl || !(event.target instanceof Element)) return;
+    const controlTarget = event.target.closest<HTMLElement>(
+      "[data-session-toolbar-control]",
+    );
+    if (!controlTarget || !event.currentTarget.contains(controlTarget)) return;
+    const nestedPopup = event.target.closest<HTMLElement>(
+      '[role="dialog"], [role="menu"]',
+    );
+    if (nestedPopup && controlTarget.contains(nestedPopup)) return;
+
+    const touch =
+      Date.now() - lastTouchAtRef.current <=
+      TOOLBAR_HIDE_TOUCH_CONTEXT_WINDOW_MS;
+    const hasSpecialContextAction =
+      controlTarget.dataset.sessionToolbarSpecialContext === "true";
+    if (!touch && hasSpecialContextAction) return;
+
+    if (!hasSpecialContextAction) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const key = controlTarget.dataset
+      .sessionToolbarControl as SessionToolbarVisibilityKey;
+    const target =
+      event.target.closest<HTMLElement>(
+        "button, input, label, [role='button']",
+      ) ?? controlTarget;
+    setHidePopover({
+      key,
+      target,
+      tooltip: getToolbarControlTooltip(event.target, controlTarget),
+      touch,
+    });
+  };
 
   return (
     <div
@@ -1668,6 +1908,8 @@ export function MessageInputToolbarView({
       }
       style={waveformBackdropStyle}
       onClickCapture={handleToolbarClickCapture}
+      onContextMenuCapture={handleToolbarContextMenuCapture}
+      onTouchStartCapture={handleToolbarTouchStartCapture}
     >
       <div
         className={`${toolbarModuleStyles.waveformRegion}${
@@ -1678,7 +1920,10 @@ export function MessageInputToolbarView({
       >
         <div ref={refs?.left} className="message-input-left">
           {visibility.modeSelector && modeControl && (
-            <span className={inlineTierClass("modeSelector")}>
+            <span
+              className={inlineTierClass("modeSelector")}
+              {...toolbarControlMarker("modeSelector")}
+            >
               <ModeSelector
                 mode={modeControl.mode}
                 onModeChange={modeControl.onModeChange}
@@ -1691,6 +1936,7 @@ export function MessageInputToolbarView({
           {visibility.attachments && (
             <button
               type="button"
+              {...toolbarControlMarker("attachments")}
               className={inlineTierClass("attachments", "attach-button")}
               onClick={attachmentControl.onAttachClick}
               disabled={!attachmentControl.canAttach}
@@ -1719,7 +1965,10 @@ export function MessageInputToolbarView({
             </button>
           )}
           {visibility.slashMenu && slashControl && (
-            <span className={inlineTierClass("slashMenu")}>
+            <span
+              className={inlineTierClass("slashMenu")}
+              {...toolbarControlMarker("slashMenu")}
+            >
               <SlashCommandButton
                 commands={slashControl.commands}
                 onSelectCommand={slashControl.onSelectCommand}
@@ -1728,13 +1977,17 @@ export function MessageInputToolbarView({
             </span>
           )}
           {visibility.thinkingToggle && thinkingControl && (
-            <span className={inlineTierClass("thinkingToggle")}>
+            <span
+              className={inlineTierClass("thinkingToggle")}
+              {...toolbarControlMarker("thinkingToggle", true)}
+            >
               <ThinkingToolbarControl control={thinkingControl} t={t} />
             </span>
           )}
           {visibility.renderMode && renderModeControl && (
             <button
               type="button"
+              {...toolbarControlMarker("renderMode")}
               className={inlineTierClass(
                 "renderMode",
                 "render-mode-toolbar-button",
@@ -1759,6 +2012,7 @@ export function MessageInputToolbarView({
           {visibility.conversationView && conversationViewControl && (
             <button
               type="button"
+              {...toolbarControlMarker("conversationView")}
               className={inlineTierClass(
                 "conversationView",
                 "conversation-view-toolbar-button",
@@ -1776,6 +2030,7 @@ export function MessageInputToolbarView({
             <LazyBrowserDebugToolbarButton
               t={t}
               control={browserDebugControl}
+              dataAttributes={toolbarControlMarker("browserDebug", true)}
               className={[
                 inlineTierClass("browserDebug"),
                 toolbarModuleStyles.browserDebugButton,
@@ -1790,6 +2045,7 @@ export function MessageInputToolbarView({
           {visibility.nudge && nudgeControl && (
             <button
               type="button"
+              {...toolbarControlMarker("nudge", true)}
               className={inlineTierClass(
                 "nudge",
                 "heartbeat-toolbar-button",
@@ -1828,6 +2084,7 @@ export function MessageInputToolbarView({
           {visibility.syntheticDone && doneControl && (
             <button
               type="button"
+              {...toolbarControlMarker("syntheticDone")}
               className={`${inlineTierClass("syntheticDone")} ${toolbarModuleStyles.doneButton}`}
               onClick={doneControl.onDone}
               title={doneControl.title}
@@ -1840,6 +2097,7 @@ export function MessageInputToolbarView({
           {visibility.microphone &&
             speechControl?.voiceButton?.kind === "preview" && (
               <SpeechControlMenu
+                rootDataAttributes={toolbarControlMarker("microphone", true)}
                 showMethodSelector={speechControl.showMethodSelector}
                 methodOptions={speechControl.methodOptions}
                 selectedMethod={selectedSpeechMethod}
@@ -1866,6 +2124,7 @@ export function MessageInputToolbarView({
             speechControl?.voiceButton?.kind === "live" &&
             speechControl.voiceButton.ref && (
               <SpeechControlMenu
+                rootDataAttributes={toolbarControlMarker("microphone", true)}
                 showMethodSelector={speechControl.showMethodSelector}
                 methodOptions={speechControl.methodOptions}
                 selectedMethod={selectedSpeechMethod}
@@ -1963,7 +2222,10 @@ export function MessageInputToolbarView({
                 {visibility.modeSelector &&
                   modeControl &&
                   isPriorityCollapsible("modeSelector") && (
-                    <span className={menuTierClass("modeSelector")}>
+                    <span
+                      className={menuTierClass("modeSelector")}
+                      {...toolbarControlMarker("modeSelector")}
+                    >
                       <ModeSelector
                         mode={modeControl.mode}
                         onModeChange={modeControl.onModeChange}
@@ -1977,6 +2239,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("attachments") && (
                     <button
                       type="button"
+                      {...toolbarControlMarker("attachments")}
                       className={menuTierClass("attachments", "attach-button")}
                       onClick={attachmentControl.onAttachClick}
                       disabled={!attachmentControl.canAttach}
@@ -2019,7 +2282,10 @@ export function MessageInputToolbarView({
                 {visibility.slashMenu &&
                   slashControl &&
                   isPriorityCollapsible("slashMenu") && (
-                    <span className={menuTierClass("slashMenu")}>
+                    <span
+                      className={menuTierClass("slashMenu")}
+                      {...toolbarControlMarker("slashMenu")}
+                    >
                       <SlashCommandButton
                         commands={slashControl.commands}
                         onSelectCommand={slashControl.onSelectCommand}
@@ -2030,7 +2296,10 @@ export function MessageInputToolbarView({
                 {visibility.thinkingToggle &&
                   thinkingControl &&
                   isPriorityCollapsible("thinkingToggle") && (
-                    <span className={menuTierClass("thinkingToggle")}>
+                    <span
+                      className={menuTierClass("thinkingToggle")}
+                      {...toolbarControlMarker("thinkingToggle", true)}
+                    >
                       <ThinkingToolbarControl control={thinkingControl} t={t} />
                     </span>
                   )}
@@ -2039,6 +2308,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("renderMode") && (
                     <button
                       type="button"
+                      {...toolbarControlMarker("renderMode")}
                       className={menuTierClass(
                         "renderMode",
                         "render-mode-toolbar-button",
@@ -2066,6 +2336,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("conversationView") && (
                     <button
                       type="button"
+                      {...toolbarControlMarker("conversationView")}
                       className={menuTierClass(
                         "conversationView",
                         "conversation-view-toolbar-button",
@@ -2087,6 +2358,10 @@ export function MessageInputToolbarView({
                       t={t}
                       control={browserDebugControl}
                       menuItem
+                      dataAttributes={toolbarControlMarker(
+                        "browserDebug",
+                        true,
+                      )}
                       className={[
                         menuTierClass("browserDebug"),
                         toolbarModuleStyles.browserDebugButton,
@@ -2103,6 +2378,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("nudge") && (
                     <button
                       type="button"
+                      {...toolbarControlMarker("nudge", true)}
                       className={menuTierClass(
                         "nudge",
                         "heartbeat-toolbar-button",
@@ -2144,6 +2420,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("syntheticDone") && (
                     <button
                       type="button"
+                      {...toolbarControlMarker("syntheticDone")}
                       className={`${menuTierClass("syntheticDone")} ${toolbarModuleStyles.doneButton}`}
                       onClick={doneControl.onDone}
                       title={doneControl.title}
@@ -2158,6 +2435,7 @@ export function MessageInputToolbarView({
                   isPriorityCollapsible("shortcutsHelp") && (
                     <button
                       type="button"
+                      {...toolbarControlMarker("shortcutsHelp", true)}
                       className={menuTierClass(
                         "shortcutsHelp",
                         "session-shortcuts-help-button",
@@ -2239,6 +2517,7 @@ export function MessageInputToolbarView({
             <button
               type="button"
               className="session-shortcuts-help-button"
+              {...toolbarControlMarker("shortcutsHelp", true)}
               aria-label={t("toolbarKeyboardShortcutsAria")}
               aria-expanded={shortcutsPopoverOpen}
               onClick={() => shortcutsControl.setOpen((open) => !open)}
@@ -2694,6 +2973,14 @@ export function MessageInputToolbarView({
           </>
         ) : null}
       </div>
+      {hidePopover && onHideControl && (
+        <ToolbarHidePopover
+          state={hidePopover}
+          t={t}
+          onClose={closeHidePopover}
+          onHide={onHideControl}
+        />
+      )}
     </div>
   );
 }
@@ -2796,8 +3083,15 @@ export function MessageInputToolbar({
     REMOTE_BROWSER_DIAGNOSTICS_CAPABILITY,
   );
   const { providers } = useProviders();
-  const { visibility: toolbarVisibility, priority: toolbarPriority } =
-    useSessionToolbarPresence();
+  const {
+    visibility: toolbarVisibility,
+    priority: toolbarPriority,
+    setControlPresence,
+  } = useSessionToolbarPresence();
+  const hideToolbarControl = useCallback(
+    (key: SessionToolbarVisibilityKey) => setControlPresence(key, "hidden"),
+    [setControlPresence],
+  );
   const { waveformButtonBackgroundOpacityPercent } =
     useWaveformButtonBackgroundOpacity();
   const { conversationViewEnabled, setConversationViewEnabled } =
@@ -3458,6 +3752,7 @@ export function MessageInputToolbar({
         actions: toolbarActionsRef,
       }}
       visibility={effectiveToolbarVisibility}
+      onHideControl={hideToolbarControl}
       priority={toolbarPriority}
       isCompactStatusMode={isCompactStatusMode}
       fileViewerController={fileViewerController}

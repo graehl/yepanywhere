@@ -5,6 +5,11 @@ import { useSourceContextMenu } from "./SourceContextMenu";
 
 const BROWSER_DEBUG_CONTEXT_KEY = "browser-debug";
 
+interface DataAttributes {
+  "data-session-toolbar-control"?: string;
+  "data-session-toolbar-special-context"?: "true";
+}
+
 export interface BrowserDebugToolbarButtonProps {
   t: TranslationFn;
   active: boolean;
@@ -17,6 +22,7 @@ export interface BrowserDebugToolbarButtonProps {
   onReactivate: () => void;
   onReload: () => void;
   children: ReactNode;
+  dataAttributes?: DataAttributes;
 }
 
 /** Optional debug actions stay out of the initial composer bundle. */
@@ -32,6 +38,7 @@ export function BrowserDebugToolbarButton({
   onReactivate,
   onReload,
   children,
+  dataAttributes,
 }: BrowserDebugToolbarButtonProps) {
   const contextMenu = useSourceContextMenu(t, {
     dismiss: t("toolbarBrowserDebugDismissMenu"),
@@ -76,6 +83,7 @@ export function BrowserDebugToolbarButton({
       <button
         type="button"
         className={className}
+        {...dataAttributes}
         {...contextMenu.targetProps(actions, onToggle, {
           contextKey: BROWSER_DEBUG_CONTEXT_KEY,
         })}

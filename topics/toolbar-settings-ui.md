@@ -125,13 +125,19 @@ honest: those controls genuinely never collapse.
 
 ## Edit surfaces & persistence
 
-- **Presence slider** — the single edit surface in every row (Hidden and
+- **Presence slider** — the settings-pane edit surface in every row (Hidden and
   Shown). A commit (release/keyup) maps the notch to one
   `setControlPresence(key, value)` call; only changed values are written.
   Changes update the live toolbar and the row's in-place state without
   immediately moving the row between Hidden and Shown. While dragging, the
   caption (and tick highlight) track the draft notch so a user can read each
   notch's meaning before committing.
+- **Bottom-bar quick hide** — touch long-press on a customizable interactive
+  control exposes **Hide** beside its hint. Desktop right-click does the same
+  only when that control has no existing special context action. A mobile
+  control's special long-press action remains active alongside quick hide.
+  Choosing Hide calls the same `setControlPresence(key, "hidden")` path as the
+  slider; Settings remains the place to restore the control or choose a tier.
 - **Specimen activation** — focuses the row's presence slider; it must not be
   a dead visual-only affordance.
 - **Header undo / Reset** — snapshot restore covers the presence map; Reset

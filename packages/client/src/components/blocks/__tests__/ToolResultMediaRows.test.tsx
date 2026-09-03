@@ -180,9 +180,9 @@ describe("ToolResultMediaRows", () => {
 
     await waitFor(() => expect(fetchBlob).toHaveBeenCalledTimes(1));
     expect(screen.getByText("(video)")).toBeTruthy();
-    const player = document.querySelector("video");
-    expect(player).toBeTruthy();
-    expect(player?.getAttribute("src")).toBe("blob:tool-result");
+    const player = await screen.findByLabelText("1.mp4 tool result");
+    expect(player.tagName).toBe("VIDEO");
+    expect(player.getAttribute("src")).toBe("blob:tool-result");
   });
 
   it("shows rejected media explicitly without fetching", () => {

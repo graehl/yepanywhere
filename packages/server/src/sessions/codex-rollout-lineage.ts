@@ -76,7 +76,7 @@ export async function readCodexSessionMeta(
 ): Promise<CodexSessionMetaEntry> {
   const firstLine = await readFirstLine(filePath, CODEX_META_READ_MAX_BYTES);
   const entry = firstLine ? parseCodexSessionEntry(firstLine) : null;
-  if (!entry || entry.type !== "session_meta") {
+  if (entry?.type !== "session_meta") {
     throw new Error(`Codex rollout has no readable session_meta: ${filePath}`);
   }
   return entry;
@@ -229,12 +229,15 @@ export async function* iterateCodexRolloutLineageEntries(
     for await (const { line, terminated } of iterateJsonlLineRecords(
       segment.filePath,
     )) {
-      metrics && (metrics.lineCount += 1);
-      metrics &&
-        (metrics.maxLineLength = Math.max(metrics.maxLineLength, line.length));
+      if (metrics) {
+        metrics.lineCount += 1;
+        metrics.maxLineLength = Math.max(metrics.maxLineLength, line.length);
+      }
       const lineEndByteOffset =
         byteOffset + Buffer.byteLength(line, "utf8") + (terminated ? 1 : 0);
-      metrics && (metrics.bytesRead += lineEndByteOffset - byteOffset);
+      if (metrics) {
+        metrics.bytesRead += lineEndByteOffset - byteOffset;
+      }
       if (segment.end && !terminated) {
         throw new CodexRolloutLineageError(
           lineage.requestedSessionId,
@@ -250,7 +253,9 @@ export async function* iterateCodexRolloutLineageEntries(
 
       const parseStartedAt = Date.now();
       const entry = line.trim() ? parseCodexSessionEntry(line) : null;
-      metrics && (metrics.parseMs += Date.now() - parseStartedAt);
+      if (metrics) {
+        metrics.parseMs += Date.now() - parseStartedAt;
+      }
       if (entry) {
         const ordinal = entryOrdinal(entry);
         if (ordinal === null) {
@@ -274,7 +279,9 @@ export async function* iterateCodexRolloutLineageEntries(
           ordinal >= segment.startOrdinal &&
           beforeEnd
         ) {
-          metrics && (metrics.parsedEntries += 1);
+          if (metrics) {
+            metrics.parsedEntries += 1;
+          }
           yield entry;
         }
       } else if (line.trim() && !terminated && !segment.end) {

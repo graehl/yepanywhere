@@ -5,9 +5,11 @@ import styles from "./ForkTurnMenu.module.css";
 
 interface ForkTurnMenuProps {
   onForkBefore?: () => void;
-  onForkAfter: () => void;
-  onForkAfterSummary: () => void;
+  onForkAfter?: () => void;
+  onForkAfterSummary?: () => void;
   afterDisabled?: boolean;
+  /** Keep the fork affordance visible while explaining a server upgrade gate. */
+  unavailableMessage?: string;
 }
 
 export function ForkTurnMenu({
@@ -15,6 +17,7 @@ export function ForkTurnMenu({
   onForkAfter,
   onForkAfterSummary,
   afterDisabled = false,
+  unavailableMessage,
 }: ForkTurnMenuProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
@@ -80,30 +83,39 @@ export function ForkTurnMenu({
       }
       aria-label={t("forkTurnMenuLabel")}
     >
-      {onForkBefore && (
+      {unavailableMessage ? (
+        <button type="button" role="menuitem" disabled>
+          {unavailableMessage}
+        </button>
+      ) : null}
+      {!unavailableMessage && onForkBefore && (
         <button type="button" role="menuitem" onClick={() => run(onForkBefore)}>
           {t("forkTurnBefore")}
         </button>
       )}
-      <button
-        type="button"
-        role="menuitem"
-        disabled={afterDisabled}
-        title={afterDisabled ? t("forkTurnAfterDisabled") : undefined}
-        onClick={() => run(onForkAfter)}
-      >
-        {t("forkTurnAfter")}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className={styles.secondary}
-        disabled={afterDisabled}
-        title={afterDisabled ? t("forkTurnAfterDisabled") : undefined}
-        onClick={() => run(onForkAfterSummary)}
-      >
-        {t("forkTurnAfterSummary")}
-      </button>
+      {!unavailableMessage && onForkAfter && (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={afterDisabled}
+          title={afterDisabled ? t("forkTurnAfterDisabled") : undefined}
+          onClick={() => run(onForkAfter)}
+        >
+          {t("forkTurnAfter")}
+        </button>
+      )}
+      {!unavailableMessage && onForkAfterSummary && (
+        <button
+          type="button"
+          role="menuitem"
+          className={styles.secondary}
+          disabled={afterDisabled}
+          title={afterDisabled ? t("forkTurnAfterDisabled") : undefined}
+          onClick={() => run(onForkAfterSummary)}
+        >
+          {t("forkTurnAfterSummary")}
+        </button>
+      )}
     </div>
   );
 
@@ -115,7 +127,7 @@ export function ForkTurnMenu({
         className="user-prompt-action"
         onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
         aria-label={t("forkTurnMenuLabel")}
-        title={t("forkTurnMenuLabel")}
+        title={unavailableMessage ?? t("forkTurnMenuLabel")}
         aria-haspopup="menu"
         aria-expanded={isOpen}
       >

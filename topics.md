@@ -364,3 +364,6 @@
 - agent-command-runtime - Candidate per-session launch capability grants for one
   npm/desktop-bundled YA command dispatcher, private input, and shared
   session-access/yacron delivery without process-tree authentication.
+- codex-rollout-lineage - Reference-backed paginated Codex history across
+  native Clone/Fork, reader caches, summaries, paging, and server capability
+  negotiation.

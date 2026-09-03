@@ -100,6 +100,18 @@ Codex plan-tool control and make no unsupported settings write. It is
 version-implied from `0.8.1`; existing settings and capability meanings are
 unchanged.
 
+`codex-paginated-rollout-lineage` owns complete logical reads of Codex
+rollouts whose `session_meta.history_base` references a frozen prefix in
+another rollout. Stable releases `v0.8.0` and `v0.7.0` can issue the existing
+native fork request but cannot list, summarize, or load the resulting
+reference-backed child; they lack permanent ID 54. Without this capability, a
+current client keeps Codex Clone and per-turn Fork visible but disabled with
+server-update guidance and makes no fork request. Other providers retain the
+existing `session-fork-turn-intents` gate. The capability owns no new route:
+it strengthens the existing session list/detail and fork-route product as a
+single contract, is version-implied from `0.8.1`, and does not broaden any
+older capability meaning.
+
 The additive top-level `transcriptSnapshotUpdatedAt` field on existing session
 detail responses is a reader snapshot receipt, not a new feature capability.
 The core compatibility corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0`
@@ -446,9 +458,10 @@ the same ledger:
 | 51 | server | 0.7.2 | `public-file-shares` |
 | 52 | server | 0.7.2 | `session-sandbox-network-firewall` |
 | 53 | server | 0.8.1 | `codex-plan-tool-setting` |
+| 54 | server | 0.8.1 | `codex-paginated-rollout-lineage` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 54; retired rows stay in the ledger as reserved IDs.
+ID 55; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

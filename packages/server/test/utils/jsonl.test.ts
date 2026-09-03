@@ -44,6 +44,27 @@ describe("jsonl utilities", () => {
     }
   });
 
+  it("reports whether the final streamed JSONL record is terminated", async () => {
+    const dir = join(tmpdir(), `jsonl-records-${randomUUID()}`);
+    tempDirs.push(dir);
+    await mkdir(dir, { recursive: true });
+    const filePath = join(dir, "records.jsonl");
+    await writeFile(filePath, '{"complete":true}\n{"partial":');
+
+    const { iterateJsonlLineRecords } = await import(
+      "../../src/utils/jsonl.js"
+    );
+    const records = [];
+    for await (const record of iterateJsonlLineRecords(filePath)) {
+      records.push(record);
+    }
+
+    expect(records).toEqual([
+      { line: '{"complete":true}', terminated: true },
+      { line: '{"partial":', terminated: false },
+    ]);
+  });
+
   itIfNativeZstd(
     "streams the first line of zstd JSONL without full file reads",
     async () => {

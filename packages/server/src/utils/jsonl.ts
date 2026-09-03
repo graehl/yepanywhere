@@ -226,9 +226,19 @@ async function* streamZstdJsonlText(filePath: string): AsyncIterable<string> {
  * Empty lines are yielded so callers can keep their own line counts; callers
  * that parse JSON should trim/skip blank lines.
  */
-export async function* iterateJsonlLines(
+export interface JsonlLineRecord {
+  line: string;
+  terminated: boolean;
+}
+
+/**
+ * Stream JSONL records while retaining whether each line ended with a newline.
+ * The distinction lets append-aware readers hold an in-progress final record
+ * without treating it as corrupt durable history.
+ */
+export async function* iterateJsonlLineRecords(
   filePath: string,
-): AsyncIterable<string> {
+): AsyncIterable<JsonlLineRecord> {
   const chunks = isZstdPath(filePath)
     ? streamZstdJsonlText(filePath)
     : streamPlainJsonlText(filePath);
@@ -242,13 +252,21 @@ export async function* iterateJsonlLines(
 
     let newlineIndex = pending.indexOf("\n");
     while (newlineIndex !== -1) {
-      yield pending.slice(0, newlineIndex);
+      yield { line: pending.slice(0, newlineIndex), terminated: true };
       pending = pending.slice(newlineIndex + 1);
       newlineIndex = pending.indexOf("\n");
     }
   }
 
   if (pending) {
-    yield pending;
+    yield { line: pending, terminated: false };
+  }
+}
+
+export async function* iterateJsonlLines(
+  filePath: string,
+): AsyncIterable<string> {
+  for await (const record of iterateJsonlLineRecords(filePath)) {
+    yield record.line;
   }
 }

@@ -839,6 +839,8 @@ interface Props {
   onForkAfterSummaryUserMessage?: (messageId: string) => void;
   /** The latest response is active, so after-turn boundaries are disabled. */
   forkAfterUserMessageDisabled?: boolean;
+  /** Why otherwise-supported Fork actions need a server update. */
+  forkUnavailableMessage?: string;
   /** Copy the given user turn's text (turn-notch context menu). */
   onCopyUserMessage?: (messageId: string) => void;
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
@@ -1191,6 +1193,7 @@ interface UserTimelineEntryProps {
   onForkAfterSummaryUserMessage?: (messageId: string) => void;
   canForkBeforePrompt: (messageId: string) => boolean;
   forkAfterUserMessageDisabled: boolean;
+  forkUnavailableMessage?: string;
   noopToggleThinkingExpanded: () => void;
   promptActionsDisabled: boolean;
 }
@@ -1209,6 +1212,7 @@ const UserTimelineEntry = memo(function UserTimelineEntry({
   onForkAfterSummaryUserMessage,
   canForkBeforePrompt,
   forkAfterUserMessageDisabled,
+  forkUnavailableMessage,
   noopToggleThinkingExpanded,
   promptActionsDisabled,
 }: UserTimelineEntryProps) {
@@ -1262,6 +1266,11 @@ const UserTimelineEntry = memo(function UserTimelineEntry({
           : undefined
       }
       forkAfterUserPromptDisabled={forkAfterUserMessageDisabled}
+      forkUnavailableMessage={
+        row.allowsPromptActions && !promptActionsDisabled
+          ? forkUnavailableMessage
+          : undefined
+      }
       staleNowMs={row.staleNowMs}
     />
   );
@@ -1280,6 +1289,7 @@ interface AssistantTimelineEntryProps {
   onForkAfterSummaryUserMessage?: (messageId: string) => void;
   canForkBeforePrompt: (messageId: string) => boolean;
   forkAfterUserMessageDisabled: boolean;
+  forkUnavailableMessage?: string;
   handleQuoteTextBlock: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircles: boolean;
   paragraphQuoteCirclesEnabled: boolean;
@@ -1308,6 +1318,7 @@ const AssistantTimelineEntry = memo(function AssistantTimelineEntry({
   onForkAfterSummaryUserMessage,
   canForkBeforePrompt,
   forkAfterUserMessageDisabled,
+  forkUnavailableMessage,
   handleQuoteTextBlock,
   alwaysShowQuoteCircles,
   paragraphQuoteCirclesEnabled,
@@ -1376,6 +1387,12 @@ const AssistantTimelineEntry = memo(function AssistantTimelineEntry({
                 : undefined
             }
             forkAfterUserPromptDisabled={forkAfterUserMessageDisabled}
+            forkUnavailableMessage={
+              assistantRow.allowsPromptActions &&
+              !promptActionDisabledIds.has(item.id)
+                ? forkUnavailableMessage
+                : undefined
+            }
             onQuoteTextBlock={
               assistantRow.allowsTextQuote ? handleQuoteTextBlock : undefined
             }
@@ -1445,6 +1462,7 @@ export const MessageList = memo(function MessageList({
   onForkAfterUserMessage,
   onForkAfterSummaryUserMessage,
   forkAfterUserMessageDisabled = false,
+  forkUnavailableMessage,
   onCopyUserMessage,
   markdownAugments,
   activeToolApproval,
@@ -4510,6 +4528,7 @@ export const MessageList = memo(function MessageList({
                   onForkAfterSummaryUserMessage={onForkAfterSummaryUserMessage}
                   canForkBeforePrompt={canForkBeforePrompt}
                   forkAfterUserMessageDisabled={forkAfterUserMessageDisabled}
+                  forkUnavailableMessage={forkUnavailableMessage}
                   noopToggleThinkingExpanded={noopToggleThinkingExpanded}
                   promptActionsDisabled={historySearchRenderIds.has(
                     timelineRow.item.id,
@@ -4533,6 +4552,7 @@ export const MessageList = memo(function MessageList({
                 onForkAfterSummaryUserMessage={onForkAfterSummaryUserMessage}
                 canForkBeforePrompt={canForkBeforePrompt}
                 forkAfterUserMessageDisabled={forkAfterUserMessageDisabled}
+                forkUnavailableMessage={forkUnavailableMessage}
                 handleQuoteTextBlock={handleQuoteTextBlock}
                 alwaysShowQuoteCircles={alwaysShowQuoteCircles}
                 paragraphQuoteCirclesEnabled={paragraphQuoteCirclesEnabled}

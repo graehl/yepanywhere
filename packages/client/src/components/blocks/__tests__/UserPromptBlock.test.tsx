@@ -176,6 +176,31 @@ describe("UserPromptBlock", () => {
     expect(onForkAfter).toHaveBeenCalledTimes(1);
   });
 
+  it("renders a disabled fork action with server update guidance", () => {
+    render(
+      <I18nProvider>
+        <UserPromptBlock
+          content="Modern Codex request"
+          forkUnavailableMessage="Update this YA server for Codex forks."
+        />
+      </I18nProvider>,
+    );
+
+    const fork = screen.getByRole("button", { name: "Fork from this turn" });
+    expect((fork as HTMLButtonElement).disabled).toBe(false);
+    expect(fork.getAttribute("title")).toBe(
+      "Update this YA server for Codex forks.",
+    );
+    fireEvent.click(fork);
+    expect(
+      (
+        screen.getByRole("menuitem", {
+          name: "Update this YA server for Codex forks.",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
   it("keeps before available while disabling active after actions", () => {
     render(
       <I18nProvider>

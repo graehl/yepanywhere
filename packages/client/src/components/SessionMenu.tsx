@@ -26,6 +26,8 @@ export interface SessionMenuProps {
   onOpenNewTab?: () => void | Promise<void>;
   /** Create a cold provider-native clone of the latest completed transcript. */
   onClone?: () => void | Promise<void>;
+  /** Why Clone is visible but unavailable on this server. */
+  cloneUnavailableMessage?: string;
   /** Clone waits for the current provider response to complete. */
   cloneDisabled?: boolean;
   /** Called to request compaction in the current session */
@@ -84,6 +86,7 @@ export function SessionMenu({
   onCopyPrompt,
   onOpenNewTab,
   onClone,
+  cloneUnavailableMessage,
   cloneDisabled = false,
   onCompact,
   onHandoff,
@@ -121,7 +124,7 @@ export function SessionMenu({
   const dropdownItemCount =
     3 +
     (onOpenNewTab ? 1 : 0) +
-    (onClone ? 1 : 0) +
+    (onClone || cloneUnavailableMessage ? 1 : 0) +
     (onGenerateTitle ? 1 : 0) +
     (onCopyPrompt ? 1 : 0) +
     (onConfigureProjectSettings ? 1 : 0) +
@@ -340,12 +343,17 @@ export function SessionMenu({
           {t("sessionMenuOpenNewTab")}
         </button>
       )}
-      {onClone && (
+      {(onClone || cloneUnavailableMessage) && (
         <button
           type="button"
           onClick={handleClone}
-          disabled={cloneDisabled || isCloning}
-          title={cloneDisabled ? t("sessionMenuCloneDisabled") : undefined}
+          disabled={Boolean(
+            cloneUnavailableMessage || cloneDisabled || isCloning,
+          )}
+          title={
+            cloneUnavailableMessage ??
+            (cloneDisabled ? t("sessionMenuCloneDisabled") : undefined)
+          }
         >
           <svg
             width="14"
@@ -359,7 +367,11 @@ export function SessionMenu({
             <rect x="8" y="8" width="12" height="12" rx="2" />
             <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
           </svg>
-          {isCloning ? t("sessionMenuCloning") : t("sessionMenuClone")}
+          {isCloning
+            ? t("sessionMenuCloning")
+            : cloneUnavailableMessage
+              ? t("sessionMenuCloneUpdateRequired")
+              : t("sessionMenuClone")}
         </button>
       )}
       {onGenerateTitle && (

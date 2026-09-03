@@ -39,7 +39,12 @@ window the trim dot controls).
 
 - The session-header overflow menu exposes **Clone** only when the connected
   server advertises `session-fork-turn-intents` and the selected provider
-  advertises `supportsForkSession`.
+  advertises `supportsForkSession`. Codex and Codex OSS additionally require
+  `codex-paginated-rollout-lineage`. When only that Codex capability is absent,
+  header Clone and inline Fork remain visible but disabled with server-update
+  guidance, and the client makes no fork request. Providers without a real
+  fork primitive and servers without the unified intent contract retain the
+  older hidden-surface fallback.
 - Clone copies through the latest completed response, titles the target
   `Clone: <source>`, records the source in `forkedFromSessionId`, navigates in
   the same tab, and opens cold with an empty target composer. It does not

@@ -44,4 +44,21 @@ describe("ForkTurnMenu", () => {
     expect(menu.style.top).toBe("");
     expect(menu.style.right).toBe("");
   });
+
+  it("opens visible update guidance instead of a fork action", () => {
+    render(
+      <ForkTurnMenu unavailableMessage="Update the server for Codex forks." />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "forkTurnMenuLabel" });
+    expect((trigger as HTMLButtonElement).disabled).toBe(false);
+    expect(trigger.getAttribute("title")).toBe(
+      "Update the server for Codex forks.",
+    );
+    fireEvent.click(trigger);
+    const unavailable = screen.getByRole("menuitem", {
+      name: "Update the server for Codex forks.",
+    });
+    expect((unavailable as HTMLButtonElement).disabled).toBe(true);
+  });
 });

@@ -90,6 +90,16 @@ session id. YA vendors the generated `ThreadFork*`, `ThreadRollback*`, and
 `ThreadReadResponse` protocol types through
 `scripts/update-codex-protocol.mjs`.
 
+Current Codex stores a durable fork in paginated mode by writing canonical
+child metadata and a `history_base` reference to the retained source prefix;
+`excludeTurns` controls only RPC response hydration and does not restore the
+legacy copied-file storage shape. YA therefore resolves that provider-owned
+lineage for listing, detail reads, resume settings, turn-boundary resolution,
+and later nested forks. It does not copy/materialize the inherited transcript
+or force `thread/start` into legacy mode. See `codex-sessions.md` for the
+bounded reader contract and `server-capabilities.md` for the independent-client
+upgrade gate.
+
 Codex models forks natively in its app-server protocol. The vendored v2
 `Thread` type (`codex-protocol/generated/v2/Thread.ts`) carries:
 

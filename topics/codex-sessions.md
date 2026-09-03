@@ -35,6 +35,37 @@ This differs from Claude. Claude's local session path already encodes the
 project directory, so project discovery can start from directory names. Codex
 stores by date, so project discovery requires metadata.
 
+### Reference-backed fork history
+
+Paginated Codex rollouts may store a fork as a small child file whose
+`session_meta.history_base` points to an immutable prefix of another rollout.
+The reference contains the source rollout id plus exclusive ordinal and byte
+cutoffs. YA treats that chain as the child's logical transcript:
+
+- the selected child's `session_meta` is the sole canonical metadata record;
+- each root-to-leaf segment contributes only its local ordinal range, bounded
+  by the descendant's exact frozen cutoff;
+- later appends to an ancestor never enter an existing child; and
+- ancestors may themselves be reference-backed, archived, or zstd-compressed.
+
+The history reference identifies the immutable rollout id encoded in the
+provider filename, not a YA URL id substitution or a stable provider session
+tree id. Resolution searches active and archived Codex roots, prefers the
+plain representation when both plain and compressed copies exist, and fails
+closed on a missing ancestor, cycle, identity mismatch, unsafe ordinal/byte
+value, split JSONL record, or inconsistent cutoff. Detail surfaces report such
+a lineage problem as a reader error after the leaf was found; summary/list
+surfaces omit a session they cannot safely summarize.
+
+Standalone and legacy rollouts retain the single-file read path. A
+reference-backed detail cache reconstructs the immutable prefix on its first
+read and then extends only from new leaf bytes. Physical compact-window
+scanning is ineligible because leaf offsets are not logical-history offsets;
+compact-tail and older-page requests use the established complete logical read
+plus in-memory boundary selection. Provider-child ownership projection remains
+physical to avoid assigning inherited subagents to the fork, while logical
+detail parsing still recovers inherited agent mappings for navigation.
+
 One deliberate exception to "YA never rewrites provider-owned rollouts": when
 the user explicitly Kills a Codex session, YA renames its rollout with a
 `.killed-<timestamp>` suffix so no resume path (YA or Codex app-server) can

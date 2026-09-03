@@ -72,6 +72,7 @@ interface Props {
   onForkAfterUserPrompt?: () => void;
   onForkAfterSummaryUserPrompt?: () => void;
   forkAfterUserPromptDisabled?: boolean;
+  forkUnavailableMessage?: string;
   onQuoteTextBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
   paragraphQuoteCirclesEnabled?: boolean;
@@ -987,6 +988,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onForkAfterUserPrompt,
   onForkAfterSummaryUserPrompt,
   forkAfterUserPromptDisabled,
+  forkUnavailableMessage,
   onQuoteTextBlock,
   alwaysShowQuoteCircle,
   paragraphQuoteCirclesEnabled,
@@ -1112,6 +1114,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             onForkAfter={onForkAfterUserPrompt}
             onForkAfterSummary={onForkAfterSummaryUserPrompt}
             forkAfterDisabled={forkAfterUserPromptDisabled}
+            forkUnavailableMessage={forkUnavailableMessage}
             deliveryState={deliveryState}
           />
         );

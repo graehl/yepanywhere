@@ -210,7 +210,7 @@ import {
   parseSessionNavigationState,
 } from "../lib/sessionNavigationState";
 import { getPublicShareInitialPrompt } from "../lib/sessionPublicSharePrompt";
-import { supportsUnifiedSessionFork } from "../lib/sessionForkAvailability";
+import { getUnifiedSessionForkAvailability } from "../lib/sessionForkAvailability";
 import { isBtwAsideSession } from "../lib/btwAsideSessions";
 import {
   composeGeneratedRetitle,
@@ -1148,10 +1148,17 @@ function SessionPageContent({
 
   // Unified Clone/Fork requires both the provider primitive and the server's
   // real-user-turn intent resolver. Older servers get no unsupported request.
-  const supportsForkFromTurn = supportsUnifiedSessionFork(
+  const forkAvailability = getUnifiedSessionForkAvailability(
     versionInfo,
     currentProviderInfo?.supportsForkSession,
+    effectiveProvider,
   );
+  const supportsForkFromTurn = forkAvailability.available;
+  const forkUnavailableMessage =
+    !forkAvailability.available &&
+    forkAvailability.reason === "server-missing-codex-lineage"
+      ? t("codexForkServerUpdateRequired")
+      : undefined;
   const forkAfterDisabled =
     status.owner === "external" ||
     processState === "in-turn" ||
@@ -5143,6 +5150,7 @@ function SessionPageContent({
                       : undefined
                   }
                   onClone={supportsForkFromTurn ? cloneSession : undefined}
+                  cloneUnavailableMessage={forkUnavailableMessage}
                   cloneDisabled={forkAfterDisabled}
                   onConfigureProjectSettings={
                     supportsProjectSessionDefaults
@@ -5535,6 +5543,7 @@ function SessionPageContent({
                       supportsForkFromTurn ? beginForkAfterSummary : undefined
                     }
                     forkAfterUserMessageDisabled={forkAfterDisabled}
+                    forkUnavailableMessage={forkUnavailableMessage}
                     onCopyUserMessage={copyUserMessage}
                     markdownAugments={markdownAugments}
                     activeToolApproval={activeToolApproval}

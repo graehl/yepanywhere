@@ -15,6 +15,7 @@ export type {
 
 // Session file types (persisted format in ~/.codex/sessions/)
 export type {
+  CodexHistoryPosition,
   CodexSessionMetaPayload,
   CodexSessionMetaEntry,
   CodexMessagePayload,

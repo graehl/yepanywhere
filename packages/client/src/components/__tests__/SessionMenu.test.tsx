@@ -112,6 +112,21 @@ describe("SessionMenu CSS module contracts", () => {
     ).toBe(true);
   });
 
+  it("keeps incompatible Clone visible with update guidance", () => {
+    renderMenu({
+      cloneUnavailableMessage: "Update the server to use Codex Clone.",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Session options" }));
+
+    const clone = screen.getByRole("button", {
+      name: "Clone (server update required)",
+    });
+    expect((clone as HTMLButtonElement).disabled).toBe(true);
+    expect(clone.getAttribute("title")).toBe(
+      "Update the server to use Codex Clone.",
+    );
+  });
+
   it("opens project settings from the session menu", () => {
     const onConfigureProjectSettings = vi.fn();
     renderMenu({ onConfigureProjectSettings });

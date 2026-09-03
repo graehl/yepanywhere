@@ -20,6 +20,20 @@ import { z } from "zod";
 // Session Metadata
 // =============================================================================
 
+const CodexPersistedEntryIdentityShape = {
+  ordinal: z.number().int().nonnegative().optional(),
+};
+
+export const CodexThreadHistoryModeSchema = z.enum(["legacy", "paginated"]);
+
+export const CodexHistoryPositionSchema = z.object({
+  thread_id: z.string(),
+  end_ordinal_exclusive: z.number().int().nonnegative(),
+  end_byte_offset: z.number().int().nonnegative(),
+});
+
+export type CodexHistoryPosition = z.infer<typeof CodexHistoryPositionSchema>;
+
 /**
  * Session metadata payload - first entry in session file.
  */
@@ -51,6 +65,9 @@ export const CodexSessionMetaPayloadSchema = z.object({
   timestamp: z.string(),
   cwd: z.string(),
   forked_from_id: z.string().optional(),
+  forked_from_ordinal_exclusive: z.number().int().nonnegative().optional(),
+  history_mode: CodexThreadHistoryModeSchema.optional(),
+  history_base: CodexHistoryPositionSchema.optional(),
   session_id: z.string().optional(),
   parent_thread_id: z.string().optional(),
   originator: z.string().optional(), // e.g. "codex_exec"
@@ -70,6 +87,7 @@ export type CodexSessionMetaPayload = z.infer<
 >;
 
 export const CodexSessionMetaEntrySchema = z.object({
+  ...CodexPersistedEntryIdentityShape,
   timestamp: z.string(),
   type: z.literal("session_meta"),
   payload: CodexSessionMetaPayloadSchema,
@@ -355,6 +373,7 @@ export type CodexResponseItemPayload = z.infer<
 >;
 
 export const CodexResponseItemEntrySchema = z.object({
+  ...CodexPersistedEntryIdentityShape,
   timestamp: z.string(),
   type: z.literal("response_item"),
   payload: CodexResponseItemPayloadSchema,
@@ -598,6 +617,7 @@ export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
 export type CodexEventMsgPayload = z.infer<typeof CodexEventMsgPayloadSchema>;
 
 export const CodexEventMsgEntrySchema = z.object({
+  ...CodexPersistedEntryIdentityShape,
   timestamp: z.string(),
   type: z.literal("event_msg"),
   payload: CodexEventMsgPayloadSchema,
@@ -622,6 +642,7 @@ export const CodexCompactedPayloadSchema = z
 export type CodexCompactedPayload = z.infer<typeof CodexCompactedPayloadSchema>;
 
 export const CodexCompactedEntrySchema = z.object({
+  ...CodexPersistedEntryIdentityShape,
   timestamp: z.string(),
   type: z.literal("compacted"),
   payload: CodexCompactedPayloadSchema,
@@ -660,6 +681,7 @@ export type CodexTurnContextPayload = z.infer<
 >;
 
 export const CodexTurnContextEntrySchema = z.object({
+  ...CodexPersistedEntryIdentityShape,
   timestamp: z.string(),
   type: z.literal("turn_context"),
   payload: CodexTurnContextPayloadSchema,
@@ -670,6 +692,7 @@ export type CodexTurnContextEntry = z.infer<typeof CodexTurnContextEntrySchema>;
 /** Codex Desktop workspace snapshot; retained but not rendered as conversation. */
 export const CodexWorldStateEntrySchema = z
   .object({
+    ...CodexPersistedEntryIdentityShape,
     timestamp: z.string(),
     type: z.literal("world_state"),
     payload: z
@@ -684,6 +707,7 @@ export const CodexWorldStateEntrySchema = z
 /** Local delivery metadata for provider-internal agent communication. */
 export const CodexInterAgentCommunicationMetadataEntrySchema = z
   .object({
+    ...CodexPersistedEntryIdentityShape,
     timestamp: z.string(),
     type: z.literal("inter_agent_communication_metadata"),
     payload: z.object({ trigger_turn: z.boolean() }).passthrough(),

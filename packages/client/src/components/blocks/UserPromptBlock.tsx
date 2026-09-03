@@ -38,6 +38,8 @@ interface Props {
   onForkAfterSummary?: () => void;
   /** The selected turn is still active and cannot be retained yet. */
   forkAfterDisabled?: boolean;
+  /** Why the otherwise-supported Fork action needs a server update. */
+  forkUnavailableMessage?: string;
   extraActions?: ReactNode;
   /**
    * "sent" while the turn exists only as the optimistic echo (not yet proven
@@ -363,6 +365,7 @@ function UserPromptActionButtons({
   onForkAfter,
   onForkAfterSummary,
   forkAfterDisabled,
+  forkUnavailableMessage,
   copyText,
   extraActions,
 }: {
@@ -374,6 +377,7 @@ function UserPromptActionButtons({
   onForkAfter?: () => void;
   onForkAfterSummary?: () => void;
   forkAfterDisabled?: boolean;
+  forkUnavailableMessage?: string;
   copyText?: string;
   extraActions?: ReactNode;
 }) {
@@ -384,6 +388,7 @@ function UserPromptActionButtons({
     !onCancelUnconfirmed &&
     !onTrimBefore &&
     !onForkAfter &&
+    !forkUnavailableMessage &&
     !copyText &&
     !extraActions
   )
@@ -447,12 +452,13 @@ function UserPromptActionButtons({
           </svg>
         </button>
       )}
-      {onForkAfter && onForkAfterSummary && (
+      {((onForkAfter && onForkAfterSummary) || forkUnavailableMessage) && (
         <ForkTurnMenu
           onForkBefore={onForkBefore}
           onForkAfter={onForkAfter}
           onForkAfterSummary={onForkAfterSummary}
           afterDisabled={forkAfterDisabled}
+          unavailableMessage={forkUnavailableMessage}
         />
       )}
       {onTrimBefore && (
@@ -569,6 +575,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
   onForkAfter,
   onForkAfterSummary,
   forkAfterDisabled,
+  forkUnavailableMessage,
   extraActions,
   deliveryState,
 }: Props) {
@@ -578,7 +585,9 @@ export const UserPromptBlock = memo(function UserPromptBlock({
     Number(Boolean(content)) +
     Number(Boolean(onCorrect)) +
     Number(Boolean(onCancelUnconfirmed)) +
-    Number(Boolean(onForkAfter && onForkAfterSummary)) +
+    Number(
+      Boolean((onForkAfter && onForkAfterSummary) || forkUnavailableMessage),
+    ) +
     Number(Boolean(onTrimBefore)) +
     Children.count(extraActions);
   const measurementKey =
@@ -631,6 +640,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
           onForkAfter={onForkAfter}
           onForkAfterSummary={onForkAfterSummary}
           forkAfterDisabled={forkAfterDisabled}
+          forkUnavailableMessage={forkUnavailableMessage}
           copyText={getUserPromptCopyText(text)}
           extraActions={extraActions}
         />
@@ -695,6 +705,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
         onForkAfter={onForkAfter}
         onForkAfterSummary={onForkAfterSummary}
         forkAfterDisabled={forkAfterDisabled}
+        forkUnavailableMessage={forkUnavailableMessage}
         copyText={getUserPromptCopyText(text)}
         extraActions={extraActions}
       />

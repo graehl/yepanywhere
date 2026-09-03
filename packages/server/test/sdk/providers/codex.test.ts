@@ -37,6 +37,7 @@ import { logSDKMessage } from "../../../src/sdk/messageLogger.js";
 import {
   CodexProvider,
   type CodexProviderConfig,
+  formatCodexLoginCommand,
 } from "../../../src/sdk/providers/codex.js";
 import {
   codexAgentMessageDeltaFixtures,
@@ -221,11 +222,45 @@ describe("CodexProvider", () => {
       expect(typeof status.enabled).toBe("boolean");
     });
 
-    it("uses CLI installation as the conservative authentication signal", async () => {
-      const status = await provider.getAuthStatus();
+    it("reports a runnable logged-out CLI separately from authentication", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-auth-status-"));
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-logged-out",
+        "#!/usr/bin/env node\nif (process.argv[2] === 'login' && process.argv[3] === 'status') process.exit(1);",
+      );
+      const loggedOutProvider = new CodexProvider({ codexPath });
 
-      expect(status.authenticated).toBe(status.installed);
-      expect(status.enabled).toBe(status.installed);
+      try {
+        await expect(loggedOutProvider.getAuthStatus()).resolves.toEqual({
+          installed: true,
+          authenticated: false,
+          enabled: false,
+          loginCommand: formatCodexLoginCommand(codexPath),
+        });
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("recognizes the selected CLI's ordinary login store", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-auth-status-"));
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-logged-in",
+        "#!/usr/bin/env node\nif (process.argv[2] === 'login' && process.argv[3] === 'status') process.exit(0);",
+      );
+      const loggedInProvider = new CodexProvider({ codexPath });
+
+      try {
+        await expect(loggedInProvider.getAuthStatus()).resolves.toEqual({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        });
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

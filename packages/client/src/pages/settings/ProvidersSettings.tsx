@@ -66,6 +66,7 @@ import { getAllProviders } from "../../providers/registry";
 const DEFAULT_OLLAMA_SYSTEM_PROMPT =
   "You are a helpful coding assistant. You help users with software engineering tasks. You have access to tools for reading files, editing files, running shell commands, and searching code. Use tools when needed to answer questions or make changes. Be concise and direct.";
 const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
+const DEFAULT_CODEX_LOGIN_COMMAND = "codex login";
 const CLAUDE_OLLAMA_DEPRECATION_DISMISSAL_KEY =
   "yep-anywhere:claude-ollama-deprecation-v1";
 // Re-enable with topics/openai-compatible-helper-sessions.md.
@@ -1092,11 +1093,13 @@ function ClaudeGatewayToggleSetting({
   );
 }
 
-function ClaudeLoginCommandPanel({
+function ProviderLoginCommandPanel({
   command,
+  provider,
   onCopy,
 }: {
   command: string;
+  provider: string;
   onCopy: (command: string) => void;
 }) {
   const { t } = useI18n();
@@ -1106,7 +1109,7 @@ function ClaudeLoginCommandPanel({
       <div
         className="settings-command-preview"
         role="group"
-        aria-label={t("providersClaudeLoginCommandPreviewAria")}
+        aria-label={t("providersLoginCommandPreviewAria", { provider })}
       >
         <code>{command}</code>
       </div>
@@ -1115,7 +1118,7 @@ function ClaudeLoginCommandPanel({
         className="settings-button"
         onClick={() => onCopy(command)}
       >
-        {t("providersClaudeLoginCommandCopy")}
+        {t("providersLoginCommandCopy", { provider })}
       </button>
     </div>
   );
@@ -1451,13 +1454,13 @@ export function ProvidersSettings() {
       ? DEFAULT_SUBAGENT_MAX_DEPTH
       : settings.subagentMaxDepth;
 
-  const handleCopyClaudeLoginCommand = useCallback(
-    async (command: string) => {
+  const handleCopyProviderLoginCommand = useCallback(
+    async (command: string, provider: string) => {
       try {
         await navigator.clipboard.writeText(command);
-        showToast(t("providersClaudeLoginCommandCopied"), "success");
+        showToast(t("providersLoginCommandCopied", { provider }), "success");
       } catch {
-        showToast(t("providersClaudeLoginCommandCopyError"), "error");
+        showToast(t("providersLoginCommandCopyError", { provider }), "error");
       }
     },
     [showToast, t],
@@ -1488,7 +1491,9 @@ export function ProvidersSettings() {
       {
         ...clientProvider,
         installed: serverInfo?.installed ?? false,
+        applicationDetected: serverInfo?.applicationDetected,
         authenticated: serverInfo?.authenticated ?? false,
+        enabled: serverInfo?.enabled ?? false,
         loginCommand: serverInfo?.loginCommand,
         additionalModelOptions: serverInfo?.additionalModelOptions,
         supportsLaunchCompactPercentOverride:
@@ -1647,15 +1652,35 @@ export function ProvidersSettings() {
                     <strong>{provider.displayName}</strong>
                     {provider.installed ? (
                       <span className="settings-status-badge settings-status-detected">
-                        {t("providersDetected")}
+                        {t("providersRuntimeReady")}
                       </span>
                     ) : (
                       <span className="settings-status-badge settings-status-not-detected">
-                        {t("providersNotDetected")}
+                        {t("providersRuntimeUnavailable")}
                       </span>
                     )}
                   </div>
                   <p>{provider.metadata.description}</p>
+                  {(provider.id === "claude" || provider.id === "codex") &&
+                    provider.applicationDetected !== undefined && (
+                      <p className="settings-hint">
+                        {t("providersDesktopApplicationStatus", {
+                          status: provider.applicationDetected
+                            ? t("providersDetected")
+                            : t("providersNotDetected"),
+                        })}
+                      </p>
+                    )}
+                  {provider.installed && (
+                    <p className="settings-hint">
+                      {t("providersAuthenticationStatus", {
+                        status:
+                          provider.authenticated || provider.enabled
+                            ? t("providersAuthenticated")
+                            : t("providersNotAuthenticated"),
+                      })}
+                    </p>
+                  )}
                   {provider.metadata.limitations.length > 0 && (
                     <ul className="settings-limitations">
                       {provider.metadata.limitations.map((limitation) => (
@@ -1663,23 +1688,40 @@ export function ProvidersSettings() {
                       ))}
                     </ul>
                   )}
-                  {provider.id === "claude" &&
+                  {(provider.id === "claude" || provider.id === "codex") &&
                     provider.installed &&
                     !provider.authenticated && (
                       <div style={{ marginTop: "var(--space-2)" }}>
                         <p className="settings-hint">
-                          {t("providersClaudeLoginHint")}
+                          {t("providersLoginHint", {
+                            provider: provider.displayName,
+                          })}
                         </p>
-                        <ClaudeLoginCommandPanel
+                        <ProviderLoginCommandPanel
                           command={
                             provider.loginCommand ??
-                            DEFAULT_CLAUDE_LOGIN_COMMAND
+                            (provider.id === "claude"
+                              ? DEFAULT_CLAUDE_LOGIN_COMMAND
+                              : DEFAULT_CODEX_LOGIN_COMMAND)
                           }
+                          provider={provider.displayName}
                           onCopy={(command) =>
-                            void handleCopyClaudeLoginCommand(command)
+                            void handleCopyProviderLoginCommand(
+                              command,
+                              provider.displayName,
+                            )
                           }
                         />
                       </div>
+                    )}
+                  {(provider.id === "claude" || provider.id === "codex") &&
+                    provider.applicationDetected === true &&
+                    !provider.installed && (
+                      <p className="settings-hint">
+                        {t("providersApplicationWithoutRuntimeHint", {
+                          provider: provider.displayName,
+                        })}
+                      </p>
                     )}
                   {provider.id === "claude-ollama" && <OllamaSettings />}
                   {provider.id === "grok" && <GrokBuildApiKeySettings />}

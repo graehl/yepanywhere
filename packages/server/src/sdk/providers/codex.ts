@@ -43,12 +43,17 @@ import {
 import { formatCodexSubagentActivity } from "../../codex/subagentActivity.js";
 import { getLogger } from "../../logging/logger.js";
 import { attachToolResultMediaCandidates } from "../../media/inlineImageData.js";
+import { quoteShellWord } from "../../utils/posixShell.js";
 import {
   CODEX_INSTALLATION_FAMILY,
   type ProviderInstallationCoordinator,
   providerInstallationCoordinator,
 } from "../../services/ProviderInstallationCoordinator.js";
-import { findCodexCliPath, getCodexCliVersion } from "../cli-detection.js";
+import {
+  findCodexCliPath,
+  getCodexCliVersion,
+  isCodexCliAuthenticated,
+} from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
 import { stripYaControlPlaneCredentials } from "./env-filter.js";
@@ -329,6 +334,26 @@ interface CodexForkAnchor {
  */
 const DECLARE_CODEX_ORIGINATOR = false;
 const DECLARED_CODEX_ORIGINATOR = "Codex Desktop";
+
+function quotePowerShellDoubleQuoted(value: string): string {
+  return `"${value
+    .replace(/`/g, "``")
+    .replace(/\$/g, "`$")
+    .replace(/"/g, '`"')}"`;
+}
+
+export function formatCodexLoginCommand(
+  executablePath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const trimmedPath = executablePath.trim();
+  if (!trimmedPath || trimmedPath === "codex") return "codex login";
+  const executable =
+    platform === "win32"
+      ? quotePowerShellDoubleQuoted(trimmedPath)
+      : quoteShellWord(trimmedPath);
+  return `${platform === "win32" ? "& " : ""}${executable} login`;
+}
 const YEP_ANYWHERE_ORIGINATOR = "yep-anywhere";
 
 type JsonRpcId = string | number;
@@ -1262,16 +1287,36 @@ export class CodexProvider implements AgentProvider {
     return authStatus.authenticated;
   }
 
-  /**
-   * Get detailed authentication status.
-   * If Codex CLI is installed, assume it's authenticated.
-   */
+  /** Get detailed launchability and authentication status. */
   async getAuthStatus(): Promise<AuthStatus> {
-    const installed = await this.isCodexCliInstalled();
+    const codexPath = await findCodexCliPath(
+      this.config.codexPath,
+      this.installationCoordinator,
+    );
+    const installed = codexPath !== null;
+    const codexEnv = this.getCodexEnv();
+    const hasEnvironmentAuth = Boolean(
+      this.config.externalChatgptAuth ||
+        ["OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"].some((name) =>
+          codexEnv[name]?.trim(),
+        ),
+    );
+    const authenticated = Boolean(
+      codexPath &&
+        (hasEnvironmentAuth ||
+          (await isCodexCliAuthenticated(
+            codexPath,
+            codexEnv,
+            this.installationCoordinator,
+          ))),
+    );
     return {
       installed,
-      authenticated: installed,
-      enabled: installed,
+      authenticated,
+      enabled: authenticated,
+      ...(codexPath && !authenticated
+        ? { loginCommand: formatCodexLoginCommand(codexPath) }
+        : {}),
     };
   }
 

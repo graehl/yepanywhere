@@ -781,6 +781,17 @@ export function getAvailableProviders(
 }
 
 /**
+ * Providers whose runtime YA can launch. Authentication is intentionally not a
+ * gate: some harnesses discover or refresh credentials only after launch, and
+ * their startup error is the most accurate remediation surface.
+ */
+export function getLaunchableProviders(
+  providers: ProviderInfo[],
+): ProviderInfo[] {
+  return providers.filter((provider) => provider.installed);
+}
+
+/**
  * Get the default provider from available providers.
  * Prefers Claude if available, otherwise the first available provider.
  */
@@ -796,4 +807,17 @@ export function getDefaultProvider(
 
   // available[0] is guaranteed to exist since we checked length > 0
   return available[0] ?? null;
+}
+
+/** Prefer Claude among launchable runtimes, even when auth is not confirmed. */
+export function getDefaultLaunchableProvider(
+  providers: ProviderInfo[],
+): ProviderInfo | null {
+  const launchable = getLaunchableProviders(providers);
+  if (launchable.length === 0) return null;
+  return (
+    launchable.find((provider) => provider.name === DEFAULT_PROVIDER) ??
+    launchable[0] ??
+    null
+  );
 }

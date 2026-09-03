@@ -38,7 +38,15 @@ export function detectDesktopProviderApplication(
   const env = options.env ?? process.env;
   const exists = options.exists ?? fs.existsSync;
   const readDirectories = options.readDirectories ?? safeDirectoryNames;
-  const appName = provider === "claude" ? "Claude" : "Codex";
+  const appNames =
+    provider === "claude"
+      ? ["Claude"]
+      : [
+          // The current OpenAI desktop bundle is ChatGPT.app. Keep Codex.app
+          // as a compatibility candidate for older installations.
+          "ChatGPT",
+          "Codex",
+        ];
   const candidates: string[] = [
     path.join(homeDir, provider === "claude" ? ".claude" : ".codex"),
   ];
@@ -70,12 +78,15 @@ export function detectDesktopProviderApplication(
       );
     }
   } else if (platform === "darwin") {
-    candidates.push(
-      path.join("/Applications", `${appName}.app`),
-      path.join(homeDir, "Applications", `${appName}.app`),
-      path.join(homeDir, "Library", "Application Support", appName),
-    );
+    for (const appName of appNames) {
+      candidates.push(
+        path.join("/Applications", `${appName}.app`),
+        path.join(homeDir, "Applications", `${appName}.app`),
+        path.join(homeDir, "Library", "Application Support", appName),
+      );
+    }
   } else {
+    const appName = appNames[0] ?? provider;
     candidates.push(
       path.join(homeDir, ".config", appName),
       path.join(homeDir, ".config", appName.toLowerCase()),

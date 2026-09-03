@@ -138,6 +138,42 @@ describe("ProvidersSettings additional models", () => {
     mockReloadProviders.mockResolvedValue(undefined);
   });
 
+  it("presents desktop app, runtime, and authentication as separate signals", () => {
+    hookState.providers = [
+      {
+        name: "claude",
+        displayName: "Claude",
+        installed: true,
+        applicationDetected: true,
+        authenticated: false,
+        enabled: false,
+        loginCommand:
+          "'/Applications/Yep Anywhere.app/claude' auth login --claudeai",
+        models: [{ id: "default", name: "Default" }],
+      },
+    ];
+
+    render(<ProvidersSettings />);
+
+    const claudeItem = document.querySelector(
+      '[data-settings-item="provider-claude"]',
+    );
+    if (!(claudeItem instanceof HTMLElement)) {
+      throw new Error("expected Claude provider settings item");
+    }
+    const item = within(claudeItem);
+
+    expect(item.getByText("providersRuntimeReady")).toBeDefined();
+    expect(item.getByText("providersDesktopApplicationStatus")).toBeDefined();
+    expect(item.getByText("providersAuthenticationStatus")).toBeDefined();
+    expect(item.getByText("providersLoginHint")).toBeDefined();
+    expect(
+      item.getByText(
+        "'/Applications/Yep Anywhere.app/claude' auth login --claudeai",
+      ),
+    ).toBeDefined();
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();

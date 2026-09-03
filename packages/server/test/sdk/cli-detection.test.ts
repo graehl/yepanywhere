@@ -6,7 +6,9 @@ import {
   compareCodexCliVersions,
   detectCodexCli,
   findCodexCliPath,
+  getCodexCommonPaths,
   getCodexCliVersion,
+  isCodexCliAuthenticated,
   normalizeCodexCliVersion,
   parseCommandLookupOutput,
   probeCodexCliVersion,
@@ -93,6 +95,22 @@ describe("command lookup output", () => {
 });
 
 describe("Codex CLI detection", () => {
+  it("includes current and legacy macOS desktop app executables", () => {
+    expect(
+      getCodexCommonPaths({
+        platform: "darwin",
+        homeDir: "/Users/test",
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "/Users/test/Applications/ChatGPT.app/Contents/Resources/codex",
+        "/Applications/Codex.app/Contents/Resources/codex",
+        "/Users/test/Applications/Codex.app/Contents/Resources/codex",
+      ]),
+    );
+  });
+
   it("normalizes and compares Codex CLI semver output", () => {
     expect(normalizeCodexCliVersion("codex-cli 0.144.1")).toBe("0.144.1");
     expect(normalizeCodexCliVersion("v0.144.1-beta.1")).toBe("0.144.1-beta.1");
@@ -111,6 +129,26 @@ describe("Codex CLI detection", () => {
     await expect(getCodexCliVersion(codexPath)).resolves.toBe(
       "codex-cli 99.5.0",
     );
+  });
+
+  it("keeps runtime and authentication probes separate", async () => {
+    const dir = makeTempDir("codex-auth-");
+    const authenticated = createFakeCodex(dir, "99.5.0");
+    const loggedOut = join(
+      dir,
+      process.platform === "win32" ? "logged-out.cmd" : "logged-out",
+    );
+    writeFileSync(
+      loggedOut,
+      process.platform === "win32"
+        ? "@echo off\r\nexit /b 1\r\n"
+        : "#!/bin/sh\nexit 1\n",
+      "utf8",
+    );
+    if (process.platform !== "win32") chmodSync(loggedOut, 0o755);
+
+    await expect(isCodexCliAuthenticated(authenticated)).resolves.toBe(true);
+    await expect(isCodexCliAuthenticated(loggedOut)).resolves.toBe(false);
   });
 
   it("classifies empty and failed Codex version probes", async () => {

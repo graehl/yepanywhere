@@ -21,6 +21,7 @@ export type InstallationReadCoordinator = Pick<
 
 const isWindows = os.platform() === "win32";
 const CODEX_VERSION_PROBE_TIMEOUT_MS = 3000;
+const CODEX_AUTH_PROBE_TIMEOUT_MS = 5000;
 const CODEX_FAILED_DISCOVERY_RETRY_MS = 100;
 const NPM_GLOBAL_PATH_CACHE_TTL_MS = 5 * 60_000;
 const execAsync = promisify(exec);
@@ -105,6 +106,12 @@ interface VersionedCodexCandidate extends CodexCliInstall {
   order: number;
 }
 
+export interface CodexCommonPathOptions {
+  platform?: NodeJS.Platform;
+  homeDir?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
 /**
  * Detect the Codex CLI installation.
  *
@@ -136,19 +143,38 @@ export async function detectCodexCli(
  * Common Codex CLI installation paths (checked after PATH lookup).
  * Includes Codex desktop app locations.
  */
-export function getCodexCommonPaths(): string[] {
-  const home = os.homedir();
-  const ext = isWindows ? ".exe" : "";
-  const sep = isWindows ? "\\" : "/";
-  const localAppData =
-    process.env.LOCALAPPDATA ?? `${home}${sep}AppData${sep}Local`;
-  return isWindows
+export function getCodexCommonPaths(
+  options: CodexCommonPathOptions = {},
+): string[] {
+  const platform = options.platform ?? os.platform();
+  const home = options.homeDir ?? os.homedir();
+  const env = options.env ?? process.env;
+  const windows = platform === "win32";
+  const ext = windows ? ".exe" : "";
+  const sep = windows ? "\\" : "/";
+  const localAppData = env.LOCALAPPDATA ?? `${home}${sep}AppData${sep}Local`;
+  if (windows) {
+    return [
+      ...getOpenAICodexDesktopPaths(localAppData, platform),
+      `${home}${sep}.codex${sep}.sandbox-bin${sep}codex${ext}`,
+      `${home}${sep}.cargo${sep}bin${sep}codex${ext}`,
+      `${home}${sep}.codex${sep}bin${sep}codex${ext}`,
+      `${localAppData}${sep}bin${sep}codex${ext}`,
+    ];
+  }
+
+  return platform === "darwin"
     ? [
-        ...getOpenAICodexDesktopPaths(localAppData),
-        `${home}${sep}.codex${sep}.sandbox-bin${sep}codex${ext}`,
-        `${home}${sep}.cargo${sep}bin${sep}codex${ext}`,
-        `${home}${sep}.codex${sep}bin${sep}codex${ext}`,
-        `${localAppData}${sep}bin${sep}codex${ext}`,
+        "/Applications/ChatGPT.app/Contents/Resources/codex",
+        `${home}/Applications/ChatGPT.app/Contents/Resources/codex`,
+        "/Applications/Codex.app/Contents/Resources/codex",
+        `${home}/Applications/Codex.app/Contents/Resources/codex`,
+        `${home}/.codex/.sandbox-bin/codex`,
+        `${home}/.local/bin/codex`,
+        "/opt/homebrew/bin/codex",
+        "/usr/local/bin/codex",
+        `${home}/.cargo/bin/codex`,
+        `${home}/.codex/bin/codex`,
       ]
     : [
         `${home}/.codex/.sandbox-bin/codex`,
@@ -160,8 +186,11 @@ export function getCodexCommonPaths(): string[] {
       ];
 }
 
-function getOpenAICodexDesktopPaths(localAppData: string): string[] {
-  if (!isWindows) return [];
+function getOpenAICodexDesktopPaths(
+  localAppData: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform !== "win32") return [];
 
   const binRoot = join(localAppData, "OpenAI", "Codex", "bin");
   try {
@@ -502,6 +531,42 @@ async function probeCodexCliVersionUncoordinated(
       error: failure.message,
     };
   }
+}
+
+/**
+ * Ask the selected Codex CLI whether its ordinary auth store is usable.
+ * Codex deliberately exits non-zero for a logged-out or unreadable store.
+ */
+export async function isCodexCliAuthenticated(
+  codexPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  installationCoordinator: InstallationReadCoordinator = providerInstallationCoordinator,
+): Promise<boolean> {
+  return installationCoordinator.withReadLease(
+    CODEX_INSTALLATION_FAMILY,
+    async () => {
+      if (!existsSync(codexPath)) return false;
+      const options = {
+        encoding: "utf-8",
+        timeout: CODEX_AUTH_PROBE_TIMEOUT_MS,
+        windowsHide: true,
+        env,
+      } as const;
+      try {
+        if (isWindowsCommandScript(codexPath)) {
+          await execAsync(
+            `${quoteWindowsCommandPath(codexPath)} login status`,
+            options,
+          );
+        } else {
+          await execFileAsync(codexPath, ["login", "status"], options);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
 }
 
 async function getNpmGlobalCodexPaths(): Promise<string[]> {

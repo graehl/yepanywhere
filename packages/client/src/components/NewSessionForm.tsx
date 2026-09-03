@@ -46,8 +46,8 @@ import {
 } from "../hooks/useModelSettings";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import {
-  getAvailableProviders,
-  getDefaultProvider,
+  getDefaultLaunchableProvider,
+  getLaunchableProviders,
   useProviderRow,
   useProviders,
 } from "../hooks/useProviders";
@@ -908,7 +908,7 @@ export function NewSessionForm({
   // Fetch remote executors
   const { executors: remoteExecutors, loading: executorsLoading } =
     useRemoteExecutors();
-  const availableProviders = getAvailableProviders(providers);
+  const launchableProviders = getLaunchableProviders(providers);
   const resolvedPlaceholder = placeholder ?? t("newSessionPlaceholder");
   const modeLabels: Record<PermissionMode, string> = {
     default: t("modeDefaultLabel"),
@@ -1327,11 +1327,11 @@ export function NewSessionForm({
   const applyInitialDefaults = useCallback(
     (providerRows: ProviderInfo[]) => {
       const catalogKnown = providerRows.length > 0;
-      const availableProviderNames = new Set(
-        getAvailableProviders(providerRows).map((p) => p.name),
+      const launchableProviderNames = new Set(
+        getLaunchableProviders(providerRows).map((p) => p.name),
       );
       const isSelectable = (name: ProviderName) =>
-        !catalogKnown || availableProviderNames.has(name);
+        !catalogKnown || launchableProviderNames.has(name);
       const savedDefaults = settings?.newSessionDefaults;
       // An explicit caller preference (e.g. "clear" from an existing session)
       // outranks saved new-session defaults.
@@ -1346,7 +1346,7 @@ export function NewSessionForm({
           : null);
       const initialProvider =
         providerRows.find((p) => p.name === savedProviderName) ??
-        getDefaultProvider(providerRows) ??
+        getDefaultLaunchableProvider(providerRows) ??
         (catalogKnown
           ? null
           : unprobedProviderRow(savedProviderName ?? DEFAULT_PROVIDER));
@@ -3499,41 +3499,45 @@ export function NewSessionForm({
     ) : null;
 
   const providerSection =
-    availableProviders.length > 1 ? (
+    launchableProviders.length > 1 ? (
       <div className="new-session-provider-section">
         <h3>{t("newSessionProviderTitle")}</h3>
         <div className="provider-options" aria-busy={providersStale}>
           {providers.map((p) => {
-            const isAvailable = p.installed && (p.authenticated || p.enabled);
+            const isLaunchable = p.installed;
             const isSelected = selectedProvider === p.name;
             return (
               <button
                 key={p.name}
                 type="button"
-                className={`provider-option ${isSelected ? "selected" : ""} ${!isAvailable ? "disabled" : ""}`}
-                onClick={() => isAvailable && handleProviderSelect(p.name)}
-                disabled={isStarting || !isAvailable}
+                className={`provider-option ${isSelected ? "selected" : ""} ${!isLaunchable ? "disabled" : ""}`}
+                onClick={() => isLaunchable && handleProviderSelect(p.name)}
+                disabled={isStarting || !isLaunchable}
                 title={
-                  isAvailable
-                    ? undefined
-                    : t("newSessionProviderUnavailable", {
+                  !isLaunchable
+                    ? t("newSessionProviderUnavailable", {
                         provider: p.displayName,
-                        reason: !p.installed
-                          ? t("newSessionProviderNotInstalled")
-                          : t("newSessionProviderNotAuthenticated"),
+                        reason: t("newSessionProviderNotInstalled"),
                       })
+                    : !p.authenticated && !p.enabled
+                      ? t("newSessionProviderAuthenticationPending", {
+                          provider: p.displayName,
+                        })
+                      : undefined
                 }
               >
                 <span className={`provider-option-dot provider-${p.name}`} />
                 <div className="provider-option-content">
                   <span className="provider-option-label">{p.displayName}</span>
-                  {!isAvailable && (
+                  {!isLaunchable ? (
                     <span className="provider-option-status">
-                      {!p.installed
-                        ? t("newSessionProviderStatusNotInstalled")
-                        : t("newSessionProviderStatusNotAuthenticated")}
+                      {t("newSessionProviderStatusNotInstalled")}
                     </span>
-                  )}
+                  ) : !p.authenticated && !p.enabled ? (
+                    <span className="provider-option-status">
+                      {t("newSessionProviderStatusAuthenticationNeeded")}
+                    </span>
+                  ) : null}
                 </div>
               </button>
             );

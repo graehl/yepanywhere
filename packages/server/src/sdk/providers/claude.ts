@@ -45,7 +45,6 @@ import {
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { quoteShellWord } from "../../utils/posixShell.js";
-import { detectClaudeCli } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
 import {
@@ -423,13 +422,6 @@ function resolveLocalClaudeCodeExecutable(): string | undefined {
   return executable;
 }
 
-function parseCommandLines(stdout: string): string[] {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
 function numericField(source: unknown, field: string): number | undefined {
   if (!source || typeof source !== "object") {
     return undefined;
@@ -570,18 +562,8 @@ function findClaudeDesktopExecutables(): string[] {
     .map((candidate) => candidate.path);
 }
 
-async function hasShellClaudeCommand(): Promise<boolean> {
-  if (process.platform !== "win32") return true;
-
-  try {
-    const { stdout } = await execFileAsync("where.exe", ["claude"], {
-      encoding: "utf-8",
-      timeout: 5000,
-    });
-    return parseCommandLines(stdout).length > 0;
-  } catch {
-    return false;
-  }
+function hasShellClaudeCommand(): boolean {
+  return resolvePathExecutable("claude") !== undefined;
 }
 
 async function isUsableClaudeExecutable(path: string): Promise<boolean> {
@@ -599,8 +581,13 @@ async function isUsableClaudeExecutable(path: string): Promise<boolean> {
 async function findPreferredClaudeLoginExecutable(): Promise<
   string | undefined
 > {
-  if (process.platform !== "win32" || (await hasShellClaudeCommand())) {
+  if (hasShellClaudeCommand()) {
     return undefined;
+  }
+
+  const sdkExecutable = resolveLocalClaudeCodeExecutable();
+  if (sdkExecutable && (await isUsableClaudeExecutable(sdkExecutable))) {
+    return sdkExecutable;
   }
 
   for (const executable of findClaudeDesktopExecutables()) {
@@ -1047,12 +1034,9 @@ export class ClaudeProvider implements AgentProvider {
     );
   }
 
-  /**
-   * Check if Claude SDK is available.
-   * Since we bundle the SDK, this is always true.
-   */
+  /** Check whether the bundled or explicitly configured Claude runtime exists. */
   async isInstalled(): Promise<boolean> {
-    return true;
+    return this.isClaudeCliInstalled();
   }
 
   /**
@@ -1156,8 +1140,8 @@ export class ClaudeProvider implements AgentProvider {
 
   private async getCliAuthStatus(): Promise<AuthStatus | null> {
     try {
-      const cliInfo = detectClaudeCli();
-      const claudePath = cliInfo.path ?? "claude";
+      const claudePath = resolveLocalClaudeCodeExecutable();
+      if (!claudePath) return null;
       const { stdout } = await execFileAsync(claudePath, ["auth", "status"], {
         encoding: "utf-8",
         timeout: 5000,
@@ -1183,13 +1167,9 @@ export class ClaudeProvider implements AgentProvider {
     }
   }
 
-  /**
-   * Check if Claude CLI is installed.
-   * Uses detectClaudeCli() which checks PATH and common installation locations.
-   */
+  /** Check whether YA has an executable Claude Code runtime to launch. */
   private async isClaudeCliInstalled(): Promise<boolean> {
-    const cliInfo = detectClaudeCli();
-    return cliInfo.found;
+    return resolveLocalClaudeCodeExecutable() !== undefined;
   }
 
   /**

@@ -88,6 +88,28 @@ notice refreshes when the browser regains focus and through an explicit retry;
 it does not add a polling loop. Dismissing the notice is browser-local and
 survives reload or WebView recreation on the running desktop server origin.
 
+Provider readiness has three independent signals:
+
+- `applicationDetected` means provider-owned desktop application or data was
+  found. On macOS, Codex detection recognizes the current `ChatGPT.app` and the
+  legacy `Codex.app` names in both system and per-user Applications folders.
+- `installed` means YA resolved and validated a runtime it can launch. The
+  exact `Contents/Resources/codex` executable inside either recognized macOS
+  OpenAI bundle is a version-dependent fallback candidate, not an assertion
+  that the desktop application is logged in.
+- `authenticated` means the selected runtime's ordinary authentication probe
+  succeeded. Application presence and runtime launchability never imply it.
+
+For ordinary local providers, an installed runtime remains selectable in New
+Session when authentication is false or cannot yet be confirmed. Starting the
+session exercises the provider's normal authentication behavior and reports a
+real authentication failure through the existing session error surface. An
+application-only detection with no validated runtime cannot launch. Claude may
+report a launchable runtime without Claude Desktop because YA bundles the
+Claude Agent SDK runtime; its auth probe and login guidance use that resolved
+runtime rather than assuming an unqualified `claude` command exists in Finder's
+environment.
+
 The server provider catalog remains authoritative for actual provider
 availability. Provider launch and authentication failures use the ordinary
 provider/New Session error surfaces; they do not reopen desktop onboarding or

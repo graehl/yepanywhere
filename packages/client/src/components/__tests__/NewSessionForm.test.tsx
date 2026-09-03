@@ -409,9 +409,17 @@ vi.mock("../../hooks/useProviders", () => ({
     providers.filter(
       (provider) => provider.installed && provider.authenticated,
     ),
+  getLaunchableProviders: (providers: typeof providersState.providers) =>
+    providers.filter((provider) => provider.installed),
   getDefaultProvider: (providers: typeof providersState.providers) =>
     providers.find((provider) => provider.name === "claude") ??
     providers[0] ??
+    null,
+  getDefaultLaunchableProvider: (providers: typeof providersState.providers) =>
+    providers.find(
+      (provider) => provider.installed && provider.name === "claude",
+    ) ??
+    providers.find((provider) => provider.installed) ??
     null,
 }));
 
@@ -1355,6 +1363,57 @@ describe("NewSessionForm", () => {
         }),
       }),
     );
+  });
+
+  it("allows a launchable provider to start before authentication is confirmed", async () => {
+    const codexProvider = providersState.providers.find(
+      (provider) => provider.name === "codex",
+    );
+    if (!codexProvider) throw new Error("expected Codex provider fixture");
+    codexProvider.authenticated = false;
+    codexProvider.enabled = false;
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "codex",
+        model: "gpt-5.4",
+        permissionMode: "default",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const codexButton = (await screen.findByText("Codex")).closest("button");
+    if (!codexButton) throw new Error("expected Codex provider button");
+    expect(codexButton).toHaveProperty("disabled", false);
+    expect(
+      within(codexButton).getByText(
+        "newSessionProviderStatusAuthenticationNeeded",
+      ),
+    ).toBeDefined();
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "test provider auth at launch" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-1",
+        "test provider auth at launch",
+        expect.objectContaining({ provider: "codex" }),
+        undefined,
+        expect.any(Number),
+      );
+    });
   });
 
   it("shows and submits the saved sandbox only with server capability", async () => {

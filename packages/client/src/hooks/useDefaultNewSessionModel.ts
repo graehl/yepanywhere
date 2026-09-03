@@ -6,8 +6,8 @@ import {
 } from "../lib/newSessionDefaults";
 import { getModelSetting } from "./useModelSettings";
 import {
-  getAvailableProviders,
-  getDefaultProvider,
+  getDefaultLaunchableProvider,
+  getLaunchableProviders,
   useProviders,
 } from "./useProviders";
 import { useServerSettings } from "./useServerSettings";
@@ -31,17 +31,17 @@ export function useDefaultNewSessionModel(): DefaultNewSessionModel | null {
     if (providersLoading || settingsLoading || providers.length === 0) {
       return null;
     }
-    const availableNames = new Set(
-      getAvailableProviders(providers).map((p) => p.name),
+    const launchableNames = new Set(
+      getLaunchableProviders(providers).map((p) => p.name),
     );
     const savedDefaults = settings?.newSessionDefaults;
     const savedProviderName =
-      savedDefaults?.provider && availableNames.has(savedDefaults.provider)
+      savedDefaults?.provider && launchableNames.has(savedDefaults.provider)
         ? savedDefaults.provider
         : null;
     const provider =
       providers.find((p) => p.name === savedProviderName) ??
-      getDefaultProvider(providers);
+      getDefaultLaunchableProvider(providers);
     if (!provider) return null;
 
     const providerDefaults = getProviderSessionDefaults(

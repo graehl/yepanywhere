@@ -135,6 +135,15 @@ a queued acceptance whose later failure would discard its prompt. Retry
 refreshes Gateway alone. Other providers retain ordinary five-minute row reuse
 and exact unlisted model-id behavior.
 
+For ordinary local providers, `installed` is the New Session selection and
+launch gate: it means YA has a runtime to start. `authenticated` is a separate
+readiness signal and does not disable that launch attempt, because a harness may
+discover, refresh, or request credentials only after startup. New Session marks
+the selection as needing authentication and lets the real provider startup
+either succeed or return the actionable authentication error. A coarse desktop
+`applicationDetected` signal alone never authorizes launch. Claude Gateway's
+current-catalog rule above remains the narrower exception.
+
 New Session's initial subscription-usage read is admitted as supplementary
 startup work after earlier route tiers. Direct-demand usage consumers and every
 explicit Refresh remain immediate.

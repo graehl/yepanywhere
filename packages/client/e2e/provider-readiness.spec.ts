@@ -47,7 +47,108 @@ const currentGateway = {
   models: [{ id: "current-gateway", name: "Current Gateway" }],
 };
 
+const loggedOutDesktopProviders = [
+  {
+    name: "claude",
+    displayName: "Claude",
+    installed: true,
+    applicationDetected: true,
+    authenticated: false,
+    enabled: false,
+    loginCommand:
+      "'/Applications/Yep Anywhere.app/Contents/Resources/claude' auth login --claudeai",
+    models: [{ id: "default", name: "Default" }],
+  },
+  {
+    name: "codex",
+    displayName: "Codex",
+    installed: true,
+    applicationDetected: true,
+    authenticated: false,
+    enabled: false,
+    loginCommand: "'/Applications/ChatGPT.app/Contents/Resources/codex' login",
+    models: [{ id: "gpt-5.6", name: "GPT-5.6" }],
+  },
+];
+
 test.describe("New Session provider readiness", () => {
+  test("separates desktop, runtime, and auth while keeping launch available", async ({
+    page,
+    baseURL,
+  }) => {
+    await page.route(
+      (url) => url.pathname === "/api/providers",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ providers: loggedOutDesktopProviders }),
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === "/api/providers/codex",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ provider: loggedOutDesktopProviders[1] }),
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname.endsWith("/subscription-usage"),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ usage: null }),
+        });
+      },
+    );
+
+    await page.goto(`${baseURL}/settings/providers`);
+    await dismissOnboardingIfVisible(page);
+    const codexSettings = page.locator('[data-settings-item="provider-codex"]');
+    await expect(codexSettings.getByText("Runtime ready")).toBeVisible();
+    await expect(
+      codexSettings.getByText("Desktop application: Detected"),
+    ).toBeVisible();
+    await expect(
+      codexSettings.getByText("Authentication: Not authenticated"),
+    ).toBeVisible();
+    await expect(
+      codexSettings.getByText(
+        "'/Applications/ChatGPT.app/Contents/Resources/codex' login",
+      ),
+    ).toBeVisible();
+
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await codexSettings.scrollIntoViewIfNeeded();
+    await capture(page, "desktop-provider-readiness-1000x600.png");
+    await page.setViewportSize({ width: 375, height: 812 });
+    await codexSettings.scrollIntoViewIfNeeded();
+    await capture(page, "desktop-provider-readiness-375x812.png");
+
+    await page.goto(`${baseURL}/new-session?provider=codex&detached=1`);
+    const codexOption = page
+      .locator(".provider-option")
+      .filter({ hasText: "Codex" });
+    await expect(codexOption).toBeEnabled();
+    await expect(codexOption.getByText("Authentication needed")).toBeVisible();
+    await page
+      .getByPlaceholder("Describe what you'd like help with...")
+      .fill("Verify provider authentication at launch");
+    await expect(page.locator(".new-session-submit-button")).toBeEnabled();
+
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await codexOption.scrollIntoViewIfNeeded();
+    await capture(page, "new-session-auth-needed-1000x600.png");
+    await page.setViewportSize({ width: 375, height: 812 });
+    await codexOption.scrollIntoViewIfNeeded();
+    await capture(page, "new-session-auth-needed-375x812.png");
+  });
+
   test("keeps stale Gateway display blocked until named retry succeeds", async ({
     page,
     baseURL,

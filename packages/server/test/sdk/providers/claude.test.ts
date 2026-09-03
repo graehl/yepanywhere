@@ -527,4 +527,15 @@ describe("Claude login command", () => {
       '& "C:\\Users\\me\\AppData\\Local\\Claude App\\claude.exe" auth login --claudeai',
     );
   });
+
+  it("formats the bundled macOS runtime as a directly runnable login command", () => {
+    expect(
+      formatClaudeLoginCommand(
+        "/Applications/Yep Anywhere.app/Contents/Resources/claude",
+        "darwin",
+      ),
+    ).toBe(
+      "'/Applications/Yep Anywhere.app/Contents/Resources/claude' auth login --claudeai",
+    );
+  });
 });

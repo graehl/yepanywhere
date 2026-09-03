@@ -239,6 +239,11 @@ provider/model economics remain provider-specific, while permission, sandbox,
 recap, suggestions, show-thinking, and fork-opening keep their established
 all-provider or client-local ownership.
 
+When recap mode is enabled, its away-duration control occupies a full-width row
+between the recap choices and prompt suggestions. The slider, numeric seconds
+input, and unit remain visible as one control and never share or overlap the
+Suggestions grid row.
+
 New Session instead prioritizes the choices most likely to change before a
 launch. Its linear reading order is AI Provider, model and thinking, permission
 mode and sandboxing, show-thinking display policy, then recaps, the conditional

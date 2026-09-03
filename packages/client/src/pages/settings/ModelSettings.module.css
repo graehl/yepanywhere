@@ -26,6 +26,11 @@
   flex: 0 0 auto;
 }
 
+.recapDuration {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .intro,
 .relatedDivider {
   grid-column: 1 / -1;

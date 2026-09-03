@@ -835,7 +835,7 @@ export function ModelSettings() {
                   disabled={settingsLoading}
                   label={recapAfterSecondsInlineLabels[selectedRecapMode]}
                   mode={selectedRecapMode}
-                  className="recap-after-seconds-control--inline"
+                  className={`${styles.recapDuration} recap-after-seconds-control--inline`}
                   onCommit={(seconds) =>
                     updateNewSessionDefaults({ recapAfterSeconds: seconds })
                   }

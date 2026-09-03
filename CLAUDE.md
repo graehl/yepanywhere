@@ -202,7 +202,7 @@ upstream fix.
 
 When a transitive dep has no direct upgrade path, prefer a pnpm override. Pin it
 exactly if a newer major would escape the parent's declared range — `fast-uri`
-is pinned to `3.1.5` rather than `^3.1.5` because 4.x is published and `ajv`
+is pinned to `3.1.6` rather than `^3.1.6` because 4.x is published and `ajv`
 declares `^3.0.1`. When the parent's declared range already contains the patched
 version, no override is needed: refresh the lockfile with
 `pnpm -r update <pkg> --depth=Infinity` (plain `pnpm update` skips transitive

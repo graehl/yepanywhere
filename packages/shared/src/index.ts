@@ -242,6 +242,7 @@ export type {
   PromptSuggestionMode,
   HelperTargetConfig,
   SlashCommand,
+  SlashCommandArgumentCompletion,
   SlashCommandInvocation,
   SlashCommandInvocationKind,
   SlashCommandInvocationPrefix,

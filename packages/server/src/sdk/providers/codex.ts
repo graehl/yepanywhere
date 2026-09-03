@@ -77,6 +77,12 @@ import type {
   SkillsListResponse,
   ThreadForkParams,
   ThreadForkResponse,
+  ThreadGoalClearParams,
+  ThreadGoalClearResponse,
+  ThreadGoalGetParams,
+  ThreadGoalGetResponse,
+  ThreadGoalSetParams,
+  ThreadGoalSetResponse,
   ThreadReadParams,
   ThreadReadResponse,
   ThreadItem as CodexThreadItem,
@@ -1980,6 +1986,122 @@ export class CodexProvider implements AgentProvider {
         argument,
       ): Promise<ProviderCommandResult> => {
         const name = command.trim().replace(/^\/+/, "").toLowerCase();
+        if (name === "goal") {
+          const client = activeClient ?? (await initialActiveClient);
+          const threadId = runtimeState.threadId;
+          if (!client || !threadId) {
+            return {
+              handled: true,
+              error: "Codex session is not ready for goal commands yet",
+            };
+          }
+
+          const goalArgument = argument?.trim() ?? "";
+          const goalControl = goalArgument.toLowerCase();
+          try {
+            if (!goalArgument) {
+              const response = await client.request<ThreadGoalGetResponse>(
+                "thread/goal/get",
+                { threadId } satisfies ThreadGoalGetParams,
+              );
+              return {
+                handled: true,
+                output: response.goal
+                  ? {
+                      summary: `Goal ${response.goal.status}`,
+                      details: [
+                        response.goal.objective,
+                        `${response.goal.tokensUsed.toLocaleString()} tokens used`,
+                      ],
+                    }
+                  : { summary: "No goal set" },
+              };
+            }
+
+            if (goalControl === "clear") {
+              const response = await client.request<ThreadGoalClearResponse>(
+                "thread/goal/clear",
+                { threadId } satisfies ThreadGoalClearParams,
+              );
+              return {
+                handled: true,
+                output: {
+                  summary: response.cleared
+                    ? "Goal cleared"
+                    : "No goal to clear",
+                },
+              };
+            }
+
+            if (goalControl === "pause" || goalControl === "resume") {
+              const response = await client.request<ThreadGoalSetResponse>(
+                "thread/goal/set",
+                {
+                  threadId,
+                  status: goalControl === "pause" ? "paused" : "active",
+                } satisfies ThreadGoalSetParams,
+              );
+              return {
+                handled: true,
+                output: {
+                  summary:
+                    goalControl === "pause" ? "Goal paused" : "Goal resumed",
+                  details: [response.goal.objective],
+                },
+              };
+            }
+
+            if (goalControl === "edit") {
+              return {
+                handled: true,
+                error:
+                  "Interactive /goal edit is unavailable in YA. Run /goal clear, then set the revised objective with /goal <objective>.",
+              };
+            }
+
+            const current = await client.request<ThreadGoalGetResponse>(
+              "thread/goal/get",
+              { threadId } satisfies ThreadGoalGetParams,
+            );
+            if (current.goal && current.goal.status !== "complete") {
+              return {
+                handled: true,
+                error:
+                  "This thread already has an unfinished goal. Run /goal clear before setting a new objective.",
+              };
+            }
+            if (current.goal) {
+              await client.request<ThreadGoalClearResponse>(
+                "thread/goal/clear",
+                { threadId } satisfies ThreadGoalClearParams,
+              );
+            }
+            const response = await client.request<ThreadGoalSetResponse>(
+              "thread/goal/set",
+              {
+                threadId,
+                objective: goalArgument,
+                status: "active",
+              } satisfies ThreadGoalSetParams,
+            );
+            return {
+              handled: true,
+              output: {
+                summary: "Goal set",
+                details: [response.goal.objective],
+              },
+            };
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            log.warn(
+              { threadId, argument: goalArgument, error: message },
+              "Codex goal command failed",
+            );
+            return { handled: true, error: message };
+          }
+        }
+
         if (name === "status" || name === "usage") {
           const client = activeClient ?? (await initialActiveClient);
           if (!client) {

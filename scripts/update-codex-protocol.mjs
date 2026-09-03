@@ -77,6 +77,23 @@ const SUBSET_EXPORTS = [
     name: "ThreadCompactStartResponse",
     file: "v2/ThreadCompactStartResponse.ts",
   },
+  { name: "ThreadGoal", file: "v2/ThreadGoal.ts" },
+  { name: "ThreadGoalStatus", file: "v2/ThreadGoalStatus.ts" },
+  { name: "ThreadGoalSetParams", file: "v2/ThreadGoalSetParams.ts" },
+  {
+    name: "ThreadGoalSetResponse",
+    file: "v2/ThreadGoalSetResponse.ts",
+  },
+  { name: "ThreadGoalGetParams", file: "v2/ThreadGoalGetParams.ts" },
+  {
+    name: "ThreadGoalGetResponse",
+    file: "v2/ThreadGoalGetResponse.ts",
+  },
+  { name: "ThreadGoalClearParams", file: "v2/ThreadGoalClearParams.ts" },
+  {
+    name: "ThreadGoalClearResponse",
+    file: "v2/ThreadGoalClearResponse.ts",
+  },
   {
     name: "CommandExecutionRequestApprovalParams",
     file: "v2/CommandExecutionRequestApprovalParams.ts",

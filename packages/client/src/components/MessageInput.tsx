@@ -97,7 +97,11 @@ import {
   longestCommonPrefix,
   resolveComposerBangDraft,
 } from "../lib/bangCommands";
-import { getSlashCommandMenuParts } from "../lib/slashCommands";
+import {
+  getSlashCommandArgumentCompletionMatches,
+  getSlashCommandMenuParts,
+  type SlashCommandArgumentCompletionMatch,
+} from "../lib/slashCommands";
 import {
   createClientSpeechTurnId,
   createSpeechTargetId,
@@ -562,9 +566,21 @@ export function MessageInput({
     attachments.length + uploadProgress.length,
   );
   const invocationQuery = getInvocationCompletionQuery(text, composerCursor);
+  const matchingSlashArgumentCompletions = useMemo(
+    () =>
+      getSlashCommandArgumentCompletionMatches(
+        text,
+        slashCommands,
+        composerCursor,
+      ),
+    [composerCursor, slashCommands, text],
+  );
+  const argumentCompletionQuery = matchingSlashArgumentCompletions[0];
   const slashQueryKey = invocationQuery
     ? `${invocationQuery.start}:${invocationQuery.end}:${invocationQuery.sigil}:${invocationQuery.query}`
-    : null;
+    : argumentCompletionQuery
+      ? `${argumentCompletionQuery.start}:${argumentCompletionQuery.end}:argument:${argumentCompletionQuery.query}`
+      : null;
   const matchingSlashCommands = useMemo(() => {
     if (!invocationQuery) return [];
     const matched = slashCommands.filter((command) =>
@@ -594,14 +610,16 @@ export function MessageInput({
     matchingSlashCommands.some((command) =>
       getInvocationNames(command).includes(invocationQuery.query),
     );
+  const slashSuggestionCount =
+    matchingSlashCommands.length + matchingSlashArgumentCompletions.length;
   const showSlashSuggestions =
     !collapsed &&
     !disabled &&
-    invocationQuery !== null &&
-    !(invocationQuery.leading && hasNonTextComposerContent) &&
+    (invocationQuery !== null || matchingSlashArgumentCompletions.length > 0) &&
+    !hasNonTextComposerContent &&
     !hasExactSlashCommand &&
     dismissedSlashQuery !== slashQueryKey &&
-    matchingSlashCommands.length > 0;
+    slashSuggestionCount > 0;
   const recognizedSkillTokens = useMemo(
     () =>
       Array.from(
@@ -751,7 +769,7 @@ export function MessageInput({
     }
   }, [text]);
 
-  const slashSelectionResetKey = `${slashQueryKey}\0${matchingSlashCommands.length}`;
+  const slashSelectionResetKey = `${slashQueryKey}\0${slashSuggestionCount}`;
 
   useEffect(() => {
     void slashSelectionResetKey;
@@ -2161,6 +2179,29 @@ export function MessageInput({
     ],
   );
 
+  const handleSlashArgumentCompletion = useCallback(
+    (match: SlashCommandArgumentCompletionMatch) => {
+      const replacement = `${match.completion.value.trim()} `;
+      const nextText =
+        text.slice(0, match.start) + replacement + text.slice(match.end);
+      const nextCursor = match.start + replacement.length;
+      noteDraftTextChange(text, nextText, {
+        start: match.start,
+        end: match.end,
+        inputType: "insertText",
+      });
+      noteComposerEdit(nextText);
+      setText(nextText);
+      setComposerCursor(nextCursor);
+      setDismissedSlashQuery(null);
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+      });
+    },
+    [noteComposerEdit, noteDraftTextChange, setText, text],
+  );
+
   // Apply a highlighted/clicked bang menu row. A history row replaces the
   // whole `!!` body (and dismisses the menu, since the body is now a complete
   // prior command); a token candidate keeps the token-replacement behavior.
@@ -2460,8 +2501,7 @@ export function MessageInput({
         setSelectedSlashIndex((current) => {
           const delta = e.key === "ArrowDown" ? 1 : -1;
           return (
-            (current + delta + matchingSlashCommands.length) %
-            matchingSlashCommands.length
+            (current + delta + slashSuggestionCount) % slashSuggestionCount
           );
         });
         return;
@@ -2476,7 +2516,15 @@ export function MessageInput({
       ) {
         e.preventDefault();
         const command = matchingSlashCommands[selectedSlashIndex];
-        if (command) handleSlashCommand(command);
+        if (command) {
+          handleSlashCommand(command);
+        } else {
+          const completion =
+            matchingSlashArgumentCompletions[
+              selectedSlashIndex - matchingSlashCommands.length
+            ];
+          if (completion) handleSlashArgumentCompletion(completion);
+        }
         return;
       }
     }
@@ -3580,6 +3628,32 @@ export function MessageInput({
                         {[command.description, command.argumentHint]
                           .filter(Boolean)
                           .join(" · ")}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+            {matchingSlashArgumentCompletions.map((match, offset) => {
+              const index = matchingSlashCommands.length + offset;
+              const value = match.completion.value.trim();
+              const label = `${getCanonicalInvocationToken(match.command)} ${value}`;
+              return (
+                <button
+                  key={`${getCanonicalInvocationToken(match.command)}:${value}`}
+                  type="button"
+                  className={`slash-command-item${index === selectedSlashIndex ? " active" : ""}`}
+                  onMouseEnter={() => setSelectedSlashIndex(index)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleSlashArgumentCompletion(match)}
+                  role="menuitem"
+                  aria-label={label}
+                >
+                  <span className="slash-command-copy">
+                    <span>{label}</span>
+                    {match.completion.description && (
+                      <span className="slash-command-detail">
+                        {match.completion.description}
                       </span>
                     )}
                   </span>

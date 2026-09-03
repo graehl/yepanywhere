@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRunExactlyPrompt,
   getLeadingSlashQuery,
+  getSlashCommandArgumentCompletionMatches,
   getSlashCommandMenuParts,
   normalizeSlashCommandForMatch,
   parseComposerSlashCommand,
@@ -286,6 +287,39 @@ describe("slashCommands", () => {
     expect(getLeadingSlashQuery("/foo bar")).toBeNull();
     expect(getLeadingSlashQuery(" /foo")).toBeNull();
     expect(normalizeSlashCommandForMatch("///Fast")).toBe("fast");
+  });
+
+  it("matches provider-owned first-argument completions", () => {
+    const goal = {
+      name: "goal",
+      description: "",
+      argumentCompletions: [
+        { value: "clear", description: "Remove the current goal" },
+        { value: "pause" },
+        { value: "resume" },
+      ],
+      invocation: { kind: "native" as const, prefix: "/" as const },
+    };
+
+    expect(
+      getSlashCommandArgumentCompletionMatches("/goal c", [goal]).map(
+        ({ completion }) => completion.value,
+      ),
+    ).toEqual(["clear"]);
+    expect(
+      getSlashCommandArgumentCompletionMatches("/goal ", [goal]).map(
+        ({ completion }) => completion.value,
+      ),
+    ).toEqual(["clear", "pause", "resume"]);
+    expect(
+      getSlashCommandArgumentCompletionMatches("/goal clear", [goal]),
+    ).toEqual([]);
+    expect(
+      getSlashCommandArgumentCompletionMatches("/goal write tests", [goal]),
+    ).toEqual([]);
+    expect(
+      getSlashCommandArgumentCompletionMatches("/goal c", [goal], 6),
+    ).toEqual([]);
   });
 
   it("turns /fast into a thinking-off message", () => {

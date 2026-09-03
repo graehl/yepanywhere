@@ -3457,6 +3457,42 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("/compact ");
   });
 
+  it("shows and inserts provider-owned slash argument completions", () => {
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        slashCommands: [
+          {
+            name: "goal",
+            description:
+              "Keep working toward a verifiable end state until it is met",
+            argumentHint: "<verifiable end state>",
+            argumentCompletions: [
+              { value: "clear", description: "Remove the current goal" },
+              { value: "pause", description: "Pause the current goal" },
+              { value: "resume", description: "Resume the current goal" },
+            ],
+            invocation: { kind: "native", prefix: "/" },
+          },
+        ],
+      },
+    ) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "/go" } });
+    const goalCommand = screen.getByRole("menuitem", { name: "/goal" });
+    expect(goalCommand.textContent).toContain("<verifiable end state>");
+    expect(goalCommand.textContent).toContain(
+      "Keep working toward a verifiable end state until it is met",
+    );
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea.value).toBe("/goal ");
+    expect(screen.getByRole("menuitem", { name: "/goal clear" })).toBeTruthy();
+    expect(screen.getByText("Remove the current goal")).toBeTruthy();
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(textarea.value).toBe("/goal clear ");
+  });
+
   it("submits instead of completing a slash token after existing text", () => {
     const onSend = vi.fn();
     const textarea = renderMessageInput(

@@ -34,6 +34,11 @@ as the runtime skills directory.
   A command may be native, provider-text emulated, YA-routed, or unavailable;
   unsupported commands should not silently fall through as ordinary prompt text
   when YA advertised them as commands.
+- `argumentHint` and `argumentCompletions` are provider-owned command metadata.
+  Completions are non-exhaustive first-argument suggestions, not a validation
+  grammar: free-form arguments remain available when the provider accepts them.
+  A stopped-session fallback must retain the richest known metadata for each
+  provider command rather than replacing live metadata with a name-only row.
 - A provider-native local command may return structured YA-local output instead
   of starting a provider turn. YA publishes that output as a synthetic
   `local_command` row for live delivery and short replay, without writing it to
@@ -64,6 +69,27 @@ as the runtime skills directory.
   text at delivery): explicit routing preserves provider and user skill name
   collisions while allowing YA-local commands to reuse the existing
   server-authoritative queue projection and UI.
+- **Attach argument completions to provider commands** (vs. a goal-specific UI
+  vocabulary): the provider owns argument semantics, while the composer only
+  filters and inserts optional suggestions. Older inventories without the field
+  retain the existing command-name completion.
+
+## Codex goal commands
+
+Codex `/goal`, `/goal clear`, `/goal pause`, `/goal resume`, and
+`/goal <objective>` are provider-native control operations. YA dispatches them
+through `thread/goal/get`, `thread/goal/clear`, and `thread/goal/set`; none may
+become model-visible turn text. Setting a new objective while an unfinished
+goal exists fails visibly and directs the user to clear it first. Clearing and
+then setting a new objective resets the provider goal without falsely marking
+the preceding goal complete.
+
+The Codex inventory preserves the original “Keep working toward a verifiable
+end state until it is met” description and `<verifiable end state>` free-form
+argument hint, and offers `clear`, `pause`, and `resume` as completions.
+Interactive `/goal edit` is not advertised because YA has no provider goal
+editor; an explicit attempt fails visibly with the supported clear-and-set
+route.
 
 ## Default Skill Vocabulary
 
@@ -125,6 +151,11 @@ recap/goal implementation.
   being sent to the provider as plain prompt text.
 - Provider-native local output reaches both a live subscriber and the replay
   buffer, while the provider receives no user/model turn.
+- Provider argument completions filter after an exact command token, insert the
+  provider-authored value, and disappear for a complete or free-form argument.
+- Stopped Codex sessions preserve the `/goal` objective hint and control
+  completions, and every advertised goal control dispatches without a model
+  turn.
 - Supported `/archive` projects `/archive`; an archive-incapable but done-capable
   server projects `/done` without receiving an archive request. `/title` is
   handled locally and never reaches a provider or focused aside.

@@ -1,6 +1,8 @@
 import {
   getCanonicalInvocationToken,
+  getInvocationNames,
   type SlashCommand,
+  type SlashCommandArgumentCompletion,
   type ThinkingOption,
 } from "@yep-anywhere/shared";
 
@@ -48,6 +50,57 @@ export type ComposerSessionOperation =
       command: "archive" | "terminate" | "title";
       message: string;
     };
+
+export interface SlashCommandArgumentCompletionMatch {
+  command: SlashCommand;
+  completion: SlashCommandArgumentCompletion;
+  start: number;
+  end: number;
+  query: string;
+}
+
+export function getSlashCommandArgumentCompletionMatches(
+  text: string,
+  commands: readonly SlashCommand[],
+  cursor = text.length,
+): SlashCommandArgumentCompletionMatch[] {
+  if (cursor !== text.length) return [];
+
+  const match = /^([/$])([^\s/]+)[ \t]+([^\s]*)$/.exec(text);
+  if (!match) return [];
+
+  const sigil = match[1];
+  const authoredName = match[2]?.toLowerCase();
+  const query = match[3] ?? "";
+  if ((sigil !== "/" && sigil !== "$") || !authoredName) return [];
+
+  const command = commands.find(
+    (candidate) =>
+      (candidate.invocation?.prefix ?? "/") === sigil &&
+      getInvocationNames(candidate).includes(authoredName) &&
+      candidate.argumentCompletions?.length,
+  );
+  if (!command?.argumentCompletions) return [];
+
+  const normalizedQuery = query.toLowerCase();
+  const start = text.length - query.length;
+  return command.argumentCompletions
+    .filter((completion) => {
+      const value = completion.value.trim();
+      return (
+        value.length > 0 &&
+        value.toLowerCase().startsWith(normalizedQuery) &&
+        value.toLowerCase() !== normalizedQuery
+      );
+    })
+    .map((completion) => ({
+      command,
+      completion,
+      start,
+      end: text.length,
+      query,
+    }));
+}
 
 export function resolveComposerSessionOperation({
   text,

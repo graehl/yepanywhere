@@ -8,7 +8,13 @@ export const CODEX_BUILTIN_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "goal",
-    description: "",
+    description: "Keep working toward a verifiable end state until it is met",
+    argumentHint: "<verifiable end state>",
+    argumentCompletions: [
+      { value: "clear", description: "Remove the current goal" },
+      { value: "pause", description: "Pause the current goal" },
+      { value: "resume", description: "Resume the current goal" },
+    ],
     invocation: { kind: "native", prefix: "/" },
   },
   {

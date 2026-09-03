@@ -313,11 +313,113 @@ describe("CodexProvider", () => {
       await expect(session.supportedCommands?.()).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: "compact" }),
-          expect.objectContaining({ name: "goal" }),
+          expect.objectContaining({
+            name: "goal",
+            description:
+              "Keep working toward a verifiable end state until it is met",
+            argumentHint: "<verifiable end state>",
+            argumentCompletions: [
+              expect.objectContaining({ value: "clear" }),
+              expect.objectContaining({ value: "pause" }),
+              expect.objectContaining({ value: "resume" }),
+            ],
+          }),
           expect.objectContaining({ name: "status" }),
           expect.objectContaining({ name: "usage" }),
         ]),
       );
+    });
+
+    it("runs goal control through thread goal RPCs without a model turn", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-goal-commands-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-goal-commands",
+        buildFakeCodexAppServer(logPath),
+      );
+      const testProvider = new CodexProvider({ codexPath });
+      const session = await testProvider.startSession({ cwd: tempDir });
+
+      try {
+        await session.iterator.next();
+        await expect(session.runProviderCommand?.("goal")).resolves.toEqual({
+          handled: true,
+          output: { summary: "No goal set" },
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "Ship the native goal path"),
+        ).resolves.toEqual({
+          handled: true,
+          output: {
+            summary: "Goal set",
+            details: ["Ship the native goal path"],
+          },
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "pause"),
+        ).resolves.toEqual({
+          handled: true,
+          output: {
+            summary: "Goal paused",
+            details: ["Ship the native goal path"],
+          },
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "resume"),
+        ).resolves.toEqual({
+          handled: true,
+          output: {
+            summary: "Goal resumed",
+            details: ["Ship the native goal path"],
+          },
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "Replace it silently"),
+        ).resolves.toEqual({
+          handled: true,
+          error:
+            "This thread already has an unfinished goal. Run /goal clear before setting a new objective.",
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "clear"),
+        ).resolves.toEqual({
+          handled: true,
+          output: { summary: "Goal cleared" },
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "Start the replacement goal"),
+        ).resolves.toEqual({
+          handled: true,
+          output: {
+            summary: "Goal set",
+            details: ["Start the replacement goal"],
+          },
+        });
+        await expect(
+          session.runProviderCommand?.("goal", "edit"),
+        ).resolves.toEqual({
+          handled: true,
+          error:
+            "Interactive /goal edit is unavailable in YA. Run /goal clear, then set the revised objective with /goal <objective>.",
+        });
+
+        const methods = readFakeCodexRequests(logPath).map(
+          (request) => request.method,
+        );
+        expect(methods).toEqual(
+          expect.arrayContaining([
+            "thread/goal/get",
+            "thread/goal/set",
+            "thread/goal/clear",
+          ]),
+        );
+        expect(methods).not.toContain("turn/start");
+      } finally {
+        await session.abort();
+        await session.iterator.return?.(undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("runs status and usage through account RPCs without a model turn", async () => {
@@ -2235,6 +2337,7 @@ import { appendFileSync } from "node:fs";
 const logPath = ${JSON.stringify(logPath)};
 const accountType = ${JSON.stringify(accountType)};
 let buffer = "";
+let goal = null;
 
 function write(payload) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
@@ -2334,6 +2437,28 @@ function handleMessage(message) {
         ],
       });
       break;
+    case "thread/goal/get":
+      respond(message.id, { goal });
+      break;
+    case "thread/goal/set":
+      goal = {
+        threadId: "thread-1",
+        objective: message.params?.objective ?? goal?.objective ?? "",
+        status: message.params?.status ?? goal?.status ?? "active",
+        tokenBudget: null,
+        tokensUsed: goal?.tokensUsed ?? 0,
+        timeUsedSeconds: goal?.timeUsedSeconds ?? 0,
+        createdAt: goal?.createdAt ?? 1,
+        updatedAt: 1,
+      };
+      respond(message.id, { goal });
+      break;
+    case "thread/goal/clear": {
+      const cleared = goal !== null;
+      goal = null;
+      respond(message.id, { cleared });
+      break;
+    }
     case "turn/start":
       respond(message.id, {
         turn: { id: "turn-start", status: "inProgress", error: null },

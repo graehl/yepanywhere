@@ -2288,7 +2288,17 @@ describe("Sessions metadata route", () => {
     expect(json.slashCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "compact" }),
-        expect.objectContaining({ name: "goal" }),
+        expect.objectContaining({
+          name: "goal",
+          description:
+            "Keep working toward a verifiable end state until it is met",
+          argumentHint: "<verifiable end state>",
+          argumentCompletions: [
+            expect.objectContaining({ value: "clear" }),
+            expect.objectContaining({ value: "pause" }),
+            expect.objectContaining({ value: "resume" }),
+          ],
+        }),
         expect.objectContaining({ name: "status" }),
         expect.objectContaining({ name: "usage" }),
       ]),

@@ -543,6 +543,36 @@ describe("Sessions metadata route", () => {
     await expect(response.json()).resolves.toMatchObject({ queued: true });
   });
 
+  it("surfaces the provider's reason when a native command is rejected", async () => {
+    const reason = "Cannot compact while a turn is in progress";
+    const runProviderCommand = vi.fn(async () => ({
+      handled: true,
+      error: reason,
+    }));
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          noteInputIntent: vi.fn(),
+          runProviderCommand,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "/compact" }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(runProviderCommand).toHaveBeenCalledWith("compact", "");
+    await expect(response.json()).resolves.toMatchObject({
+      error: reason,
+      reason,
+    });
+  });
+
   it("reports immediate promotion when returned by the process", async () => {
     const primeSupportedCommandsForMessage = vi.fn(async () => {});
     const deferMessage = vi.fn(() => ({

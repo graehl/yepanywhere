@@ -224,6 +224,23 @@ compact command on an idle process, show the `Compacting` busy state
 per [provider-state-machine](provider-state-machine.md), and surface
 failure without retry loops.
 
+Codex manual compaction requires an idle provider turn, including when the
+active turn is waiting for an external tool. This is a provider lifecycle
+constraint, not a model restriction: in Codex 0.153.3, manual compaction starts
+a replacement task and aborts the previous task. YA rejects the command before
+dispatch rather than cancelling that work. A rejected native command exposes
+the provider's reason in the response's primary `error` field (and retains
+`reason`), so clients show why the action failed instead of a generic command
+failure.
+
+While Codex is in a turn or waiting for input, the compact autocomplete entry
+explains that it is unavailable until the turn finishes, including tool waits.
+The session menu disables Compact with a visible turn-active label. Submitting
+the command directly shows the same explanation without sending a request.
+These controls become available again when the turn becomes idle. The server
+still checks availability to handle stale clients and state changes in flight;
+neither path interrupts work or queues a later compaction automatically.
+
 ## Synthetic done, archive, and terminate
 
 YA's optional `/done`, `/archive`, and `/terminate` commands are local session

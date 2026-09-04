@@ -32,6 +32,7 @@ export interface SessionMenuProps {
   cloneDisabled?: boolean;
   /** Called to request compaction in the current session */
   onCompact?: () => void | Promise<void>;
+  compactDisabled?: boolean;
   /** Called to hand off the session into a fresh agent session */
   onHandoff?: () => void | Promise<void>;
   /** Start an empty session in the same project with the same provider/model */
@@ -89,6 +90,7 @@ export function SessionMenu({
   cloneUnavailableMessage,
   cloneDisabled = false,
   onCompact,
+  compactDisabled = false,
   onHandoff,
   onClear,
   onTerminate,
@@ -514,7 +516,12 @@ export function SessionMenu({
         </button>
       )}
       {onCompact && (
-        <button type="button" onClick={() => handleAction(onCompact)}>
+        <button
+          type="button"
+          onClick={() => handleAction(onCompact)}
+          disabled={compactDisabled}
+          title={compactDisabled ? t("sessionCompactTurnActive") : undefined}
+        >
           <svg
             width="14"
             height="14"
@@ -529,7 +536,11 @@ export function SessionMenu({
             <path d="M20 10h-6V4" />
             <path d="m20 4-7 7" />
           </svg>
-          {t("sessionMenuCompact")}
+          {t(
+            compactDisabled
+              ? "sessionMenuCompactTurnActive"
+              : "sessionMenuCompact",
+          )}
         </button>
       )}
       {onHandoff && (

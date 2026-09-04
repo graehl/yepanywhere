@@ -136,4 +136,20 @@ describe("SessionMenu CSS module contracts", () => {
 
     expect(onConfigureProjectSettings).toHaveBeenCalledOnce();
   });
+
+  it("explains unavailable compaction before a user can request it", () => {
+    const onCompact = vi.fn();
+    renderMenu({ onCompact, compactDisabled: true });
+    fireEvent.click(screen.getByRole("button", { name: "Session options" }));
+
+    const compact = screen.getByRole("button", {
+      name: "Compact (turn active)",
+    });
+    expect((compact as HTMLButtonElement).disabled).toBe(true);
+    expect(compact.title).toBe(
+      "Unavailable until this turn finishes, including tool waits.",
+    );
+    fireEvent.click(compact);
+    expect(onCompact).not.toHaveBeenCalled();
+  });
 });

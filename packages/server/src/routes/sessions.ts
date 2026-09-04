@@ -6637,7 +6637,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         if (providerResult.handled) {
           if (providerResult.error) {
             return c.json(
-              { error: "Failed to run command", reason: providerResult.error },
+              { error: providerResult.error, reason: providerResult.error },
               409,
             );
           }

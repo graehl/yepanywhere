@@ -1056,6 +1056,9 @@ function SessionPageContent({
     slashCommands.some(
       (command) => normalizeSlashCommandForMatch(command.name) === "compact",
     );
+  const manualCompactBlocked =
+    effectiveProvider === "codex" &&
+    (processState === "in-turn" || processState === "waiting-input");
 
   // Inject custom client-side commands alongside SDK-discovered ones.
   // Keep /model last so it stays nearest the slash button in the upward menu.
@@ -1081,7 +1084,13 @@ function SessionPageContent({
       const compact = slashCommands.find(
         (command) => normalizeSlashCommandForMatch(command.name) === "compact",
       );
-      if (compact) orderedCommands.push(compact);
+      if (compact) {
+        orderedCommands.push(
+          manualCompactBlocked
+            ? { ...compact, description: t("sessionCompactTurnActive") }
+            : compact,
+        );
+      }
     }
 
     for (const command of slashCommands) {
@@ -1107,12 +1116,14 @@ function SessionPageContent({
     return orderedCommands;
   }, [
     mainComposerForAside,
+    manualCompactBlocked,
     slashCommands,
     status.owner,
     supportsBtwAsides,
     supportsManualCompact,
     supportsSyntheticTerminate,
     syntheticDoneEnabled,
+    t,
   ]);
 
   // Get provider capabilities based on session's provider
@@ -3594,6 +3605,10 @@ function SessionPageContent({
   const handleCompactSession = useCallback(
     async (argument = "") => {
       if (status.owner !== "self" || !supportsManualCompact) return;
+      if (manualCompactBlocked) {
+        showToast(t("sessionCompactTurnActive"), "info");
+        return;
+      }
       // Trailing focus instructions ("/compact preserve X") ride along
       // verbatim; Claude honors them natively. Providers without an instruction
       // surface (e.g. Codex) ignore the argument server-side.
@@ -3610,6 +3625,7 @@ function SessionPageContent({
     },
     [
       actualSessionId,
+      manualCompactBlocked,
       permissionMode,
       showToast,
       status.owner,
@@ -5197,6 +5213,7 @@ function SessionPageContent({
                   onCompact={
                     supportsManualCompact ? handleCompactSession : undefined
                   }
+                  compactDisabled={manualCompactBlocked}
                   onTerminate={handleTerminate}
                   onReload={() => window.location.reload()}
                   onShare={publicShareActionAvailable ? handleShare : undefined}

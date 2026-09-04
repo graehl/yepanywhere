@@ -42,6 +42,107 @@ silent project/Git mutation.
 has much greater adoption. Its breadth does not erase YA's differentiators, but
 it raises the expected baseline for a polished agent supervisor.
 
+## Adoption and distribution
+
+T3's adoption is not merely incidental social proof; distribution is one of
+its strongest competitive advantages. The launch evidence points to a
+creator-led breakout rather than a Hacker News breakout.
+
+### Growth timeline
+
+The repository's public star curve shows two distinct growth periods:
+
+| Date | Approximate cumulative stars | Relevant event |
+|------|-----------------------------:|----------------|
+| 2026-03-06 | ~0 | Before the public launch |
+| 2026-03-07 | launch | First stable release and Theo launch video |
+| 2026-03-17 | ~6,200 | Initial launch wave |
+| 2026-04-29 | ~10,300 | Continued releases and word of mouth |
+| 2026-07-23 | ~14,200 | End of the steadier middle period |
+| 2026-08-24 | ~20,100 | T3 Connect/mobile and broader creator coverage |
+| 2026-09-04 | 21,689 | Analysis snapshot |
+
+The clearest **breakout was March 7–17**, when T3 went from effectively zero
+to roughly 6,200 stars in ten days. Growth then remained substantial rather
+than collapsing after launch. A second acceleration ran from late July through
+August, adding roughly 6,000 stars in a month. That period coincided with T3
+Connect/mobile becoming a production product, app-store distribution, Theo's
+continued agent-workflow coverage, and videos from other software creators.
+The timing is correlation rather than proof that any one release or video
+caused the second wave.
+
+Historical values above are approximate readings of the public date curve,
+not an exact daily GitHub stargazer export. Sources: [Star History](https://www.star-history.com/#pingdotgg/t3code&Date),
+[releases](https://github.com/pingdotgg/t3code/releases),
+[repository](https://github.com/pingdotgg/t3code).
+
+### Hacker News was not the launch engine
+
+The direct Hacker News launch submissions received almost no traction:
+
+| Submission | Date | Score/comments at snapshot |
+|------------|------|----------------------------|
+| [T3 Code: A Minimal Web GUI/Desktop App for Coding Agents](https://news.ycombinator.com/item?id=47283489) | Mar 7 | 6 / 0 |
+| [T3 Code – a new OSS agentic coding app that wraps Codex](https://news.ycombinator.com/item?id=47283655) | Mar 7 | 4 / 1 |
+| [T3 Code video submission](https://news.ycombinator.com/item?id=47284441) | Mar 7 | 1 / 0 |
+| [T3 Code – TypeScript-based web and desktop GUI](https://news.ycombinator.com/item?id=47308694) | Mar 9 | 2 / 0 |
+
+No live direct submission exceeded six points. The only comment on Theo's own
+submission asked how T3 differed from Superset. This makes HN an implausible
+explanation for the simultaneous multi-thousand-star launch.
+
+HN instead became a lagging indicator of category position. By April, a
+[Baton launch discussion](https://news.ycombinator.com/item?id=47599771)
+raised T3 as a free alternative. By August, commenters in an
+[OpenChamber launch discussion](https://news.ycombinator.com/item?id=49233448)
+were asking why someone would use the new product over T3. T3 had moved from
+an ignored launch submission to a default comparison point for other agent
+workbenches.
+
+### Why it gained traction
+
+The strongest explanation is the combination of an owned audience, unusually
+good product-channel fit, and fast delivery after launch:
+
+1. **Theo supplied immediate, targeted distribution.** His established
+   [developer channel](https://www.youtube.com/@t3dotgg) had roughly 563,000
+   subscribers at the snapshot. His March 7 launch video,
+   [“It's finally here”](https://www.youtube.com/watch?v=hDn8-fK3XaU),
+   accumulated about 160,000 views and directly introduced and linked T3 Code.
+   That reach dwarfed the HN launch response.
+2. **The product is easy to demonstrate visually.** The thesis that terminals
+   become awkward for multiple parallel agents maps naturally to before/after
+   video: threads, worktrees, diffs, approvals, remote access, and mobile
+   supervision are all visible product moments rather than abstract claims.
+3. **Adoption friction is low.** T3 is free, MIT-licensed, installable with
+   `npx t3@latest`, and works with provider subscriptions users already have.
+   It adds a GUI and orchestration layer without first requiring a new model
+   vendor or usage-billing relationship.
+4. **Attention was repeatedly refreshed.** The March 24 video
+   [“I need you guys to trust me on this (sorry Anthropic)”](https://www.youtube.com/watch?v=RIkSlHgQYog)
+   introduced Claude Code support to roughly 100,000 viewers. Later general
+   workflow videos kept T3 inside broader discussions of models, terminals,
+   remote coding, and agent use instead of treating launch day as the end of
+   distribution. Dedicated videos from
+   [Nuno Maduro](https://www.youtube.com/watch?v=NBUW3YoO3Dw) and
+   [Better Stack](https://www.youtube.com/watch?v=6x7hh6Qzm9U) supplied
+   additional third-party validation in August.
+5. **Release velocity converted awareness into durable adoption.** Claude
+   support arrived within weeks, broader provider support followed, and remote
+   mobile operation became real over the summer. This gave users and creators
+   new reasons to revisit the product while the category itself was expanding.
+6. **The T3 brand reduced trust cost.** Theo and the surrounding T3 projects
+   already had a large developer community. An open-source agent workbench from
+   that ecosystem began with credibility, contributors, and likely advocates
+   that an unknown repository would have needed to earn after launch.
+
+GitHub discovery and trending effects likely amplified the first wave after
+the creator-led spike, but that is an inference: the available evidence does
+not identify a particular GitHub recommendation surface as a source. Stars are
+also not equivalent to active users. The defensible conclusion is narrower:
+Theo's audience created the initial breakout, and product breadth, release
+velocity, repeated content, and third-party comparison sustained it.
+
 ## Product and architecture
 
 T3's server is the authority for provider processes, Git, terminals, files,
@@ -262,6 +363,7 @@ Source: [telemetry policy](https://github.com/pingdotgg/t3code/blob/d7cf8aaa8d4f
 | Area | T3 Code | YepAnywhere | Assessment |
 |------|---------|-------------|------------|
 | Product center | Integrated multi-agent workbench | Provider-native supervisor and private relay | Different core bet |
+| Distribution | Large creator-owned developer audience and established T3 brand | Smaller project-led audience | **T3 lead** |
 | Clients | Web, Electron, native iOS and Android | Web/PWA, signed Tauri desktop, Android shell; no native iOS | **T3 lead** |
 | Providers | Codex, Claude, Cursor, Grok, OpenCode, Antigravity | Claude plus gateway/Ollama variants, Codex plus OSS/local, Gemini/ACP, OpenCode, Grok | Split: T3 has Cursor/Antigravity; YA has more local/gateway variants |
 | Multiple provider accounts | First-class provider-instance registry | Provider configuration exists, without T3's equivalent account-switching UX | **T3 lead** |
@@ -283,20 +385,23 @@ Source: [telemetry policy](https://github.com/pingdotgg/t3code/blob/d7cf8aaa8d4f
 
 ## T3 Code's strongest advantages over YepAnywhere
 
-1. **A complete multi-surface product.** Native iOS and Android, Electron,
+1. **Creator-owned distribution.** Theo can place releases and workflows in
+   front of a large, highly relevant developer audience repeatedly, while the
+   established T3 brand lowers the trust cost of trying the product.
+2. **A complete multi-surface product.** Native iOS and Android, Electron,
    hosted/local web, offline sends, app-store distribution, and platform-native
    affordances are already real rather than planned.
-2. **The whole development loop.** Terminal, browser, files, Git worktrees,
+3. **The whole development loop.** Terminal, browser, files, Git worktrees,
    checkpoint rollback, repository setup, and four forge integrations keep
    users inside one interface.
-3. **Shipped multi-environment operation.** The environment catalog and
+4. **Shipped multi-environment operation.** The environment catalog and
    desktop-managed SSH path make multiple machines a normal product concept.
-4. **Durable orchestration mechanics.** Event sourcing, idempotent receipts,
+5. **Durable orchestration mechanics.** Event sourcing, idempotent receipts,
    drainable reactors, projections, and shared cached client state provide a
    strong foundation for unreliable networks and several client types.
-5. **Provider account and configuration UX.** Provider instances solve a real
+6. **Provider account and configuration UX.** Provider instances solve a real
    work/personal-account problem without duplicating the whole environment.
-6. **Lifecycle and usage tooling.** Pin/snooze/settle/auto-settle and the
+7. **Lifecycle and usage tooling.** Pin/snooze/settle/auto-settle and the
    cross-provider usage dashboard are polished operational surfaces.
 
 ## YepAnywhere's strongest advantages over T3 Code
@@ -369,6 +474,10 @@ Sources for defaults and caveats:
 
 ### High-value ideas to borrow
 
+- Treat product communication as part of the competitive surface. Demonstrate
+  YA's strongest differences—provider-native continuity, attention triage,
+  mobile supervision, and zero-knowledge relay traffic—in concrete workflows
+  that are as visually legible as T3's multi-agent demos.
 - Treat the multi-environment catalog and shared reconnect/cache runtime as the
   standard for making remote hosts feel ordinary on every client.
 - Add offline send/outbox semantics before claiming mobile-network resilience;

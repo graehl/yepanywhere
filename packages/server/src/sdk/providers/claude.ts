@@ -15,7 +15,7 @@ import {
 import { open as openFile, type FileHandle } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, extname, join, win32 } from "node:path";
 import { promisify } from "node:util";
 import {
   type SDKMessage as AgentSDKMessage,
@@ -349,18 +349,42 @@ function isExecutableFile(filePath: string | undefined): filePath is string {
   }
 }
 
-function resolvePathExecutable(command: string): string | undefined {
+interface ResolvePathExecutableOptions {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  isExecutable?: (filePath: string) => boolean;
+}
+
+export function resolvePathExecutable(
+  command: string,
+  options: ResolvePathExecutableOptions = {},
+): string | undefined {
   if (!command.trim()) return undefined;
 
-  if (command.includes("/") || command.includes("\\")) {
-    return isExecutableFile(command) ? command : undefined;
-  }
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  const executable = options.isExecutable ?? isExecutableFile;
+  const windows = platform === "win32";
+  const pathApi = windows ? win32 : { extname, join };
+  const hasPath = command.includes("/") || command.includes("\\");
+  const commandNames =
+    windows && !pathApi.extname(command)
+      ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .map((extension) => extension.trim())
+          .filter((extension) => /^\.(?:com|exe|cmd|bat)$/i.test(extension))
+          .map((extension) => `${command}${extension}`)
+      : [command];
+  const directories = hasPath
+    ? [""]
+    : (env.PATH ?? "").split(windows ? ";" : delimiter);
 
-  const pathEnv = process.env.PATH ?? "";
-  for (const dir of pathEnv.split(delimiter)) {
-    const candidate = join(dir, command);
-    if (isExecutableFile(candidate)) {
-      return candidate;
+  for (const dir of directories) {
+    for (const commandName of commandNames) {
+      const candidate = dir ? pathApi.join(dir, commandName) : commandName;
+      if (executable(candidate)) {
+        return candidate;
+      }
     }
   }
   return undefined;

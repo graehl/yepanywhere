@@ -10,6 +10,7 @@ import {
   mergeClaudeModels,
   normalizeClaudeLaunchModel,
   probeClaudeControlLiveness,
+  resolvePathExecutable,
   resolveClaudeSdkNativeExecutable,
   withClaudeGoalAlias,
 } from "../../../src/sdk/providers/claude.js";
@@ -25,6 +26,36 @@ class ExposedClaudeProvider extends ClaudeProvider {
     return this.getDisallowedToolOptions();
   }
 }
+
+describe("Claude executable lookup", () => {
+  it("applies Windows PATHEXT candidates in PATH order", () => {
+    const inspected: string[] = [];
+    const resolved = resolvePathExecutable("claude", {
+      platform: "win32",
+      env: {
+        PATH: "C:\\npm;D:\\tools",
+        PATHEXT: ".JS;.EXE;.CMD",
+      },
+      isExecutable: (candidate) => {
+        inspected.push(candidate);
+        return candidate === "C:\\npm\\claude.CMD";
+      },
+    });
+
+    expect(resolved).toBe("C:\\npm\\claude.CMD");
+    expect(inspected).toEqual(["C:\\npm\\claude.EXE", "C:\\npm\\claude.CMD"]);
+  });
+
+  it("applies PATHEXT to an explicit Windows path in a dotted directory", () => {
+    expect(
+      resolvePathExecutable("C:\\tools.v1\\claude", {
+        platform: "win32",
+        env: { PATHEXT: ".CMD" },
+        isExecutable: (candidate) => candidate === "C:\\tools.v1\\claude.CMD",
+      }),
+    ).toBe("C:\\tools.v1\\claude.CMD");
+  });
+});
 
 describe("normalizeClaudeLaunchModel", () => {
   it("keeps Opus on the stable alias and retains Sonnet's extended spelling", () => {

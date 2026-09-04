@@ -65,6 +65,16 @@ treats `null` as "leave this running turn unchanged." Manual stop remains
 independently available; treating a configuration choice as a stop can discard
 nearly completed, already-paid-for reasoning on a high-cost turn.
 
+If Codex refuses a live effort update with JSON-RPC `-32600` (invalid
+request), YA accepts and retains the effort for the next turn. This includes
+selection during compaction and runtimes where `step_model_switching` is
+disabled. The selector stays on the user's choice, subsequent selections
+replace it, and the next submitted turn carries that effort through normal
+Codex turn validation. YA does not interrupt compaction or poll/retry the live
+control. Invalid parameters, internal errors, and transport failures still
+surface as configuration errors. A refusal of the optional live control is
+not a refusal of the next-turn configuration.
+
 Effort control writes are serialized and latest-selection-wins: a slower older
 provider call cannot overwrite a newer choice. At a turn boundary, failure to
 apply the selected effort retains that selection and keeps the process

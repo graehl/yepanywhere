@@ -1190,6 +1190,104 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it("retains effort selected during compaction when live updates are refused", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-compact-effort-"));
+    const logPath = join(tempDir, "requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-compact-effort",
+      buildFakeCodexPermissionAppServer(
+        logPath,
+        2,
+        {
+          code: -32600,
+          message:
+            "turn settings updates require the step_model_switching feature",
+        },
+        0,
+        true,
+      ),
+    );
+    const session = await new CodexProvider({ codexPath }).startSession({
+      cwd: tempDir,
+      initialMessage: { text: "compacting turn" },
+      effort: "low",
+    });
+
+    try {
+      let compacting = false;
+      while (!compacting) {
+        const result = await session.iterator.next();
+        if (result.done) break;
+        const message = result.value;
+        if (message.type === "system" && message.status === "compacting") {
+          compacting = true;
+          break;
+        }
+      }
+      expect(compacting).toBe(true);
+      await expect(session.setEffort?.("high")).resolves.toBeUndefined();
+      await expect(session.setEffort?.("xhigh")).resolves.toBeUndefined();
+      await consumeCodexTurn(session.iterator);
+      session.queue.push({ text: "next user turn" });
+      await consumeCodexTurn(session.iterator);
+
+      const requests = readFakeCodexRequests(logPath);
+      expect(requests.filter((r) => r.method === "turn/interrupt")).toEqual([]);
+      expect(requests.filter((r) => r.method === "thread/start")).toHaveLength(
+        1,
+      );
+      expect(
+        requests
+          .filter((r) => r.method === "turn/start")
+          .map((r) => r.params?.effort),
+      ).toEqual(["low", "xhigh"]);
+    } finally {
+      await session.abort();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([-32602, -32603])(
+    "surfaces effort update RPC error %s without changing the next turn",
+    async (code) => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-effort-error-"));
+      const logPath = join(tempDir, "requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-effort-error",
+        buildFakeCodexPermissionAppServer(logPath, 1, {
+          code,
+          message: "effort update failed",
+        }),
+      );
+      const session = await new CodexProvider({ codexPath }).startSession({
+        cwd: tempDir,
+        initialMessage: { text: "active turn" },
+        effort: "low",
+      });
+
+      try {
+        const firstTurn = consumeCodexTurn(session.iterator);
+        await waitForFakeCodexRequest(logPath, "turn/start");
+        await expect(session.setEffort?.("high")).rejects.toThrow(
+          "effort update failed",
+        );
+        await firstTurn;
+        session.queue.push({ text: "unchanged effort turn" });
+        await consumeCodexTurn(session.iterator);
+        expect(
+          readFakeCodexRequests(logPath)
+            .filter((r) => r.method === "turn/start")
+            .map((r) => r.params?.effort),
+        ).toEqual(["low", "low"]);
+      } finally {
+        await session.abort();
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("discovers and dispatches Codex skills with canonical text and metadata", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-skills-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -2888,8 +2986,12 @@ process.stdin.on("data", (chunk) => {
 function buildFakeCodexPermissionAppServer(
   logPath: string,
   liveSettingsUpdates = 0,
-  liveSettingsStatus: "applied" | "targetUnavailable" = "applied",
+  liveSettingsStatus:
+    | "applied"
+    | "targetUnavailable"
+    | { code: number; message: string } = "applied",
   turnStartResponseDelayMs = 0,
+  compacting = false,
 ): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -2900,6 +3002,7 @@ let turnSequence = 0;
 const liveSettingsUpdates = ${JSON.stringify(liveSettingsUpdates)};
 const liveSettingsStatus = ${JSON.stringify(liveSettingsStatus)};
 const turnStartResponseDelayMs = ${JSON.stringify(turnStartResponseDelayMs)};
+const compacting = ${JSON.stringify(compacting)};
 let observedSettingsUpdates = 0;
 let effectiveApprovalPolicy = "on-request";
 const configuredWorkspaceWritePolicy = {
@@ -3001,11 +3104,25 @@ function handleMessage(message) {
       } else {
         respond(message.id, { turn });
       }
+      if (compacting && turnSequence === 1) {
+        write({
+          method: "item/started",
+          params: {
+            threadId: "thread-policy",
+            turnId: turn.id,
+            item: { id: "compact-1", type: "contextCompaction" },
+          },
+        });
+      }
       break;
     }
     case "turn/settings/update": {
       observedSettingsUpdates += 1;
-      respond(message.id, { status: liveSettingsStatus });
+      if (typeof liveSettingsStatus === "object") {
+        write({ id: message.id, error: liveSettingsStatus });
+      } else {
+        respond(message.id, { status: liveSettingsStatus });
+      }
       if (observedSettingsUpdates === liveSettingsUpdates) {
         write({
           method: "turn/completed",

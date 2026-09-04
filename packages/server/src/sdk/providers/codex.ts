@@ -1854,13 +1854,32 @@ export class CodexProvider implements AgentProvider {
       },
       setEffort: async (effort) => {
         if (effort !== undefined) {
-          await updateActiveTurnSettings({
-            effort: this.mapEffortToReasoningEffort(
-              effort,
-              options.thinking,
-              runtimeState.turnModelOverride ?? runtimeState.resolvedModel,
-            ),
-          });
+          try {
+            await updateActiveTurnSettings({
+              effort: this.mapEffortToReasoningEffort(
+                effort,
+                options.thinking,
+                runtimeState.turnModelOverride ?? runtimeState.resolvedModel,
+              ),
+            });
+          } catch (error) {
+            if (
+              !(error instanceof Error) ||
+              !("jsonRpcCode" in error) ||
+              error.jsonRpcCode !== -32600
+            ) {
+              throw error;
+            }
+            // Live-turn restrictions do not reject the next turn's selection.
+            log.info(
+              {
+                threadId: runtimeState.threadId,
+                effort,
+                reason: error.message,
+              },
+              "Codex refused live effort update; retaining selection for the next turn",
+            );
+          }
         }
         runtimeState.turnEffortOverride = effort ?? null;
       },

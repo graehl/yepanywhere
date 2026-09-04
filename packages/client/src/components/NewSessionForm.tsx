@@ -61,6 +61,7 @@ import { useSpeechSourceRuntime } from "../hooks/useSpeechSourceRuntime";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useSessionToolbarPresence } from "../hooks/useSessionToolbarPresence";
 import { useI18n } from "../i18n";
+import { formatFileSize } from "../lib/formatFileSize";
 import {
   getEffortLevelOptions,
   getThinkingModeOptions,
@@ -238,14 +239,6 @@ type PendingNewSessionSpeechDeliveryIntent = "start" | "project-queue";
 interface PendingNewSessionSpeechDelivery {
   kind: PendingNewSessionSpeechDeliveryIntent;
   visibleTextSnapshot: string;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}\u202fb`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
-  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
 }
 
 function createClientSpeechTurnId(): string {
@@ -3354,7 +3347,7 @@ export function NewSessionForm({
                 sizeLabel={
                   progress
                     ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
-                    : formatSize(fileSize)
+                    : formatFileSize(fileSize)
                 }
                 imageWidth={imageSize?.width}
                 imageHeight={imageSize?.height}

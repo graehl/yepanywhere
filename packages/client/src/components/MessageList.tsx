@@ -50,6 +50,7 @@ import {
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { selectionIntersectsElement } from "../lib/domSelection";
 import { getMessageId } from "../lib/mergeMessages";
+import { formatFileSize } from "../lib/formatFileSize";
 import type { GetSessionResult } from "../lib/sourceRuntime";
 import {
   createTranscriptPositionStore,
@@ -669,14 +670,6 @@ function saveSessionThinkingLatestOnly(latestOnly: boolean) {
 
 function providerExpandsHistoricalThinking(provider: string | undefined) {
   return provider === "pi";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}\u202fb`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
-  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
 }
 
 /** Pending message waiting for server confirmation */
@@ -4646,7 +4639,7 @@ export const MessageList = memo(function MessageList({
                           originalName={file.originalName}
                           path={file.path}
                           mimeType={file.mimeType}
-                          sizeLabel={formatSize(file.size)}
+                          sizeLabel={formatFileSize(file.size)}
                           imageWidth={file.width}
                           imageHeight={file.height}
                         />
@@ -4707,7 +4700,7 @@ export const MessageList = memo(function MessageList({
                           originalName={file.originalName}
                           path={file.path}
                           mimeType={file.mimeType}
-                          sizeLabel={formatSize(file.size)}
+                          sizeLabel={formatFileSize(file.size)}
                           imageWidth={file.width}
                           imageHeight={file.height}
                         />
@@ -4830,7 +4823,7 @@ export const MessageList = memo(function MessageList({
                         originalName={file.originalName}
                         path={file.path}
                         mimeType={file.mimeType}
-                        sizeLabel={formatSize(file.size)}
+                        sizeLabel={formatFileSize(file.size)}
                         imageWidth={file.width}
                         imageHeight={file.height}
                       />

@@ -159,6 +159,11 @@ next append without corrupting a split UTF-8 code point. Once head metadata has
 identified a rollout, a detail-read failure is reported as a reader failure
 rather than being converted into session absence.
 
+A reference-backed warm cache also retains the leaf's expected next ordinal.
+Every appended complete record must continue that ordinal sequence before the
+reader publishes any of the new entries, so warm and cold reads reject the same
+malformed lineage.
+
 ### Compact-tail source reads
 
 For an uncursored compact-tail detail request over a large plain rollout, the

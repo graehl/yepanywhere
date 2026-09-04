@@ -227,12 +227,39 @@ interface CodexEntryCache {
   size: number;
   entries: CodexSessionEntry[];
   partialLine: Buffer;
+  nextLeafOrdinal?: number;
   normalizationSource: object;
+}
+
+interface CodexReadEntrySnapshot extends CodexParsedEntrySnapshot {
+  nextLeafOrdinal?: number;
 }
 
 interface CodexEntrySnapshot {
   entries: CodexSessionEntry[];
   transcriptSnapshotUpdatedAt: string;
+}
+
+function validateContiguousCodexOrdinals(
+  entries: readonly CodexSessionEntry[],
+  filePath: string,
+  expectedOrdinal?: number,
+): number | undefined {
+  let nextOrdinal = expectedOrdinal;
+  for (const entry of entries) {
+    const ordinal = (entry as { ordinal?: unknown }).ordinal;
+    if (!Number.isSafeInteger(ordinal) || Number(ordinal) < 0) {
+      throw new Error(`Codex rollout has an unsafe leaf ordinal: ${filePath}`);
+    }
+    const numericOrdinal = Number(ordinal);
+    if (nextOrdinal !== undefined && numericOrdinal !== nextOrdinal) {
+      throw new Error(
+        `Codex rollout has a non-contiguous leaf ordinal: ${filePath}`,
+      );
+    }
+    nextOrdinal = numericOrdinal + 1;
+  }
+  return nextOrdinal;
 }
 
 interface CodexEntryReadOwner {
@@ -1659,6 +1686,14 @@ export class CodexSessionReader implements ISessionReader {
         Date.now(),
         cached.partialLine,
       );
+      const nextLeafOrdinal =
+        cached.nextLeafOrdinal === undefined
+          ? undefined
+          : validateContiguousCodexOrdinals(
+              parsed.entries,
+              filePath,
+              cached.nextLeafOrdinal,
+            );
 
       if (
         revision !== this.entryCacheRevision ||
@@ -1669,6 +1704,7 @@ export class CodexSessionReader implements ISessionReader {
 
       cached.entries.push(...parsed.entries);
       cached.partialLine = parsed.partialLine;
+      cached.nextLeafOrdinal = nextLeafOrdinal;
       cached.size = stats.size;
       cached.mtimeMs = stats.mtimeMs;
       cached.ctimeMs = stats.ctimeMs;
@@ -1714,6 +1750,7 @@ export class CodexSessionReader implements ISessionReader {
       size: stats.size,
       entries: parsed.entries,
       partialLine: parsed.partialLine,
+      nextLeafOrdinal: parsed.nextLeafOrdinal,
       normalizationSource: {},
     };
     this.entryCache.set(sessionId, refreshed);
@@ -1791,7 +1828,7 @@ export class CodexSessionReader implements ISessionReader {
     sessionId: string,
     filePath: string,
     stats: Awaited<ReturnType<typeof stat>>,
-  ): Promise<CodexParsedEntrySnapshot> {
+  ): Promise<CodexReadEntrySnapshot> {
     const readStartedAt = Date.now();
     const lineage = await this.resolveRolloutLineage(sessionId, filePath);
     if (lineage.referenceBacked) {
@@ -1823,25 +1860,15 @@ export class CodexSessionReader implements ISessionReader {
             `Codex rollout has no matching leaf metadata: ${filePath}`,
           );
         }
+        const nextLeafOrdinal = validateContiguousCodexOrdinals(
+          leaf.entries,
+          filePath,
+        );
         const localEntries: CodexSessionEntry[] = [];
-        let previousOrdinal: number | null = null;
         for (const entry of leaf.entries) {
-          const ordinal = (entry as { ordinal?: unknown }).ordinal;
-          if (!Number.isSafeInteger(ordinal) || Number(ordinal) < 0) {
-            throw new Error(
-              `Codex rollout has an unsafe leaf ordinal: ${filePath}`,
-            );
-          }
-          const numericOrdinal = Number(ordinal);
-          if (
-            previousOrdinal !== null &&
-            numericOrdinal !== previousOrdinal + 1
-          ) {
-            throw new Error(
-              `Codex rollout has a non-contiguous leaf ordinal: ${filePath}`,
-            );
-          }
-          previousOrdinal = numericOrdinal;
+          const numericOrdinal = Number(
+            (entry as { ordinal?: unknown }).ordinal,
+          );
           if (
             entry.type !== "session_meta" &&
             numericOrdinal >= leafSegment.startOrdinal
@@ -1853,6 +1880,7 @@ export class CodexSessionReader implements ISessionReader {
         return {
           entries: [...inherited.entries, ...localEntries],
           partialLine: leaf.partialLine,
+          nextLeafOrdinal,
           readLinesMs: Math.max(0, Date.now() - readStartedAt - parseMs),
           parseMs,
           lineCount: inherited.lineCount + leaf.lineCount,

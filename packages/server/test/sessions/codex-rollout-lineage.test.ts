@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
 import type { UrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import {
   readCodexRolloutLineageEntries,
   resolveCodexRolloutLineage,
@@ -121,6 +122,7 @@ describe("Codex reference-backed rollout lineage", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(codexHome, { recursive: true, force: true });
   });
 
@@ -252,6 +254,46 @@ describe("Codex reference-backed rollout lineage", () => {
     expect(JSON.stringify(afterAppend?.data.session.entries)).toContain(
       "Completed local prompt",
     );
+  });
+
+  it("rejects a non-contiguous ordinal appended to a warm lineage cache", async () => {
+    const rootPrefix = [
+      sessionMeta({ id: ROOT_ID, ordinal: 0 }),
+      userMessage(1, "Inherited root prompt"),
+      assistantMessage(2, "Inherited root answer"),
+    ];
+    await writeFile(rolloutPath(sessionsDir, ROOT_ID), jsonl(rootPrefix));
+
+    const childPath = rolloutPath(sessionsDir, CHILD_ID);
+    await writeFile(
+      childPath,
+      jsonl([
+        sessionMeta({
+          id: CHILD_ID,
+          ordinal: 3,
+          historyBase: prefixPosition(ROOT_ID, rootPrefix),
+        }),
+        userMessage(4, "Valid child prompt"),
+      ]),
+    );
+
+    const reader = new CodexSessionReader({ sessionsDir });
+    await expect(
+      reader.getSession(CHILD_ID, PROJECT_ID),
+    ).resolves.not.toBeNull();
+
+    await appendFile(childPath, jsonl([assistantMessage(99, "Invalid gap")]));
+    const errorLog = vi
+      .spyOn(getLogger(), "error")
+      .mockImplementation(() => undefined);
+
+    await expect(reader.getSession(CHILD_ID, PROJECT_ID)).rejects.toThrow(
+      "non-contiguous leaf ordinal",
+    );
+    await expect(
+      new CodexSessionReader({ sessionsDir }).getSession(CHILD_ID, PROJECT_ID),
+    ).rejects.toThrow("non-contiguous leaf ordinal");
+    expect(errorLog).toHaveBeenCalledTimes(2);
   });
 
   it("follows nested lineage through an archived ancestor", async () => {

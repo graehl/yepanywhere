@@ -1769,6 +1769,30 @@ export const SERVER_CAPABILITIES = {
         "Project Queue availability remains a server feature boundary for older servers and hosted remote clients.",
     },
   },
+  projectQueueAttachmentEditing: {
+    id: CAPABILITY_ID_ALLOCATIONS.projectQueueAttachmentEditing.id,
+    name: "project-queue-attachment-editing",
+    kind: "permanent",
+    area: "projectQueue",
+    introducedIn: "0.8.1",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server atomically updates queued-message attachment sets containing retained queue-owned refs and newly uploaded draft refs.",
+    clientFallback:
+      "Keep Project Queue inline editing text-only and make no attachment upload or attachment mutation request.",
+    serverContract: {
+      routes: ["PATCH /api/projects/:projectId/queue/:itemId"],
+      requestFields: [
+        "projectQueue.message.attachments",
+        "projectQueue.message.stagedAttachments",
+      ],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Hosted clients may outpace installed servers that cannot combine queue-owned and draft-owned attachment refs in one update.",
+    },
+  },
   projectSessionDefaults: {
     id: CAPABILITY_ID_ALLOCATIONS.projectSessionDefaults.id,
     name: "project-session-defaults",
@@ -2144,6 +2168,8 @@ export const TOOL_RESULT_MEDIA_PRESERVATION_POLICY_CAPABILITY =
 export const PROGRESSIVE_SESSION_CATALOG_CAPABILITY =
   SERVER_CAPABILITIES.progressiveSessionCatalog.name;
 export const PROJECT_QUEUE_CAPABILITY = SERVER_CAPABILITIES.projectQueue.name;
+export const PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY =
+  SERVER_CAPABILITIES.projectQueueAttachmentEditing.name;
 
 export const PROJECT_SESSION_DEFAULTS_CAPABILITY =
   SERVER_CAPABILITIES.projectSessionDefaults.name;

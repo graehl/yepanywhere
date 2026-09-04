@@ -388,6 +388,12 @@
   outline-offset: 1px;
 }
 
+.itemEditAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
 .itemEditActions {
   display: flex;
   justify-content: flex-end;

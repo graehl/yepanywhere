@@ -112,6 +112,16 @@ it strengthens the existing session list/detail and fork-route product as a
 single contract, is version-implied from `0.8.1`, and does not broaden any
 older capability meaning.
 
+`project-queue-attachment-editing` owns the existing Project Queue update
+route's ability to atomically combine retained queue-owned staged references
+with newly uploaded draft references, including individual removal. The
+ordinary optional-feature corpus is `v0.8.0` (2026-08-31) and `v0.7.0`
+(2026-07-25); both have Project Queue updates and staging but lack this mixed
+ownership update semantic and permanent ID 55. Without the capability, the
+projects-page editor remains text-only, preserves its original attachment
+fields, and starts no attachment upload or mutation request. It is
+version-implied from `0.8.1`; no route or request-field shape changes.
+
 The additive top-level `transcriptSnapshotUpdatedAt` field on existing session
 detail responses is a reader snapshot receipt, not a new feature capability.
 The core compatibility corpus `v0.6.0`, `v0.6.1`, `v0.6.2`, and `v0.7.0`
@@ -459,9 +469,10 @@ the same ledger:
 | 52 | server | 0.7.2 | `session-sandbox-network-firewall` |
 | 53 | server | 0.8.1 | `codex-plan-tool-setting` |
 | 54 | server | 0.8.1 | `codex-paginated-rollout-lineage` |
+| 55 | server | 0.8.1 | `project-queue-attachment-editing` |
 
 The code ledger is authoritative. The next client or server capability takes
-ID 55; retired rows stay in the ledger as reserved IDs.
+ID 56; retired rows stay in the ledger as reserved IDs.
 
 ## When To Add One
 

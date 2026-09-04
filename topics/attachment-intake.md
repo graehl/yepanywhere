@@ -24,6 +24,13 @@ Desktop clipboard paste reads file items from the existing textarea paste
 event and hands them to the normal pending-attachment pipeline. It does not
 interpret arbitrary clipboard HTML as an attachment.
 
+The capability-gated projects-page editor for an existing Project Queue item
+uses the same file-item paste boundary and staged upload preparation. Its Save
+operation may combine retained queue-owned references with newly uploaded
+draft references; Discard requests cleanup of only the latter, with staging
+expiry as the fallback. A server without `project-queue-attachment-editing`
+keeps this editor text-only and receives no attachment mutation.
+
 An accepted attachment is composer content even when the text field is blank.
 A completed attachment can be sent without accompanying text. Completed or
 still-uploading attachments make empty-draft affordances inactive; an upload
@@ -83,5 +90,7 @@ web path.
   otherwise New Session opens in the same relay context.
 - Desktop file paste and PWA share intake converge on the same pending-file
   behavior.
+- Project Queue inline paste preserves, adds, and removes queued attachments in
+  one update when advertised, while the absent-capability path stays text-only.
 - Direct start, resume, and queue requests accept empty text with a completed
   attachment; an older server receives no such unsupported request.

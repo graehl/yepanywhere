@@ -1141,22 +1141,41 @@ export class ProjectQueueService {
       );
     }
 
-    const refsMatchExisting =
-      existingStagedAttachments !== undefined &&
-      existingStagedAttachments.batchId === stagedAttachments.batchId &&
-      existingStagedAttachments.refs.length === stagedAttachments.refs.length &&
-      existingStagedAttachments.refs.every(
-        (ref, index) => ref.id === stagedAttachments.refs[index]?.id,
-      );
-
     try {
-      const refs = refsMatchExisting
-        ? await staging.validateQueueRefs(itemId, stagedAttachments.refs)
-        : await staging.transferDraftAttachmentsToQueue({
-            batchId: stagedAttachments.batchId,
-            queueItemId: itemId,
-            refs: stagedAttachments.refs,
-          });
+      const existingRefIds = new Set(
+        existingStagedAttachments?.refs.map((ref) => ref.id) ?? [],
+      );
+      const retainedRefs = stagedAttachments.refs.filter((ref) =>
+        existingRefIds.has(ref.id),
+      );
+      const addedRefs = stagedAttachments.refs.filter(
+        (ref) => !existingRefIds.has(ref.id),
+      );
+      const validatedRetainedRefs =
+        retainedRefs.length > 0
+          ? await staging.validateQueueRefs(itemId, retainedRefs)
+          : [];
+      const transferredAddedRefs =
+        addedRefs.length > 0
+          ? await staging.transferDraftAttachmentsToQueue({
+              batchId: stagedAttachments.batchId,
+              queueItemId: itemId,
+              refs: addedRefs,
+            })
+          : [];
+      const preparedRefsById = new Map(
+        [...validatedRetainedRefs, ...transferredAddedRefs].map((ref) => [
+          ref.id,
+          ref,
+        ]),
+      );
+      const refs = stagedAttachments.refs.map((requestedRef) => {
+        const preparedRef = preparedRefsById.get(requestedRef.id);
+        if (!preparedRef) {
+          throw new Error(`attachment ${requestedRef.id} was not prepared`);
+        }
+        return preparedRef;
+      });
       const batchId = refs[0]?.batchId ?? stagedAttachments.batchId;
       return {
         batchId,

@@ -384,3 +384,12 @@ browser `File` objects, blob URLs, or in-flight upload handles. Promotion
 materializes those staged files into the new session's normal attachment
 destination. The design and lifecycle are documented in
 `docs/tactical/028-pre-session-attachment-staging.md`.
+
+When the server advertises `project-queue-attachment-editing`, the projects
+page's in-place editor accepts clipboard file items through the normal staged
+attachment pipeline. Save may retain or remove existing attachments and add
+newly uploaded ones in one atomic item update. Discard preserves attachments
+already owned by the queued item and requests deletion of newly staged draft
+attachments; failed cleanup falls back to the staging expiry. An upload or save
+failure keeps the editor open. Without the capability, the editor remains
+text-only and sends the original attachment fields unchanged.

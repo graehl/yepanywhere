@@ -1,5 +1,6 @@
 import {
   PROJECT_CODE_NAMES_CAPABILITY,
+  PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   type ProjectQueueMessage,
   serverHasCapability,
@@ -29,6 +30,10 @@ export function ProjectsPage() {
   const { projects, loading, error, refetch } = useProjects();
   const { version } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(version);
+  const supportsProjectQueueAttachmentEditing = serverHasCapability(
+    version,
+    PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
+  );
   const supportsProjectSessionDefaults = serverHasCapability(
     version,
     PROJECT_SESSION_DEFAULTS_CAPABILITY,
@@ -233,11 +238,7 @@ export function ProjectsPage() {
     itemId: string,
     message: ProjectQueueMessage,
   ) => {
-    try {
-      await projectQueues.updateItem(projectId, itemId, { message });
-    } catch {
-      // The hook exposes the error in the queue section.
-    }
+    await projectQueues.updateItem(projectId, itemId, { message });
   };
 
   if (loading) return <div className="loading">{t("projectsLoading")}</div>;
@@ -340,6 +341,7 @@ export function ProjectsPage() {
               projectStatusesByProject={projectQueues.projectStatusesByProject}
               highlightedItemId={highlightedQueueItemId}
               basePath={basePath}
+              attachmentEditingEnabled={supportsProjectQueueAttachmentEditing}
               onPauseDispatch={handlePauseProjectQueue}
               onResumeDispatch={handleResumeProjectQueue}
               onPromoteNow={handlePromoteProjectQueueItem}

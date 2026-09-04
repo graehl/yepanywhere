@@ -18,6 +18,7 @@ import {
   GIT_WORKING_TREE_COMPLETE_SCAN_CAPABILITY,
   GIT_WORKING_TREE_FILES_CAPABILITY,
   GIT_WORKING_TREE_SECTIONS_CAPABILITY,
+  PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   PROVIDER_HOST_CONTROL_CAPABILITY,
   PUBLIC_SHARE_MANAGEMENT_FREEZE_CAPABILITY,
@@ -133,6 +134,19 @@ describe("server capability advertisements", () => {
       ),
     ).toBe(false);
     expect(CAPABILITY_ID_ALLOCATIONS.gitIncomingCommits.id).toBe(39);
+    expect(
+      serverHasCapability(
+        { current: "0.8.1" },
+        PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
+      ),
+    ).toBe(true);
+    expect(
+      serverHasCapability(
+        { current: "0.8.0" },
+        PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
+      ),
+    ).toBe(false);
+    expect(CAPABILITY_ID_ALLOCATIONS.projectQueueAttachmentEditing.id).toBe(55);
   });
 
   it("lets a negative bit override an otherwise implied capability", () => {

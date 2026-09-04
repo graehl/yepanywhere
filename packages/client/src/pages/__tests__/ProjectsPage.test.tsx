@@ -65,8 +65,18 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("../../lib/clientSummaryStore", () => ({
+vi.mock("../../lib/clientSummaryStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/clientSummaryStore")>()),
   useInboxCountsByProject: () => state.inboxCountsByProject,
+}));
+
+vi.mock("../../contexts/SourceRuntimeContext", () => ({
+  useCurrentSourceRuntime: () => ({
+    transport: {
+      capabilities: { sameOriginUrls: true },
+      fetch: vi.fn(),
+    },
+  }),
 }));
 
 vi.mock("../../hooks/useProjects", () => ({

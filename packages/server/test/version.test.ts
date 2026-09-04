@@ -6,6 +6,7 @@ import {
   DEVICE_BRIDGE_DOWNLOAD_CAPABILITY,
   DEVICE_BRIDGE_UPDATE_CAPABILITY,
   PROJECT_QUEUE_CAPABILITY,
+  PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
   PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
   PROJECT_SESSION_DEFAULTS_CAPABILITY,
   SESSION_SANDBOXING_CAPABILITY,
@@ -486,6 +487,9 @@ describe("GET /version", () => {
     const { getServerCapabilities } = await importVersion();
 
     expect(getServerCapabilities()).toContain(PROJECT_QUEUE_CAPABILITY);
+    expect(getServerCapabilities()).toContain(
+      PROJECT_QUEUE_ATTACHMENT_EDITING_CAPABILITY,
+    );
     expect(getServerCapabilities()).toContain(
       PROJECT_QUEUE_NEW_SESSION_SHORTCUT_SETTING_CAPABILITY,
     );

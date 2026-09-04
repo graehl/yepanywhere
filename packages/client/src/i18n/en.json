@@ -473,6 +473,7 @@
   "projectQueueInlineCopy": "Copy Project Queue message",
   "projectQueueInlineEdit": "Edit Project Queue item",
   "projectQueueInlineEditFailed": "Failed to edit Project Queue item: {message}",
+  "projectQueueAttachmentBatchMismatch": "Attachments belong to different upload batches.",
   "projectQueueInlineSteer": "Steer Project Queue item now",
   "projectQueueInlineSteered": "Steered Project Queue item now.",
   "projectQueueInlineSteerFailed": "Failed to steer Project Queue item: {message}",

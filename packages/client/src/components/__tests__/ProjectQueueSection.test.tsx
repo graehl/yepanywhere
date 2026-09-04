@@ -15,11 +15,29 @@ import {
   within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import type { Project } from "../../types";
 import { ProjectQueueSection } from "../ProjectQueueSection";
 import styles from "../ProjectQueueSection.module.css";
+
+const attachmentMocks = vi.hoisted(() => ({
+  uploadComposerAttachmentFile: vi.fn(),
+  fetch: vi.fn(),
+}));
+
+vi.mock("../../contexts/SourceRuntimeContext", () => ({
+  useCurrentSourceRuntime: () => ({
+    transport: {
+      capabilities: { sameOriginUrls: true },
+      fetch: attachmentMocks.fetch,
+    },
+  }),
+}));
+
+vi.mock("../../lib/sessionComposerSubmission", () => ({
+  uploadComposerAttachmentFile: attachmentMocks.uploadComposerAttachmentFile,
+}));
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
 const OTHER_PROJECT_ID = "project-2" as ProjectQueueItemSummary["projectId"];
@@ -102,6 +120,7 @@ function renderSection(
   projectStatusesByProject: Record<string, ProjectQueueProjectStatus> = {},
   projects: Project[] = [project, otherProject],
   mutatingRecoveredQueueId: string | null = null,
+  attachmentEditingEnabled = false,
 ) {
   render(
     <I18nProvider>
@@ -119,6 +138,7 @@ function renderSection(
           dispatchState={dispatchState}
           projectStatusesByProject={projectStatusesByProject}
           highlightedItemId={highlightedItemId}
+          attachmentEditingEnabled={attachmentEditingEnabled}
           onPauseDispatch={handlers.onPauseDispatch}
           onResumeDispatch={handlers.onResumeDispatch}
           onPromoteNow={handlers.onPromoteNow}
@@ -155,6 +175,12 @@ function makeProjectStatus(
 }
 
 describe("ProjectQueueSection", () => {
+  beforeEach(() => {
+    attachmentMocks.uploadComposerAttachmentFile.mockReset();
+    attachmentMocks.fetch.mockReset();
+    attachmentMocks.fetch.mockResolvedValue({ deleted: true });
+  });
+
   afterEach(() => {
     cleanup();
   });
@@ -483,6 +509,143 @@ describe("ProjectQueueSection", () => {
         text: "Edited queued work",
       }),
     );
+  });
+
+  it("pastes and removes attachments in the capability-gated editor", async () => {
+    const existingRef = {
+      id: "existing-ref",
+      batchId: "batch-a",
+      originalName: "existing.png",
+      name: "existing.png",
+      size: 8,
+      mimeType: "image/png",
+      createdAt: "2026-06-27T00:00:00.000Z",
+      updatedAt: "2026-06-27T00:00:00.000Z",
+    };
+    const handlers = renderSection(
+      [
+        makeItem("attachments", "queued", {
+          message: {
+            text: "Queued image work",
+            stagedAttachments: {
+              batchId: "batch-a",
+              refs: [existingRef],
+              updatedAt: "2026-06-27T00:00:00.000Z",
+            },
+          },
+          attachmentCount: 1,
+        }),
+      ],
+      undefined,
+      undefined,
+      { status: "running" },
+      [],
+      {},
+      [project, otherProject],
+      null,
+      true,
+    );
+    attachmentMocks.uploadComposerAttachmentFile.mockImplementation(
+      async ({ file, stagedBatchId }) => ({
+        id: "pasted-ref",
+        batchId: stagedBatchId,
+        originalName: file.name,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        createdAt: "2026-06-27T00:01:00.000Z",
+        updatedAt: "2026-06-27T00:01:00.000Z",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const textarea = screen.getByLabelText("Project Queue message");
+    const pastedImage = new File(["image"], "pasted.png", {
+      type: "image/png",
+    });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ kind: "file", getAsFile: () => pastedImage }],
+      },
+    });
+
+    await screen.findByRole("button", { name: "Remove pasted.png" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove existing.png" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(handlers.onUpdateItem).toHaveBeenCalledWith(
+        "project-1",
+        "attachments",
+        expect.objectContaining({
+          text: "Queued image work",
+          attachments: undefined,
+          stagedAttachments: expect.objectContaining({
+            batchId: "batch-a",
+            refs: [expect.objectContaining({ id: "pasted-ref" })],
+          }),
+        }),
+      );
+      expect(attachmentMocks.fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  it("keeps attachment mutations disabled without the capability", async () => {
+    const handlers = renderSection([
+      makeItem("legacy", "queued", {
+        message: {
+          text: "Legacy edit",
+          stagedAttachments: {
+            batchId: "batch-a",
+            refs: [
+              {
+                id: "existing-ref",
+                batchId: "batch-a",
+                originalName: "existing.png",
+                name: "existing.png",
+                size: 8,
+                mimeType: "image/png",
+                createdAt: "2026-06-27T00:00:00.000Z",
+                updatedAt: "2026-06-27T00:00:00.000Z",
+              },
+            ],
+            updatedAt: "2026-06-27T00:00:00.000Z",
+          },
+        },
+        attachmentCount: 1,
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.paste(screen.getByLabelText("Project Queue message"), {
+      clipboardData: {
+        items: [
+          {
+            kind: "file",
+            getAsFile: () =>
+              new File(["image"], "ignored.png", { type: "image/png" }),
+          },
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(
+        attachmentMocks.uploadComposerAttachmentFile,
+      ).not.toHaveBeenCalled();
+      expect(handlers.onUpdateItem).toHaveBeenCalledWith(
+        "project-1",
+        "legacy",
+        expect.objectContaining({
+          stagedAttachments: expect.objectContaining({
+            refs: [expect.objectContaining({ id: "existing-ref" })],
+          }),
+        }),
+      );
+    });
   });
 
   it("disables cancellation while dispatching", () => {

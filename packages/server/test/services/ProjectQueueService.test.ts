@@ -302,6 +302,81 @@ describe("ProjectQueueService", () => {
     expect(stagingService.getRecord(ref.id)).toBeNull();
   });
 
+  it("adds and removes staged attachments while preserving queue ownership", async () => {
+    const stagingService = new AttachmentStagingService({
+      stagingRoot: path.join(testDir, "staging"),
+    });
+    const firstUpload = await completeDraftUpload(
+      stagingService,
+      Buffer.from("first queued attachment"),
+    );
+    const service = await createService(undefined, stagingService);
+    const created = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "new-session", provider: "claude" },
+        message: {
+          text: "edit attachments later",
+          stagedAttachments: {
+            batchId: firstUpload.batchId,
+            refs: [firstUpload.ref],
+            updatedAt: "2026-06-28T00:00:00.000Z",
+          },
+        },
+      },
+    });
+    const secondUpload = await completeDraftUpload(
+      stagingService,
+      Buffer.from("second queued attachment"),
+      firstUpload.batchId,
+    );
+
+    const added = await service.updateItem(projectId, created.id, {
+      message: {
+        text: "edit attachments later",
+        stagedAttachments: {
+          batchId: firstUpload.batchId,
+          refs: [firstUpload.ref, secondUpload.ref],
+          updatedAt: "2026-06-28T00:01:00.000Z",
+        },
+      },
+    });
+
+    expect(added?.message.stagedAttachments?.refs.map((ref) => ref.id)).toEqual(
+      [firstUpload.ref.id, secondUpload.ref.id],
+    );
+    expect(stagingService.getRecord(firstUpload.ref.id)?.owner).toEqual({
+      type: "project-queue",
+      queueItemId: created.id,
+    });
+    expect(stagingService.getRecord(secondUpload.ref.id)?.owner).toEqual({
+      type: "project-queue",
+      queueItemId: created.id,
+    });
+
+    const removed = await service.updateItem(projectId, created.id, {
+      message: {
+        text: "keep only the second attachment",
+        stagedAttachments: {
+          batchId: firstUpload.batchId,
+          refs: [secondUpload.ref],
+          updatedAt: "2026-06-28T00:02:00.000Z",
+        },
+      },
+    });
+
+    expect(removed?.attachmentCount).toBe(1);
+    expect(removed?.message.stagedAttachments?.refs).toMatchObject([
+      { id: secondUpload.ref.id, batchId: firstUpload.batchId },
+    ]);
+    expect(stagingService.getRecord(firstUpload.ref.id)).toBeNull();
+    expect(stagingService.getRecord(secondUpload.ref.id)?.owner).toEqual({
+      type: "project-queue",
+      queueItemId: created.id,
+    });
+  });
+
   it("rejects empty messages", async () => {
     const service = await createService();
 

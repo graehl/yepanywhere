@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import { useSessionPerformanceSettings } from "./useSessionPerformanceSettings";
 import {
   dispatchSessionIsearchGuideState,
   type SessionIsearchScope,
@@ -158,6 +159,7 @@ export function useMessageListIsearch({
   const selectedSearchTargetIdRef = useRef<string | null>(null);
   const selectedSearchAnchorIdRef = useRef<string | null>(null);
   const historySearchKeyRef = useRef("");
+  const historySearchAttemptKeyRef = useRef<string | null>(null);
   const historySearchHydrationGenerationRef = useRef(0);
   const appliedHistorySearchKeyRef = useRef("");
   const historySearchWorkerRef = useRef<Worker | null>(null);
@@ -185,9 +187,11 @@ export function useMessageListIsearch({
   const [olderSearchState, setOlderSearchState] = useState<OlderSearchState>(
     () => createOlderSearchState("", null, false),
   );
+  const olderSearchStateRef = useRef(olderSearchState);
   const [hydratingSearchId, setHydratingSearchId] = useState<string | null>(
     null,
   );
+  const { reverseSearchMaxPagesPerAttempt } = useSessionPerformanceSettings();
   const cancelSearchTargetPreparation = useCallback(() => {
     historySearchHydrationGenerationRef.current += 1;
     setHydratingSearchId(null);
@@ -226,6 +230,7 @@ export function useMessageListIsearch({
           historySearchCursor,
           hasOlderMessages,
         );
+  olderSearchStateRef.current = effectiveOlderSearchState;
 
   const disposeHistorySearchWorker = useCallback(() => {
     historySearchWorkerRef.current?.terminate();
@@ -394,114 +399,149 @@ export function useMessageListIsearch({
       ? [...olderSearchMatches, ...loadedSearchAnchors]
       : loadedSearchAnchors;
 
-  const searchOlder = useCallback(async () => {
-    const state = effectiveOlderSearchState;
-    const cursor = state.cursor;
-    const requestKey = historySearchKey;
-    if (
-      !searchReady ||
-      !cursor ||
-      !state.hasOlder ||
-      state.loading ||
-      state.limitReached ||
-      !onReadOlderSearchPage
-    ) {
-      return;
-    }
+  const searchOlder = useCallback(
+    async (maxPages = 1, selectClosestNewMatch = false) => {
+      let state = olderSearchStateRef.current;
+      const requestKey = historySearchKey;
+      if (
+        !searchReady ||
+        !state.cursor ||
+        !state.hasOlder ||
+        state.loading ||
+        state.limitReached ||
+        historySearchAttemptKeyRef.current === requestKey ||
+        !onReadOlderSearchPage
+      ) {
+        return;
+      }
 
-    // A fast click can precede the effect that records the newly typed query.
-    // Claim the key before starting the worker so that effect cannot dispose
-    // this first explicit page scan as stale.
-    appliedHistorySearchKeyRef.current = requestKey;
-    setOlderSearchState((previous) => ({
-      ...(previous.key === requestKey ? previous : state),
-      error: false,
-      key: requestKey,
-      loading: true,
-    }));
+      // A fast click can precede the effect that records the newly typed query.
+      // Claim the key before starting the worker so that effect cannot dispose
+      // this first explicit page scan as stale.
+      appliedHistorySearchKeyRef.current = requestKey;
+      historySearchAttemptKeyRef.current = requestKey;
+      state = {
+        ...state,
+        error: false,
+        key: requestKey,
+        loading: true,
+      };
+      olderSearchStateRef.current = state;
+      setOlderSearchState(state);
 
-    try {
-      const page = await onReadOlderSearchPage(cursor);
-      if (historySearchKeyRef.current !== requestKey) return;
-      const pageMessageIds = new Set(
-        page.messages.flatMap((message) =>
-          [message.uuid, message.id].filter(
-            (id): id is string => typeof id === "string" && id.length > 0,
-          ),
-        ),
-      );
-      const transcriptDisplayObjects =
-        page.session.transcriptDisplayObjects?.filter((object) =>
-          object.placementAfterMessageId === ""
-            ? page.pagination?.hasOlderMessages === false
-            : pageMessageIds.has(object.placementAfterMessageId),
-        ) ?? [];
-      const result = await runHistorySearchPage({
-        caseSensitive: userTurnSearch.caseSensitive,
-        conversationViewEnabled,
-        messages: page.messages,
-        provider,
-        query: userTurnSearch.query,
-        recentProjectPathLinksEnabled,
-        scope: userTurnSearch.scope,
-        thinkingItemsVisible,
-        transcriptDisplayObjects,
-      });
-      if (historySearchKeyRef.current !== requestKey) return;
+      try {
+        let selectedId: string | null = null;
+        for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
+          const cursor = state.cursor;
+          if (!cursor || !state.hasOlder || state.limitReached) break;
 
-      const nextCursor = page.pagination?.hasOlderMessages
-        ? (page.pagination.truncatedBeforeMessageId ?? null)
-        : null;
-      const pageMatches: OlderSearchMatch[] = result.matches.map((match) => ({
-        ...match,
-        pageCursor: cursor,
-      }));
-      setOlderSearchState((previous) => {
-        if (previous.key !== requestKey) return previous;
-        const byId = new Map<string, OlderSearchMatch>();
-        for (const match of [...pageMatches, ...previous.matches]) {
-          if (!byId.has(match.id)) byId.set(match.id, match);
+          const page = await onReadOlderSearchPage(cursor);
+          if (historySearchKeyRef.current !== requestKey) return;
+          const pageMessageIds = new Set(
+            page.messages.flatMap((message) =>
+              [message.uuid, message.id].filter(
+                (id): id is string => typeof id === "string" && id.length > 0,
+              ),
+            ),
+          );
+          const transcriptDisplayObjects =
+            page.session.transcriptDisplayObjects?.filter((object) =>
+              object.placementAfterMessageId === ""
+                ? page.pagination?.hasOlderMessages === false
+                : pageMessageIds.has(object.placementAfterMessageId),
+            ) ?? [];
+          const result = await runHistorySearchPage({
+            caseSensitive: userTurnSearch.caseSensitive,
+            conversationViewEnabled,
+            messages: page.messages,
+            provider,
+            query: userTurnSearch.query,
+            recentProjectPathLinksEnabled,
+            scope: userTurnSearch.scope,
+            thinkingItemsVisible,
+            transcriptDisplayObjects,
+          });
+          if (historySearchKeyRef.current !== requestKey) return;
+
+          const nextCursor = page.pagination?.hasOlderMessages
+            ? (page.pagination.truncatedBeforeMessageId ?? null)
+            : null;
+          const pageMatches: OlderSearchMatch[] = result.matches.map(
+            (match) => ({
+              ...match,
+              pageCursor: cursor,
+            }),
+          );
+          const retainedIds = new Set(state.matches.map((match) => match.id));
+          const newPageMatches = pageMatches.filter(
+            (match) => !retainedIds.has(match.id),
+          );
+          const byId = new Map<string, OlderSearchMatch>();
+          for (const match of [...pageMatches, ...state.matches]) {
+            if (!byId.has(match.id)) byId.set(match.id, match);
+          }
+          const combined = [...byId.values()];
+          const limitReached =
+            result.matchesTruncated ||
+            combined.length >= HISTORY_SEARCH_RESULT_LIMIT;
+          state = {
+            ...state,
+            cursor: nextCursor,
+            error: false,
+            hasOlder: nextCursor !== null,
+            limitReached,
+            matches:
+              combined.length > HISTORY_SEARCH_RESULT_LIMIT
+                ? combined.slice(-HISTORY_SEARCH_RESULT_LIMIT)
+                : combined,
+            pagesScanned: state.pagesScanned + 1,
+          };
+          olderSearchStateRef.current = state;
+          setOlderSearchState(state);
+
+          if (selectClosestNewMatch && newPageMatches.length > 0) {
+            selectedId = newPageMatches[newPageMatches.length - 1]?.id ?? null;
+            break;
+          }
         }
-        const combined = [...byId.values()];
-        const limitReached =
-          result.matchesTruncated ||
-          combined.length >= HISTORY_SEARCH_RESULT_LIMIT;
-        return {
-          ...previous,
-          cursor: nextCursor,
-          error: false,
-          hasOlder: nextCursor !== null,
-          limitReached,
-          loading: false,
-          matches:
-            combined.length > HISTORY_SEARCH_RESULT_LIMIT
-              ? combined.slice(-HISTORY_SEARCH_RESULT_LIMIT)
-              : combined,
-          pagesScanned: previous.pagesScanned + 1,
-        };
-      });
-    } catch {
-      if (historySearchKeyRef.current !== requestKey) return;
-      setOlderSearchState((previous) =>
-        previous.key === requestKey
-          ? { ...previous, error: true, loading: false }
-          : previous,
-      );
-    }
-  }, [
-    effectiveOlderSearchState,
-    conversationViewEnabled,
-    historySearchKey,
-    onReadOlderSearchPage,
-    provider,
-    recentProjectPathLinksEnabled,
-    runHistorySearchPage,
-    searchReady,
-    thinkingItemsVisible,
-    userTurnSearch.caseSensitive,
-    userTurnSearch.query,
-    userTurnSearch.scope,
-  ]);
+
+        if (historySearchKeyRef.current !== requestKey) return;
+        state = { ...state, loading: false };
+        olderSearchStateRef.current = state;
+        setOlderSearchState(state);
+        if (
+          selectedId &&
+          state.matches.some((match) => match.id === selectedId)
+        ) {
+          setUserTurnSearch((previous) =>
+            previous.active ? { ...previous, selectedId } : previous,
+          );
+        }
+      } catch {
+        if (historySearchKeyRef.current !== requestKey) return;
+        state = { ...state, error: true, loading: false };
+        olderSearchStateRef.current = state;
+        setOlderSearchState(state);
+      } finally {
+        if (historySearchAttemptKeyRef.current === requestKey) {
+          historySearchAttemptKeyRef.current = null;
+        }
+      }
+    },
+    [
+      conversationViewEnabled,
+      historySearchKey,
+      onReadOlderSearchPage,
+      provider,
+      recentProjectPathLinksEnabled,
+      runHistorySearchPage,
+      searchReady,
+      thinkingItemsVisible,
+      userTurnSearch.caseSensitive,
+      userTurnSearch.query,
+      userTurnSearch.scope,
+    ],
+  );
   const userTurnSearchProjection = useMemo(
     () =>
       getSearchMatchProjection({
@@ -638,6 +678,18 @@ export function useMessageListIsearch({
     (direction: "previous" | "next") => {
       committedSearchTargetIdRef.current = null;
       cancelSearchTargetPreparation();
+      const currentIndex = selectedSearchAnchorIdRef.current
+        ? userTurnSearchMatches.findIndex(
+            (anchor) => anchor.id === selectedSearchAnchorIdRef.current,
+          )
+        : -1;
+      if (
+        direction === "previous" &&
+        (userTurnSearchMatches.length === 0 || currentIndex === 0)
+      ) {
+        void searchOlder(reverseSearchMaxPagesPerAttempt, true);
+        return;
+      }
       setUserTurnSearch((previous) => {
         if (!previous.active || userTurnSearchMatches.length === 0) {
           return previous;
@@ -659,7 +711,12 @@ export function useMessageListIsearch({
         return { ...previous, selectedId: nextSelectedId };
       });
     },
-    [cancelSearchTargetPreparation, userTurnSearchMatches],
+    [
+      cancelSearchTargetPreparation,
+      reverseSearchMaxPagesPerAttempt,
+      searchOlder,
+      userTurnSearchMatches,
+    ],
   );
   const stopSearchArrowRepeat = useCallback(() => {
     if (searchArrowRepeatTimeoutRef.current !== null) {

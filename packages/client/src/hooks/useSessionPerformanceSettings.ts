@@ -23,6 +23,8 @@ const DEFAULT_SESSION_ACTIVE_WINDOW_TRIM_ENABLED = true;
 export const DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS = 2;
 export const MAX_SESSION_INITIAL_HISTORY_COMPACTIONS = 20;
 export type SessionInitialHistoryCompactions = number | null;
+export const DEFAULT_REVERSE_SEARCH_PAGES_PER_ATTEMPT = 100;
+export const MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT = 1000;
 
 /** Budget 0 disables the cache (matching the old default-off toggle). */
 const DEFAULT_TRANSCRIPT_CACHE_BUDGET_MB = 0;
@@ -92,6 +94,18 @@ const sessionInitialHistoryCompactionsStore = createLocalStorageValue(
       : undefined;
   },
 );
+const reverseSearchMaxPagesPerAttemptStore = createLocalStorageValue(
+  UI_KEYS.sessionReverseSearchMaxPagesPerAttempt,
+  DEFAULT_REVERSE_SEARCH_PAGES_PER_ATTEMPT,
+  (raw) => {
+    const value = Number(raw);
+    return Number.isInteger(value) &&
+      value >= 1 &&
+      value <= MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT
+      ? value
+      : undefined;
+  },
+);
 const performancePreferenceStores = [
   sessionDomLingerStore,
   sessionTranscriptCacheBudgetMbStore,
@@ -99,6 +113,7 @@ const performancePreferenceStores = [
   sessionScrollBehaviorStore,
   sessionActiveWindowTrimStore,
   sessionInitialHistoryCompactionsStore,
+  reverseSearchMaxPagesPerAttemptStore,
 ] as const;
 
 // Canonical home is the memory-cache facade so non-hook consumers (client
@@ -153,6 +168,7 @@ function getSnapshot() {
     getSessionScrollBehaviorMode(),
     getSessionActiveWindowTrimEnabled() ? "1" : "0",
     sessionInitialHistoryCompactionsStore.read(),
+    String(getReverseSearchMaxPagesPerAttempt()),
   ].join(":");
 }
 
@@ -164,6 +180,7 @@ function parseSnapshot(snapshot: string) {
     scrollBehavior,
     activeWindowTrim,
     initialHistoryCompactions,
+    reverseSearchMaxPagesPerAttempt,
   ] = snapshot.split(":");
   const parsedBudget = Number(budgetMb);
   const parsedTtl = Number(ttlHours);
@@ -180,6 +197,9 @@ function parseSnapshot(snapshot: string) {
             MAX_SESSION_INITIAL_HISTORY_COMPACTIONS
         ? parsedInitialHistoryCompactions
         : DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS;
+  const parsedReverseSearchMaxPagesPerAttempt = Number(
+    reverseSearchMaxPagesPerAttempt,
+  );
   return {
     sessionDomLingerEnabled: domLinger !== "0",
     sessionTranscriptCacheBudgetMb,
@@ -190,6 +210,13 @@ function parseSnapshot(snapshot: string) {
     sessionScrollBehaviorMode: parseSessionScrollBehaviorMode(scrollBehavior),
     sessionActiveWindowTrimEnabled: activeWindowTrim !== "0",
     sessionInitialHistoryCompactions,
+    reverseSearchMaxPagesPerAttempt:
+      Number.isInteger(parsedReverseSearchMaxPagesPerAttempt) &&
+      parsedReverseSearchMaxPagesPerAttempt >= 1 &&
+      parsedReverseSearchMaxPagesPerAttempt <=
+        MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT
+        ? parsedReverseSearchMaxPagesPerAttempt
+        : DEFAULT_REVERSE_SEARCH_PAGES_PER_ATTEMPT,
   };
 }
 
@@ -222,6 +249,10 @@ export function getSessionInitialHistoryCompactions(): SessionInitialHistoryComp
   return stored === "unlimited"
     ? null
     : Number(stored) || DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS;
+}
+
+export function getReverseSearchMaxPagesPerAttempt(): number {
+  return reverseSearchMaxPagesPerAttemptStore.read();
 }
 
 function applySessionDetailRetentionPreferences(): void {
@@ -269,6 +300,18 @@ export function setSessionInitialHistoryCompactionsPreference(
       )
     : DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS;
   sessionInitialHistoryCompactionsStore.set(String(normalized));
+}
+
+export function setReverseSearchMaxPagesPerAttemptPreference(
+  pages: number,
+): void {
+  const normalized = Number.isFinite(pages)
+    ? Math.min(
+        MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT,
+        Math.max(1, Math.round(pages)),
+      )
+    : DEFAULT_REVERSE_SEARCH_PAGES_PER_ATTEMPT;
+  reverseSearchMaxPagesPerAttemptStore.set(normalized);
 }
 
 export function setSessionTranscriptCacheBudgetMbPreference(
@@ -341,7 +384,7 @@ export function useSessionPerformanceSettings() {
     subscribe,
     getSnapshot,
     () =>
-      `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}:1:${DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS}`,
+      `0:0:1:${DEFAULT_SESSION_SCROLL_BEHAVIOR_MODE}:1:${DEFAULT_SESSION_INITIAL_HISTORY_COMPACTIONS}:${DEFAULT_REVERSE_SEARCH_PAGES_PER_ATTEMPT}`,
   );
   const settings = useMemo(() => parseSnapshot(snapshot), [snapshot]);
 
@@ -369,6 +412,10 @@ export function useSessionPerformanceSettings() {
     setSessionInitialHistoryCompactionsPreference,
     [],
   );
+  const setReverseSearchMaxPagesPerAttempt = useCallback(
+    setReverseSearchMaxPagesPerAttemptPreference,
+    [],
+  );
 
   return {
     ...settings,
@@ -378,5 +425,6 @@ export function useSessionPerformanceSettings() {
     setSessionScrollBehaviorMode,
     setSessionActiveWindowTrimEnabled,
     setSessionInitialHistoryCompactions,
+    setReverseSearchMaxPagesPerAttempt,
   };
 }

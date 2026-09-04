@@ -18,11 +18,13 @@ import {
 } from "./MessageList.test-support";
 import { MessageList } from "../MessageList";
 import { setRecentProjectPathLinksPreference } from "../../hooks/useRecentProjectPathLinks";
+import { setReverseSearchMaxPagesPerAttemptPreference } from "../../hooks/useSessionPerformanceSettings";
 
 installMessageListTestEnvironment();
 
 afterEach(() => {
   act(() => setRecentProjectPathLinksPreference(false));
+  act(() => setReverseSearchMaxPagesPerAttemptPreference(100));
   vi.unstubAllGlobals();
 });
 
@@ -430,6 +432,110 @@ describe("MessageList reverse search", () => {
       expect(container.querySelector('[data-render-id="user-old"]')).toBeNull();
     });
     stop();
+  });
+
+  it.each([
+    {
+      label: "Ctrl+R",
+      open: () => fireEvent.keyDown(window, { key: "r", ctrlKey: true }),
+      extend: () => fireEvent.keyDown(window, { key: "r", ctrlKey: true }),
+      inputName: "Reverse search user turns",
+    },
+    {
+      label: "Ctrl+S",
+      open: () => fireEvent.keyDown(window, { key: "s", ctrlKey: true }),
+      extend: () => fireEvent.keyDown(window, { key: "s", ctrlKey: true }),
+      inputName: "Reverse search all turns",
+    },
+    {
+      label: "ArrowUp",
+      open: () => fireEvent.keyDown(window, { key: "r", ctrlKey: true }),
+      extend: () => fireEvent.keyDown(window, { key: "ArrowUp" }),
+      inputName: "Reverse search user turns",
+    },
+  ])(
+    "extends at the oldest match with $label until another match",
+    async ({ extend, inputName, open }) => {
+      const pages = new Map([
+        [
+          "loaded-boundary",
+          historyPage(
+            [userMessage("user-middle", "an intermediate page")],
+            "older-boundary",
+          ),
+        ],
+        [
+          "older-boundary",
+          historyPage(
+            [userMessage("user-old", "the older needle match")],
+            null,
+          ),
+        ],
+      ]);
+      const readOlderPage = vi.fn(async (cursor: string) => pages.get(cursor)!);
+      render(
+        <MessageList
+          messages={[userMessage("user-recent", "the recent needle match")]}
+          hasOlderMessages={true}
+          olderMessagesCursor="loaded-boundary"
+          onReadOlderSearchPage={readOlderPage}
+        />,
+      );
+
+      open();
+      fireEvent.change(
+        await screen.findByRole("textbox", {
+          name: inputName,
+        }),
+        { target: { value: "needle match" } },
+      );
+      expect(await screen.findByText("1/1")).toBeTruthy();
+
+      extend();
+
+      expect(await screen.findByText("1/2")).toBeTruthy();
+      expect(readOlderPage).toHaveBeenCalledTimes(2);
+      expect(readOlderPage).toHaveBeenNthCalledWith(1, "loaded-boundary");
+      expect(readOlderPage).toHaveBeenNthCalledWith(2, "older-boundary");
+    },
+  );
+
+  it("stops one keyboard extension at the configured page limit", async () => {
+    act(() => setReverseSearchMaxPagesPerAttemptPreference(2));
+    const pages = new Map([
+      ["page-1", historyPage([userMessage("user-1", "no match")], "page-2")],
+      [
+        "page-2",
+        historyPage([userMessage("user-2", "still absent")], "page-3"),
+      ],
+      ["page-3", historyPage([userMessage("user-3", "old needle")], null)],
+    ]);
+    const readOlderPage = vi.fn(async (cursor: string) => pages.get(cursor)!);
+    render(
+      <MessageList
+        messages={[userMessage("user-recent", "recent request")]}
+        hasOlderMessages={true}
+        olderMessagesCursor="page-1"
+        onReadOlderSearchPage={readOlderPage}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "Reverse search user turns",
+      }),
+      { target: { value: "old needle" } },
+    );
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+
+    await waitFor(() => expect(readOlderPage).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("0/0")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More" })).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    expect(await screen.findByText("1/1")).toBeTruthy();
+    expect(readOlderPage).toHaveBeenCalledTimes(3);
   });
 
   it("drops an active older-page search when basename linking changes", async () => {

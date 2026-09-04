@@ -84,22 +84,18 @@ for (const viewport of [
       exact: true,
     });
     const olderResult = page.getByText("Older result", { exact: true });
-    let moreClicks = 0;
-    for (let attempts = 0; attempts < 4; attempts += 1) {
-      await expect
-        .poll(
-          async () =>
-            (await moreButton.isVisible()) || (await startReached.isVisible()),
-        )
-        .toBe(true);
-      if (await startReached.isVisible()) break;
-      await moreButton.click();
-      moreClicks += 1;
-    }
-    expect(moreClicks).toBeGreaterThan(0);
-    await expect(startReached).toBeVisible();
+    await expect(moreButton).toBeVisible();
+    const moreButtonBeforeClick = await moreButton.boundingBox();
+    await moreButton.click();
+    await expect(
+      page.getByText("2 older history page(s) searched"),
+    ).toBeVisible();
+    const moreButtonAfterClick = await moreButton.boundingBox();
+    expect(moreButtonAfterClick).toEqual(moreButtonBeforeClick);
 
-    await page.keyboard.press("ArrowUp");
+    const requestsBeforeKeyboardExtension = olderPageRequests.length;
+    await page.keyboard.press("Control+r");
+    await expect(startReached).toBeVisible();
     await expect(olderResult).toBeVisible();
     await expect(
       page
@@ -108,6 +104,9 @@ for (const viewport of [
     ).toBeVisible();
     await expect(list.locator('[data-render-id="history-user-0"]')).toHaveCount(
       0,
+    );
+    expect(olderPageRequests.length).toBeGreaterThan(
+      requestsBeforeKeyboardExtension,
     );
     expect(olderPageRequests).toContain("history-compact-4");
     expect(olderPageRequests).toContain("history-compact-2");

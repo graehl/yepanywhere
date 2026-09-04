@@ -17,6 +17,7 @@ import {
 import { UI_KEYS } from "../../lib/storageKeys";
 import {
   getLastSessionTranscriptBytes,
+  getReverseSearchMaxPagesPerAttempt,
   getSessionActiveWindowTrimEnabled,
   getSessionScrollBehaviorMode,
   getSessionDomLingerEnabled,
@@ -98,6 +99,7 @@ describe("useSessionPerformanceSettings", () => {
     expect(result.current.sessionScrollBehaviorMode).toBe("live-tail");
     expect(result.current.sessionActiveWindowTrimEnabled).toBe(true);
     expect(result.current.sessionInitialHistoryCompactions).toBe(2);
+    expect(result.current.reverseSearchMaxPagesPerAttempt).toBe(100);
     expect(getSessionDomLingerEnabled()).toBe(false);
     expect(getSessionTranscriptCacheEnabled()).toBe(false);
     expect(getSessionTranscriptCacheBudgetMb()).toBe(0);
@@ -105,6 +107,25 @@ describe("useSessionPerformanceSettings", () => {
     expect(getSessionScrollBehaviorMode()).toBe("live-tail");
     expect(getSessionActiveWindowTrimEnabled()).toBe(true);
     expect(getSessionInitialHistoryCompactions()).toBe(2);
+    expect(getReverseSearchMaxPagesPerAttempt()).toBe(100);
+  });
+
+  it("persists and publishes the reverse-search page limit", () => {
+    const { result: first } = renderHook(() => useSessionPerformanceSettings());
+    const { result: second } = renderHook(() =>
+      useSessionPerformanceSettings(),
+    );
+
+    act(() => {
+      first.current.setReverseSearchMaxPagesPerAttempt(12);
+    });
+
+    expect(first.current.reverseSearchMaxPagesPerAttempt).toBe(12);
+    expect(second.current.reverseSearchMaxPagesPerAttempt).toBe(12);
+    expect(getReverseSearchMaxPagesPerAttempt()).toBe(12);
+    expect(
+      localStorage.getItem(UI_KEYS.sessionReverseSearchMaxPagesPerAttempt),
+    ).toBe("12");
   });
 
   it("persists and publishes an explicit active-window trim opt-out", () => {

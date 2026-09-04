@@ -269,12 +269,18 @@ without hiding or dropping them from search and navigation.
 Ctrl+R, Ctrl+S, and Ctrl+Alt+S initially search only the loaded semantic
 window. When older durable history exists and the query has at least two
 characters, the search panel offers **Search older**, then **More**. Each
-activation reads exactly one existing compact session page. A lazily loaded Web
-Worker compiles that page through the canonical transcript and Conversation
-View projections and applies the active scope, query, case, and Thinking
-visibility. The main thread retains only stable match ids, target ids, short
-previews, timestamps, and source-page cursors; it does not merge scanned page
-bodies into the active session store.
+button activation reads exactly one existing compact session page. Repeating
+the active search shortcut, or pressing Up while the oldest current match is
+selected, instead reads successive older pages until it finds the nearest new
+match, reaches the beginning, or exhausts the browser-local Performance limit
+for one keyboard attempt. That limit defaults to 100 pages. One page is one
+bounded session-detail response and normally spans at most two compaction
+boundaries; it is not a fixed message count. A lazily loaded Web Worker compiles
+each page through the canonical transcript and Conversation View projections
+and applies the active scope, query, case, and Thinking visibility. The main
+thread retains only stable match ids, target ids, short previews, timestamps,
+and source-page cursors; it does not merge scanned page bodies into the active
+session store.
 
 One page returns at most 200 matches and one search retains at most 512. A
 truncated page or aggregate limit stops continuation and asks the reader to

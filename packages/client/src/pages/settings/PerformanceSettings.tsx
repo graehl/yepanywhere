@@ -2,13 +2,14 @@ import {
   HOST_AGENT_PROCESS_OBSERVABILITY_CAPABILITY,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import {
   getLastSessionTranscriptBytes,
   getSessionTranscriptMemoryStats,
+  MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT,
   MAX_SESSION_INITIAL_HISTORY_COMPACTIONS,
   TRANSCRIPT_CACHE_BUDGET_MB_STOPS,
   TRANSCRIPT_CACHE_TTL_HOUR_STOPS,
@@ -52,11 +53,13 @@ export function PerformanceSettings() {
     sessionDomLingerEnabled,
     sessionActiveWindowTrimEnabled,
     sessionInitialHistoryCompactions,
+    reverseSearchMaxPagesPerAttempt,
     sessionTranscriptCacheBudgetMb,
     sessionTranscriptCacheTtlHours,
     setSessionDomLingerEnabled,
     setSessionActiveWindowTrimEnabled,
     setSessionInitialHistoryCompactions,
+    setReverseSearchMaxPagesPerAttempt,
     setSessionTranscriptCacheBudgetMb,
     setSessionTranscriptCacheTtlHours,
   } = useSessionPerformanceSettings();
@@ -83,6 +86,12 @@ export function PerformanceSettings() {
   );
   const [budgetDraftIndex, setBudgetDraftIndex] = useState<number | null>(null);
   const [ttlDraftIndex, setTtlDraftIndex] = useState<number | null>(null);
+  const [reverseSearchPageLimitDraft, setReverseSearchPageLimitDraft] =
+    useState(String(reverseSearchMaxPagesPerAttempt));
+
+  useEffect(() => {
+    setReverseSearchPageLimitDraft(String(reverseSearchMaxPagesPerAttempt));
+  }, [reverseSearchMaxPagesPerAttempt]);
 
   const historyIndex =
     historyDraftIndex ??
@@ -184,6 +193,23 @@ export function PerformanceSettings() {
     },
     [setSessionTranscriptCacheTtlHours],
   );
+  const commitReverseSearchPageLimit = useCallback(() => {
+    const parsed = Number(reverseSearchPageLimitDraft);
+    if (!Number.isFinite(parsed)) {
+      setReverseSearchPageLimitDraft(String(reverseSearchMaxPagesPerAttempt));
+      return;
+    }
+    const normalized = Math.min(
+      MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT,
+      Math.max(1, Math.round(parsed)),
+    );
+    setReverseSearchPageLimitDraft(String(normalized));
+    setReverseSearchMaxPagesPerAttempt(normalized);
+  }, [
+    reverseSearchMaxPagesPerAttempt,
+    reverseSearchPageLimitDraft,
+    setReverseSearchMaxPagesPerAttempt,
+  ]);
   const setHostProcessObservability = useCallback(
     async (enabled: boolean) => {
       setSavingHostProcessObservability(true);
@@ -205,6 +231,7 @@ export function PerformanceSettings() {
       sessionDomLingerEnabled,
       sessionActiveWindowTrimEnabled,
       sessionInitialHistoryCompactions,
+      reverseSearchMaxPagesPerAttempt,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -216,6 +243,7 @@ export function PerformanceSettings() {
       sessionDomLingerEnabled,
       sessionActiveWindowTrimEnabled,
       sessionInitialHistoryCompactions,
+      reverseSearchMaxPagesPerAttempt,
       sessionTranscriptCacheBudgetMb,
       sessionTranscriptCacheTtlHours,
       stableToolPreviewRendering,
@@ -232,6 +260,9 @@ export function PerformanceSettings() {
       );
       setSessionInitialHistoryCompactions(
         snapshot.sessionInitialHistoryCompactions,
+      );
+      setReverseSearchMaxPagesPerAttempt(
+        snapshot.reverseSearchMaxPagesPerAttempt,
       );
       setSessionTranscriptCacheBudgetMb(
         snapshot.sessionTranscriptCacheBudgetMb,
@@ -256,6 +287,7 @@ export function PerformanceSettings() {
       setSessionDomLingerEnabled,
       setSessionActiveWindowTrimEnabled,
       setSessionInitialHistoryCompactions,
+      setReverseSearchMaxPagesPerAttempt,
       setSessionTranscriptCacheBudgetMb,
       setSessionTranscriptCacheTtlHours,
       setStableToolPreviewRendering,
@@ -349,6 +381,36 @@ export function PerformanceSettings() {
             />
             <span className="settings-input-unit">{historyLabel}</span>
           </div>
+        </SettingsItem>
+        <SettingsItem
+          label={t("performanceReverseSearchPageLimitTitle")}
+          description={t("performanceReverseSearchPageLimitDescription")}
+          valueText={t("performanceReverseSearchPageLimitValue", {
+            count: reverseSearchMaxPagesPerAttempt,
+          })}
+        >
+          <span className="settings-input-unit">
+            <input
+              type="number"
+              className="settings-input-small"
+              min={1}
+              max={MAX_REVERSE_SEARCH_PAGES_PER_ATTEMPT}
+              step={1}
+              value={reverseSearchPageLimitDraft}
+              onChange={(event) =>
+                setReverseSearchPageLimitDraft(event.target.value)
+              }
+              onBlur={commitReverseSearchPageLimit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  commitReverseSearchPageLimit();
+                  event.currentTarget.blur();
+                }
+              }}
+              aria-label={t("performanceReverseSearchPageLimitTitle")}
+            />
+            {t("performanceReverseSearchPageLimitUnit")}
+          </span>
         </SettingsItem>
         <SettingsItem
           label={t("performanceTranscriptCacheTitle")}

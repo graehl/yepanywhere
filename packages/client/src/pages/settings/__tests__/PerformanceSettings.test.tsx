@@ -98,6 +98,27 @@ describe("PerformanceSettings", () => {
     ).toBe("unlimited");
   });
 
+  it("explains and persists the reverse-search page limit", () => {
+    render(<PerformanceSettings />);
+
+    const input = screen.getByRole<HTMLInputElement>("spinbutton", {
+      name: "performanceReverseSearchPageLimitTitle",
+    });
+    expect(input.value).toBe("100");
+    expect(
+      screen.getByText("performanceReverseSearchPageLimitDescription"),
+    ).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "12" } });
+    fireEvent.blur(input);
+
+    expect(
+      window.localStorage.getItem(
+        UI_KEYS.sessionReverseSearchMaxPagesPerAttempt,
+      ),
+    ).toBe("12");
+  });
+
   it("includes initial history in the pane undo baseline", () => {
     render(<PerformanceSettings />);
     const initialCall = undoMocks.useSettingsUndoBaseline.mock.calls[0];

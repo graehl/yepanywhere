@@ -107,6 +107,12 @@ UI should state directly.
   cannot become a new draft. Off leaves the replacement composer unfocused and
   lets the keyboard collapse; on refocuses the replacement host after the
   delivery boundary. Desktop keyboard delivery is unaffected.
+- **Performance → Reverse-search pages per attempt.** A portable browser-local
+  integer from 1 through 1000, defaulting to 100. It limits how many bounded
+  older-history responses one Ctrl-R, Ctrl-S, or Up continuation may chain
+  while seeking the next match. One page normally covers at most two compaction
+  boundaries and has no fixed message count. Manual **Search older** and
+  **More** activations continue to read one page each.
 - **Remote Access → Host Marker.** Optional and unset by default. Presets apply
   immediately; a valid custom emoji applies on Enter or blur; Clear removes it.
   Connected clients show the marker in host-identifying headers and browser

@@ -96,6 +96,8 @@ export const UI_KEYS = {
   sessionActiveWindowTrim: "yep-anywhere-session-active-window-trim-enabled",
   sessionInitialHistoryCompactions:
     "yep-anywhere-session-initial-history-compactions",
+  sessionReverseSearchMaxPagesPerAttempt:
+    "yep-anywhere-session-reverse-search-max-pages-per-attempt",
   // Legacy boolean toggle; seeds the budget preference until the slider
   // is first used, and stays coherent for older bundles.
   sessionTranscriptCache: "yep-anywhere-session-transcript-cache-enabled",

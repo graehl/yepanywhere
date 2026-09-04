@@ -100,6 +100,8 @@
 }
 
 .count {
+  inline-size: 7ch;
+  text-align: right;
   white-space: nowrap;
 }
 
@@ -112,6 +114,7 @@
 
 .olderButton {
   appearance: none;
+  width: 5.75rem;
   min-height: 24px;
   padding: 2px 7px;
   border: 1px solid var(--border-color);

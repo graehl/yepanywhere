@@ -19,7 +19,7 @@ export function getPreferredModelId(
     return preferredModelId;
   }
 
-  return models[0]?.id ?? null;
+  return models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null;
 }
 
 export function providerRequiresAdvertisedModel(
@@ -36,6 +36,7 @@ export function getPreferredProviderModelId(
   if (providerRequiresAdvertisedModel(providerName)) {
     return (
       models.find((model) => model.id === preferredModelId)?.id ??
+      models.find((model) => model.isDefault)?.id ??
       models[0]?.id ??
       null
     );

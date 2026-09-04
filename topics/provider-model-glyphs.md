@@ -88,6 +88,7 @@ Model sub-family abbreviations (appended after provider abbrev):
 | opus         | `Op`  | `Cl Op4`                  |
 | haiku        | `Hk`  | `Cl Hk3`                  |
 | (unknown)    | —     | `Cl 4.6` (version only)   |
+| gpt-6-astra  | `As`  | `Cd As`                   |
 | gpt-5.6-sol  | `☀`   | `Cd ☀`                    |
 | gpt-5.6-terra| `♁`   | `Cd ♁`                    |
 | gpt-5.6-luna | `☾`   | `Cd ☾`                    |

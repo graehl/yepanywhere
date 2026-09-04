@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_EXTENDED_CONTEXT_WINDOW,
   CODEX_DEFAULT_CONTEXT_WINDOW,
+  CODEX_GPT6_ASTRA_CONTEXT_WINDOW,
   CODEX_GPT56_CONTEXT_WINDOW,
   DEFAULT_CONTEXT_WINDOW,
   getModelContextWindow,
@@ -39,6 +40,15 @@ describe("getModelContextWindow", () => {
     );
     expect(getModelContextWindow("openai/gpt-5.6-terra")).toBe(
       CODEX_GPT56_CONTEXT_WINDOW,
+    );
+  });
+
+  it("uses the bundled 272K window for GPT-6 Astra", () => {
+    expect(getModelContextWindow("gpt-6-astra")).toBe(
+      CODEX_GPT6_ASTRA_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("openai/gpt-6-astra")).toBe(
+      CODEX_GPT6_ASTRA_CONTEXT_WINDOW,
     );
   });
 

@@ -266,6 +266,8 @@ export const DEFAULT_CONTEXT_WINDOW = 200_000;
 export const CODEX_DEFAULT_CONTEXT_WINDOW = 258_000;
 /** GPT-5.6 Sol, Terra, and Luna context window in Codex 0.144.6+. */
 export const CODEX_GPT56_CONTEXT_WINDOW = 272_000;
+/** GPT-6 Astra context window in Codex 0.153.3+. */
+export const CODEX_GPT6_ASTRA_CONTEXT_WINDOW = 272_000;
 export const CLAUDE_EXTENDED_CONTEXT_WINDOW = 1_000_000;
 
 /**
@@ -284,6 +286,7 @@ export const CLAUDE_EXTENDED_CONTEXT_WINDOW = 1_000_000;
  * - GPT-4: 128K (varies by variant)
  * - GPT-4o: 128K
  * - GPT-5.6 Sol/Terra/Luna: 272K
+ * - GPT-6 Astra: 272K
  * - Earlier GPT-5 / Codex 5.x: ~258K
  */
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
@@ -345,6 +348,10 @@ export function getModelContextWindow(
 
   if (lowerModel.includes("gpt-5.6")) {
     return CODEX_GPT56_CONTEXT_WINDOW;
+  }
+
+  if (lowerModel.includes("gpt-6-astra")) {
+    return CODEX_GPT6_ASTRA_CONTEXT_WINDOW;
   }
 
   // Handle model IDs that may include provider namespace or other prefixes.

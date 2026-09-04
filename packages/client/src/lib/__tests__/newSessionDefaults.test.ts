@@ -14,6 +14,15 @@ describe("getPreferredModelId", () => {
     expect(getPreferredModelId(models)).toBe("latest");
   });
 
+  it("uses the provider-marked default when it is not first", () => {
+    expect(
+      getPreferredModelId([
+        { id: "preferred-order", name: "Preferred order" },
+        { id: "provider-default", name: "Provider default", isDefault: true },
+      ]),
+    ).toBe("provider-default");
+  });
+
   it("keeps a saved exact id when the current catalog omits it", () => {
     expect(getPreferredModelId(models, "unlisted")).toBe("unlisted");
   });
@@ -25,5 +34,18 @@ describe("getPreferredModelId", () => {
     expect(
       getPreferredProviderModelId("claude-gateway", [], "gpt-5.5"),
     ).toBeNull();
+  });
+
+  it("uses Claude Gateway's advertised default when a saved id is absent", () => {
+    expect(
+      getPreferredProviderModelId(
+        "claude-gateway",
+        [
+          { id: "first", name: "First" },
+          { id: "default", name: "Default", isDefault: true },
+        ],
+        "missing",
+      ),
+    ).toBe("default");
   });
 });

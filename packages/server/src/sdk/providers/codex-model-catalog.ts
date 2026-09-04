@@ -1,4 +1,5 @@
 import {
+  CODEX_GPT6_ASTRA_CONTEXT_WINDOW,
   CODEX_GPT56_CONTEXT_WINDOW,
   type ModelInfo,
 } from "@yep-anywhere/shared";
@@ -9,6 +10,7 @@ export const CODEX_CLI_GPT56_REDUCED_CATALOG_MIN_VERSION = "0.144.6";
 export const CODEX_CLI_GPT56_RESTORED_CATALOG_MIN_VERSION = "0.145.0";
 
 const PREFERRED_MODEL_ORDER = [
+  "gpt-6-astra",
   "gpt-5.6-sol",
   "gpt-5.5",
   "gpt-5.6-terra",
@@ -368,7 +370,9 @@ export function normalizeCodexModelList(models: AppServerModel[]): ModelInfo[] {
           ? { contextWindow: model.contextWindow }
           : modelId.startsWith("gpt-5.6-")
             ? { contextWindow: CODEX_GPT56_CONTEXT_WINDOW }
-            : {}),
+            : modelId === "gpt-6-astra"
+              ? { contextWindow: CODEX_GPT6_ASTRA_CONTEXT_WINDOW }
+              : {}),
         ...(typeof model.supportsPersonality === "boolean"
           ? { supportsPersonality: model.supportsPersonality }
           : {}),
@@ -468,20 +472,14 @@ function getModelSortRank(
   serverIndex: number,
   orderLookup: Map<string, number>,
 ): number {
-  if (model.id === "gpt-5.6-sol") {
-    return 0;
-  }
-  if (model.id === "gpt-5.5") {
-    return 1;
-  }
   if (model.isDefault) {
-    return 2;
+    return 0;
   }
   const preferredRank = orderLookup.get(model.id);
   if (preferredRank !== undefined) {
-    return 3 + preferredRank;
+    return 1 + preferredRank;
   }
-  return 3 + PREFERRED_MODEL_ORDER.length + serverIndex;
+  return 1 + PREFERRED_MODEL_ORDER.length + serverIndex;
 }
 
 function formatModelName(value: string): string {

@@ -163,6 +163,35 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-09-04 (0.153.3):
+
+- Installed Codex is `0.153.3`. The official `rust-v0.153.3` annotated tag
+  object is `29d1e7f316229cd65c7e4a70476050c14962cf10`; it peels to commit
+  `b1a547b1f73ce86205d9222ac19cff334b3b7a2e`. Root compatibility and
+  expected-runtime markers now record `0.153.3`; the checked-in app-server
+  protocol subset itself did not change.
+- The release adds GPT-6 Astra to Amazon Bedrock's Mantle and Runtime model
+  catalogs and corrects its asynchronous clarification guidance. Neither
+  change alters YA's consumed request, notification, durable transcript, or
+  generated protocol shapes.
+- The current account's no-token `model/list` now exposes nine models and
+  marks `gpt-6-astra` as the default, ahead of Sol. Astra advertises medium
+  default effort, low through ultra effort, text and image input, no
+  personality support, and a `priority` tier described as 2x speed. YA now
+  honors any provider-marked default ahead of its own stable fallback order,
+  including when choosing an unsaved New Session model.
+- The live catalog omits Astra's context-window field, while the tagged bundled
+  model definition records 272,000 tokens. YA supplies that value for model
+  metadata and its context fallback, and renders the compact model identity as
+  `Cd As`.
+- Astra remains live-catalog-only. If authenticated discovery fails, YA keeps
+  Sol as its conservative fallback default rather than advertising a model
+  whose availability can differ by account or deployment.
+
+Status: Codex 0.153.3 model-default, model metadata, compact identity, generated
+protocol, and persisted-transcript compatibility are refreshed without raising
+the runtime floor.
+
 Current source refresh, 2026-09-04:
 
 - Installed Codex is `0.153.2`. The official `rust-v0.153.0`,

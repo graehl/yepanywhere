@@ -99,8 +99,31 @@ describe("Codex model catalog", () => {
     });
   });
 
-  it("prefers GPT-5.6 Sol as the best Codex model", () => {
+  it("places the provider default before YA's preferred model order", () => {
     const models = normalizeCodexModelList([
+      {
+        id: "gpt-6-astra",
+        model: "gpt-6-astra",
+        displayName: "GPT-6-Astra",
+        description: "Our most capable model for complex, demanding work.",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          {
+            reasoningEffort: "ultra",
+            description: "Maximum reasoning with automatic task delegation",
+          },
+        ],
+        inputModalities: ["text", "image"],
+        supportsPersonality: false,
+        serviceTiers: [
+          {
+            id: "priority",
+            name: "Fast",
+            description: "2x speed, increased usage",
+          },
+        ],
+      },
       {
         id: "gpt-5.4",
         model: "gpt-5.4",
@@ -133,7 +156,7 @@ describe("Codex model catalog", () => {
         model: "gpt-5.6-sol",
         displayName: "GPT-5.6-Sol",
         description: "Latest frontier agentic coding model.",
-        isDefault: true,
+        isDefault: false,
         defaultReasoningEffort: "low",
         supportedReasoningEfforts: [
           {
@@ -195,6 +218,7 @@ describe("Codex model catalog", () => {
     ]);
 
     expect(models.map((model) => model.id)).toEqual([
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.5",
       "gpt-daybreak-blue-latest",
@@ -202,8 +226,21 @@ describe("Codex model catalog", () => {
       "gpt-5.3-codex",
     ]);
     expect(models[0]).toMatchObject({
-      name: "GPT-5.6-Sol",
+      name: "GPT-6-Astra",
       isDefault: true,
+      defaultReasoningEffort: "medium",
+      contextWindow: 272_000,
+      supportsPersonality: false,
+      serviceTiers: [
+        {
+          id: "priority",
+          name: "Fast",
+          description: "2x speed, increased usage",
+        },
+      ],
+    });
+    expect(models[1]).toMatchObject({
+      name: "GPT-5.6-Sol",
       defaultReasoningEffort: "low",
       supportedReasoningEfforts: [
         {
@@ -222,16 +259,25 @@ describe("Codex model catalog", () => {
         },
       ],
     });
-    expect(models[3]).toMatchObject({ inputModalities: ["text", "image"] });
-    expect(models[2]).toMatchObject({
+    expect(models[4]).toMatchObject({ inputModalities: ["text", "image"] });
+    expect(models[3]).toMatchObject({
       name: "Daybreak Blue",
       description: "Defensive cybersecurity model.",
     });
   });
 
-  it("keeps GPT-5.5 preferred when Sol is unavailable", () => {
+  it("honors a provider default even when a preferred model is available", () => {
     const models = normalizeCodexModelList([
       { id: "gpt-5.4", model: "gpt-5.4", isDefault: true },
+      { id: "gpt-5.5", model: "gpt-5.5", isDefault: false },
+    ]);
+
+    expect(models.map((model) => model.id)).toEqual(["gpt-5.4", "gpt-5.5"]);
+  });
+
+  it("uses YA's preferred order when the provider marks no default", () => {
+    const models = normalizeCodexModelList([
+      { id: "gpt-5.4", model: "gpt-5.4", isDefault: false },
       { id: "gpt-5.5", model: "gpt-5.5", isDefault: false },
     ]);
 

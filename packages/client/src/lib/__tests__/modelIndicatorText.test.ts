@@ -60,6 +60,7 @@ describe("getModelIndicatorModelLabel", () => {
     });
 
     it.each([
+      ["gpt-6-astra", "Cd As"],
       ["gpt-5.6-sol", "Cd ☀"],
       ["gpt-5.6-terra", "Cd ♁"],
       ["gpt-5.6-luna", "Cd ☾"],

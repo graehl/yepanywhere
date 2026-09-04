@@ -12,9 +12,30 @@ export interface SessionModelConfig {
   promptSuggestionMode?: PromptSuggestionMode;
 }
 
+export interface LiveSessionModelConfigSnapshot {
+  processId: string;
+  config: SessionModelConfig;
+}
+
 function firstKnown<T>(...values: Array<T | null | undefined>): T | undefined {
   const value = values.find((candidate) => candidate !== undefined);
   return value ?? undefined;
+}
+
+function durableDisplayedModel(
+  durable: SessionEffectiveModelSettings | undefined,
+): string | null | undefined {
+  if (!durable) return undefined;
+  const requestedModel = durable.requestedModel?.trim();
+  return requestedModel && requestedModel !== "default" ? requestedModel : null;
+}
+
+export function liveModelConfigForProcess(
+  snapshot: LiveSessionModelConfigSnapshot | null,
+  processId: string | undefined,
+): SessionModelConfig | null {
+  if (!snapshot || snapshot.processId !== processId) return null;
+  return snapshot.config;
 }
 
 export function resolveSessionModelConfig(
@@ -25,7 +46,11 @@ export function resolveSessionModelConfig(
   if (!live && !durable && !initialAck) return null;
 
   return {
-    model: firstKnown(live?.model, initialAck?.model),
+    model: firstKnown(
+      live?.model,
+      durableDisplayedModel(durable),
+      initialAck?.model,
+    ),
     requestedModel: firstKnown(live?.requestedModel, durable?.requestedModel),
     thinking: firstKnown(
       live?.thinking,

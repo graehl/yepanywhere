@@ -167,8 +167,9 @@ import { getCachedWebTranscriptProjection } from "../lib/webTranscriptProjection
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
 import {
+  liveModelConfigForProcess,
   resolveSessionModelConfig,
-  type SessionModelConfig,
+  type LiveSessionModelConfigSnapshot,
 } from "../lib/sessionModelConfig";
 import { parseThinkingConfig } from "../lib/sourceControlNavigationState";
 import type { MessageSubmissionMetadata } from "../types/messageSubmission";
@@ -285,8 +286,6 @@ const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
   "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
 const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
-
-type LiveModelConfig = SessionModelConfig;
 
 function messageKey(message: Message | undefined): string | undefined {
   return message?.uuid ?? message?.id;
@@ -769,8 +768,14 @@ function SessionPageContent({
     status.owner === "self" &&
     status.appliedPermissionMode !== undefined &&
     permissionMode !== status.appliedPermissionMode;
-  const [liveModelConfig, setLiveModelConfig] =
-    useState<LiveModelConfig | null>(null);
+  const currentOwnedProcessId =
+    status.owner === "self" ? status.processId : undefined;
+  const [liveModelConfigSnapshot, setLiveModelConfigSnapshot] =
+    useState<LiveSessionModelConfigSnapshot | null>(null);
+  const liveModelConfig = liveModelConfigForProcess(
+    liveModelConfigSnapshot,
+    currentOwnedProcessId,
+  );
   const latestCodexConfigAck = useMemo(() => {
     if (effectiveProvider !== "codex" && effectiveProvider !== "codex-oss") {
       return null;
@@ -1127,8 +1132,6 @@ function SessionPageContent({
   const supportsThinkingToggle =
     currentProviderInfo?.supportsThinkingToggle ?? true;
   const { generallySupportsSteering, supportsSteerNow } = providerCapabilities;
-  const currentOwnedProcessId =
-    status.owner === "self" ? status.processId : undefined;
   const liveThinkingSelection = useMemo(() => {
     if (status.owner !== "self" || !effectiveModelConfig) {
       return null;
@@ -1618,6 +1621,7 @@ function SessionPageContent({
     let cancelled = false;
 
     if (!currentOwnedProcessId) {
+      setLiveModelConfigSnapshot(null);
       return;
     }
 
@@ -1626,14 +1630,21 @@ function SessionPageContent({
       .then((res) => {
         if (cancelled) return;
         const process = res.process;
-        if (process) {
-          setLiveModelConfig({
-            model: process.model,
-            requestedModel: process.requestedModel,
-            thinking: process.thinking,
-            effort: process.effort,
-            promptSuggestionMode: process.promptSuggestionMode,
+        if (process?.id === currentOwnedProcessId) {
+          setLiveModelConfigSnapshot({
+            processId: currentOwnedProcessId,
+            config: {
+              model: process.model,
+              requestedModel: process.requestedModel,
+              thinking: process.thinking,
+              effort: process.effort,
+              promptSuggestionMode: process.promptSuggestionMode,
+            },
           });
+        } else {
+          setLiveModelConfigSnapshot((current) =>
+            current?.processId === currentOwnedProcessId ? null : current,
+          );
         }
         if (process?.recapAfterSeconds !== undefined) {
           setStatus((prev) =>
@@ -1643,7 +1654,12 @@ function SessionPageContent({
           );
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (cancelled) return;
+        setLiveModelConfigSnapshot((current) =>
+          current?.processId === currentOwnedProcessId ? null : current,
+        );
+      });
 
     return () => {
       cancelled = true;
@@ -1652,7 +1668,7 @@ function SessionPageContent({
 
   useEffect(() => {
     if (!actualSessionId) return;
-    setLiveModelConfig(null);
+    setLiveModelConfigSnapshot(null);
   }, [actualSessionId]);
 
   const publicShareInitialPrompt = useMemo(
@@ -3459,19 +3475,29 @@ function SessionPageContent({
         showToast(t("sessionSwitchedModel", { model: next.model }), "success");
       }
       if (next.thinking !== undefined || next.effort !== undefined) {
-        setLiveModelConfig((prev) => ({
-          model: next.model ?? prev?.model,
-          requestedModel: next.model ?? prev?.requestedModel,
-          thinking: next.thinking,
-          effort: next.effort,
-          promptSuggestionMode: prev?.promptSuggestionMode,
-        }));
+        setLiveModelConfigSnapshot((current) => {
+          const previous =
+            current?.processId === next.processId ? current.config : undefined;
+          return {
+            processId: next.processId,
+            config: {
+              model: next.model ?? previous?.model,
+              requestedModel: next.model ?? previous?.requestedModel,
+              thinking: next.thinking,
+              effort: next.effort,
+              promptSuggestionMode: previous?.promptSuggestionMode,
+            },
+          };
+        });
       } else if (next.model) {
-        setLiveModelConfig((prev) =>
-          prev
-            ? { ...prev, model: next.model, requestedModel: next.model }
-            : { model: next.model, requestedModel: next.model },
-        );
+        setLiveModelConfigSnapshot((current) => ({
+          processId: next.processId,
+          config: {
+            ...(current?.processId === next.processId ? current.config : {}),
+            model: next.model,
+            requestedModel: next.model,
+          },
+        }));
       }
       if (status.owner === "self") {
         if (currentOwnedProcessId !== next.processId) {
@@ -3505,13 +3531,22 @@ function SessionPageContent({
           thinking: thinkingOptionFromSelection(mode, effortLevel),
           showThinking: getShowThinkingSetting(),
         });
-        setLiveModelConfig((prev) => ({
-          model: result.model ?? prev?.model,
-          requestedModel: result.model ?? prev?.requestedModel,
-          thinking: result.thinking,
-          effort: result.effort,
-          promptSuggestionMode: prev?.promptSuggestionMode,
-        }));
+        setLiveModelConfigSnapshot((current) => {
+          const previous =
+            current?.processId === result.processId
+              ? current.config
+              : undefined;
+          return {
+            processId: result.processId,
+            config: {
+              model: result.model ?? previous?.model,
+              requestedModel: result.model ?? previous?.requestedModel,
+              thinking: result.thinking,
+              effort: result.effort,
+              promptSuggestionMode: previous?.promptSuggestionMode,
+            },
+          };
+        });
         if (result.processId !== currentOwnedProcessId) {
           setStatus((prev) =>
             prev.owner === "self"

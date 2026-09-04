@@ -13,6 +13,7 @@ import {
   useSettingsJumpTarget,
   useSettingsSearchScope,
 } from "./SettingsSearchContext";
+import styles from "./SettingsItem.module.css";
 import { settingsItemSlug, settingsTextMatches } from "./settingsSearchMatch";
 
 export interface SettingsItemProps {
@@ -33,6 +34,8 @@ export interface SettingsItemProps {
   label: string;
   /** Plain-text row description; searchable and rendered under the title. */
   description?: string;
+  /** Let long descriptions span the row below title + control on narrow panes. */
+  descriptionLayout?: "default" | "full-width-on-narrow";
   /** Extra search-only terms (synonyms, old names); never rendered. */
   keywords?: string[];
   /**
@@ -100,6 +103,7 @@ export function SettingsItem({
   title,
   label,
   description,
+  descriptionLayout = "default",
   keywords,
   valueText,
   className,
@@ -178,6 +182,9 @@ export function SettingsItem({
   const itemClassName = [
     baseClassName,
     className,
+    descriptionLayout === "full-width-on-narrow"
+      ? styles.descriptionFullWidthOnNarrow
+      : null,
     layout === "custom" ? "settings-item--custom-layout" : null,
     scope ? "settings-search-match" : null,
     flash ? "settings-item--jump-flash" : null,
@@ -191,6 +198,9 @@ export function SettingsItem({
         {...containerProps}
         className={itemClassName}
         data-settings-item={resolvedId}
+        data-description-layout={
+          descriptionLayout === "default" ? undefined : descriptionLayout
+        }
         title={title}
         ref={setRef}
       >

@@ -108,6 +108,11 @@ describe("PerformanceSettings", () => {
     expect(
       screen.getByText("performanceReverseSearchPageLimitDescription"),
     ).toBeTruthy();
+    expect(
+      input
+        .closest("[data-settings-item]")
+        ?.getAttribute("data-description-layout"),
+    ).toBe("full-width-on-narrow");
 
     fireEvent.change(input, { target: { value: "12" } });
     fireEvent.blur(input);

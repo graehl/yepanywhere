@@ -272,7 +272,7 @@
   "performanceInitialHistoryTitle": "Initial Session History",
   "performanceInitialHistoryDescription": "Maximum number of recent compaction boundaries to load when opening or reconnecting. Older history remains available with Load older.",
   "performanceReverseSearchPageLimitTitle": "Reverse-search pages per attempt",
-  "performanceReverseSearchPageLimitDescription": "Maximum older-history pages one Ctrl-R, Ctrl-S, or Up action may load while looking for the next match. A page is one bounded server response, normally covering at most two compaction boundaries.",
+  "performanceReverseSearchPageLimitDescription": "Maximum older-history pages one active search shortcut or Up action may load while looking for the next match. A page is one bounded server response, normally covering at most two compaction boundaries.",
   "performanceReverseSearchPageLimitValue": "{count} pages",
   "performanceReverseSearchPageLimitUnit": "pages",
   "performanceInitialHistoryCompactionValue": "{count} compaction",

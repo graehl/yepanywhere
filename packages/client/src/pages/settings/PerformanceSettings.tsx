@@ -385,6 +385,7 @@ export function PerformanceSettings() {
         <SettingsItem
           label={t("performanceReverseSearchPageLimitTitle")}
           description={t("performanceReverseSearchPageLimitDescription")}
+          descriptionLayout="full-width-on-narrow"
           valueText={t("performanceReverseSearchPageLimitValue", {
             count: reverseSearchMaxPagesPerAttempt,
           })}

@@ -629,7 +629,9 @@ export async function findSessionSummaryAcrossProviders(
     }
 
     const summary =
-      deps.sessionIndexService && options?.readMode !== "head"
+      deps.sessionIndexService &&
+      options?.readMode !== "head" &&
+      options?.contextUsageMode !== "manual-compaction"
         ? await deps.sessionIndexService.getSessionSummaryWithCache(
             source.sessionDir,
             projectId,

@@ -16,6 +16,7 @@ import type {
 } from "../supervisor/types.js";
 import type {
   GetSessionOptions,
+  GetSessionSummaryOptions,
   ISessionReader,
   LoadedSession,
 } from "./types.js";
@@ -27,7 +28,6 @@ export type { GetSessionOptions, ISessionReader } from "./types.js";
 import {
   type ClaudeSessionEntry,
   getMessageContent,
-  isCompactBoundary,
   isConversationEntry,
   isSyntheticNoResponseTurn,
 } from "@yep-anywhere/shared";
@@ -110,85 +110,6 @@ interface AgentMeta {
   spawnDepth?: number;
 }
 
-type UsageFields = {
-  input_tokens?: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
-};
-
-/**
- * Get the total input tokens from a usage object.
- * Total = fresh input + cached reads + cache creation.
- */
-function getTotalInputTokens(usage: UsageFields): number {
-  return (
-    (usage.input_tokens ?? 0) +
-    (usage.cache_read_input_tokens ?? 0) +
-    (usage.cache_creation_input_tokens ?? 0)
-  );
-}
-
-/**
- * Compute the token overhead hidden from API-reported usage after compaction.
- *
- * When the Claude SDK compacts context, it writes a compact_boundary entry with
- * compactMetadata.preTokens — the actual context window fill level at compaction time.
- * However, the Anthropic API's usage.input_tokens on subsequent assistant messages only
- * reports the tokens actually sent (summary + new messages), which is much lower.
- * The difference is "overhead" — system prompt, tool definitions, and other context
- * the SDK tracks but the API doesn't include in usage.
- *
- * For sessions with compaction, we compute:
- *   overhead = preTokens - lastPreCompactionAssistantTokens
- *
- * This overhead is then added to post-compaction usage to get accurate context fill.
- *
- * @param messages - All messages on the active branch (not just user/assistant)
- * @returns Token overhead to add to API-reported input_tokens (0 if no compaction)
- */
-export function computeCompactionOverhead(
-  messages: ClaudeSessionEntry[],
-): number {
-  // Find the last compact_boundary with compactMetadata
-  let lastCompactIdx = -1;
-  let preTokens = 0;
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg && isCompactBoundary(msg)) {
-      const metadata = (msg as { compactMetadata?: { preTokens?: number } })
-        .compactMetadata;
-      if (metadata?.preTokens) {
-        lastCompactIdx = i;
-        preTokens = metadata.preTokens;
-        break;
-      }
-    }
-  }
-
-  if (lastCompactIdx === -1) {
-    return 0; // No compaction, no overhead
-  }
-
-  // Find the last assistant message BEFORE the compaction boundary with non-zero usage
-  for (let i = lastCompactIdx - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg?.type === "assistant") {
-      const usage = (msg as { message?: { usage?: UsageFields } }).message
-        ?.usage;
-      if (usage) {
-        const lastPreCompactionTokens = getTotalInputTokens(usage);
-        if (lastPreCompactionTokens > 0) {
-          const overhead = preTokens - lastPreCompactionTokens;
-          return overhead > 0 ? overhead : 0;
-        }
-      }
-    }
-  }
-
-  return 0; // No pre-compaction assistant message found
-}
-
 /**
  * Claude-specific session reader for Claude Code JSONL files.
  *
@@ -263,12 +184,14 @@ export class ClaudeSessionReader implements ISessionReader {
   async getSessionSummary(
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null> {
     for (const dir of this.allSessionDirs) {
       const result = await this.getSessionSummaryFromDir(
         dir,
         sessionId,
         projectId,
+        options,
       );
       if (result) return result;
     }
@@ -281,6 +204,7 @@ export class ClaudeSessionReader implements ISessionReader {
     filePath: string,
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ): SessionSummary | null {
     if (snapshot.summaryState.metrics.parsedEntries === 0) return null;
     return buildSummaryFromState(snapshot.summaryState, {
@@ -289,6 +213,8 @@ export class ClaudeSessionReader implements ISessionReader {
       sessionId,
       projectId,
       resolveContextWindow: this.resolveContextWindow,
+      includeCompactionSafetyMargin:
+        options?.contextUsageMode === "manual-compaction",
     });
   }
 
@@ -296,6 +222,7 @@ export class ClaudeSessionReader implements ISessionReader {
     dir: string,
     sessionId: string,
     projectId: UrlProjectId,
+    options?: GetSessionSummaryOptions,
   ): Promise<SessionSummary | null> {
     const filePath = join(dir, `${sessionId}.jsonl`);
 
@@ -304,7 +231,13 @@ export class ClaudeSessionReader implements ISessionReader {
       // incrementally; summary-only callers never populate the cache.
       const cached = await claudeTranscriptCache.peek(filePath);
       if (cached) {
-        return this.summaryFromSnapshot(cached, filePath, sessionId, projectId);
+        return this.summaryFromSnapshot(
+          cached,
+          filePath,
+          sessionId,
+          projectId,
+          options,
+        );
       }
 
       const stats = await stat(filePath);
@@ -315,9 +248,14 @@ export class ClaudeSessionReader implements ISessionReader {
           sessionId,
           projectId,
           resolveContextWindow: this.resolveContextWindow,
+          includeCompactionSafetyMargin:
+            options?.contextUsageMode === "manual-compaction",
         });
 
-      if (this.summaryParserWorkerMode === "off") {
+      if (
+        this.summaryParserWorkerMode === "off" ||
+        options?.contextUsageMode === "manual-compaction"
+      ) {
         return await inProcessParser();
       }
 

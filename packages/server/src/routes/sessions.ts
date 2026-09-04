@@ -1880,53 +1880,6 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
 }
 
 /**
- * Compute compaction overhead from SDK messages.
- * Same logic as computeCompactionOverhead in reader.ts but for SDKMessage type.
- */
-function computeSDKCompactionOverhead(sdkMessages: SDKMessage[]): number {
-  // Find the last compact_boundary with compactMetadata
-  let lastCompactIdx = -1;
-  let preTokens = 0;
-
-  for (let i = sdkMessages.length - 1; i >= 0; i--) {
-    const msg = sdkMessages[i];
-    if (msg?.type === "system" && msg.subtype === "compact_boundary") {
-      const metadata = (msg as { compactMetadata?: { preTokens?: number } })
-        .compactMetadata;
-      if (metadata?.preTokens) {
-        lastCompactIdx = i;
-        preTokens = metadata.preTokens;
-        break;
-      }
-    }
-  }
-
-  if (lastCompactIdx === -1) return 0;
-
-  // Find last assistant message before compaction with non-zero usage
-  for (let i = lastCompactIdx - 1; i >= 0; i--) {
-    const msg = sdkMessages[i];
-    if (msg?.type === "assistant" && msg.usage) {
-      const usage = msg.usage as {
-        input_tokens?: number;
-        cache_read_input_tokens?: number;
-        cache_creation_input_tokens?: number;
-      };
-      const total =
-        (usage.input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0);
-      if (total > 0) {
-        const overhead = preTokens - total;
-        return overhead > 0 ? overhead : 0;
-      }
-    }
-  }
-
-  return 0;
-}
-
-/**
  * Extract context usage from SDK messages.
  * Finds the last assistant message with usage data.
  *
@@ -1948,11 +1901,6 @@ function extractContextUsageFromSDKMessages(
     : getModelContextWindow(model, provider);
 
   const isCodexProvider = provider === "codex" || provider === "codex-oss";
-
-  // Compute compaction overhead for Claude sessions
-  const overhead = isCodexProvider
-    ? 0
-    : computeSDKCompactionOverhead(sdkMessages);
 
   // Find the last assistant message with usage data (iterate backwards)
   for (let i = sdkMessages.length - 1; i >= 0; i--) {
@@ -1979,13 +1927,10 @@ function extractContextUsageFromSDKMessages(
         continue;
       }
 
-      // Apply compaction overhead correction
-      const inputTokens = rawInputTokens + overhead;
-
-      const percentage = Math.round((inputTokens / contextWindowSize) * 100);
+      const percentage = Math.round((rawInputTokens / contextWindowSize) * 100);
 
       const result: ContextUsage = {
-        inputTokens,
+        inputTokens: rawInputTokens,
         percentage,
         contextWindow: contextWindowSize,
       };

@@ -3,14 +3,11 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ClaudeSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
+import type { UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compileTranscriptProjection } from "../../../client/src/lib/transcriptProjection/compiler.ts";
 import { normalizeSession } from "../../src/sessions/normalization.js";
-import {
-  SessionReader,
-  computeCompactionOverhead,
-} from "../../src/sessions/reader.js";
+import { SessionReader } from "../../src/sessions/reader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, "..", "fixtures", "agents");
@@ -1747,12 +1744,11 @@ describe("SessionReader", () => {
       expect(summary?.contextUsage?.inputTokens).toBe(80001);
     });
 
-    it("adjusts percentage after single compaction using preTokens overhead", async () => {
+    it("reports provider usage after compaction by default", async () => {
       const sessionId = "ctx-single-compact";
       // Pre-compaction: assistant at 160K tokens
       // Compaction triggers at preTokens=167K (overhead = 167K - 160K = 7K)
       // Post-compaction: assistant at 50K tokens
-      // Adjusted: 50K + 7K = 57K → 29%
       const jsonl = [
         userMsg("u1", null),
         assistantMsg("a1", "u1", 1, 150000, 10000), // 160001 tokens
@@ -1766,20 +1762,25 @@ describe("SessionReader", () => {
         sessionId,
         "test-project" as UrlProjectId,
       );
-      // overhead = 167000 - 160001 = 6999
-      // adjusted = 50001 + 6999 = 57000
-      // percentage = round(57000 / 200000 * 100) = 28%
-      expect(summary?.contextUsage?.inputTokens).toBe(57000);
-      expect(summary?.contextUsage?.percentage).toBe(28);
+      expect(summary?.contextUsage?.inputTokens).toBe(50001);
+      expect(summary?.contextUsage?.percentage).toBe(25);
+
+      const manualCompactionSummary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+        { contextUsageMode: "manual-compaction" },
+      );
+      // The YA-owned manual guard keeps the conservative preTokens margin.
+      expect(manualCompactionSummary?.contextUsage?.inputTokens).toBe(57000);
+      expect(manualCompactionSummary?.contextUsage?.percentage).toBe(28);
     });
 
-    it("adjusts percentage after multiple compactions", async () => {
+    it("uses only the latest compaction for the manual safety margin", async () => {
       const sessionId = "ctx-multi-compact";
       // First compaction: assistant at 160K, preTokens=167K (overhead=7K)
       // After first compaction: assistant grows to 89K
       // Second compaction: preTokens=168K (new overhead = 168K - 89K = 79K)
-      // After second compaction: assistant at 50K
-      // Adjusted: 50K + 79K = 129K → 65%
+      // After second compaction: assistant at 50K reported.
       const jsonl = [
         userMsg("u1", null),
         assistantMsg("a1", "u1", 1, 150000, 10000), // 160001
@@ -1798,95 +1799,16 @@ describe("SessionReader", () => {
         sessionId,
         "test-project" as UrlProjectId,
       );
-      // Uses LAST compaction: overhead = 168000 - 89001 = 78999
-      // adjusted = 50001 + 78999 = 129000
-      // percentage = round(129000 / 200000 * 100) = 65%
-      expect(summary?.contextUsage?.inputTokens).toBe(129000);
-      expect(summary?.contextUsage?.percentage).toBe(65);
-    });
-  });
+      expect(summary?.contextUsage?.inputTokens).toBe(50001);
+      expect(summary?.contextUsage?.percentage).toBe(25);
 
-  describe("computeCompactionOverhead", () => {
-    function makeAssistant(
-      inputTokens: number,
-      cacheRead = 0,
-      cacheCreate = 0,
-    ): ClaudeSessionEntry {
-      return {
-        type: "assistant",
-        message: {
-          usage: {
-            input_tokens: inputTokens,
-            cache_read_input_tokens: cacheRead,
-            cache_creation_input_tokens: cacheCreate,
-          },
-        },
-      } as ClaudeSessionEntry;
-    }
-
-    function makeCompactBoundary(preTokens: number): ClaudeSessionEntry {
-      return {
-        type: "system",
-        subtype: "compact_boundary",
-        compactMetadata: { trigger: "auto", preTokens },
-      } as ClaudeSessionEntry;
-    }
-
-    it("returns 0 with no compaction", () => {
-      const messages: ClaudeSessionEntry[] = [
-        { type: "user" } as ClaudeSessionEntry,
-        makeAssistant(1, 50000, 10000),
-      ];
-      expect(computeCompactionOverhead(messages)).toBe(0);
-    });
-
-    it("computes overhead from last compaction", () => {
-      const messages = [
-        makeAssistant(1, 150000, 10000), // 160001 total
-        makeCompactBoundary(167000), // preTokens=167000
-        { type: "user" } as ClaudeSessionEntry,
-        makeAssistant(1, 40000, 10000), // post-compaction
-      ];
-      // overhead = 167000 - 160001 = 6999
-      expect(computeCompactionOverhead(messages)).toBe(6999);
-    });
-
-    it("uses only the LAST compaction boundary", () => {
-      const messages = [
-        makeAssistant(1, 150000, 10000), // 160001
-        makeCompactBoundary(167000), // first compaction
-        makeAssistant(1, 79000, 10000), // 89001 post-first
-        makeCompactBoundary(168000), // second compaction
-        makeAssistant(1, 40000, 10000), // post-second
-      ];
-      // Uses last compaction: overhead = 168000 - 89001 = 78999
-      expect(computeCompactionOverhead(messages)).toBe(78999);
-    });
-
-    it("returns 0 when compact_boundary has no compactMetadata", () => {
-      const messages = [
-        makeAssistant(1, 150000, 10000),
-        { type: "system", subtype: "compact_boundary" } as ClaudeSessionEntry, // no metadata
-        makeAssistant(1, 40000, 10000),
-      ];
-      expect(computeCompactionOverhead(messages)).toBe(0);
-    });
-
-    it("returns 0 when no assistant before compaction", () => {
-      const messages = [
-        makeCompactBoundary(167000),
-        makeAssistant(1, 40000, 10000),
-      ];
-      expect(computeCompactionOverhead(messages)).toBe(0);
-    });
-
-    it("clamps negative overhead to 0", () => {
-      const messages = [
-        makeAssistant(1, 170000, 10000), // 180001 > preTokens
-        makeCompactBoundary(167000),
-        makeAssistant(1, 40000, 10000),
-      ];
-      expect(computeCompactionOverhead(messages)).toBe(0);
+      const manualCompactionSummary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+        { contextUsageMode: "manual-compaction" },
+      );
+      expect(manualCompactionSummary?.contextUsage?.inputTokens).toBe(129000);
+      expect(manualCompactionSummary?.contextUsage?.percentage).toBe(65);
     });
   });
 });

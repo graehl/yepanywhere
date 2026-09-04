@@ -84,6 +84,7 @@ export interface ReadClaudeSessionSummaryOptions {
     model: string | undefined,
     provider?: ProviderName,
   ) => number;
+  includeCompactionSafetyMargin?: boolean;
 }
 
 const LOG_CLAUDE_SUMMARY_PARSE = process.env.CLAUDE_READER_LOG_PARSE === "true";
@@ -483,9 +484,12 @@ function extractContextUsage(
     model: string | undefined,
     provider?: ProviderName,
   ) => number,
+  includeCompactionSafetyMargin: boolean,
 ): ContextUsage | undefined {
   const contextWindowSize = resolveContextWindow(model, provider);
-  const overhead = computeCompactCompactionOverhead(activeBranch);
+  const overhead = includeCompactionSafetyMargin
+    ? computeCompactCompactionOverhead(activeBranch)
+    : 0;
 
   for (let i = activeBranch.length - 1; i >= 0; i -= 1) {
     const node = activeBranch[i];
@@ -630,6 +634,7 @@ export function buildSummaryFromState(
       model,
       provider,
       resolveContextWindow,
+      options.includeCompactionSafetyMargin === true,
     ),
     provider,
     model,

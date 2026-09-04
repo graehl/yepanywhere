@@ -103,6 +103,12 @@ export interface GetSessionSummaryOptions {
    * such as contextUsage and may use a minimal compatible messageCount.
    */
   readMode?: SessionSummaryReadMode;
+  /**
+   * Let YA's manual compaction guard use transcript evidence that may be more
+   * conservative than the provider-reported context total. The default stays
+   * provider-reported for every user-visible summary.
+   */
+  contextUsageMode?: "manual-compaction";
 }
 
 // Return type that includes both the computed summary and the raw provider data

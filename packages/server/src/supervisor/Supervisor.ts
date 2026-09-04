@@ -47,7 +47,10 @@ import {
   messageTimestampMs,
   toDurableRecapMessage,
 } from "../sessions/recap-overlays.js";
-import type { RecoveredSessionLaunchSettings } from "../sessions/types.js";
+import type {
+  GetSessionSummaryOptions,
+  RecoveredSessionLaunchSettings,
+} from "../sessions/types.js";
 import type { ResumeExemptionResult } from "../sessions/resume-exemption.js";
 import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
 import type {
@@ -494,6 +497,7 @@ export type OnSuccessfulProviderSessionCallback = (
 export type OnSessionSummaryCallback = (
   sessionId: string,
   projectId: UrlProjectId,
+  options?: GetSessionSummaryOptions,
 ) => Promise<SessionSummary | null>;
 
 export type RecoverSessionLaunchSettingsCallback = (
@@ -1639,6 +1643,7 @@ export class Supervisor {
       const summary = await this.onSessionSummary?.(
         process.sessionId,
         process.projectId,
+        { contextUsageMode: "manual-compaction" },
       );
       inputTokens = summary?.contextUsage?.inputTokens;
     } catch {

@@ -206,6 +206,14 @@ decision is `crossesCompactThreshold(percent, contextWindow, inputTokens)`;
 the orchestration is `Supervisor.maybeCompactAfterIdle`, called once when a
 completed assistant turn makes the process idle.
 
+User-visible context usage is always the provider-reported total. YA does not
+add `compactMetadata.preTokens` or another inferred amount to the meter. Only
+the YA-orchestrated manual-compaction check requests a conservative internal
+reading: for Claude transcripts, it may add the positive difference between a
+boundary's `preTokens` and the preceding reported total. This preserves the
+gateway/OpenAI-model safety heuristic without presenting the estimate as
+provider usage. Provider-native compaction receives no such adjustment.
+
 Design intent and invariants:
 
 - **Voluntary, momentum-preserving.** It is a "do it when the user won't be

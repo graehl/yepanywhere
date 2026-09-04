@@ -1084,13 +1084,16 @@ describe("Supervisor", () => {
         getAvailableModels: async () => [],
         startSession,
       };
-      const supervisorWithProvider = new Supervisor({
-        provider,
-        idleTimeoutMs: 100,
-        onSessionSummary: async () =>
+      const onSessionSummary = vi.fn(
+        async () =>
           ({
             contextUsage: { inputTokens: 150_000, percentage: 75 },
           }) as SessionSummary,
+      );
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+        onSessionSummary,
       });
       const compactSettings = {
         model: "gpt-5.6",
@@ -1120,6 +1123,11 @@ describe("Supervisor", () => {
         "compactAtContextTokenLimit",
       );
       expect(runProviderCommand).toHaveBeenCalledTimes(1);
+      expect(onSessionSummary).toHaveBeenCalledWith(
+        "compact-force-session",
+        expect.any(String),
+        { contextUsageMode: "manual-compaction" },
+      );
       await supervisorWithProvider.abortProcess(started.id);
     });
 

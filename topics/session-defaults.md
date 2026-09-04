@@ -229,29 +229,49 @@ part of the provider launch snapshot and does not move with a session.
 
 ## UI placement
 
-The session-defaults settings panel follows the new-session decision order:
-AI Provider, model, thinking/effort, permission mode, sandboxing, show-thinking
-display policy, recaps, the conditional **Tailed Recap Model**, then prompt
-suggestions. A **Related behavior** divider follows that core launch sequence;
-fork-opening, compaction, and prompt-cache keepalive controls live below it.
-The visible order is for comprehension and does not change persistence scope:
-provider/model economics remain provider-specific, while permission, sandbox,
-recap, suggestions, show-thinking, and fork-opening keep their established
-all-provider or client-local ownership.
+The session-defaults settings panel follows the launch decision order through
+sandboxing, then uses the wider explanatory layout efficiently: AI Provider,
+model, thinking/effort, permission mode, sandboxing, a paired **Show thinking**
+and **Suggestions** row, recaps, and the conditional **Tailed Recap Model**.
+**Show thinking** and **Suggestions** share the available row on a wide panel
+and stack on a narrow panel; recaps retain their full-width row. A **Related
+behavior** divider follows that core launch sequence; fork-opening, compaction,
+and prompt-cache keepalive controls live below it. The visible order is for
+comprehension and does not change persistence scope: provider/model economics
+remain provider-specific, while permission, sandbox, recap, suggestions,
+show-thinking, and fork-opening keep their established all-provider or
+client-local ownership.
 
 When recap mode is enabled, its away-duration control occupies a full-width row
-between the recap choices and prompt suggestions. The slider, numeric seconds
-input, and unit remain visible as one control and never share or overlap the
-Suggestions grid row.
+attached to the recap choices and before the conditional helper model. The
+slider, numeric seconds input, and unit remain visible as one control and never
+share or overlap the paired Show thinking / Suggestions grid row.
 
 New Session instead prioritizes the choices most likely to change before a
-launch. Its linear reading order is AI Provider, model and thinking, permission
-mode and sandboxing, show-thinking display policy, then recaps, the conditional
-**Tailed Recap Model**, and prompt suggestions. This is also the narrow-viewport
-visual order, keeping optional helper behavior away from the composer. Desktop
-uses the same DOM order so visual, keyboard, and screen-reader traversal do not
-disagree. Placement does not change a setting's all-provider or provider-local
-persistence scope.
+launch. On a narrow viewport its visual and focus order is composer, project,
+AI Provider/model/thinking/permission, then the lower-frequency show-thinking,
+recap, conditional **Tailed Recap Model**, prompt-suggestion, and sandbox
+controls. On a wide viewport the project chooser sits beside the composer, the
+primary launch controls continue below the composer, and those lower-frequency
+controls use the column beneath the closed project chooser. Expanding the
+project chooser temporarily hides the secondary controls so its overlaid,
+scrollable project history remains unobstructed; closing it restores them.
+DOM, visual, keyboard, and screen-reader traversal retain the same row-major
+order while the chooser is closed. Placement does not change a setting's
+all-provider or provider-local persistence scope.
+
+New Session starts in its compact, routine-use presentation: explanatory
+captions are hidden, while desktop hover tooltips expose the same text. A small
+`?` button on the option region reveals the full captions, primarily for touch
+screens where hover is unavailable; the expansion is form-local and is not a
+new persisted default. Settings always shows captions because explanation and
+searchability matter more there than fitting the launch form on one screen.
+
+Both surfaces take each control's base title and description, plus optional
+Settings-only search terms and label overrides, from one declarative control
+copy definition. A description that depends on the selected value, such as the
+active recap or suggestion mode, stays beside that live value but must appear
+both as compact-mode tooltip text and as expanded caption text.
 
 Permission-mode cards are equal-sized by design. Their captions should fit the
 card grid with short explanatory text:

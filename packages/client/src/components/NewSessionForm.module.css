@@ -20,6 +20,102 @@
   background: color-mix(in srgb, var(--app-yep-green) 10%, transparent);
 }
 
+.optionsWithCaptionToggle {
+  position: relative;
+}
+
+.projectControlsSlot,
+.secondaryOptions {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.secondaryOptions {
+  grid-area: secondary;
+}
+
+.secondaryOptions > * {
+  min-width: 0;
+}
+
+.secondaryOptionsHidden {
+  visibility: hidden;
+}
+
+@media (max-width: 899px) {
+  .optionLayout.optionLayout {
+    grid-template-areas:
+      "main"
+      "project"
+      "provider"
+      "secondary";
+  }
+
+  .secondaryOptions {
+    grid-area: secondary;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .optionLayout.optionLayout {
+    grid-template-areas:
+      "main project"
+      "provider secondary";
+  }
+
+  .optionLayoutWithoutProject.optionLayoutWithoutProject {
+    grid-template-areas:
+      "main main"
+      "provider secondary";
+  }
+}
+
+.captionToggle {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: -0.2rem;
+  inset-inline-end: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.captionToggle:hover,
+.captionToggle[aria-pressed="true"] {
+  border-color: var(--app-yep-green);
+  color: var(--app-yep-green);
+  background: color-mix(in srgb, var(--app-yep-green) 9%, var(--bg-surface));
+}
+
+.optionCaption {
+  margin: calc(var(--space-1) * -1) 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.captionedRecapDuration {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.captionedRecapDuration :global(.recap-after-seconds-label) {
+  white-space: normal;
+}
+
 /* The page or modal header remains visible. Everything below it yields to the
    editing surface until this mode is restored. */
 :global(.page-scroll-container):has(.fullPane) {

@@ -37,6 +37,7 @@ import {
 } from "../../lib/newSessionDefaults";
 import { providerSupportsLocalSessionSandbox } from "../../lib/providerCapabilities";
 import { serverHasAvailableSessionSandbox } from "../../lib/sessionSandboxAvailability";
+import { getSessionDefaultControlCopy } from "../../lib/sessionDefaultControlCopy";
 import { getRecapModeDescription } from "../../lib/recapModes";
 import { getPermissionModeOptions } from "../../lib/permissionModes";
 import {
@@ -198,6 +199,7 @@ function normalizeKeepaliveMinutes(value: number): number | null {
 
 export function ModelSettings() {
   const { t } = useI18n();
+  const sessionDefaultCopy = getSessionDefaultControlCopy(t);
   useSettingsPaneTitle(t("modelSettingsTitle"));
   const { showToast } = useToastContext();
   const {
@@ -594,12 +596,14 @@ export function ModelSettings() {
 
           <SettingsItem
             id="session-default-provider"
-            label={t("modelSettingsDefaultProviderTitle")}
-            description={t("modelSettingsDefaultProviderDescription")}
+            label={
+              sessionDefaultCopy.provider.settings?.title ??
+              sessionDefaultCopy.provider.title
+            }
+            description={sessionDefaultCopy.provider.description}
             keywords={[
-              "provider",
-              "ai provider",
-              t("newSessionProviderTitle"),
+              ...(sessionDefaultCopy.provider.settings?.keywords ?? []),
+              sessionDefaultCopy.provider.title,
               ...availableProviders.map((p) => p.displayName),
             ]}
             valueText={selectedProvider?.displayName}
@@ -631,9 +635,15 @@ export function ModelSettings() {
 
           <SettingsItem
             id="session-default-model"
-            label={t("modelSettingsDefaultModelTitle")}
-            description={t("modelSettingsDefaultModelDescription")}
-            keywords={["model", "default model", t("newSessionModelTitle")]}
+            label={
+              sessionDefaultCopy.model.settings?.title ??
+              sessionDefaultCopy.model.title
+            }
+            description={sessionDefaultCopy.model.description}
+            keywords={[
+              ...(sessionDefaultCopy.model.settings?.keywords ?? []),
+              sessionDefaultCopy.model.title,
+            ]}
             valueText={selectedModel ?? undefined}
             className="new-session-model-section session-default-model-section settings-item--session-default-block settings-item--wide-control"
           >
@@ -662,9 +672,9 @@ export function ModelSettings() {
           {showThinkingControls && (
             <SettingsItem
               id="session-default-thinking"
-              label={t("modelSettingsThinkingTitle")}
-              description={t("modelSettingsThinkingDescription")}
-              keywords={["thinking", "effort", "reasoning mode"]}
+              label={sessionDefaultCopy.thinking.title}
+              description={sessionDefaultCopy.thinking.description}
+              keywords={sessionDefaultCopy.thinking.settings?.keywords}
               valueText={`${effectiveThinkingMode} ${effectiveEffortLevel ?? ""}`.trim()}
               className="new-session-helper-section session-default-thinking-section settings-item--session-default-block settings-item--wide-control"
             >
@@ -696,8 +706,8 @@ export function ModelSettings() {
           {supportsPermissionMode && (
             <SettingsItem
               id="session-default-permission-mode"
-              label={t("newSessionModeTitle")}
-              keywords={["permission mode", "bypass", "plan", "accept edits"]}
+              label={sessionDefaultCopy.permission.title}
+              keywords={sessionDefaultCopy.permission.settings?.keywords}
               valueText={modeLabels[effectiveDefaultPermissionMode]}
               className="new-session-mode-section session-default-mode-section settings-item--session-default-block settings-item--wide-control"
             >
@@ -737,12 +747,13 @@ export function ModelSettings() {
             <SettingsItem
               id="session-default-sandbox"
               as="label"
-              label={t("modelSettingsSandboxDefaultTitle")}
-              description={`${t("newSessionSandboxDescription")} ${t("newSessionSandboxAvailability")}`}
+              label={
+                sessionDefaultCopy.sandbox.settings?.title ??
+                sessionDefaultCopy.sandbox.title
+              }
+              description={sessionDefaultCopy.sandbox.description}
               keywords={[
-                "sandbox",
-                "bubblewrap",
-                "project writes",
+                ...(sessionDefaultCopy.sandbox.settings?.keywords ?? []),
                 t("newSessionSandboxLabel"),
               ]}
               valueText={
@@ -766,7 +777,10 @@ export function ModelSettings() {
                       : {}),
                   });
                 }}
-                aria-label={t("modelSettingsSandboxDefaultTitle")}
+                aria-label={
+                  sessionDefaultCopy.sandbox.settings?.title ??
+                  sessionDefaultCopy.sandbox.title
+                }
               />
             </SettingsItem>
           )}
@@ -775,9 +789,9 @@ export function ModelSettings() {
             <SettingsItem
               id="session-default-sandbox-network-firewall"
               as="label"
-              label={t("newSessionSandboxNetworkFirewallLabel")}
-              description={t("newSessionSandboxNetworkFirewallDescription")}
-              keywords={["sandbox", "network", "firewall", "localhost"]}
+              label={sessionDefaultCopy.sandboxFirewall.title}
+              description={sessionDefaultCopy.sandboxFirewall.description}
+              keywords={sessionDefaultCopy.sandboxFirewall.settings?.keywords}
               valueText={
                 savedDefaults?.sandboxLevel === "project-write" &&
                 savedDefaults.sandboxNetworkFirewall !== false
@@ -806,26 +820,72 @@ export function ModelSettings() {
             </SettingsItem>
           )}
 
-          <SettingsItem
-            id="session-default-show-thinking"
-            label={t("showThinkingTitle")}
-            description={t("showThinkingHint")}
-            keywords={["show thinking", "reasoning", "display thinking"]}
-            valueText={String(showThinking)}
-            className="new-session-helper-section session-default-show-thinking-section settings-item--session-default-block settings-item--wide-control"
-          >
-            <ShowThinkingControls
-              value={showThinking}
-              onChange={setShowThinking}
-              t={t}
-              showLabel={false}
-            />
-          </SettingsItem>
+          <div className={styles.captionPair}>
+            <SettingsItem
+              id="session-default-show-thinking"
+              label={sessionDefaultCopy.showThinking.title}
+              description={sessionDefaultCopy.showThinking.description}
+              keywords={sessionDefaultCopy.showThinking.settings?.keywords}
+              valueText={String(showThinking)}
+              className="new-session-helper-section session-default-show-thinking-section settings-item--session-default-block settings-item--wide-control"
+            >
+              <ShowThinkingControls
+                value={showThinking}
+                onChange={setShowThinking}
+                t={t}
+                showLabel={false}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              id="session-default-suggestions"
+              label={sessionDefaultCopy.suggestions.title}
+              description={
+                promptSuggestionModeDescriptions[selectedPromptSuggestionMode]
+              }
+              keywords={sessionDefaultCopy.suggestions.settings?.keywords}
+              valueText={
+                promptSuggestionModeLabels[selectedPromptSuggestionMode]
+              }
+              className="new-session-helper-section session-default-suggestions-section settings-item--session-default-block settings-item--wide-control"
+            >
+              <div className="new-session-helper-options">
+                {availablePromptSuggestionModes.map((modeValue) => (
+                  <button
+                    key={modeValue}
+                    type="button"
+                    className={`new-session-helper-option ${
+                      selectedPromptSuggestionMode === modeValue
+                        ? "selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      void updateNewSessionDefaults({
+                        promptSuggestionMode: modeValue,
+                      })
+                    }
+                    disabled={settingsLoading}
+                    title={promptSuggestionModeDescriptions[modeValue]}
+                  >
+                    <span
+                      className={`mode-option-dot suggestion-${modeValue}`}
+                    />
+                    <span>{promptSuggestionModeLabels[modeValue]}</span>
+                  </button>
+                ))}
+              </div>
+            </SettingsItem>
+          </div>
 
           <SettingsItem
             id="session-default-recap"
-            label={t("newSessionRecapTitle")}
-            keywords={["recap", "away summary", "side session", "fork"]}
+            label={sessionDefaultCopy.recap.title}
+            description={getRecapModeDescription(
+              selectedRecapMode,
+              t,
+              selectedRecapAfterSeconds,
+            )}
+            keywords={sessionDefaultCopy.recap.settings?.keywords}
             valueText={recapModeLabels[selectedRecapMode]}
             className="new-session-helper-section session-default-recap-section settings-item--session-default-block settings-item--wide-control"
             after={
@@ -876,19 +936,14 @@ export function ModelSettings() {
           {showHelperSideModel && (
             <SettingsItem
               id="session-default-helper-model"
-              label={t("helperSideModelTitle")}
-              description={t("helperSideModelDescription")}
-              keywords={[
-                "helper model",
-                "tailed recap",
-                "side session model",
-                "recap model",
-              ]}
+              label={sessionDefaultCopy.helperModel.title}
+              description={sessionDefaultCopy.helperModel.description}
+              keywords={sessionDefaultCopy.helperModel.settings?.keywords}
               valueText={selectedHelperSideModel}
               className="new-session-helper-section session-default-helper-model-section settings-item--session-default-block settings-item--wide-control"
             >
               <FilterDropdown
-                label={t("helperSideModelTitle")}
+                label={sessionDefaultCopy.helperModel.title}
                 options={helperSideModelOptions}
                 selected={[selectedHelperSideModel]}
                 onChange={(selected) => {
@@ -902,36 +957,6 @@ export function ModelSettings() {
               />
             </SettingsItem>
           )}
-
-          <SettingsItem
-            id="session-default-suggestions"
-            label={t("newSessionPromptSuggestionsTitle")}
-            keywords={["suggestions", "prompt suggestions", "nudge"]}
-            valueText={promptSuggestionModeLabels[selectedPromptSuggestionMode]}
-            className="new-session-helper-section session-default-suggestions-section settings-item--session-default-block settings-item--wide-control"
-          >
-            <div className="new-session-helper-options">
-              {availablePromptSuggestionModes.map((modeValue) => (
-                <button
-                  key={modeValue}
-                  type="button"
-                  className={`new-session-helper-option ${
-                    selectedPromptSuggestionMode === modeValue ? "selected" : ""
-                  }`}
-                  onClick={() =>
-                    void updateNewSessionDefaults({
-                      promptSuggestionMode: modeValue,
-                    })
-                  }
-                  disabled={settingsLoading}
-                  title={promptSuggestionModeDescriptions[modeValue]}
-                >
-                  <span className={`mode-option-dot suggestion-${modeValue}`} />
-                  <span>{promptSuggestionModeLabels[modeValue]}</span>
-                </button>
-              ))}
-            </div>
-          </SettingsItem>
 
           <div className={styles.relatedDivider}>
             <strong>{t("modelSettingsRelatedBehaviorTitle")}</strong>

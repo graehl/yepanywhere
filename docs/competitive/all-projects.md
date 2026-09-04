@@ -14,6 +14,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 
 | Name | One-liner | GitHub | License | Who | Stars |
 |------|-----------|--------|---------|-----|-------|
+| **T3 Code** | Web/Electron/native-mobile workbench for six agents with offline mobile, event-sourced orchestration, multi-environment remote access, terminal, worktrees, and four-host source-control workflows ([deep dive](t3code.md)) | [pingdotgg/t3code](https://github.com/pingdotgg/t3code) | MIT | T3 Tools Inc. | 21,689 |
 | **AionUi** | Electron desktop app + WebUI/Telegram/Lark/DingTalk for 17 ACP agents with cron scheduling | [iOfficeAI/AionUi](https://github.com/iOfficeAI/AionUi) | Apache 2.0 | iOfficeAI | 16,800 |
 | **Happy** | Mobile + web client for Claude Code & Codex with E2E encryption and voice | [slopus/happy](https://github.com/slopus/happy) | MIT | slopus | 12,944 |
 | **Claude Code UI (CloudCLI)** | Web UI for Claude Code, Cursor CLI, and Codex with file editor and terminal | [siteboon/claudecodeui](https://github.com/siteboon/claudecodeui) | GPL-3.0 | siteboon | 6,405 |
@@ -98,4 +99,4 @@ Already listed above: emdash, claudecodeui.
 
 ## Last Updated
 
-2026-08-30
+2026-09-04

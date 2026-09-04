@@ -17,6 +17,7 @@ Official apps from AI providers:
 
 | Tool | Type | Agents | Key Differentiator |
 |------|------|--------|-------------------|
+| [T3 Code](t3code.md) | Web + desktop + native mobile | Codex, Claude, Cursor, Grok, OpenCode, Antigravity | Integrated workbench, offline mobile, multi-environment remote access, full source-control workflow |
 | [AionUi](aionui.md) | Desktop + WebUI + Telegram | 17 (ACP) | Messaging platform bots, cron scheduling, Zed ACP bridges |
 | [emdash](emdash.md) | Desktop app | 20+ | Multi-agent orchestration, git worktrees |
 | [Conductor](conductor.md) | macOS app | Claude, Codex | Git worktree isolation |
@@ -51,22 +52,29 @@ Most tools in this space provide:
 
 ## yepanywhere Differentiators
 
-Features we have that competitors lack:
-- **Tiered inbox** (Needs Attention → Active → Recent → Unread)
-- **Conversation fork/clone** from any message point
+The combination that most clearly distinguishes yepanywhere:
+
+- **Tiered inbox** (Needs Attention → Active → Recent → Unread) across
+  YA-owned and externally discovered provider sessions
+- **Conversation fork/clone** from a selected completed user turn
+- **Provider-native history discovery** rather than a product-only thread silo
 - **Global activity stream** across sessions
-- **Real-time context usage** tracking
-- **Bulk operations** (multi-select archive/star/delete)
-- **Draft persistence** (auto-save messages)
-- **Server-owned processes** (survives client disconnects)
-- **E2E encryption + relay** for remote access (Happy also has this)
+- **Reload-safe provider runtimes** that can survive a Hono server replacement
+- **App-data-only storage by default** — browsing and indexing do not create
+  project directories or Git refs
+- **Application-layer E2E relay encryption** (Happy and Paseo also use E2E;
+  T3 Connect does not appear to)
+- **Alternate/local provider variants** including Codex OSS/local, Gemini, and
+  Claude gateway/Ollama configurations
 
 ## Common Gaps
 
 Features competitors have that we should consider:
-- **Git worktree creation** per session (emdash, Conductor, HAPI)
-- **Working tree diff viewer** (most competitors)
-- **Diff commenting** (Claude Desktop)
+
+- **Git worktree creation and exact workspace rollback** per session
+- **Integrated terminal/browser and full forge workflows** (T3 Code)
+- **Native iOS and offline mobile outbox** (T3 Code, Happy)
+- **Multiple provider-account instances** with explicit resume rules (T3 Code)
 - **Scheduling/automations** (Codex App, AionUi)
 - **Messaging platform bots** as mobile proxy (AionUi — Telegram/Lark/DingTalk)
 
@@ -76,4 +84,4 @@ See **[Ecosystem](../ecosystem/)** for adjacent projects — agent-to-agent coor
 
 ## Last Updated
 
-2026-03-17
+2026-09-04

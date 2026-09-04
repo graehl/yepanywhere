@@ -25,7 +25,10 @@ import {
   type UrlProjectId,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
-import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
+import type {
+  AttachmentStagingService,
+  PreparedQueueAttachmentTransfer,
+} from "../uploads/AttachmentStagingService.js";
 import type { EventBus } from "../watcher/EventBus.js";
 
 const CURRENT_VERSION = 3;
@@ -42,6 +45,12 @@ interface ProjectQueueState {
   version: number;
   items: StoredProjectQueueItem[];
   dispatchState: ProjectQueueDispatchState;
+}
+
+interface PreparedProjectQueueMessage {
+  message: ProjectQueueMessage;
+  commit: () => void;
+  rollback: () => Promise<void>;
 }
 
 export interface ProjectQueueServiceOptions {
@@ -715,23 +724,32 @@ export class ProjectQueueService {
       this.ensureInitialized();
       const now = new Date().toISOString();
       const itemId = randomUUID();
-      const message = await this.prepareMessageForItem(
+      const normalizedMessage = normalizeMessage(params.request.message);
+      const target = normalizeTarget(params.request.target);
+      const createdFrom = normalizeCreatedFrom(params.request.createdFrom);
+      const preparedMessage = await this.prepareMessageForItem(
         itemId,
-        normalizeMessage(params.request.message),
+        normalizedMessage,
       );
       const item: ProjectQueueItem = {
         id: itemId,
         projectId: params.projectId,
         projectPath: params.projectPath,
-        target: normalizeTarget(params.request.target),
-        message,
+        target,
+        message: preparedMessage.message,
         createdAt: now,
         updatedAt: now,
-        createdFrom: normalizeCreatedFrom(params.request.createdFrom),
+        createdFrom,
         status: "queued",
       };
       this.state.items.push(item);
-      await this.save();
+      try {
+        await this.save();
+        preparedMessage.commit();
+      } catch (error) {
+        this.state.items.pop();
+        await this.rollbackPreparedMessage(preparedMessage, error);
+      }
       this.emitChange(params.projectId, "created", item.id);
       return summarizeItem(item);
     });
@@ -752,28 +770,41 @@ export class ProjectQueueService {
           "Cannot update an item while it is dispatching",
         );
       }
+      const normalizedTarget =
+        request.target !== undefined
+          ? normalizeTarget(request.target)
+          : undefined;
+      const preparedMessage =
+        request.message !== undefined
+          ? await this.prepareMessageForItem(
+              existing.id,
+              normalizeMessage(request.message),
+              existing.message.stagedAttachments,
+            )
+          : undefined;
       const updated: StoredProjectQueueItem = {
         ...existing,
-        ...(request.target !== undefined
-          ? { target: normalizeTarget(request.target) }
-          : {}),
-        ...(request.message !== undefined
-          ? {
-              message: await this.prepareMessageForItem(
-                existing.id,
-                normalizeMessage(request.message),
-                existing.message.stagedAttachments,
-              ),
-            }
-          : {}),
+        ...(normalizedTarget ? { target: normalizedTarget } : {}),
+        ...(preparedMessage ? { message: preparedMessage.message } : {}),
         status: existing.status === "failed" ? "queued" : existing.status,
         lastError: undefined,
         startupFailureCount: undefined,
         updatedAt: new Date().toISOString(),
       };
+      const previousDispatchState = this.state.dispatchState;
       const resumedDispatch = this.resumeDispatchForItemAction();
       this.state.items[index] = updated;
-      await this.save();
+      try {
+        await this.save();
+        preparedMessage?.commit();
+      } catch (error) {
+        this.state.items[index] = existing;
+        this.state.dispatchState = previousDispatchState;
+        if (preparedMessage) {
+          await this.rollbackPreparedMessage(preparedMessage, error);
+        }
+        throw error;
+      }
       if (request.message !== undefined) {
         await this.cleanupReplacedQueueAttachments(
           existing.id,
@@ -1114,18 +1145,26 @@ export class ProjectQueueService {
     itemId: string,
     message: ProjectQueueMessage,
     existingStagedAttachments?: ProjectQueueStagedAttachments,
-  ): Promise<ProjectQueueMessage> {
+  ): Promise<PreparedProjectQueueMessage> {
     if (!message.stagedAttachments) {
-      return message;
+      return {
+        message,
+        commit: () => undefined,
+        rollback: async () => undefined,
+      };
     }
-    const stagedAttachments = await this.prepareStagedAttachmentsForItem(
+    const prepared = await this.prepareStagedAttachmentsForItem(
       itemId,
       message.stagedAttachments,
       existingStagedAttachments,
     );
     return {
-      ...message,
-      stagedAttachments,
+      message: {
+        ...message,
+        stagedAttachments: prepared.stagedAttachments,
+      },
+      commit: prepared.transfer?.commit ?? (() => undefined),
+      rollback: prepared.transfer?.rollback ?? (async () => undefined),
     };
   }
 
@@ -1133,7 +1172,10 @@ export class ProjectQueueService {
     itemId: string,
     stagedAttachments: ProjectQueueStagedAttachments,
     existingStagedAttachments?: ProjectQueueStagedAttachments,
-  ): Promise<ProjectQueueStagedAttachments> {
+  ): Promise<{
+    stagedAttachments: ProjectQueueStagedAttachments;
+    transfer?: PreparedQueueAttachmentTransfer;
+  }> {
     const staging = this.attachmentStagingService;
     if (!staging) {
       throw new ProjectQueueValidationError(
@@ -1141,6 +1183,7 @@ export class ProjectQueueService {
       );
     }
 
+    let transfer: PreparedQueueAttachmentTransfer | undefined;
     try {
       const existingRefIds = new Set(
         existingStagedAttachments?.refs.map((ref) => ref.id) ?? [],
@@ -1155,14 +1198,15 @@ export class ProjectQueueService {
         retainedRefs.length > 0
           ? await staging.validateQueueRefs(itemId, retainedRefs)
           : [];
-      const transferredAddedRefs =
+      transfer =
         addedRefs.length > 0
-          ? await staging.transferDraftAttachmentsToQueue({
+          ? await staging.prepareDraftAttachmentsForQueue({
               batchId: stagedAttachments.batchId,
               queueItemId: itemId,
               refs: addedRefs,
             })
-          : [];
+          : undefined;
+      const transferredAddedRefs = transfer?.refs ?? [];
       const preparedRefsById = new Map(
         [...validatedRetainedRefs, ...transferredAddedRefs].map((ref) => [
           ref.id,
@@ -1178,15 +1222,44 @@ export class ProjectQueueService {
       });
       const batchId = refs[0]?.batchId ?? stagedAttachments.batchId;
       return {
-        batchId,
-        refs,
-        updatedAt: new Date().toISOString(),
+        stagedAttachments: {
+          batchId,
+          refs,
+          updatedAt: new Date().toISOString(),
+        },
+        transfer,
       };
     } catch (error) {
+      if (transfer) {
+        try {
+          await transfer.rollback();
+        } catch (rollbackError) {
+          throw new ProjectQueueValidationError(
+            `message.stagedAttachments is invalid and ownership rollback failed: ${errorMessage(
+              new AggregateError([error, rollbackError]),
+            )}`,
+          );
+        }
+      }
       throw new ProjectQueueValidationError(
         `message.stagedAttachments is invalid: ${errorMessage(error)}`,
       );
     }
+  }
+
+  private async rollbackPreparedMessage(
+    prepared: PreparedProjectQueueMessage,
+    error: unknown,
+  ): Promise<never> {
+    try {
+      await prepared.rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        "Project Queue save failed and attachment ownership could not be restored",
+      );
+    }
+    throw error;
   }
 
   private async cleanupQueueAttachments(

@@ -377,6 +377,82 @@ describe("ProjectQueueService", () => {
     });
   });
 
+  it("restores draft ownership when an attachment update cannot be saved", async () => {
+    const stagingService = new AttachmentStagingService({
+      stagingRoot: path.join(testDir, "staging"),
+    });
+    const firstUpload = await completeDraftUpload(
+      stagingService,
+      Buffer.from("first queued attachment"),
+    );
+    const service = await createService(undefined, stagingService);
+    const created = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "new-session", provider: "claude" },
+        message: {
+          text: "edit attachments atomically",
+          stagedAttachments: {
+            batchId: firstUpload.batchId,
+            refs: [firstUpload.ref],
+            updatedAt: "2026-09-04T00:00:00.000Z",
+          },
+        },
+      },
+    });
+    const secondUpload = await completeDraftUpload(
+      stagingService,
+      Buffer.from("second queued attachment"),
+      firstUpload.batchId,
+    );
+    await service.pauseDispatch("restart");
+
+    const request = {
+      message: {
+        text: "edit attachments atomically",
+        stagedAttachments: {
+          batchId: firstUpload.batchId,
+          refs: [firstUpload.ref, secondUpload.ref],
+          updatedAt: "2026-09-04T00:01:00.000Z",
+        },
+      },
+    };
+    const queueFile = path.join(testDir, "project-queues.json");
+    const persistedQueue = await fs.readFile(queueFile);
+    await fs.rm(queueFile);
+    await fs.mkdir(queueFile);
+
+    await expect(
+      service.updateItem(projectId, created.id, request),
+    ).rejects.toThrow();
+
+    expect(service.getDispatchState()).toEqual({
+      status: "paused",
+      reason: "restart",
+      pausedAt: expect.any(String),
+    });
+    expect(
+      service.listProject(projectId).items[0]?.message.stagedAttachments?.refs,
+    ).toMatchObject([{ id: firstUpload.ref.id }]);
+    expect(stagingService.getRecord(secondUpload.ref.id)?.owner).toEqual({
+      type: "draft",
+      batchId: firstUpload.batchId,
+    });
+
+    await fs.rm(queueFile, { recursive: true });
+    await fs.writeFile(queueFile, persistedQueue);
+    const retried = await service.updateItem(projectId, created.id, request);
+
+    expect(
+      retried?.message.stagedAttachments?.refs.map((ref) => ref.id),
+    ).toEqual([firstUpload.ref.id, secondUpload.ref.id]);
+    expect(stagingService.getRecord(secondUpload.ref.id)?.owner).toEqual({
+      type: "project-queue",
+      queueItemId: created.id,
+    });
+  });
+
   it("rejects empty messages", async () => {
     const service = await createService();
 

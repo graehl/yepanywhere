@@ -10,7 +10,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
 import { ProjectStoragePolicy } from "../projects/projectStoragePolicy.js";
@@ -78,6 +78,12 @@ export interface StartDraftStagedUploadParams {
 export interface StartedDraftStagedUpload {
   uploadId: string;
   batchId: string;
+}
+
+export interface PreparedQueueAttachmentTransfer {
+  refs: StagedAttachmentRef[];
+  commit: () => void;
+  rollback: () => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -580,6 +586,16 @@ export class AttachmentStagingService {
     queueItemId: string;
     refs: readonly StagedAttachmentRef[];
   }): Promise<StagedAttachmentRef[]> {
+    const prepared = await this.prepareDraftAttachmentsForQueue(params);
+    prepared.commit();
+    return prepared.refs;
+  }
+
+  async prepareDraftAttachmentsForQueue(params: {
+    batchId: string;
+    queueItemId: string;
+    refs: readonly StagedAttachmentRef[];
+  }): Promise<PreparedQueueAttachmentTransfer> {
     await this.ensureInitialized();
     if (!isSafeUploadPathSegment(params.batchId)) {
       throw new Error("Invalid staging batch id");
@@ -588,40 +604,55 @@ export class AttachmentStagingService {
       throw new Error("Invalid queue item id");
     }
 
-    const records = await this.getValidatedRecords(params.refs, (record) => {
-      return (
-        record.owner.type === "draft" && record.owner.batchId === params.batchId
-      );
-    });
-    const queueDir = this.ownerDir({
-      type: "project-queue",
-      queueItemId: params.queueItemId,
-    });
-    await mkdir(queueDir, { recursive: true });
-    const now = new Date(this.now()).toISOString();
-    const movedRecords: StagedAttachmentRecord[] = [];
+    const { originalRecords, movedRecords } = await this.withMutation(
+      async () => {
+        const records = await this.getValidatedRecords(
+          params.refs,
+          (record) => {
+            return (
+              record.owner.type === "draft" &&
+              record.owner.batchId === params.batchId
+            );
+          },
+        );
+        const originals: StagedAttachmentRecord[] = records.map((record) => ({
+          ...record,
+          owner: { ...record.owner },
+        }));
+        const queueDir = this.ownerDir({
+          type: "project-queue",
+          queueItemId: params.queueItemId,
+        });
+        const now = new Date(this.now()).toISOString();
+        const moved: StagedAttachmentRecord[] = originals.map((record) => ({
+          ...record,
+          path: join(queueDir, record.name),
+          updatedAt: now,
+          owner: {
+            type: "project-queue",
+            queueItemId: params.queueItemId,
+          },
+        }));
 
-    for (const record of records) {
-      const nextPath = join(queueDir, record.name);
-      if (record.path !== nextPath) {
-        await rename(record.path, nextPath);
-      }
-      movedRecords.push({
-        ...record,
-        path: nextPath,
-        updatedAt: now,
-        owner: { type: "project-queue", queueItemId: params.queueItemId },
-      });
-    }
+        await this.moveRecords(originals, moved);
+        return { originalRecords: originals, movedRecords: moved };
+      },
+    );
 
-    await this.withMutation(async () => {
-      for (const record of movedRecords) {
-        this.records.set(record.id, record);
-      }
-      await this.saveIndex();
-    });
-
-    return movedRecords.map(toRef);
+    let pending = true;
+    return {
+      refs: movedRecords.map(toRef),
+      commit: () => {
+        pending = false;
+      },
+      rollback: async () => {
+        if (!pending) return;
+        pending = false;
+        await this.withMutation(() =>
+          this.moveRecords(movedRecords, originalRecords),
+        );
+      },
+    };
   }
 
   async materializeDraftAttachmentsForSession(params: {
@@ -836,6 +867,78 @@ export class AttachmentStagingService {
     }
 
     return files;
+  }
+
+  private async moveRecords(
+    currentRecords: readonly StagedAttachmentRecord[],
+    nextRecords: readonly StagedAttachmentRecord[],
+  ): Promise<void> {
+    if (currentRecords.length !== nextRecords.length) {
+      throw new Error("Staged attachment move is incomplete");
+    }
+
+    const sameOwner = (
+      left: StagedAttachmentOwner,
+      right: StagedAttachmentOwner,
+    ): boolean => {
+      if (left.type === "draft") {
+        return right.type === "draft" && left.batchId === right.batchId;
+      }
+      return (
+        right.type === "project-queue" && left.queueItemId === right.queueItemId
+      );
+    };
+    for (const expected of currentRecords) {
+      const current = this.records.get(expected.id);
+      if (
+        !current ||
+        current.path !== expected.path ||
+        !sameOwner(current.owner, expected.owner)
+      ) {
+        throw new Error(
+          `Staged attachment ownership changed before move: ${expected.id}`,
+        );
+      }
+    }
+
+    const completed: number[] = [];
+    try {
+      for (let index = 0; index < currentRecords.length; index += 1) {
+        const current = currentRecords[index]!;
+        const next = nextRecords[index]!;
+        await mkdir(dirname(next.path), { recursive: true });
+        if (current.path !== next.path) {
+          await rename(current.path, next.path);
+        }
+        completed.push(index);
+      }
+      for (const record of nextRecords) {
+        this.records.set(record.id, record);
+      }
+      await this.saveIndex();
+    } catch (error) {
+      const recoveryErrors: unknown[] = [];
+      for (let offset = completed.length - 1; offset >= 0; offset -= 1) {
+        const index = completed[offset]!;
+        const current = currentRecords[index]!;
+        const next = nextRecords[index]!;
+        if (current.path !== next.path) {
+          await rename(next.path, current.path).catch((recoveryError) =>
+            recoveryErrors.push(recoveryError),
+          );
+        }
+      }
+      for (const record of currentRecords) {
+        this.records.set(record.id, record);
+      }
+      if (recoveryErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...recoveryErrors],
+          "Staged attachment move failed and its prior ownership could not be restored",
+        );
+      }
+      throw error;
+    }
   }
 
   private async pruneInvalidRecords(): Promise<void> {

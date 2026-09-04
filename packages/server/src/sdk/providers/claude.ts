@@ -367,12 +367,20 @@ export function resolvePathExecutable(
   const windows = platform === "win32";
   const pathApi = windows ? win32 : { extname, join };
   const hasPath = command.includes("/") || command.includes("\\");
+  const commandExtension = pathApi.extname(command);
+  if (
+    windows &&
+    commandExtension &&
+    !/^\.(?:com|exe)$/i.test(commandExtension)
+  ) {
+    return undefined;
+  }
   const commandNames =
-    windows && !pathApi.extname(command)
+    windows && !commandExtension
       ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
           .split(";")
           .map((extension) => extension.trim())
-          .filter((extension) => /^\.(?:com|exe|cmd|bat)$/i.test(extension))
+          .filter((extension) => /^\.(?:com|exe)$/i.test(extension))
           .map((extension) => `${command}${extension}`)
       : [command];
   const directories = hasPath
@@ -437,10 +445,9 @@ function resolveLocalClaudeCodeExecutable(): string | undefined {
 
   const envExecutable =
     process.env.CLAUDE_CODE_EXECUTABLE ?? process.env.CLAUDE_CODE_PATH;
-  const executable =
-    resolvePathExecutable(envExecutable ?? "") ??
-    resolveClaudeSdkNativeExecutable() ??
-    resolvePathExecutable("claude");
+  const executable = envExecutable
+    ? resolvePathExecutable(envExecutable)
+    : (resolveClaudeSdkNativeExecutable() ?? resolvePathExecutable("claude"));
 
   cachedLocalClaudeCodeExecutable = executable ?? null;
   return executable;

@@ -28,7 +28,7 @@ class ExposedClaudeProvider extends ClaudeProvider {
 }
 
 describe("Claude executable lookup", () => {
-  it("applies Windows PATHEXT candidates in PATH order", () => {
+  it("applies directly spawnable Windows PATHEXT candidates in PATH order", () => {
     const inspected: string[] = [];
     const resolved = resolvePathExecutable("claude", {
       platform: "win32",
@@ -38,22 +38,38 @@ describe("Claude executable lookup", () => {
       },
       isExecutable: (candidate) => {
         inspected.push(candidate);
-        return candidate === "C:\\npm\\claude.CMD";
+        return candidate === "D:\\tools\\claude.EXE";
       },
     });
 
-    expect(resolved).toBe("C:\\npm\\claude.CMD");
-    expect(inspected).toEqual(["C:\\npm\\claude.EXE", "C:\\npm\\claude.CMD"]);
+    expect(resolved).toBe("D:\\tools\\claude.EXE");
+    expect(inspected).toEqual(["C:\\npm\\claude.EXE", "D:\\tools\\claude.EXE"]);
   });
 
   it("applies PATHEXT to an explicit Windows path in a dotted directory", () => {
     expect(
       resolvePathExecutable("C:\\tools.v1\\claude", {
         platform: "win32",
-        env: { PATHEXT: ".CMD" },
-        isExecutable: (candidate) => candidate === "C:\\tools.v1\\claude.CMD",
+        env: { PATHEXT: ".EXE" },
+        isExecutable: (candidate) => candidate === "C:\\tools.v1\\claude.EXE",
       }),
-    ).toBe("C:\\tools.v1\\claude.CMD");
+    ).toBe("C:\\tools.v1\\claude.EXE");
+  });
+
+  it("rejects Windows batch shims that child_process cannot spawn directly", () => {
+    expect(
+      resolvePathExecutable("claude", {
+        platform: "win32",
+        env: { PATH: "C:\\npm", PATHEXT: ".CMD;.BAT" },
+        isExecutable: () => true,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolvePathExecutable("C:\\npm\\claude.CMD", {
+        platform: "win32",
+        isExecutable: () => true,
+      }),
+    ).toBeUndefined();
   });
 });
 

@@ -1,5 +1,6 @@
 import type {
   AgentActivity,
+  CodexAsyncUserInputQuestion,
   ContextUsage,
   DurableRecapMessage,
   EffortLevel,
@@ -210,6 +211,10 @@ export interface Message {
    * (sessions/pagination.ts).
    */
   queueDeliveredAt?: string;
+  /** Codex agent message delivered while its originating turn kept running. */
+  codexAgentMessageDelivery?: "async";
+  /** Structured questions attached to an asynchronous Codex agent message. */
+  codexAsyncQuestions?: CodexAsyncUserInputQuestion[];
   // Allow any additional fields from JSONL
   [key: string]: unknown;
 }

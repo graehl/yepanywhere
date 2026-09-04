@@ -55,6 +55,42 @@ describe("CodexSessionEntrySchema", () => {
       },
     },
     {
+      ordinal: 12,
+      timestamp: "2026-09-04T00:00:00Z",
+      type: "token_usage_record",
+      payload: {
+        thread_id: "thread-1",
+        turn_id: "turn-1",
+        session_id: "session-1",
+        root_turn_id: "turn-1",
+        response_id: "response-1",
+        usage: {
+          input_tokens: 10,
+          cached_input_tokens: 2,
+          cache_write_input_tokens: 0,
+          output_tokens: 4,
+          reasoning_output_tokens: 1,
+          total_tokens: 14,
+        },
+        turn_token_usage: {
+          input_tokens: 10,
+          cached_input_tokens: 2,
+          cache_write_input_tokens: 0,
+          output_tokens: 4,
+          reasoning_output_tokens: 1,
+          total_tokens: 14,
+        },
+        thread_token_usage: {
+          input_tokens: 110,
+          cached_input_tokens: 22,
+          cache_write_input_tokens: 0,
+          output_tokens: 44,
+          reasoning_output_tokens: 11,
+          total_tokens: 154,
+        },
+      },
+    },
+    {
       timestamp: "2026-07-10T00:00:00Z",
       type: "response_item",
       payload: {
@@ -128,5 +164,60 @@ describe("CodexSessionEntrySchema", () => {
     expect(parsed.type).toBe("event_msg");
     if (parsed.type !== "event_msg") return;
     expect(parsed.payload).toMatchObject({ client_id: "ya-user-1" });
+  });
+
+  it("preserves asynchronous question metadata on completed agent items", () => {
+    const parsed = CodexSessionEntrySchema.parse({
+      timestamp: "2026-09-04T00:00:00.000Z",
+      type: "event_msg",
+      payload: {
+        type: "item_completed",
+        item: {
+          type: "AgentMessage",
+          id: "async-message-1",
+          content: [{ type: "Text", text: "Choose a mode\n- Safe\n- Fast" }],
+          delivery: "async",
+          questions: [
+            { title: "Choose a mode", options: ["Safe", "Fast"] },
+            { title: "Anything else?", options: null },
+          ],
+        },
+      },
+    });
+
+    expect(parsed.type).toBe("event_msg");
+    if (parsed.type !== "event_msg") return;
+    expect(parsed.payload).toMatchObject({
+      item: {
+        id: "async-message-1",
+        delivery: "async",
+        questions: [
+          { title: "Choose a mode", options: ["Safe", "Fast"] },
+          { title: "Anything else?", options: null },
+        ],
+      },
+    });
+  });
+
+  it("preserves turn and root-turn identity from current turn contexts", () => {
+    const parsed = CodexSessionEntrySchema.parse({
+      timestamp: "2026-09-04T00:00:00.000Z",
+      type: "turn_context",
+      payload: {
+        cwd: "/repo",
+        approval_policy: "never",
+        turn_id: "turn-child",
+        root_turn_id: "turn-root",
+        provider_extension: true,
+      },
+    });
+
+    expect(parsed.type).toBe("turn_context");
+    if (parsed.type !== "turn_context") return;
+    expect(parsed.payload).toMatchObject({
+      turn_id: "turn-child",
+      root_turn_id: "turn-root",
+      provider_extension: true,
+    });
   });
 });

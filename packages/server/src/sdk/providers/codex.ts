@@ -9,6 +9,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import {
   CODEX_TOOL_CORRELATION_FIELD,
+  type CodexAsyncUserInputQuestion,
   type CodexPlanToolMode,
   DEFAULT_CODEX_REASONING_SUMMARY,
   DEFAULT_SUBAGENT_MAX_DEPTH,
@@ -19,6 +20,7 @@ import {
   type EffortLevel,
   hasInvocationCandidate,
   type ModelInfo,
+  normalizeCodexAsyncUserInputQuestions,
   type PermissionMode,
   type ProviderSubscriptionUsage,
   type SlashCommand,
@@ -630,7 +632,13 @@ interface CodexFailureTrace {
 
 type NormalizedThreadItem =
   | { id: string; type: "reasoning"; text: string }
-  | { id: string; type: "agent_message"; text: string }
+  | {
+      id: string;
+      type: "agent_message";
+      text: string;
+      delivery?: "async";
+      questions?: CodexAsyncUserInputQuestion[];
+    }
   | {
       id: string;
       type: "command_execution";
@@ -5407,7 +5415,17 @@ export class CodexProvider implements AgentProvider {
       case "agent_message":
       case "plan": {
         const text = this.getOptionalString(itemRecord.text) ?? "";
-        return { id, type: "agent_message", text };
+        const delivery = itemRecord.delivery === "async" ? "async" : undefined;
+        const questions = delivery
+          ? normalizeCodexAsyncUserInputQuestions(itemRecord.questions)
+          : undefined;
+        return {
+          id,
+          type: "agent_message",
+          text,
+          ...(delivery ? { delivery } : {}),
+          ...(questions ? { questions } : {}),
+        };
       }
 
       case "function_call_output": {
@@ -6249,6 +6267,10 @@ export class CodexProvider implements AgentProvider {
               role: "assistant",
               content: item.text,
             },
+            ...(item.delivery
+              ? { codexAgentMessageDelivery: item.delivery }
+              : {}),
+            ...(item.questions ? { codexAsyncQuestions: item.questions } : {}),
           } as SDKMessage,
           observedAt,
         );

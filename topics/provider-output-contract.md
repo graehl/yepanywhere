@@ -151,6 +151,23 @@ they rely only on the fields below.
   `isSubagent`, `orphanedToolUseIds` — documented in
   `AppMessageExtensions`.
 
+### Asynchronous Codex questions
+
+Codex `request_user_input_async` produces an assistant message while the
+originating turn keeps running. It is not a blocking input request or approval:
+the user answers later through an ordinary message. YA keeps Codex's readable
+fallback text as normal assistant content and preserves these fields on both
+the live and persisted copies:
+
+- `codexAgentMessageDelivery: "async"` identifies the asynchronous delivery;
+- `codexAsyncQuestions` keeps the ordered question titles and nullable answer
+  options.
+
+Persisted normalization reads the canonical `item_completed` record whose
+`AgentMessage` item has asynchronous delivery, retaining its provider item id.
+Ordinary completed agent items and legacy `agent_message` events remain
+suppressed because they duplicate full response items.
+
 ### Standalone tool output
 
 A provider output that has no call id is visible context, but it is not a

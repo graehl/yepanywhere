@@ -924,6 +924,7 @@ export type {
   CodexGhostSnapshotPayload,
   CodexResponseItemPayload,
   CodexResponseItemEntry,
+  CodexAsyncUserInputQuestion,
   CodexEventMsgPayload,
   CodexTurnAbortedEvent,
   CodexEventMsgEntry,
@@ -931,9 +932,14 @@ export type {
   CodexCompactedEntry,
   CodexTurnContextPayload,
   CodexTurnContextEntry,
+  CodexResponseTokenUsage,
+  CodexTokenUsageRecordEntry,
   CodexSessionEntry,
 } from "./codex-schema/types.js";
-export { parseCodexSessionEntry } from "./codex-schema/session.js";
+export {
+  normalizeCodexAsyncUserInputQuestions,
+  parseCodexSessionEntry,
+} from "./codex-schema/session.js";
 
 // Gemini SDK schema types
 export type {

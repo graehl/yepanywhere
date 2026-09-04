@@ -1,5 +1,6 @@
 import type {
   ClaudeSessionEntry,
+  CodexAsyncUserInputQuestion,
   CodexCompactedEntry,
   CodexCustomToolCallPayload,
   CodexEventMsgEntry,
@@ -23,6 +24,7 @@ import {
   getGeminiUserMessageText,
   getMessageContent,
   isConversationEntry,
+  normalizeCodexAsyncUserInputQuestions,
 } from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
@@ -560,6 +562,8 @@ function convertCodexEntries(
       );
       const shouldIncludeUserMessage =
         isCodexUserMessageEventEntry(entry) && !pairedUserEvent;
+      const shouldIncludeAsyncAgentMessage =
+        getCodexAsyncAgentMessageItem(entry) !== null;
       const shouldIncludeTaskComplete = entry.payload.type === "task_complete";
       const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
       const shouldIncludeSubagentActivity =
@@ -570,10 +574,11 @@ function convertCodexEntries(
       const shouldIncludeExecCommandEnd = isCodexExecCommandEndPayload(
         entry.payload,
       );
-      // Skip agent_message and agent_reasoning events when response_item exists;
-      // those are streaming artifacts that duplicate full response data.
+      // Ordinary agent/reasoning events duplicate full response items. The
+      // canonical completed item is the standalone async-message record.
       if (
         shouldIncludeUserMessage ||
+        shouldIncludeAsyncAgentMessage ||
         shouldIncludeTaskComplete ||
         shouldIncludeTurnAborted ||
         shouldIncludeSubagentActivity ||
@@ -1544,6 +1549,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+export interface CodexAsyncAgentMessageItem {
+  id: string;
+  text: string;
+  questions?: CodexAsyncUserInputQuestion[];
+}
+
+/** Read the canonical persisted form of a Codex asynchronous agent message. */
+export function getCodexAsyncAgentMessageItem(
+  entry: CodexSessionEntry | undefined,
+): CodexAsyncAgentMessageItem | null {
+  if (entry?.type !== "event_msg" || entry.payload.type !== "item_completed") {
+    return null;
+  }
+  const item = entry.payload.item;
+  if (
+    !isRecord(item) ||
+    item.type !== "AgentMessage" ||
+    item.delivery !== "async" ||
+    typeof item.id !== "string" ||
+    !Array.isArray(item.content)
+  ) {
+    return null;
+  }
+
+  const textParts: string[] = [];
+  for (const content of item.content) {
+    if (
+      !isRecord(content) ||
+      content.type !== "Text" ||
+      typeof content.text !== "string"
+    ) {
+      return null;
+    }
+    textParts.push(content.text);
+  }
+
+  const questions = normalizeCodexAsyncUserInputQuestions(item.questions);
+  if (item.questions !== undefined && !questions) return null;
+
+  return {
+    id: item.id,
+    text: textParts.join(""),
+    ...(item.questions !== undefined ? { questions } : {}),
+  };
+}
+
 function getStringField(
   record: Record<string, unknown>,
   field: string,
@@ -1818,8 +1869,23 @@ function convertCodexEventMsg(
         timestamp: entry.timestamp,
       };
 
-    case "item_completed":
-      return null;
+    case "item_completed": {
+      const asyncMessage = getCodexAsyncAgentMessageItem(entry);
+      if (!asyncMessage) return null;
+      return {
+        uuid: asyncMessage.id,
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: asyncMessage.text }],
+        },
+        codexAgentMessageDelivery: "async",
+        ...(asyncMessage.questions
+          ? { codexAsyncQuestions: asyncMessage.questions }
+          : {}),
+        timestamp: entry.timestamp,
+      };
+    }
 
     default:
       return null;

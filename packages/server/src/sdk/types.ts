@@ -4,6 +4,7 @@
 export type { PermissionMode } from "@yep-anywhere/shared";
 import type {
   ClaudeSteerBackgroundBashSettings,
+  CodexAsyncUserInputQuestion,
   PermissionMode,
   SlashCommand,
   SessionLivenessProbeStatus,
@@ -80,6 +81,10 @@ export interface SDKMessage {
     toolName?: string;
     toolInput?: unknown;
   };
+  /** Codex agent message delivered while its originating turn kept running. */
+  codexAgentMessageDelivery?: "async";
+  /** Structured questions attached to an asynchronous Codex agent message. */
+  codexAsyncQuestions?: CodexAsyncUserInputQuestion[];
   // Result metadata
   duration_ms?: number;
   duration_api_ms?: number;

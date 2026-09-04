@@ -71,6 +71,7 @@ import {
   isCodexUserResponseEntry,
 } from "./codex-user-turn-provenance.js";
 import {
+  getCodexAsyncAgentMessageItem,
   normalizeSession,
   tagCodexEntriesNormalizationSource,
 } from "./normalization.js";
@@ -2219,6 +2220,11 @@ export class CodexSessionReader implements ISessionReader {
         return;
       }
 
+      if (getCodexAsyncAgentMessageItem(entry)) {
+        state.assistantMessageCount += 1;
+        return;
+      }
+
       if (entry.payload.type === "token_count") {
         const info = entry.payload.info;
         const usage = info?.last_token_usage ?? info?.total_token_usage;
@@ -2678,16 +2684,17 @@ export class CodexSessionReader implements ISessionReader {
    * Count user/assistant messages in entries.
    *
    * Matches the logic in convertEntriesToMessages - we count user_message
-   * events and response_item messages, but not agent_message events since
-   * those are streaming duplicates.
+   * events and response_item messages. Async completed agent items are
+   * standalone rows; ordinary agent events are streaming duplicates.
    */
   private countMessages(entries: CodexSessionEntry[]): number {
     const provenance = buildCodexUserTurnProvenance(entries);
     const assistantCount = entries.reduce(
       (count, entry) =>
-        entry.type === "response_item" &&
-        entry.payload.type === "message" &&
-        entry.payload.role === "assistant"
+        (entry.type === "response_item" &&
+          entry.payload.type === "message" &&
+          entry.payload.role === "assistant") ||
+        getCodexAsyncAgentMessageItem(entry) !== null
           ? count + 1
           : count,
       0,

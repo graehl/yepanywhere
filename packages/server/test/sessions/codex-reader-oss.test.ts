@@ -1353,6 +1353,62 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(summary?.messageCount).toBe(1);
   });
 
+  it("counts async agent messages without counting ordinary duplicates", async () => {
+    const sessionId = "async-agent-message-count";
+    const now = new Date().toISOString();
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "start" }],
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: { type: "agent_message", message: "ordinary duplicate" },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "item_completed",
+          item: {
+            type: "AgentMessage",
+            id: "async-message-1",
+            content: [{ type: "Text", text: "Choose a mode" }],
+            delivery: "async",
+            questions: [{ title: "Choose a mode", options: null }],
+          },
+        },
+      }),
+    ];
+
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary?.messageCount).toBe(2);
+  });
+
   it("preserves originator from session metadata", async () => {
     const sessionId = "originator-passthrough";
     await createSessionFile(sessionId, "openai", "gpt-4o", "yep-anywhere");

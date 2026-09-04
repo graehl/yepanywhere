@@ -163,6 +163,48 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-09-04:
+
+- Installed Codex is `0.153.2`. The official `rust-v0.153.0`,
+  `rust-v0.153.1`, and `rust-v0.153.2` annotated tag objects are
+  `6bc50f104dcc0192e696cdeae721dfc19b507391`,
+  `f5c2c463f1a92d62faf57da7516f72d4351afb6e`, and
+  `79016fcca2c514d9c38643d8b7970a021e829b3b`; they peel to commits
+  `41e22fee981a63b3698df7ed36bad393cda24715`,
+  `985641272869835d01d025ed2a218fbbce35fa9f`, and
+  `657a993cbee87acf52d14b758ce49dbd46d1b8eb`, respectively. Root
+  compatibility and expected-protocol markers now record `0.153.2`.
+- Regeneration adds `AsyncUserInputQuestion` and changes `Thread`,
+  `ThreadItem`, and `TurnSettingsUpdateParams`. Thread summaries gain nullable
+  model and effort, agent messages gain nullable structured questions, and
+  active-turn settings gain an optional approval reviewer. These fields are
+  additive and YA sends no newly required request field, so this refresh does
+  not raise the minimum supported Codex version.
+- `request_user_input_async` emits a user-visible agent message and returns to
+  ongoing work; a later answer is an ordinary user message rather than an
+  app-server input-request response. YA preserves its structured questions on
+  the live normalized message. The durable copy is a canonical
+  `item_completed` event containing an `AgentMessage` item, so persisted
+  normalization now includes precisely those items whose delivery is `async`,
+  retains their provider ids, and continues to skip ordinary duplicate agent
+  events.
+- Codex rollouts add top-level `token_usage_record` entries with response,
+  turn, and thread totals, plus `turn_context.root_turn_id`. YA now models and
+  preserves those shapes. All 8,670 entries across 11 local Codex 0.153.2
+  rollouts pass the strict current schema, including 1,164 usage records. The
+  existing `token_count` event remains the source of the context-window meter
+  because Codex continues to emit it and its semantics already match that
+  display.
+- The no-token `model/list` probe still returns eight visible model ids: Sol,
+  GPT-5.5, Terra, Luna, Daybreak Blue, GPT-5.4, GPT-5.4 Mini, and GPT-5.3 Codex
+  Spark. GPT-6 Astra is intentionally configurable by API but hidden from the
+  picker in this release, so YA's dynamic catalog and fallback list require no
+  change. Codex 0.153.2's corrected Astra Fast description likewise has no
+  visible YA effect while that model remains hidden.
+
+Status: Codex 0.153.2 app-server types, model catalog, asynchronous questions,
+and persisted usage records are refreshed without raising the runtime floor.
+
 Current source refresh, 2026-09-02:
 
 - Installed Codex is `0.152.1`; the official `rust-v0.152.0` and

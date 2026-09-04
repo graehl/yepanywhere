@@ -12,6 +12,7 @@
  * - response_item: Message content (user, assistant, reasoning, function calls)
  * - event_msg: Event notifications (user_message, agent_message, token_count, etc.)
  * - turn_context: Per-turn context (cwd, approval policy, model, etc.)
+ * - token_usage_record: Per-response, turn, and thread token usage
  */
 
 import { z } from "zod";
@@ -426,6 +427,7 @@ export const CodexTokenUsageInfoSchema = z.object({
     .object({
       input_tokens: z.number(),
       cached_input_tokens: z.number().optional(),
+      cache_write_input_tokens: z.number().optional(),
       output_tokens: z.number(),
       reasoning_output_tokens: z.number().optional(),
       total_tokens: z.number(),
@@ -435,6 +437,7 @@ export const CodexTokenUsageInfoSchema = z.object({
     .object({
       input_tokens: z.number(),
       cached_input_tokens: z.number().optional(),
+      cache_write_input_tokens: z.number().optional(),
       output_tokens: z.number(),
       reasoning_output_tokens: z.number().optional(),
       total_tokens: z.number(),
@@ -456,10 +459,54 @@ export const CodexUserMessageEventSchema = z.object({
 /**
  * Agent message event.
  */
-export const CodexAgentMessageEventSchema = z.object({
-  type: z.literal("agent_message"),
-  message: z.string(),
-});
+export const CodexAsyncUserInputQuestionSchema = z
+  .object({
+    title: z.string(),
+    options: z.array(z.string()).nullable(),
+  })
+  .passthrough();
+
+export type CodexAsyncUserInputQuestion = z.infer<
+  typeof CodexAsyncUserInputQuestionSchema
+>;
+
+/** Validate and clone the shared live/durable async-question shape. */
+export function normalizeCodexAsyncUserInputQuestions(
+  value: unknown,
+): CodexAsyncUserInputQuestion[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const questions: CodexAsyncUserInputQuestion[] = [];
+  for (const question of value) {
+    if (!question || typeof question !== "object") return undefined;
+    const record = question as Record<string, unknown>;
+    if (typeof record.title !== "string") return undefined;
+    if (
+      record.options !== null &&
+      (!Array.isArray(record.options) ||
+        record.options.some((option) => typeof option !== "string"))
+    ) {
+      return undefined;
+    }
+    questions.push({
+      ...record,
+      title: record.title,
+      options:
+        record.options === null ? null : (record.options as string[]).slice(),
+    });
+  }
+  return questions;
+}
+
+export const CodexAgentMessageEventSchema = z
+  .object({
+    type: z.literal("agent_message"),
+    message: z.string(),
+    phase: z.string().nullable().optional(),
+    memory_citation: z.unknown().nullable().optional(),
+    delivery: z.string().optional(),
+    questions: z.array(CodexAsyncUserInputQuestionSchema).optional(),
+  })
+  .passthrough();
 
 /**
  * Agent reasoning event (summary of thinking).
@@ -626,6 +673,50 @@ export const CodexEventMsgEntrySchema = z.object({
 export type CodexEventMsgEntry = z.infer<typeof CodexEventMsgEntrySchema>;
 
 // =============================================================================
+// Response Token Usage
+// =============================================================================
+
+/** Token counts persisted for one response and their cumulative rollups. */
+export const CodexResponseTokenUsageSchema = z
+  .object({
+    input_tokens: z.number(),
+    cached_input_tokens: z.number(),
+    cache_write_input_tokens: z.number(),
+    output_tokens: z.number(),
+    reasoning_output_tokens: z.number(),
+    total_tokens: z.number(),
+  })
+  .passthrough();
+
+export type CodexResponseTokenUsage = z.infer<
+  typeof CodexResponseTokenUsageSchema
+>;
+
+export const CodexTokenUsageRecordEntrySchema = z
+  .object({
+    ...CodexPersistedEntryIdentityShape,
+    timestamp: z.string(),
+    type: z.literal("token_usage_record"),
+    payload: z
+      .object({
+        thread_id: z.string(),
+        turn_id: z.string(),
+        session_id: z.string(),
+        root_turn_id: z.string(),
+        response_id: z.string(),
+        usage: CodexResponseTokenUsageSchema,
+        turn_token_usage: CodexResponseTokenUsageSchema,
+        thread_token_usage: CodexResponseTokenUsageSchema,
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+export type CodexTokenUsageRecordEntry = z.infer<
+  typeof CodexTokenUsageRecordEntrySchema
+>;
+
+// =============================================================================
 // Compaction Entries
 // =============================================================================
 
@@ -667,14 +758,18 @@ export const CodexSandboxPolicySchema = z.object({
 /**
  * Turn context payload - sent at the start/end of turns.
  */
-export const CodexTurnContextPayloadSchema = z.object({
-  cwd: z.string(),
-  approval_policy: z.string(),
-  sandbox_policy: CodexSandboxPolicySchema.optional(),
-  model: z.string().optional(),
-  effort: z.string().optional(),
-  summary: z.string().optional(),
-});
+export const CodexTurnContextPayloadSchema = z
+  .object({
+    cwd: z.string(),
+    approval_policy: z.string(),
+    sandbox_policy: CodexSandboxPolicySchema.optional(),
+    model: z.string().optional(),
+    effort: z.string().optional(),
+    summary: z.string().optional(),
+    turn_id: z.string().optional(),
+    root_turn_id: z.string().optional(),
+  })
+  .passthrough();
 
 export type CodexTurnContextPayload = z.infer<
   typeof CodexTurnContextPayloadSchema
@@ -730,6 +825,7 @@ export const CodexSessionEntrySchema = z.discriminatedUnion("type", [
   CodexTurnContextEntrySchema,
   CodexWorldStateEntrySchema,
   CodexInterAgentCommunicationMetadataEntrySchema,
+  CodexTokenUsageRecordEntrySchema,
 ]);
 
 export type CodexSessionEntry = z.infer<typeof CodexSessionEntrySchema>;

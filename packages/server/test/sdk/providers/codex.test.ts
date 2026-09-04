@@ -4471,14 +4471,23 @@ describe("CodexProvider Event Normalization", () => {
     const normalized = provider.normalizeThreadItem({
       id: "async-message-1",
       type: "agentMessage",
-      text: "Asynchronous update",
+      text: "Choose a mode\n- Safe\n- Fast",
       delivery: "async",
+      questions: [
+        { title: "Choose a mode", options: ["Safe", "Fast"] },
+        { title: "Anything else?", options: null },
+      ],
     });
 
     expect(normalized).toMatchObject({
       id: "async-message-1",
       type: "agent_message",
-      text: "Asynchronous update",
+      text: "Choose a mode\n- Safe\n- Fast",
+      delivery: "async",
+      questions: [
+        { title: "Choose a mode", options: ["Safe", "Fast"] },
+        { title: "Anything else?", options: null },
+      ],
     });
     expect(
       provider.convertItemToSDKMessages(
@@ -4491,7 +4500,15 @@ describe("CodexProvider Event Normalization", () => {
       {
         type: "assistant",
         uuid: "async-message-1",
-        message: { role: "assistant", content: "Asynchronous update" },
+        message: {
+          role: "assistant",
+          content: "Choose a mode\n- Safe\n- Fast",
+        },
+        codexAgentMessageDelivery: "async",
+        codexAsyncQuestions: [
+          { title: "Choose a mode", options: ["Safe", "Fast"] },
+          { title: "Anything else?", options: null },
+        ],
       },
     ]);
   });

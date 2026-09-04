@@ -352,6 +352,53 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("keeps standalone async agent questions and skips ordinary duplicates", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "event_msg",
+        timestamp: "2026-09-04T00:00:01Z",
+        payload: {
+          type: "agent_message",
+          message: "ordinary duplicate",
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2026-09-04T00:00:02Z",
+        payload: {
+          type: "item_completed",
+          item: {
+            type: "AgentMessage",
+            id: "async-message-1",
+            content: [{ type: "Text", text: "Choose a mode\n- Safe\n- Fast" }],
+            delivery: "async",
+            questions: [
+              { title: "Choose a mode", options: ["Safe", "Fast"] },
+              { title: "Anything else?", options: null },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toMatchObject({
+      uuid: "async-message-1",
+      type: "assistant",
+      codexAgentMessageDelivery: "async",
+      codexAsyncQuestions: [
+        { title: "Choose a mode", options: ["Safe", "Fast"] },
+        { title: "Anything else?", options: null },
+      ],
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Choose a mode\n- Safe\n- Fast" }],
+      },
+    });
+  });
+
   it("recognizes opaque Codex agent_message response items without rendering", () => {
     const entries: CodexSessionEntry[] = [
       {

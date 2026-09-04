@@ -15,6 +15,7 @@ import type {
   SystemEntry,
   UserEntry,
 } from "./claude-sdk-schema/types.js";
+import type { CodexAsyncUserInputQuestion } from "./codex-schema/session.js";
 import { isUrlProjectId, type UrlProjectId } from "./projectId.js";
 import type {
   EffortLevel,
@@ -123,6 +124,12 @@ export interface AppMessageExtensions {
    * compatibility path. Clients must prefer this over setup-text heuristics.
    */
   codexUserTurnProvenance?: CodexUserTurnMessageProvenance;
+
+  /** Codex agent message delivered while its originating turn kept running. */
+  codexAgentMessageDelivery?: "async";
+
+  /** Structured questions attached to an asynchronous Codex agent message. */
+  codexAsyncQuestions?: CodexAsyncUserInputQuestion[];
 
   /**
    * True if this message is still being streamed (incomplete).

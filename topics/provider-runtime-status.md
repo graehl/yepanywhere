@@ -75,6 +75,16 @@ write is surfaced to the active client as a configuration error and logged
 without terminating the process's provider-message consumer, so the resumed
 turn can still report progress and completion.
 
+The last successfully applied model, thinking, and effort selections remain
+session state after the live provider process is reaped. Session metadata and
+detail responses expose that public subset as `effectiveModelSettings`; they
+do not expose retained permission or service-tier launch state. The client
+resolves model controls and badges from the live process first, then these
+durable settings, then the initial Codex configuration acknowledgement used by
+older servers. Therefore an initial `medium` acknowledgement cannot overwrite
+a later durable `high` selection after reload. An explicit durable null means
+provider default and also blocks the stale acknowledgement value.
+
 YA's initial Codex `CodexErrorInfo` normalization maps as follows:
 
 - `serverOverloaded` -> `overloaded`

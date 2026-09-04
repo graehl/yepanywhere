@@ -756,6 +756,7 @@ export type {
   TranscriptDisplayObject,
   AppSessionSummary,
   AppSession,
+  SessionEffectiveModelSettings,
   SessionMetadataPayload,
   SessionMetadataResponse,
   SessionQueuedMessageKind,

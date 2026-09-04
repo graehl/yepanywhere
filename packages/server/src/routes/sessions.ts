@@ -8,6 +8,7 @@ import {
   type ProviderName,
   type RecapMode,
   type SessionMetadataResponse,
+  type SessionEffectiveModelSettings,
   type SessionOwnership,
   type SessionSandboxLevel,
   type ShowThinking,
@@ -33,7 +34,10 @@ import { Hono } from "hono";
 import type { ISessionIndexService } from "../indexes/types.js";
 import { getLogger } from "../logging/logger.js";
 import type { ToolResultMediaStore } from "../media/ToolResultMediaStore.js";
-import type { SessionMetadataService } from "../metadata/index.js";
+import type {
+  SessionMetadata,
+  SessionMetadataService,
+} from "../metadata/index.js";
 import type { ProjectMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
@@ -167,6 +171,19 @@ import { resolveExistingSessionIdentity } from "./session-existing-identity.js";
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
 const DEFAULT_SESSION_DETAIL_TAIL_COMPACTIONS = 2;
 const LARGE_FULL_HISTORY_MESSAGE_THRESHOLD = 1000;
+
+function effectiveModelSettingsFromMetadata(
+  metadata: SessionMetadata | undefined,
+): SessionEffectiveModelSettings | undefined {
+  const settings = metadata?.effectiveLaunchSettings;
+  if (!settings) return undefined;
+
+  return {
+    requestedModel: settings.requestedModel,
+    thinking: settings.thinking,
+    effort: settings.effort,
+  };
+}
 
 function permissionModeError(mode: unknown): string | undefined {
   if (
@@ -2725,6 +2742,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         approvalPolicy: sessionSummary?.approvalPolicy,
         sandboxPolicy: sessionSummary?.sandboxPolicy,
         contextUsage: sessionSummary?.contextUsage,
+        effectiveModelSettings: effectiveModelSettingsFromMetadata(metadata),
         customTitle: metadata?.customTitle,
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
@@ -3242,6 +3260,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             hasUnread,
             provider: process.provider,
             model: process.resolvedModel,
+            effectiveModelSettings:
+              effectiveModelSettingsFromMetadata(metadata),
             contextUsage,
             ...(providerChildren ? { providerChildren } : {}),
           },
@@ -3627,6 +3647,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,
+        effectiveModelSettings: effectiveModelSettingsFromMetadata(metadata),
         lastSeenAt,
         hasUnread,
         ...(providerChildren ? { providerChildren } : {}),

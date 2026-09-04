@@ -648,6 +648,62 @@ describe("Sessions metadata route", () => {
     );
   });
 
+  it("returns durable model settings after the live process is gone", async () => {
+    const project = createProject();
+    const summary = createSummary();
+    const claudeReader = {
+      getSessionSummary: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+    const codexReader = {
+      getSessionSummary: vi.fn(async () => summary),
+    } as unknown as ISessionReader;
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getProject: vi.fn(async () => project),
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => claudeReader),
+      codexSessionsDir: "/tmp/codex-sessions",
+      codexReaderFactory: vi.fn(
+        () => codexReader as unknown as CodexSessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => ({
+          provider: "codex",
+          effectiveLaunchSettings: {
+            schemaVersion: 1,
+            revision: 2,
+            permissionMode: "default",
+            requestedModel: "gpt-5-codex",
+            serviceTier: null,
+            thinking: { type: "adaptive", display: "summarized" },
+            effort: "high",
+          },
+        })),
+        getProvider: vi.fn(() => "codex"),
+        getRecapMessages: vi.fn(() => []),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/metadata`,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      session: { effectiveModelSettings?: unknown };
+    };
+    expect(body.session.effectiveModelSettings).toEqual({
+      requestedModel: "gpt-5-codex",
+      thinking: { type: "adaptive", display: "summarized" },
+      effort: "high",
+    });
+  });
+
   it("attaches provider children to session metadata", async () => {
     const project = createProject();
     const summary = {

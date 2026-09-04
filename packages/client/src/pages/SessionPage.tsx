@@ -166,6 +166,10 @@ import { getPersistentEditApprovalResponse } from "../lib/permissionModes";
 import { getCachedWebTranscriptProjection } from "../lib/webTranscriptProjection";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { parseCodexConfigAck } from "../lib/sessionCodexConfigAck";
+import {
+  resolveSessionModelConfig,
+  type SessionModelConfig,
+} from "../lib/sessionModelConfig";
 import { parseThinkingConfig } from "../lib/sourceControlNavigationState";
 import type { MessageSubmissionMetadata } from "../types/messageSubmission";
 import {
@@ -282,15 +286,7 @@ const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
 const EMPTY_PROJECT_QUEUE_PROJECT_IDS: readonly string[] = [];
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 
-interface LiveModelConfig {
-  model?: string;
-  /** YA model id (launch alias) for keying per-model settings, distinct from
-   * the reported `model` above. See topics/provider-abstraction.md. */
-  requestedModel?: string;
-  thinking?: { type: string };
-  effort?: string;
-  promptSuggestionMode?: PromptSuggestionMode;
-}
+type LiveModelConfig = SessionModelConfig;
 
 function messageKey(message: Message | undefined): string | undefined {
   return message?.uuid ?? message?.id;
@@ -328,20 +324,6 @@ function parsePositiveIntegerParam(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function isSameLiveModelConfig(
-  current: LiveModelConfig | null,
-  next: LiveModelConfig,
-): boolean {
-  return (
-    current !== null &&
-    current.model === next.model &&
-    current.requestedModel === next.requestedModel &&
-    current.thinking?.type === next.thinking?.type &&
-    current.effort === next.effort &&
-    current.promptSuggestionMode === next.promptSuggestionMode
-  );
 }
 
 type TitleEditMode = "manual" | "retitle";
@@ -789,6 +771,31 @@ function SessionPageContent({
     permissionMode !== status.appliedPermissionMode;
   const [liveModelConfig, setLiveModelConfig] =
     useState<LiveModelConfig | null>(null);
+  const latestCodexConfigAck = useMemo(() => {
+    if (effectiveProvider !== "codex" && effectiveProvider !== "codex-oss") {
+      return null;
+    }
+
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const acknowledged = parseCodexConfigAck(
+        messages[index] as { [key: string]: unknown } | undefined,
+      );
+      if (acknowledged) {
+        return acknowledged;
+      }
+    }
+
+    return null;
+  }, [effectiveProvider, messages]);
+  const effectiveModelConfig = useMemo(
+    () =>
+      resolveSessionModelConfig(
+        liveModelConfig,
+        session?.effectiveModelSettings,
+        latestCodexConfigAck,
+      ),
+    [latestCodexConfigAck, liveModelConfig, session?.effectiveModelSettings],
+  );
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const composerFullPaneControlsRef = useRef<FullPaneComposerControls | null>(
@@ -847,7 +854,7 @@ function SessionPageContent({
     effectiveProvider,
     isWideScreen,
     permissionMode,
-    liveModel: liveModelConfig?.model,
+    liveModel: effectiveModelConfig?.model,
     sessionModel: session?.model,
     sessionExecutor: session?.executor,
     parentSessionId: isBtwAsideSession({
@@ -1123,28 +1130,38 @@ function SessionPageContent({
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
   const liveThinkingSelection = useMemo(() => {
-    if (status.owner !== "self" || !liveModelConfig) {
+    if (status.owner !== "self" || !effectiveModelConfig) {
       return null;
     }
     return liveThinkingSelectionFromProcess(
-      liveModelConfig.thinking,
-      liveModelConfig.effort,
+      effectiveModelConfig.thinking,
+      effectiveModelConfig.effort,
       currentProviderInfo,
     );
-  }, [currentProviderInfo, liveModelConfig, status.owner]);
+  }, [currentProviderInfo, effectiveModelConfig, status.owner]);
   const getImplicitComposerThinking = useCallback(() => {
-    if (status.owner === "self") {
-      if (!liveModelConfig) {
+    const hasRetainedSessionModelConfig =
+      status.owner === "self" ||
+      liveModelConfig !== null ||
+      session?.effectiveModelSettings !== undefined;
+    if (hasRetainedSessionModelConfig) {
+      if (!effectiveModelConfig) {
         return undefined;
       }
       return thinkingOptionFromProcess(
-        liveModelConfig.thinking,
-        liveModelConfig.effort,
+        effectiveModelConfig.thinking,
+        effectiveModelConfig.effort,
         currentProviderInfo,
       );
     }
     return getThinkingSetting();
-  }, [currentProviderInfo, liveModelConfig, status.owner]);
+  }, [
+    currentProviderInfo,
+    effectiveModelConfig,
+    liveModelConfig,
+    session?.effectiveModelSettings,
+    status.owner,
+  ]);
 
   // Unified Clone/Fork requires both the provider primitive and the server's
   // real-user-turn intent resolver. Older servers get no unsupported request.
@@ -1601,7 +1618,6 @@ function SessionPageContent({
     let cancelled = false;
 
     if (!currentOwnedProcessId) {
-      setLiveModelConfig(null);
       return;
     }
 
@@ -1610,17 +1626,15 @@ function SessionPageContent({
       .then((res) => {
         if (cancelled) return;
         const process = res.process;
-        setLiveModelConfig(
-          process
-            ? {
-                model: process.model,
-                requestedModel: process.requestedModel,
-                thinking: process.thinking,
-                effort: process.effort,
-                promptSuggestionMode: process.promptSuggestionMode,
-              }
-            : null,
-        );
+        if (process) {
+          setLiveModelConfig({
+            model: process.model,
+            requestedModel: process.requestedModel,
+            thinking: process.thinking,
+            effort: process.effort,
+            promptSuggestionMode: process.promptSuggestionMode,
+          });
+        }
         if (process?.recapAfterSeconds !== undefined) {
           setStatus((prev) =>
             prev.owner === "self" && prev.processId === process.id
@@ -1629,65 +1643,22 @@ function SessionPageContent({
           );
         }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setLiveModelConfig(null);
-        }
-      });
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
     };
   }, [actualSessionId, currentOwnedProcessId, setStatus]);
 
-  const latestCodexConfigAck = useMemo(() => {
-    if (effectiveProvider !== "codex" && effectiveProvider !== "codex-oss") {
-      return null;
-    }
-
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const acknowledged = parseCodexConfigAck(
-        messages[index] as { [key: string]: unknown } | undefined,
-      );
-      if (acknowledged) {
-        return acknowledged;
-      }
-    }
-
-    return null;
-  }, [effectiveProvider, messages]);
+  useEffect(() => {
+    if (!actualSessionId) return;
+    setLiveModelConfig(null);
+  }, [actualSessionId]);
 
   const publicShareInitialPrompt = useMemo(
     () => getPublicShareInitialPrompt(messages),
     [messages],
   );
-
-  useEffect(() => {
-    if (!latestCodexConfigAck) return;
-
-    setLiveModelConfig((prev) => {
-      const next: LiveModelConfig =
-        currentOwnedProcessId && prev
-          ? {
-              ...prev,
-              model: prev.model ?? latestCodexConfigAck.model,
-              thinking: prev.thinking ?? latestCodexConfigAck.thinking,
-              effort: prev.effort ?? latestCodexConfigAck.effort,
-            }
-          : {
-              ...prev,
-              model: latestCodexConfigAck.model ?? prev?.model,
-              thinking: latestCodexConfigAck.thinking ?? prev?.thinking,
-              effort: latestCodexConfigAck.effort ?? prev?.effort,
-            };
-
-      if (isSameLiveModelConfig(prev, next)) {
-        return prev;
-      }
-
-      return next;
-    });
-  }, [currentOwnedProcessId, latestCodexConfigAck]);
 
   // Inline title editing state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -3889,7 +3860,7 @@ function SessionPageContent({
     [handleCustomCommand],
   );
 
-  const liveBadgeModel = liveModelConfig?.model ?? effectiveModel;
+  const liveBadgeModel = effectiveModelConfig?.model ?? effectiveModel;
 
   const handleAbort = async () => {
     if (status.owner === "self" && status.processId) {
@@ -4267,7 +4238,7 @@ function SessionPageContent({
   // the live process config, then the persisted session metadata, else off.
   const promptSuggestionMode =
     localPromptSuggestionMode ??
-    liveModelConfig?.promptSuggestionMode ??
+    effectiveModelConfig?.promptSuggestionMode ??
     session?.promptSuggestionMode ??
     "off";
 
@@ -4778,13 +4749,13 @@ function SessionPageContent({
   );
 
   const liveSourceReviewThinking = parseThinkingConfig(
-    liveModelConfig?.thinking,
+    effectiveModelConfig?.thinking,
   );
   const sourceReviewModelSettings = liveSourceReviewThinking
     ? {
         thinking: liveSourceReviewThinking,
-        effort: isEffortLevel(liveModelConfig?.effort)
-          ? liveModelConfig.effort
+        effort: isEffortLevel(effectiveModelConfig?.effort)
+          ? effectiveModelConfig.effort
           : undefined,
       }
     : thinkingOptionToConfig(getThinkingSetting());
@@ -5276,8 +5247,8 @@ function SessionPageContent({
                 <ProviderBadge
                   provider={effectiveProvider}
                   model={liveBadgeModel}
-                  thinking={liveModelConfig?.thinking}
-                  effort={liveModelConfig?.effort}
+                  thinking={effectiveModelConfig?.thinking}
+                  effort={effectiveModelConfig?.effort}
                   isThinking={canStopOwnedProcess}
                 />
               </button>
@@ -5468,7 +5439,7 @@ function SessionPageContent({
               sessionId={sessionId}
               sessionTitle={displayTitle}
               provider={effectiveProvider}
-              model={liveModelConfig?.requestedModel ?? liveBadgeModel}
+              model={effectiveModelConfig?.requestedModel ?? liveBadgeModel}
               thinking={sourceReviewModelSettings.thinking}
               effort={sourceReviewModelSettings.effort}
             >
@@ -5681,7 +5652,7 @@ function SessionPageContent({
                           }
                         : undefined
                     }
-                    contextRequestedModel={liveModelConfig?.requestedModel}
+                    contextRequestedModel={effectiveModelConfig?.requestedModel}
                     heartbeatEnabled={heartbeatTurnsEnabled}
                     onToggleHeartbeat={handleToggleHeartbeat}
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
@@ -5849,7 +5820,7 @@ function SessionPageContent({
                       }
                     : undefined
                 }
-                contextRequestedModel={liveModelConfig?.requestedModel}
+                contextRequestedModel={effectiveModelConfig?.requestedModel}
                 heartbeatEnabled={heartbeatTurnsEnabled}
                 onToggleHeartbeat={handleToggleHeartbeat}
                 onConfigureHeartbeat={() => setShowHeartbeatModal(true)}

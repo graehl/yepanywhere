@@ -136,6 +136,7 @@ export interface Message {
 import type {
   AppSessionSummary,
   PromptSuggestionMode,
+  SessionEffectiveModelSettings,
   SessionLivenessSnapshot,
   SessionOwnership as SessionOwnershipType,
 } from "@yep-anywhere/shared";
@@ -145,6 +146,7 @@ export type SessionStatus = SessionOwnershipType;
 export type SessionSummary = AppSessionSummary;
 
 export interface SessionMetadata extends SessionSummary {
+  effectiveModelSettings?: SessionEffectiveModelSettings;
   heartbeatTurnsEnabled?: boolean;
   heartbeatTurnsAfterMinutes?: number;
   heartbeatTurnText?: string;

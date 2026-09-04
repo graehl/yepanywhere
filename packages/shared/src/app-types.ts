@@ -17,11 +17,13 @@ import type {
 } from "./claude-sdk-schema/types.js";
 import { isUrlProjectId, type UrlProjectId } from "./projectId.js";
 import type {
+  EffortLevel,
   PermissionMode,
   PromptSuggestionMode,
   ProviderName,
   RecapMode,
   SlashCommand,
+  ThinkingConfig,
 } from "./types.js";
 import type { ToolDisplayAction } from "./tool-display-actions.js";
 import type { ProjectPathLinkTarget } from "./project-path-links.js";
@@ -566,8 +568,20 @@ export interface AppSession extends AppSessionSummary {
   messages: AppMessage[];
 }
 
+/** Last successfully applied model settings retained for later session turns. */
+export interface SessionEffectiveModelSettings {
+  /** Exact YA model token, including "default"; null means provider default. */
+  requestedModel: string | null;
+  /** Effective thinking configuration; null means disabled/default behavior. */
+  thinking: ThinkingConfig | null;
+  /** Effective effort selection; null means provider/default behavior. */
+  effort: EffortLevel | null;
+}
+
 export interface SessionMetadataPayload
   extends Omit<AppSessionSummary, "ownership"> {
+  /** Durable model settings used when no live process snapshot is available. */
+  effectiveModelSettings?: SessionEffectiveModelSettings;
   /** Whether this session is opted in to heartbeat turns */
   heartbeatTurnsEnabled?: boolean;
   /** Per-session wake-turn override; absent inherits the server default. */

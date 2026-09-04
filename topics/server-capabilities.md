@@ -132,6 +132,17 @@ metadata suppress a needed catch-up. Older clients ignore the additive field.
 No existing capability meaning changes. The Maintainer approved this
 self-gated response-field fallback on 2026-08-28.
 
+The additive `session.effectiveModelSettings` field on existing session
+metadata and detail responses is a durable model-state receipt, not a new
+feature capability. The core compatibility corpus `v0.6.0`, `v0.6.1`,
+`v0.6.2`, `v0.7.0`, and `v0.8.0` lacks it. A current client connected to one
+of those servers sends no new request and retains the released live-process,
+initial Codex acknowledgement, and global-default fallbacks. Older clients
+ignore the additive field. Newer servers expose only requested model,
+thinking, and effort; retained permission and service-tier settings remain
+internal. No existing capability meaning changes. The Maintainer approved
+this self-gated response-field fallback on 2026-09-04.
+
 `git-working-tree-files` owns the current-content inventory, persistent
 untracked-cache route, and cache-backed status request. Releases `0.6.2` and
 `0.7.0` have none of them. Without the permanent capability, the client retains

@@ -82,7 +82,9 @@ through `thread/goal/get`, `thread/goal/clear`, and `thread/goal/set`; none may
 become model-visible turn text. Setting a new objective while an unfinished
 goal exists fails visibly and directs the user to clear it first. Clearing and
 then setting a new objective resets the provider goal without falsely marking
-the preceding goal complete.
+the preceding goal complete. Pause and resume results report the status Codex
+actually returns, including a preserved usage- or budget-limited state, rather
+than echoing the requested transition.
 
 The Codex inventory preserves the original “Keep working toward a verifiable
 end state until it is met” description and `<verifiable end state>` free-form

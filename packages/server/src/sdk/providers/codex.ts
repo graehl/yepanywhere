@@ -187,6 +187,19 @@ const log = {
 };
 const CODEX_DESKTOP_BROWSER_SKILL_NAME = "browser:control-in-app-browser";
 
+function formatCodexGoalStatus(
+  status: ThreadGoalSetResponse["goal"]["status"],
+): string {
+  switch (status) {
+    case "usageLimited":
+      return "Goal usage limited";
+    case "budgetLimited":
+      return "Goal budget limited";
+    default:
+      return `Goal ${status}`;
+  }
+}
+
 function logSdkCorrelationDebug(
   sessionId: string,
   message: SDKMessage,
@@ -2008,7 +2021,7 @@ export class CodexProvider implements AgentProvider {
                 handled: true,
                 output: response.goal
                   ? {
-                      summary: `Goal ${response.goal.status}`,
+                      summary: formatCodexGoalStatus(response.goal.status),
                       details: [
                         response.goal.objective,
                         `${response.goal.tokensUsed.toLocaleString()} tokens used`,
@@ -2034,18 +2047,24 @@ export class CodexProvider implements AgentProvider {
             }
 
             if (goalControl === "pause" || goalControl === "resume") {
+              const requestedStatus =
+                goalControl === "pause" ? "paused" : "active";
               const response = await client.request<ThreadGoalSetResponse>(
                 "thread/goal/set",
                 {
                   threadId,
-                  status: goalControl === "pause" ? "paused" : "active",
+                  status: requestedStatus,
                 } satisfies ThreadGoalSetParams,
               );
               return {
                 handled: true,
                 output: {
                   summary:
-                    goalControl === "pause" ? "Goal paused" : "Goal resumed",
+                    response.goal.status === requestedStatus
+                      ? goalControl === "pause"
+                        ? "Goal paused"
+                        : "Goal resumed"
+                      : formatCodexGoalStatus(response.goal.status),
                   details: [response.goal.objective],
                 },
               };

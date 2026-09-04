@@ -422,6 +422,36 @@ describe("CodexProvider", () => {
       }
     });
 
+    it("reports a goal status preserved by Codex", async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-goal-status-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-goal-status",
+        buildFakeCodexAppServer(logPath, "chatgpt", "budgetLimited"),
+      );
+      const testProvider = new CodexProvider({ codexPath });
+      const session = await testProvider.startSession({ cwd: tempDir });
+
+      try {
+        await session.iterator.next();
+        await session.runProviderCommand?.("goal", "Exhausted objective");
+        await expect(
+          session.runProviderCommand?.("goal", "resume"),
+        ).resolves.toEqual({
+          handled: true,
+          output: {
+            summary: "Goal budget limited",
+            details: ["Exhausted objective"],
+          },
+        });
+      } finally {
+        await session.abort();
+        await session.iterator.return?.(undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("runs status and usage through account RPCs without a model turn", async () => {
       const tempDir = mkdtempSync(join(tmpdir(), "codex-account-commands-"));
       const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -2330,12 +2360,14 @@ function runNodeProbe(
 function buildFakeCodexAppServer(
   logPath: string,
   accountType: "chatgpt" | "apiKey" = "chatgpt",
+  goalStatusOverride?: "budgetLimited",
 ): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
 const logPath = ${JSON.stringify(logPath)};
 const accountType = ${JSON.stringify(accountType)};
+const goalStatusOverride = ${JSON.stringify(goalStatusOverride)};
 let buffer = "";
 let goal = null;
 
@@ -2444,7 +2476,8 @@ function handleMessage(message) {
       goal = {
         threadId: "thread-1",
         objective: message.params?.objective ?? goal?.objective ?? "",
-        status: message.params?.status ?? goal?.status ?? "active",
+        status:
+          goalStatusOverride ?? message.params?.status ?? goal?.status ?? "active",
         tokenBudget: null,
         tokensUsed: goal?.tokensUsed ?? 0,
         timeUsedSeconds: goal?.timeUsedSeconds ?? 0,

@@ -43,6 +43,59 @@ describe("Process", () => {
       controller.finish();
     });
 
+    it.each(["high", undefined] as const)(
+      "acknowledges retained effort %s after live failures and applies it before queued work",
+      async (effort) => {
+        const controller = createControllableIterator();
+        const providerQueue = new MessageQueue();
+        const push = vi.spyOn(providerQueue, "push");
+        let releaseBoundary = () => {};
+        const boundary = new Promise<void>((resolve) => {
+          releaseBoundary = resolve;
+        });
+        const setEffort = vi
+          .fn<(_effort?: string) => Promise<void>>()
+          .mockRejectedValueOnce(new Error("live update rejected"))
+          .mockRejectedValueOnce(new Error("live update rejected"))
+          .mockImplementation(() => boundary);
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "retained-effort-session",
+          provider: "codex",
+          queue: providerQueue,
+          effort: "low",
+          setEffortFn: setEffort,
+          effortUpdatesActiveTurn: true,
+          idleTimeoutMs: 10_000,
+        });
+        controller.push({
+          type: "system",
+          subtype: "init",
+          session_id: "retained-effort-session",
+        });
+        await waitFor(() => expect(process.state.type).toBe("in-turn"));
+
+        await expect(process.setEffort("max")).resolves.toBe(true);
+        await expect(process.setEffort(effort)).resolves.toBe(true);
+        expect(process.effort).toBe(effort);
+        expect(process.appliedEffort).toBe("low");
+        process.deferMessage({ text: "after effort" });
+        controller.push({
+          type: "result",
+          session_id: "retained-effort-session",
+        });
+        await waitFor(() => expect(setEffort).toHaveBeenCalledTimes(3));
+        expect(setEffort).toHaveBeenLastCalledWith(effort);
+        expect(push).not.toHaveBeenCalled();
+
+        releaseBoundary();
+        await waitFor(() => expect(push).toHaveBeenCalledOnce());
+        expect(process.appliedEffort).toBe(effort);
+        controller.finish();
+      },
+    );
+
     it("retains a failed effort selection and blocks deferred delivery", async () => {
       const errorLog = vi
         .spyOn(getLogger(), "error")

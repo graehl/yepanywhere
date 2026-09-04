@@ -71,9 +71,18 @@ selection during compaction and runtimes where `step_model_switching` is
 disabled. The selector stays on the user's choice, subsequent selections
 replace it, and the next submitted turn carries that effort through normal
 Codex turn validation. YA does not interrupt compaction or poll/retry the live
-control. Invalid parameters, internal errors, and transport failures still
-surface as configuration errors. A refusal of the optional live control is
-not a refusal of the next-turn configuration.
+control. A refusal of the optional live control is not a refusal of the
+next-turn configuration.
+
+At the supervisor boundary, an unsuccessful live effort control is accepted
+as a retained next-turn selection while the process remains alive. The config
+response returns that choice immediately after the live attempt, so the
+selector updates without a reload or a false failure toast. This also covers
+older hosted provider workers that survive a server reload. YA logs the live
+failure and retries once at the provider turn boundary before queued work;
+it does not interrupt work or add a polling retry. Subsequent choices replace
+the pending selection, including clearing it to Default. Idle or turn-boundary
+application failures still surface as configuration errors and block delivery.
 
 Effort control writes are serialized and latest-selection-wins: a slower older
 provider call cannot overwrite a newer choice. At a turn boundary, failure to

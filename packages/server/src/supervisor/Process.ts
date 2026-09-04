@@ -1937,7 +1937,9 @@ export class Process {
    * request is applied at the turn boundary.
    */
   get effort(): EffortLevel | undefined {
-    return this.pendingEffortUpdate?.effort ?? this._effort;
+    return this.pendingEffortUpdate
+      ? this.pendingEffortUpdate.effort
+      : this._effort;
   }
 
   /** Effort already accepted by the provider, excluding a queued next turn. */
@@ -2087,12 +2089,11 @@ export class Process {
     }
 
     this.pendingEffortUpdate = { effort };
-    if (
+    const canDeferUntilBoundary =
       (this._state.type === "in-turn" ||
         this._state.type === "waiting-input") &&
-      !this.effortUpdatesActiveTurn &&
-      !this.effortBoundaryBlocked
-    ) {
+      !this.effortBoundaryBlocked;
+    if (canDeferUntilBoundary && !this.effortUpdatesActiveTurn) {
       getLogger().info(
         {
           event: "effort_change_queued",
@@ -2109,7 +2110,21 @@ export class Process {
     if (this.effortBoundaryBlocked) {
       await this.completeEffortBoundaryTransition();
     } else {
-      await this.enqueuePendingEffortApplication();
+      try {
+        await this.enqueuePendingEffortApplication();
+      } catch (error) {
+        if (!canDeferUntilBoundary || this.isTerminated) throw error;
+        getLogger().info(
+          {
+            event: "effort_change_deferred_after_live_failure",
+            sessionId: this._sessionId,
+            processId: this.id,
+            effort,
+            err: error,
+          },
+          "Retained effort selection for the turn boundary after live update failed",
+        );
+      }
     }
     return true;
   }

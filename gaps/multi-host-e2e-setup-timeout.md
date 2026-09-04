@@ -11,5 +11,4 @@ the timeout would hide the setup's narrow margin. A fix should identify the
 contended startup step or establish an evidence-backed setup deadline that is
 stable under the supported full-suite workload.
 
-Found 2026-09-04 while verifying harsh-review findings HR-1, HR-2, HR-4, and
-HR-5.
+Found 2026-09-04 while running full-suite verification.

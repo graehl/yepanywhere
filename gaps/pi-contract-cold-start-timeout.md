@@ -11,5 +11,4 @@ real Pi startup regression. A fix should measure loaded and isolated startup,
 then give this external-runtime contract an evidence-backed deadline or move
 the version probe out of the suite's peak contention window.
 
-Found 2026-09-04 while verifying harsh-review findings HR-1, HR-2, HR-4, and
-HR-5.
+Found 2026-09-04 while running full-suite verification.

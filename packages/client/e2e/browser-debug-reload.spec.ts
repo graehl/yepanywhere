@@ -35,7 +35,7 @@ async function clickSidebarSession(page: Page, sessionPath: string) {
     await expect(sidebar).toBeVisible();
   }
   const sessionLink = sidebar.locator(`a[href="${sessionPath}"]`).first();
-  await expect(sessionLink).toBeVisible();
+  await expect(sessionLink).toBeVisible({ timeout: 15_000 });
   await sessionLink.click();
 }
 

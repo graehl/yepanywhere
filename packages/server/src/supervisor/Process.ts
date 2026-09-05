@@ -886,6 +886,10 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   supportedModelsFn?: () => Promise<ModelInfo[]>;
   /** Function to get supported slash commands (SDK 0.2.7+) */
   supportedCommandsFn?: () => Promise<SlashCommand[]>;
+  onCommandsObserved?: (
+    sessionId: string,
+    commands: SlashCommand[],
+  ) => Promise<void>;
   /** Function to change model mid-session (SDK 0.2.7+) */
   setModelFn?: (model?: string) => Promise<void>;
   /**
@@ -1056,6 +1060,7 @@ export class Process {
   /** Function to get supported slash commands (SDK 0.2.7+) */
   private supportedCommandsFn: (() => Promise<SlashCommand[]>) | null;
   private supportedCommandsCache: SlashCommand[] | null = null;
+  private onCommandsObserved: ProcessConstructorOptions["onCommandsObserved"];
   private supportedCommandsRefreshInFlight: Promise<
     SlashCommand[] | null
   > | null = null;
@@ -1209,6 +1214,7 @@ export class Process {
     this.steerFn = options.steerFn ?? null;
     this.supportedModelsFn = options.supportedModelsFn ?? null;
     this.supportedCommandsFn = options.supportedCommandsFn ?? null;
+    this.onCommandsObserved = options.onCommandsObserved;
     this._pidResolver = options.pid;
     this.setModelFn = options.setModelFn ?? null;
     this.runProviderCommandFn = options.runProviderCommandFn ?? null;
@@ -2353,7 +2359,8 @@ export class Process {
     }
 
     const refresh = this.supportedCommandsFn()
-      .then((commands) => {
+      .then(async (commands) => {
+        await this.onCommandsObserved?.(this.sessionId, commands);
         this.supportedCommandsCache = commands;
         return commands;
       })
@@ -4654,6 +4661,10 @@ export class Process {
         this.recordNativeRecap(message, receivedAt);
         this.observeProviderRuntimeStatus(message, receivedAt);
         if (Array.isArray(message.slash_command_inventory)) {
+          await this.onCommandsObserved?.(
+            this.sessionId,
+            message.slash_command_inventory as SlashCommand[],
+          );
           this.supportedCommandsCache =
             message.slash_command_inventory as SlashCommand[];
         }

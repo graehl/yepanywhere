@@ -386,7 +386,7 @@ export interface GrokSlashCommandDetails {
 
 export interface SlashCommandProviderDetails {
   grok?: GrokSlashCommandDetails;
-  codex?: { goalObjective?: string };
+  codex?: { goalObjective?: string | null };
   [provider: string]: unknown;
 }
 

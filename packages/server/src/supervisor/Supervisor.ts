@@ -1280,6 +1280,11 @@ export class Supervisor {
       interruptFn: interrupt,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
+      onCommandsObserved: (sessionId, commands) =>
+        this.sessionMetadataService?.observeCommandInventory(
+          sessionId,
+          commands,
+        ) ?? Promise.resolve(),
       setModelFn: setModel,
       publishAgentctlSessionIdFn: publishAgentctlSessionId,
       permissionMode: effectiveMode,
@@ -1945,6 +1950,11 @@ export class Supervisor {
       interruptFn: interrupt,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
+      onCommandsObserved: (sessionId, commands) =>
+        this.sessionMetadataService?.observeCommandInventory(
+          sessionId,
+          commands,
+        ) ?? Promise.resolve(),
       setModelFn: setModel,
       publishAgentctlSessionIdFn: publishAgentctlSessionId,
       permissionMode: effectiveMode,
@@ -2182,6 +2192,11 @@ export class Supervisor {
       steerFn: steer,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
+      onCommandsObserved: (sessionId, commands) =>
+        this.sessionMetadataService?.observeCommandInventory(
+          sessionId,
+          commands,
+        ) ?? Promise.resolve(),
       setModelFn: setModel,
       runProviderCommandFn: runProviderCommand,
       publishAgentctlSessionIdFn: publishAgentctlSessionId,
@@ -2418,6 +2433,11 @@ export class Supervisor {
       steerFn: steer,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
+      onCommandsObserved: (sessionId, commands) =>
+        this.sessionMetadataService?.observeCommandInventory(
+          sessionId,
+          commands,
+        ) ?? Promise.resolve(),
       setModelFn: setModel,
       runProviderCommandFn: runProviderCommand,
       publishAgentctlSessionIdFn: publishAgentctlSessionId,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type {
   CacheMissBillingRecord,
   DurableLocalCommandMessage,
+  SlashCommand,
   WorkstreamId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +60,37 @@ describe("SessionMetadataService", () => {
   });
 
   describe("initialization", () => {
+    it("restores observed goals and clears without inferring from receipts", async () => {
+      await service.initialize();
+      const goal: SlashCommand = {
+        name: "goal",
+        description: "Keep working",
+        providerDetails: { codex: { goalObjective: "Finish the work" } },
+        argumentCompletions: [{ value: "Finish the work" }],
+      };
+      await service.observeCommandInventory("session-1", [goal]);
+      await service.observeCommandInventory("session-1", [
+        { name: "goal", description: "Unknown state" },
+      ]);
+      await service.setTitle("session-1", "Work");
+      const restarted = new SessionMetadataService({ dataDir: testDir });
+      await restarted.initialize();
+      expect(restarted.getMetadata("session-1")?.codexGoalCommand).toEqual(
+        goal,
+      );
+      const cleared = {
+        ...goal,
+        providerDetails: { codex: { goalObjective: null } },
+        argumentCompletions: [],
+      };
+      await restarted.observeCommandInventory("session-1", [cleared]);
+      const afterClear = new SessionMetadataService({ dataDir: testDir });
+      await afterClear.initialize();
+      expect(afterClear.getMetadata("session-1")?.codexGoalCommand).toEqual(
+        cleared,
+      );
+    });
+
     it("preserves goal receipts and their positions across restart and unrelated edits", async () => {
       await service.initialize();
       const receipt: DurableLocalCommandMessage = {

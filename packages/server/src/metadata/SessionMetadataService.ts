@@ -18,6 +18,7 @@ import {
   type PromptSuggestionMode,
   type RecapMode,
   type SessionSandboxLevel,
+  type SlashCommand,
   type ThinkingConfig,
   type TranscriptDisplayObject,
   type UrlProjectId,
@@ -67,6 +68,8 @@ export interface SessionMetadata {
   /** Durable YA-owned recap rows merged into the transcript view only. */
   recapMessages?: DurableRecapMessage[];
   localCommandMessages?: DurableLocalCommandMessage[];
+  /** Last provider-observed goal, independent of historical command receipts. */
+  codexGoalCommand?: SlashCommand;
   /** Durable YA-only `/done` rows merged into the transcript view only. */
   syntheticDoneMessages?: DurableSyntheticDoneMessage[];
   /** Requested boundary awaiting the live provider turn's idle edge. */
@@ -316,6 +319,22 @@ export class SessionMetadataService {
         ),
         message,
       ],
+    }));
+    await this.save();
+  }
+
+  async observeCommandInventory(
+    sessionId: string,
+    commands: SlashCommand[],
+  ): Promise<void> {
+    const goal = commands.find((command) => command.name === "goal");
+    // An inventory without goal state is unknown, not evidence of a clear.
+    if (goal?.providerDetails?.codex?.goalObjective === undefined) return;
+    const previous = this.getMetadata(sessionId)?.codexGoalCommand;
+    if (JSON.stringify(previous) === JSON.stringify(goal)) return;
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      codexGoalCommand: goal,
     }));
     await this.save();
   }
@@ -964,6 +983,9 @@ export class SessionMetadataService {
     }
     if (updated.localCommandMessages?.length) {
       cleaned.localCommandMessages = updated.localCommandMessages;
+    }
+    if (updated.codexGoalCommand) {
+      cleaned.codexGoalCommand = updated.codexGoalCommand;
     }
     if (updated.syntheticDoneMessages?.length) {
       cleaned.syntheticDoneMessages = updated.syntheticDoneMessages;

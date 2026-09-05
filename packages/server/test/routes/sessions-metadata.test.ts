@@ -546,6 +546,41 @@ describe("Sessions metadata route", () => {
     await expect(response.json()).resolves.toMatchObject({ queued: true });
   });
 
+  it.each([false, true])(
+    "dispatches goal controls outside turn delivery (deferred=%s)",
+    async (deferred) => {
+      const runProviderCommand = vi.fn(async () => ({ handled: true }));
+      const deferMessage = vi.fn();
+      const queueMessage = vi.fn();
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession: vi.fn(() => ({
+            isTerminated: false,
+            noteInputIntent: vi.fn(),
+            runProviderCommand,
+            deferMessage,
+            queueMessage,
+          })),
+        } as unknown as SessionsDeps["supervisor"],
+      });
+      const response = await routes.request("/sessions/sess-1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "/goal Keep working",
+          deferred,
+          tempId: "goal-send",
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(runProviderCommand).toHaveBeenCalledWith("goal", "Keep working", {
+        tempId: "goal-send",
+      });
+      expect(deferMessage).not.toHaveBeenCalled();
+      expect(queueMessage).not.toHaveBeenCalled();
+    },
+  );
+
   it("surfaces the provider's reason when a native command is rejected", async () => {
     const reason = "Cannot compact while a turn is in progress";
     const runProviderCommand = vi.fn(async () => ({
@@ -2344,57 +2379,88 @@ describe("Sessions metadata route", () => {
     );
   });
 
-  it("returns static Codex slash commands for stopped sessions", async () => {
-    const project = { ...createProject(), provider: "codex" as const };
+  it.each([undefined, "Finish the durable goal", null])(
+    "restores stopped Codex goal inventory: %s",
+    async (objective) => {
+      const project = { ...createProject(), provider: "codex" as const };
+      const codexGoalCommand =
+        objective === undefined
+          ? undefined
+          : {
+              name: "goal",
+              description:
+                "Keep working toward a verifiable end state until it is met",
+              argumentHint: "<verifiable end state>",
+              providerDetails: { codex: { goalObjective: objective } },
+              argumentCompletions: [
+                ...(objective
+                  ? [{ value: objective, description: "Current goal" }]
+                  : []),
+                { value: "clear", description: "Remove the current goal" },
+                { value: "pause", description: "Pause the current goal" },
+                { value: "resume", description: "Resume the current goal" },
+              ],
+            };
 
-    const routes = createSessionsRoutes({
-      supervisor: {
-        getProcessForSession: vi.fn(() => null),
-        wasEverOwned: vi.fn(() => false),
-      } as unknown as SessionsDeps["supervisor"],
-      scanner: {
-        getOrCreateProject: vi.fn(async () => project),
-      } as unknown as SessionsDeps["scanner"],
-      readerFactory: vi.fn(
-        () =>
-          ({
-            getSession: vi.fn(async () => createLoadedCodexSession()),
-          }) as unknown as ISessionReader,
-      ),
-      sessionMetadataService: {
-        getMetadata: vi.fn(() => undefined),
-        getProvider: vi.fn(() => "codex"),
-        getRequestedModel: vi.fn(() => undefined),
-        setRequestedModel: vi.fn(async () => undefined),
-      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
-    });
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession: vi.fn(() => null),
+          wasEverOwned: vi.fn(() => false),
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: {
+          getOrCreateProject: vi.fn(async () => project),
+        } as unknown as SessionsDeps["scanner"],
+        readerFactory: vi.fn(
+          () =>
+            ({
+              getSession: vi.fn(async () => createLoadedCodexSession()),
+            }) as unknown as ISessionReader,
+        ),
+        sessionMetadataService: {
+          getMetadata: vi.fn(() => ({ codexGoalCommand })),
+          getProvider: vi.fn(() => "codex"),
+          getRequestedModel: vi.fn(() => undefined),
+          setRequestedModel: vi.fn(async () => undefined),
+        } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      });
 
-    const response = await routes.request(
-      `/projects/${project.id}/sessions/sess-1`,
-    );
-    expect(response.status).toBe(200);
+      const response = await routes.request(
+        `/projects/${project.id}/sessions/sess-1`,
+      );
+      expect(response.status).toBe(200);
 
-    const json = await response.json();
-    expect(json.ownership).toEqual({ owner: "none" });
-    expect(json.slashCommands).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "compact" }),
-        expect.objectContaining({
-          name: "goal",
-          description:
-            "Keep working toward a verifiable end state until it is met",
-          argumentHint: "<verifiable end state>",
-          argumentCompletions: [
-            expect.objectContaining({ value: "clear" }),
-            expect.objectContaining({ value: "pause" }),
-            expect.objectContaining({ value: "resume" }),
-          ],
-        }),
-        expect.objectContaining({ name: "status" }),
-        expect.objectContaining({ name: "usage" }),
-      ]),
-    );
-  });
+      const json = await response.json();
+      expect(json.ownership).toEqual({ owner: "none" });
+      expect(json.slashCommands).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "compact" }),
+          expect.objectContaining({
+            name: "goal",
+            description:
+              "Keep working toward a verifiable end state until it is met",
+            argumentHint: "<verifiable end state>",
+            argumentCompletions: [
+              ...(objective
+                ? [expect.objectContaining({ value: objective })]
+                : []),
+              expect.objectContaining({ value: "clear" }),
+              expect.objectContaining({ value: "pause" }),
+              expect.objectContaining({ value: "resume" }),
+            ],
+          }),
+          expect.objectContaining({ name: "status" }),
+          expect.objectContaining({ name: "usage" }),
+        ]),
+      );
+      if (codexGoalCommand) {
+        expect(
+          json.slashCommands.find(
+            (command: { name: string }) => command.name === "goal",
+          ),
+        ).toEqual(codexGoalCommand);
+      }
+    },
+  );
 
   it("passes cached summary hints into bounded Codex detail reads", async () => {
     const project = { ...createProject(), provider: "codex" as const };

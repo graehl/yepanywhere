@@ -417,7 +417,7 @@ interface TokenUsageSnapshot {
 
 interface CodexTurnRuntimeState {
   threadId: string;
-  goalObjective?: string;
+  goalObjective?: string | null;
   resolvedModel: string;
   turnModelOverride: string | null;
   latestTokenUsage?: TokenUsageSnapshot;
@@ -1914,9 +1914,8 @@ export class CodexProvider implements AgentProvider {
                     threadId: runtimeState.threadId,
                   } satisfies ThreadGoalGetParams,
                 );
-              runtimeState.goalObjective = goal?.objective;
+              runtimeState.goalObjective = goal?.objective ?? null;
             } catch (error) {
-              runtimeState.goalObjective = undefined;
               log.debug({ error }, "Codex goal completion is unavailable");
             }
           }
@@ -2704,10 +2703,9 @@ export class CodexProvider implements AgentProvider {
           return null;
         const objective =
           notification.method === "thread/goal/cleared"
-            ? undefined
+            ? null
             : params.goal?.objective;
-        if (objective !== undefined && typeof objective !== "string")
-          return null;
+        if (objective !== null && typeof objective !== "string") return null;
         if (objective === runtimeState.goalObjective) return null;
         runtimeState.goalObjective = objective;
         return withCodexTimestamp({
@@ -3749,15 +3747,17 @@ export class CodexProvider implements AgentProvider {
   private createCodexSlashCommands(
     skills: readonly SkillMetadata[],
     inventoryState: "current" | "stale" = "current",
-    goalObjective?: string,
+    goalObjective?: string | null,
   ): SlashCommand[] {
     const commands: SlashCommand[] = CODEX_BUILTIN_COMMANDS.map((command) =>
-      command.name === "goal" && goalObjective
+      command.name === "goal" && goalObjective !== undefined
         ? {
             ...command,
             providerDetails: { codex: { goalObjective } },
             argumentCompletions: [
-              { value: goalObjective, description: "Current goal" },
+              ...(goalObjective
+                ? [{ value: goalObjective, description: "Current goal" }]
+                : []),
               ...(command.argumentCompletions ?? []),
             ],
           }

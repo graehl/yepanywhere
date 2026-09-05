@@ -402,6 +402,14 @@ describe("CodexProvider", () => {
           handled: true,
           output: { summary: "/goal", details: ["Goal cleared"] },
         });
+        await expect(session.supportedCommands?.()).resolves.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: "goal",
+              providerDetails: { codex: { goalObjective: null } },
+            }),
+          ]),
+        );
         await expect(
           session.runProviderCommand?.("goal", "Start the replacement goal"),
         ).resolves.toEqual({

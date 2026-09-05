@@ -571,6 +571,54 @@ describe("Process", () => {
       },
     );
 
+    it("saves queried and streamed command state before exposing it", async () => {
+      const controlled = createControllableIterator();
+      const commands = [{ name: "goal", description: "Keep working" }];
+      let finishSave!: () => void;
+      const saving = new Promise<void>((resolve) => {
+        finishSave = resolve;
+      });
+      const onCommandsObserved = vi.fn(async () => saving);
+      const process = new Process(controlled.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        supportedCommandsFn: async () => commands,
+        onCommandsObserved,
+      });
+      const live: SDKMessage[] = [];
+      process.subscribe((event) => {
+        if (event.type === "message") live.push(event.message);
+      });
+      let queryFinished = false;
+      const query = process.supportedCommands().then(() => {
+        queryFinished = true;
+      });
+      try {
+        await vi.waitFor(() =>
+          expect(onCommandsObserved).toHaveBeenCalledOnce(),
+        );
+        expect(queryFinished).toBe(false);
+        controlled.push({
+          type: "system",
+          subtype: "commands_changed",
+          slash_command_inventory: commands,
+        });
+        await vi.waitFor(() =>
+          expect(onCommandsObserved).toHaveBeenCalledTimes(2),
+        );
+        expect(live).toEqual([]);
+        expect(onCommandsObserved).toHaveBeenCalledWith("sess-1", commands);
+        finishSave();
+        await query;
+        await vi.waitFor(() => expect(live).toHaveLength(1));
+      } finally {
+        finishSave();
+        controlled.finish();
+        await process.abort();
+      }
+    });
+
     it("expands cached slash-command emulation before queueing", async () => {
       let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {

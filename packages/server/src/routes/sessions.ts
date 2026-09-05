@@ -201,11 +201,12 @@ function permissionModeError(mode: unknown): string | undefined {
 async function getSessionSlashCommands(
   process: Process | undefined,
   provider: ProviderName | undefined,
+  metadata: SessionMetadata | undefined,
 ) {
+  let commands = getStaticSlashCommandsForProvider(provider);
   if (process?.supportsDynamicCommands) {
     try {
-      const commands = await process.supportedCommands();
-      if (commands) return commands;
+      commands = (await process.supportedCommands()) ?? commands;
     } catch (error) {
       getLogger().warn(
         {
@@ -219,7 +220,16 @@ async function getSessionSlashCommands(
       );
     }
   }
-  return getStaticSlashCommandsForProvider(provider);
+  return (
+    commands?.map((command) =>
+      provider === "codex" &&
+      command.name === "goal" &&
+      command.providerDetails?.codex?.goalObjective === undefined &&
+      metadata?.codexGoalCommand
+        ? metadata.codexGoalCommand
+        : command,
+    ) ?? null
+  );
 }
 
 function roundedMs(value: number): number {
@@ -2618,6 +2628,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const slashCommands = await getSessionSlashCommands(
       process,
       process?.provider ?? metadataProvider ?? project.provider,
+      metadata,
     );
     const deferredMessages = sessionQueueSummaries(deps, sessionId, process);
     const sessionSummaryResult = await findSessionSummaryAcrossProviders(
@@ -3092,6 +3103,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         session?.provider ??
         metadataProvider ??
         project.provider,
+      deps.sessionMetadataService?.getMetadata(sessionId),
     );
     const deferredMessages = sessionQueueSummaries(deps, sessionId, process);
     const providerChildren = await resolveProviderChildSessions(
@@ -6649,10 +6661,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // through the provider's own protocol rather than delivered as turn text the
     // model would never interpret. Claude's `/compact` reports handled:false and
     // falls through to normal delivery so the SDK handles it as a regular turn
-    // (and any trailing focus instructions reach the SDK verbatim). A deferred
-    // submission keeps normal queue semantics.
-    if (!body.deferred) {
-      const parsed = parseSlashCommandSubmission(body.message);
+    // (and any trailing focus instructions reach the SDK verbatim). Goal
+    // controls are out-of-band even when the composer requests deferred send.
+    const parsed = parseSlashCommandSubmission(body.message);
+    if (!body.deferred || parsed?.name === "goal") {
       if (parsed) {
         const providerResult = await dispatchProviderCommand(
           process,

@@ -80,6 +80,8 @@ Codex `/goal`, `/goal clear`, `/goal pause`, `/goal resume`, and
 `/goal <objective>` are provider-native control operations. YA dispatches them
 through `thread/goal/get`, `thread/goal/clear`, and `thread/goal/set`; none may
 become model-visible turn text, including when starting or reopening a session.
+Goal controls execute out-of-band even with the composer's deferred-send option;
+providers that do not handle the command retain ordinary delivery semantics.
 Setting a new objective clears any preceding goal before setting the new one.
 This resets the provider goal without falsely marking the preceding goal
 complete. Pause and resume results report the status Codex
@@ -94,8 +96,14 @@ that objective first; Tab inserts it into the composer for editing. Enter on
 bare `/goal` submits the read-only goal query and shows the objective (or “No
 goal set”) in the session. The session header also shows a flag with the
 provider-reported objective as its tooltip. Clearing the goal removes the flag
-and objective suggestion. Historical receipts are not used to infer current
-provider state when no live inventory is available.
+and objective suggestion. YA saves provider-observed goal inventory separately
+from historical receipts, before returning queried inventory or streaming an
+inventory change. A stopped session, including after a YA restart, restores
+the last observed objective, header flag, and Tab completion. An explicit clear
+is saved too. Unknown inventory never erases a saved observation; a fresh
+provider observation replaces it. Changes made outside YA while no worker is
+observing become visible when the provider is attached and queried again.
+Historical receipts are never used to infer current provider state.
 Interactive `/goal edit` is not advertised because YA has no provider goal
 editor; an explicit attempt directs the user to `/goal <objective>`.
 

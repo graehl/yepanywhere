@@ -980,6 +980,8 @@ export class Process {
   private _streamingText = "";
   /** Message ID for current streaming response */
   private _streamingMessageId: string | null = null;
+  /** Preserve provider/receipt ordering while a local command is saved. */
+  private commandOutputPublication: Promise<void> | null = null;
 
   /**
    * Rolling buffer of recent assistant text turns used as context for
@@ -2261,34 +2263,49 @@ export class Process {
     }
     const result = await this.runProviderCommandFn(command, argument);
     if (result.handled && result.output) {
-      const placementAfterMessageId = this.getMessageHistory()
-        .reverse()
-        .find(
-          (message) =>
-            typeof message.uuid === "string" &&
-            !message.isSynthetic &&
-            (message.type === "assistant" || message.type === "user"),
-        )?.uuid;
-      const id = randomUUID();
-      const synthetic: DurableLocalCommandMessage = {
-        type: "system",
-        subtype: "local_command",
-        content: result.output.summary,
-        ...(result.output.details ? { details: result.output.details } : {}),
-        session_id: this._sessionId,
-        uuid: id,
-        id,
-        timestamp: new Date().toISOString(),
-        tempId: options?.tempId,
-        ...(typeof placementAfterMessageId === "string"
-          ? { placementAfterMessageId }
-          : {}),
-        isMeta: false,
-        isSynthetic: true,
-      };
-      await options?.persistOutput?.(synthetic);
-      this.currentBucket.push(synthetic as SDKMessage);
-      this.emit({ type: "message", message: synthetic as SDKMessage });
+      const previousPublication = this.commandOutputPublication;
+      let releasePublication!: () => void;
+      const publication = new Promise<void>((resolve) => {
+        releasePublication = resolve;
+      });
+      this.commandOutputPublication = publication;
+      if (previousPublication) await previousPublication;
+      try {
+        const placementAfterMessageId =
+          this._streamingMessageId ??
+          this.getMessageHistory()
+            .reverse()
+            .find(
+              (message) =>
+                typeof message.uuid === "string" &&
+                !message.isSynthetic &&
+                (message.type === "assistant" || message.type === "user"),
+            )?.uuid;
+        const id = randomUUID();
+        const synthetic: DurableLocalCommandMessage = {
+          type: "system",
+          subtype: "local_command",
+          content: result.output.summary,
+          ...(result.output.details ? { details: result.output.details } : {}),
+          session_id: this._sessionId,
+          uuid: id,
+          id,
+          timestamp: new Date().toISOString(),
+          tempId: options?.tempId,
+          ...(typeof placementAfterMessageId === "string"
+            ? { placementAfterMessageId }
+            : {}),
+          isMeta: false,
+          isSynthetic: true,
+        };
+        await options?.persistOutput?.(synthetic);
+        this.currentBucket.push(synthetic as SDKMessage);
+        this.emit({ type: "message", message: synthetic as SDKMessage });
+      } finally {
+        releasePublication();
+        if (this.commandOutputPublication === publication)
+          this.commandOutputPublication = null;
+      }
     }
     return result;
   }
@@ -4625,6 +4642,11 @@ export class Process {
         if (this.toolResultMediaMaterializer) {
           message =
             await this.toolResultMediaMaterializer.materializeMessage(message);
+        }
+        // A receipt reserves its visible position before awaiting disk. Let it
+        // publish before provider output that arrived during that save.
+        while (this.commandOutputPublication) {
+          await this.commandOutputPublication;
         }
         const receivedAt = new Date();
         this._lastMessageTime = receivedAt;

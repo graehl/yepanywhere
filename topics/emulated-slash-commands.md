@@ -113,6 +113,12 @@ bounded history reads include only receipts within that history window. They
 never enter provider transcripts or model context. Earlier transient receipts
 cannot be reconstructed after their replay buffer has expired.
 
+The receipt's anchor includes an assistant draft already visible in the live
+stream. Provider output arriving while that receipt is being saved waits for
+its publication, so disk latency cannot move the marker relative to subsequent
+output. A failed save reports failure, publishes no success receipt, and
+releases provider delivery.
+
 Codex can start another turn autonomously after a goal command or a preceding
 turn ends. YA continues observing the app-server notification stream while
 waiting for input, and streams that work without requiring another user send

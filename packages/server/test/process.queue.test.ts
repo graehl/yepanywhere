@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MessageQueue,
   Process,
+  createControllableIterator,
   createMockIterator,
   waitFor,
 } from "./process.test-support.js";
@@ -507,6 +508,68 @@ describe("Process", () => {
       resolveIterator?.();
       await process.abort();
     });
+
+    it.each([false, true])(
+      "orders goal receipts against streaming output while saving (save fails: %s)",
+      async (saveFails) => {
+        const controlled = createControllableIterator();
+        const process = new Process(controlled.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "codex",
+          idleTimeoutMs: 100,
+          queue: new MessageQueue(),
+          runProviderCommandFn: async () => ({
+            handled: true,
+            output: { summary: "/goal", details: ["Keep working", "Goal set"] },
+          }),
+        });
+        process.accumulateStreamingText("draft", "Visible assistant draft");
+        const live: SDKMessage[] = [];
+        process.subscribe((event) => {
+          if (event.type === "message") live.push(event.message);
+        });
+        let finishSave!: () => void;
+        const saving = new Promise<void>((resolve, reject) => {
+          finishSave = () =>
+            saveFails ? reject(new Error("disk failure")) : resolve();
+        });
+        const persistOutput = vi.fn(() => saving);
+        const command = process
+          .runProviderCommand("goal", "Keep working", { persistOutput })
+          .then(
+            () => "saved",
+            (error: Error) => error.message,
+          );
+        try {
+          await vi.waitFor(() => expect(persistOutput).toHaveBeenCalledOnce());
+          controlled.push({
+            type: "assistant",
+            uuid: "next",
+            message: { content: "Later assistant output" },
+          });
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          expect(live).toEqual([]);
+          expect(persistOutput).toHaveBeenCalledWith(
+            expect.objectContaining({ placementAfterMessageId: "draft" }),
+          );
+          finishSave();
+          expect(await command).toBe(saveFails ? "disk failure" : "saved");
+          await vi.waitFor(() =>
+            expect(live.some((message) => message.uuid === "next")).toBe(true),
+          );
+          expect(
+            live.map((message) => message.subtype ?? message.type),
+          ).toEqual(saveFails ? ["assistant"] : ["local_command", "assistant"]);
+        } finally {
+          finishSave();
+          await command;
+          controlled.finish();
+          await process.abort();
+        }
+      },
+    );
 
     it("expands cached slash-command emulation before queueing", async () => {
       let resolveIterator!: () => void;

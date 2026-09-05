@@ -345,15 +345,15 @@ describe("CodexProvider", () => {
         await session.iterator.next();
         await expect(session.runProviderCommand?.("goal")).resolves.toEqual({
           handled: true,
-          output: { summary: "No goal set" },
+          output: { summary: "/goal", details: ["No goal set"] },
         });
         await expect(
           session.runProviderCommand?.("goal", "Ship the native goal path"),
         ).resolves.toEqual({
           handled: true,
           output: {
-            summary: "Goal set",
-            details: ["Ship the native goal path"],
+            summary: "/goal",
+            details: ["Ship the native goal path", "Goal set"],
           },
         });
         await expect(
@@ -361,39 +361,54 @@ describe("CodexProvider", () => {
         ).resolves.toEqual({
           handled: true,
           output: {
-            summary: "Goal paused",
-            details: ["Ship the native goal path"],
+            summary: "/goal",
+            details: ["Ship the native goal path", "Goal paused"],
           },
         });
+        await expect(session.supportedCommands?.()).resolves.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: "goal",
+              argumentCompletions: expect.arrayContaining([
+                {
+                  value: "Ship the native goal path",
+                  description: "Current goal",
+                },
+              ]),
+            }),
+          ]),
+        );
         await expect(
           session.runProviderCommand?.("goal", "resume"),
         ).resolves.toEqual({
           handled: true,
           output: {
-            summary: "Goal resumed",
-            details: ["Ship the native goal path"],
+            summary: "/goal",
+            details: ["Ship the native goal path", "Goal resumed"],
           },
         });
         await expect(
-          session.runProviderCommand?.("goal", "Replace it silently"),
+          session.runProviderCommand?.("goal", "Replace the current objective"),
         ).resolves.toEqual({
           handled: true,
-          error:
-            "This thread already has an unfinished goal. Run /goal clear before setting a new objective.",
+          output: {
+            summary: "/goal",
+            details: ["Replace the current objective", "Goal set"],
+          },
         });
         await expect(
           session.runProviderCommand?.("goal", "clear"),
         ).resolves.toEqual({
           handled: true,
-          output: { summary: "Goal cleared" },
+          output: { summary: "/goal", details: ["Goal cleared"] },
         });
         await expect(
           session.runProviderCommand?.("goal", "Start the replacement goal"),
         ).resolves.toEqual({
           handled: true,
           output: {
-            summary: "Goal set",
-            details: ["Start the replacement goal"],
+            summary: "/goal",
+            details: ["Start the replacement goal", "Goal set"],
           },
         });
         await expect(
@@ -401,8 +416,26 @@ describe("CodexProvider", () => {
         ).resolves.toEqual({
           handled: true,
           error:
-            "Interactive /goal edit is unavailable in YA. Run /goal clear, then set the revised objective with /goal <objective>.",
+            "Interactive /goal edit is unavailable in YA. Set the revised objective with /goal <objective>.",
         });
+
+        const beforeConcurrentCommands = readFakeCodexRequests(logPath).length;
+        await Promise.all([
+          session.runProviderCommand?.("goal", "First replacement"),
+          session.runProviderCommand?.("goal", "Second replacement"),
+        ]);
+        expect(
+          readFakeCodexRequests(logPath)
+            .slice(beforeConcurrentCommands)
+            .map((request) => request.method),
+        ).toEqual([
+          "thread/goal/get",
+          "thread/goal/clear",
+          "thread/goal/set",
+          "thread/goal/get",
+          "thread/goal/clear",
+          "thread/goal/set",
+        ]);
 
         const methods = readFakeCodexRequests(logPath).map(
           (request) => request.method,
@@ -421,6 +454,73 @@ describe("CodexProvider", () => {
         rmSync(tempDir, { recursive: true, force: true });
       }
     });
+
+    it.each([false, true])(
+      "streams goal-started work without another user turn (already working: %s)",
+      async (alreadyWorking) => {
+        const tempDir = mkdtempSync(join(tmpdir(), "codex-goal-stream-"));
+        const logPath = join(tempDir, "requests.jsonl");
+        const codexPath = createFakeCodexCommand(
+          tempDir,
+          "fake-codex",
+          buildFakeCodexAppServer(logPath, "chatgpt", undefined, true),
+        );
+        const session = await new CodexProvider({ codexPath }).startSession({
+          cwd: tempDir,
+          ...(alreadyWorking
+            ? { initialMessage: { text: "Initial work" } }
+            : {}),
+        });
+        const messages: unknown[] = [];
+        const consuming = (async () => {
+          for await (const message of session.iterator) messages.push(message);
+        })();
+        try {
+          await vi.waitFor(() => expect(messages.length).toBeGreaterThan(0));
+          if (alreadyWorking) {
+            await vi.waitFor(() =>
+              expect(
+                readFakeCodexRequests(logPath).some(
+                  (r) => r.method === "turn/start",
+                ),
+              ).toBe(true),
+            );
+          }
+          await session.runProviderCommand?.("goal", "clear");
+          await session.runProviderCommand?.("goal", "Keep working");
+          await vi.waitFor(() =>
+            expect(messages).toContainEqual(
+              expect.objectContaining({
+                type: "assistant",
+                message: expect.objectContaining({
+                  content: "Goal continuation output",
+                }),
+              }),
+            ),
+          );
+          expect(
+            readFakeCodexRequests(logPath).filter(
+              (r) => r.method === "turn/start",
+            ),
+          ).toHaveLength(alreadyWorking ? 1 : 0);
+          expect(messages).toContainEqual(
+            expect.objectContaining({
+              subtype: "commands_changed",
+              slash_command_inventory: expect.arrayContaining([
+                expect.objectContaining({
+                  name: "goal",
+                  providerDetails: { codex: { goalObjective: "Keep working" } },
+                }),
+              ]),
+            }),
+          );
+        } finally {
+          await session.abort();
+          await consuming;
+          rmSync(tempDir, { recursive: true, force: true });
+        }
+      },
+    );
 
     it("reports a goal status preserved by Codex", async () => {
       const tempDir = mkdtempSync(join(tmpdir(), "codex-goal-status-"));
@@ -441,8 +541,8 @@ describe("CodexProvider", () => {
         ).resolves.toEqual({
           handled: true,
           output: {
-            summary: "Goal budget limited",
-            details: ["Exhausted objective"],
+            summary: "/goal",
+            details: ["Exhausted objective", "Goal budget limited"],
           },
         });
       } finally {
@@ -2459,6 +2559,7 @@ function buildFakeCodexAppServer(
   logPath: string,
   accountType: "chatgpt" | "apiKey" = "chatgpt",
   goalStatusOverride?: "budgetLimited",
+  goalStartsTurn = false,
 ): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -2466,8 +2567,10 @@ import { appendFileSync } from "node:fs";
 const logPath = ${JSON.stringify(logPath)};
 const accountType = ${JSON.stringify(accountType)};
 const goalStatusOverride = ${JSON.stringify(goalStatusOverride)};
+const goalStartsTurn = ${JSON.stringify(goalStartsTurn)};
 let buffer = "";
 let goal = null;
+let activeTurn = false;
 
 function write(payload) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
@@ -2583,14 +2686,32 @@ function handleMessage(message) {
         updatedAt: 1,
       };
       respond(message.id, { goal });
+      notify("thread/goal/updated", { threadId: "thread-1", goal });
+      if (goalStartsTurn && message.params?.objective) {
+        if (activeTurn) {
+          notify("turn/completed", { threadId: "thread-1", turn: { id: "turn-start", status: "completed", items: [], error: null } });
+          activeTurn = false;
+        }
+        const turn = { id: "goal-turn", status: "inProgress", items: [], error: null };
+        notify("turn/started", { threadId: "thread-1", turn });
+        notify("item/completed", {
+          threadId: "thread-1", turnId: turn.id,
+          item: { type: "agentMessage", id: "goal-output", text: "Goal continuation output" },
+        });
+        notify("turn/completed", {
+          threadId: "thread-1", turn: { ...turn, status: "completed" },
+        });
+      }
       break;
     case "thread/goal/clear": {
       const cleared = goal !== null;
       goal = null;
       respond(message.id, { cleared });
+      notify("thread/goal/cleared", { threadId: "thread-1" });
       break;
     }
     case "turn/start":
+      activeTurn = true;
       respond(message.id, {
         turn: { id: "turn-start", status: "inProgress", error: null },
       });

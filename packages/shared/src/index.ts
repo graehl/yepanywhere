@@ -749,6 +749,7 @@ export type {
   SessionOwnership,
   SessionSandboxPolicy,
   DurableRecapMessage,
+  DurableLocalCommandMessage,
   DurableSyntheticDoneMessage,
   SyntheticSessionBoundaryCommand,
   BangCommandTranscriptDisplayObject,

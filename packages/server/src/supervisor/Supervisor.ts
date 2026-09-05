@@ -52,7 +52,11 @@ import type {
   RecoveredSessionLaunchSettings,
 } from "../sessions/types.js";
 import type { ResumeExemptionResult } from "../sessions/resume-exemption.js";
-import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
+import {
+  normalizeSlashCommandName,
+  parseSlashCommandSubmission,
+} from "../sdk/slashCommandEmulation.js";
+import { dispatchProviderCommand } from "./provider-command.js";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -1389,6 +1393,19 @@ export class Supervisor {
     // arrives, even while the process still reports `idle`.
     process.noteInputIntent();
     await process.primeSupportedCommandsForMessage(message);
+    const command = parseSlashCommandSubmission(message.text);
+    if (command?.name === "goal") {
+      const result = await dispatchProviderCommand(
+        process,
+        command,
+        message.tempId,
+        this.sessionMetadataService,
+      );
+      if (result.handled)
+        return result.error
+          ? { success: false, error: result.error }
+          : { success: true };
+    }
     return process.queueMessage(message, {
       allowSteer: options?.allowSteer,
     });

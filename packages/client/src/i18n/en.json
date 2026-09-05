@@ -57,6 +57,8 @@
   "explorationLine": "line {line}",
   "explorationLineRange": "lines {start}-{end}",
   "goalRendererCardLabel": "Codex goal",
+  "goalNoticeLabel": "Goal",
+  "goalFlagLabel": "Current goal: {objective}",
   "goalRendererObjectiveLabel": "Objective",
   "goalRendererStatusActive": "Active",
   "goalRendererStatusPaused": "Paused",

@@ -480,6 +480,19 @@ export type TranscriptDisplayObject =
   | ForkSummaryTranscriptDisplayObject
   | BangCommandTranscriptDisplayObject;
 
+export interface DurableLocalCommandMessage extends AppMessageExtensions {
+  type: "system";
+  subtype: "local_command";
+  content: string;
+  details?: string[];
+  timestamp: string;
+  uuid: string;
+  id: string;
+  session_id: string;
+  isSynthetic: true;
+  placementAfterMessageId?: string;
+}
+
 export interface DurableRecapMessage extends AppMessageExtensions {
   type: "system";
   subtype: "away_summary";

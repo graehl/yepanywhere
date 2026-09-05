@@ -7,6 +7,12 @@ user-authored `!!` command runs are server-persisted display objects placed in
 the source transcript. The tagged union keeps kind-specific lifecycle and
 authorship rules explicit while sharing placement and convergence.
 
+Goal-command receipts have the same display-only purpose and durability, using
+the existing `system/local_command` transcript overlay rather than adding a
+variant to this union. Their objective display, acknowledgement, and anchored
+history-window behavior are owned by
+[emulated-slash-commands.md](emulated-slash-commands.md#codex-goal-commands).
+
 See also:
 [fork-from-turn](fork-from-turn.md) (the motivating instance — the
 "Forking…/Forked link" object),

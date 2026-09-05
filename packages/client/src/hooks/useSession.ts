@@ -2041,6 +2041,9 @@ export function useSession(
           : tempId
             ? [tempId]
             : [];
+        if (msgType === "system" && sdkMessage.subtype === "local_command") {
+          for (const id of echoedTempIds) removePendingMessage(id);
+        }
         if (msgType === "user") {
           setPromptSuggestion(null);
           const incomingText = extractUserMessageText(sdkMessage);

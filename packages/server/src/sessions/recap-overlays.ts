@@ -1,5 +1,6 @@
 import type {
   DurableRecapMessage,
+  DurableLocalCommandMessage,
   DurableSyntheticDoneMessage,
 } from "@yep-anywhere/shared";
 import type { NotificationService } from "../notifications/index.js";
@@ -192,15 +193,72 @@ export function mergeSyntheticDoneMessages(
   return merged;
 }
 
+/** Keep command receipts within the requested provider history window. */
+export function mergeLocalCommandMessages(
+  messages: readonly Message[],
+  commands: readonly DurableLocalCommandMessage[],
+  window: { hasOlderMessages?: boolean; hasNewerMessages?: boolean } = {},
+): Message[] {
+  const merged = [...messages];
+  const firstMs = messages.map(messageTimestampMs).find((ms) => ms !== null);
+  const lastMs = messages
+    .map(messageTimestampMs)
+    .reverse()
+    .find((ms) => ms !== null);
+  for (const command of [...commands].sort(
+    (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp),
+  )) {
+    if (
+      merged.some(
+        (message) => message.uuid === command.uuid || message.id === command.id,
+      )
+    )
+      continue;
+    const anchor = command.placementAfterMessageId;
+    const anchorIndex = anchor
+      ? merged.findIndex(
+          (message) => message.uuid === anchor || message.id === anchor,
+        )
+      : -1;
+    let insertAt: number;
+    if (anchorIndex >= 0) {
+      insertAt = anchorIndex + 1;
+      while (
+        insertAt < merged.length &&
+        merged[insertAt]?.subtype === "local_command" &&
+        merged[insertAt]?.placementAfterMessageId === anchor
+      )
+        insertAt++;
+    } else {
+      const ms = Date.parse(command.timestamp);
+      if (window.hasOlderMessages && (firstMs === undefined || ms < firstMs))
+        continue;
+      if (window.hasNewerMessages && (lastMs === undefined || ms > lastMs))
+        continue;
+      const later = merged.findIndex((message) => {
+        const timestamp = messageTimestampMs(message);
+        return timestamp !== null && timestamp > ms;
+      });
+      insertAt = later < 0 ? merged.length : later;
+    }
+    merged.splice(insertAt, 0, command as Message);
+  }
+  return merged;
+}
+
 export function mergeSessionOverlayMessages(
   messages: readonly Message[],
   recaps: readonly DurableRecapMessage[],
   doneMessages: readonly DurableSyntheticDoneMessage[],
+  localCommands: readonly DurableLocalCommandMessage[] = [],
 ): Message[] {
   // Insert user-visible done boundaries before recaps so recap supersession
   // recognizes `/done` as intervening transcript content.
   return mergeRecapMessages(
-    mergeSyntheticDoneMessages(messages, doneMessages),
+    mergeLocalCommandMessages(
+      mergeSyntheticDoneMessages(messages, doneMessages),
+      localCommands,
+    ),
     recaps,
   );
 }
@@ -268,6 +326,7 @@ export function applySessionOverlaysToSession<T extends Session>(
   session: T,
   recaps: readonly DurableRecapMessage[],
   doneMessages: readonly DurableSyntheticDoneMessage[],
+  localCommands: readonly DurableLocalCommandMessage[] = [],
 ): T {
   const summary = applyRecapOverlayToSummary(session, recaps);
   return {
@@ -276,6 +335,7 @@ export function applySessionOverlaysToSession<T extends Session>(
       session.messages,
       recaps,
       doneMessages,
+      localCommands,
     ),
   };
 }

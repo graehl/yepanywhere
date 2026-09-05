@@ -3493,6 +3493,35 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("/goal clear ");
   });
 
+  it("offers the current goal on bare /goal, tabs it in, and submits bare Enter", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        slashCommands: [
+          {
+            name: "goal",
+            description: "",
+            argumentCompletions: [
+              { value: "Ship the revised goal", description: "Current goal" },
+              { value: "clear" },
+            ],
+          },
+        ],
+      },
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "/goal" } });
+    expect(
+      screen.getByRole("menuitem", { name: "/goal Ship the revised goal" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(textarea, { key: "Tab" });
+    expect(textarea.value).toBe("/goal Ship the revised goal ");
+    fireEvent.change(textarea, { target: { value: "/goal" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("/goal", expect.anything());
+  });
+
   it("submits instead of completing a slash token after existing text", () => {
     const onSend = vi.fn();
     const textarea = renderMessageInput(

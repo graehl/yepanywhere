@@ -5074,6 +5074,66 @@ describe("Supervisor", () => {
   });
 
   describe("queue propagation", () => {
+    it.each([false, true])(
+      "dispatches an initial native goal without a model turn (resume: %s)",
+      async (resume) => {
+        let finish!: () => void;
+        const closed = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        const queue = new MessageQueue();
+        const command = vi.fn(async () => ({
+          handled: true,
+          output: { summary: "/goal", details: ["Keep working", "Goal set"] },
+        }));
+        const provider = testProvider(async () => ({
+          iterator: (async function* () {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: "goal-session",
+            };
+            await closed;
+          })(),
+          queue,
+          abort: finish,
+          runProviderCommand: command,
+        }));
+        const metadata = createLaunchSettingsMetadata();
+        const addLocalCommandMessage = vi.fn(async () => {});
+        metadata.service.addLocalCommandMessage = addLocalCommandMessage;
+        const owner = new Supervisor({
+          provider,
+          sessionMetadataService: metadata.service,
+          idleTimeoutMs: 100,
+        });
+        try {
+          const input = { text: "/goal Keep working", tempId: "goal-temp" };
+          const result = resume
+            ? await owner.resumeSession("goal-session", "/tmp/test", input)
+            : await owner.startSession("/tmp/test", input);
+          if (!("id" in result)) throw new Error("expected process");
+          expect(command).toHaveBeenCalledWith("goal", "Keep working");
+          expect(addLocalCommandMessage).toHaveBeenCalledWith(
+            "goal-session",
+            expect.objectContaining({
+              subtype: "local_command",
+              details: ["Keep working", "Goal set"],
+              tempId: "goal-temp",
+            }),
+          );
+          expect(
+            result
+              .getMessageHistory()
+              .some((message) => message.type === "user"),
+          ).toBe(false);
+          await result.abort();
+        } finally {
+          finish();
+        }
+      },
+    );
+
     it("expands emulated slash commands for the first provider message", async () => {
       let aborted = false;
       const queues: MessageQueue[] = [];

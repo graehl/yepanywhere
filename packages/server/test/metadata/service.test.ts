@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   CacheMissBillingRecord,
+  DurableLocalCommandMessage,
   WorkstreamId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -58,6 +59,29 @@ describe("SessionMetadataService", () => {
   });
 
   describe("initialization", () => {
+    it("preserves goal receipts and their positions across restart and unrelated edits", async () => {
+      await service.initialize();
+      const receipt: DurableLocalCommandMessage = {
+        type: "system",
+        subtype: "local_command",
+        content: "/goal",
+        details: ["Finish the work", "Goal set"],
+        timestamp: "2026-09-05T00:00:00.000Z",
+        uuid: "goal-1",
+        id: "goal-1",
+        session_id: "session-1",
+        isSynthetic: true,
+        placementAfterMessageId: "assistant-1",
+        tempId: "pending-1",
+      };
+      await service.addLocalCommandMessage("session-1", receipt);
+      await service.addLocalCommandMessage("session-1", receipt);
+      await service.setTitle("session-1", "Work");
+      const restarted = new SessionMetadataService({ dataDir: testDir });
+      await restarted.initialize();
+      expect(restarted.getLocalCommandMessages("session-1")).toEqual([receipt]);
+      expect(restarted.getMetadata("session-1").customTitle).toBe("Work");
+    });
     it("starts with empty state when file doesn't exist", async () => {
       await service.initialize();
 

@@ -50,6 +50,7 @@ import {
   type BangCommandHandlers,
 } from "./BangCommandDisplayObject";
 import { ForkSummaryDisplayObject } from "./ForkSummaryDisplayObject";
+import { GoalNotice } from "./GoalNotice";
 import { SessionSetupBlock } from "./blocks/SessionSetupBlock";
 import { TaskNotificationBlock } from "./blocks/TaskNotificationBlock";
 import { TextBlock } from "./blocks/TextBlock";
@@ -1168,6 +1169,14 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         );
 
       case "system": {
+        if (item.subtype === "local_command" && item.content === "/goal") {
+          const [objective = "", ...status] = (item.details ?? []).map(
+            systemDetailToText,
+          );
+          return (
+            <GoalNotice objective={objective} status={status.join("\n")} />
+          );
+        }
         if (item.subtype === "away_summary") {
           return (
             <div className="system-message-recap">

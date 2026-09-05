@@ -2,6 +2,7 @@ import {
   ALL_PERMISSION_MODES,
   type ContextUsage,
   type DurableRecapMessage,
+  type DurableLocalCommandMessage,
   type DurableSyntheticDoneMessage,
   type PermissionRules,
   type PromptSuggestionMode,
@@ -48,6 +49,7 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import { resolveCanonicalProjectRedirect } from "./session-project-routing.js";
 import { ensureRemoteDirectory } from "../sdk/remote-spawn.js";
 import { parseSlashCommandSubmission } from "../sdk/slashCommandEmulation.js";
+import { dispatchProviderCommand } from "../supervisor/provider-command.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { appendApprovalAuditLog } from "../security/approvalAuditLog.js";
@@ -81,6 +83,7 @@ import {
   hasUnreadProviderContent,
   latestRecapMessage,
   mergeSessionOverlayMessages,
+  mergeLocalCommandMessages,
 } from "../sessions/recap-overlays.js";
 import { isAutomaticSessionResumeAllowed } from "../sessions/resume-exemption.js";
 import {
@@ -834,6 +837,7 @@ function messageId(message: Message | undefined): string | undefined {
 
 type DurableSessionOverlayMessage =
   | DurableRecapMessage
+  | DurableLocalCommandMessage
   | DurableSyntheticDoneMessage;
 
 function findDurableOverlayCursor(
@@ -861,6 +865,7 @@ function sliceAfterDurableOverlayCursor(params: {
       id === params.overlay.uuid ||
       id === params.overlay.id ||
       (params.overlay.type === "system" &&
+        params.overlay.subtype === "away_summary" &&
         hasEquivalentRecapMessage([message], params.overlay))
     );
   });
@@ -2989,9 +2994,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
     const syntheticDoneMessages =
       deps.sessionMetadataService?.getSyntheticDoneMessages?.(sessionId) ?? [];
+    const localCommandMessages =
+      deps.sessionMetadataService?.getLocalCommandMessages?.(sessionId) ?? [];
     const overlayCursor = findDurableOverlayCursor(afterMessageId, [
       ...recapMessages,
       ...syntheticDoneMessages,
+      ...localCommandMessages,
     ]);
     const providerAfterMessageId = overlayCursor ? undefined : afterMessageId;
     const primaryReaderAfterMessageId =
@@ -3155,6 +3163,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           processMessages,
           recapMessages,
           syntheticDoneMessages,
+          localCommandMessages,
         );
         // Get notification data for new sessions too
         const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
@@ -3397,6 +3406,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // The overlay reassigns `session` below; hasUnreadProviderContent needs
     // the pre-overlay timestamp.
     const preRecapUpdatedAt = session.updatedAt;
+    session = {
+      ...session,
+      messages: mergeLocalCommandMessages(
+        session.messages,
+        localCommandMessages,
+        {
+          hasOlderMessages: Boolean(
+            (afterMessageId && !overlayCursor) ||
+              paginationInfo?.hasOlderMessages ||
+              loadedSession.readWindow?.omittedPrefix,
+          ),
+          hasNewerMessages: Boolean(beforeMessageId),
+        },
+      ),
+    };
     if (!beforeMessageId) {
       session = applySessionOverlaysToSession(
         session,
@@ -6630,9 +6654,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!body.deferred) {
       const parsed = parseSlashCommandSubmission(body.message);
       if (parsed) {
-        const providerResult = await process.runProviderCommand(
-          parsed.name,
-          parsed.argument,
+        const providerResult = await dispatchProviderCommand(
+          process,
+          parsed,
+          body.tempId,
+          deps.sessionMetadataService,
         );
         if (providerResult.handled) {
           if (providerResult.error) {

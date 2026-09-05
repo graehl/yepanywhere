@@ -482,18 +482,26 @@ describe("Process", () => {
         if (event.type === "message") liveMessages.push(event.message);
       });
 
-      await process.runProviderCommand("status");
+      const persistOutput = vi.fn(async () => {
+        expect(liveMessages).toEqual([]);
+      });
+      await process.runProviderCommand("status", undefined, {
+        tempId: "pending-command",
+        persistOutput,
+      });
 
       const expected = expect.objectContaining({
         type: "system",
         subtype: "local_command",
         content: "/status",
         details: ["Model: gpt-5.6"],
+        tempId: "pending-command",
         session_id: "sess-1",
         isSynthetic: true,
       });
       expect(liveMessages).toEqual([expected]);
       expect(process.getMessageHistory()).toEqual([expected]);
+      expect(persistOutput).toHaveBeenCalledWith(liveMessages[0]);
 
       unsubscribe();
       resolveIterator?.();

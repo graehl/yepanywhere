@@ -574,7 +574,8 @@ export function MessageInput({
       ? `${argumentCompletionQuery.start}:${argumentCompletionQuery.end}:argument:${argumentCompletionQuery.query}`
       : null;
   const matchingSlashCommands = useMemo(() => {
-    if (!invocationQuery) return [];
+    if (!invocationQuery || matchingSlashArgumentCompletions.length > 0)
+      return [];
     const matched = slashCommands.filter((command) =>
       commandMatchesInvocationQuery(command, invocationQuery),
     );
@@ -596,10 +597,10 @@ export function MessageInput({
       (command) =>
         preferredByName.get(command.name.trim().toLowerCase()) === command,
     );
-  }, [invocationQuery, slashCommands]);
+  }, [invocationQuery, slashCommands, matchingSlashArgumentCompletions.length]);
   const hasExactSlashCommand =
     invocationQuery !== null &&
-    matchingSlashCommands.some((command) =>
+    slashCommands.some((command) =>
       getInvocationNames(command).includes(invocationQuery.query),
     );
   const slashSuggestionCount =
@@ -609,7 +610,7 @@ export function MessageInput({
     !disabled &&
     (invocationQuery !== null || matchingSlashArgumentCompletions.length > 0) &&
     !hasNonTextComposerContent &&
-    !hasExactSlashCommand &&
+    (!hasExactSlashCommand || matchingSlashArgumentCompletions.length > 0) &&
     dismissedSlashQuery !== slashQueryKey &&
     slashSuggestionCount > 0;
   const recognizedSkillTokens = useMemo(
@@ -2173,7 +2174,9 @@ export function MessageInput({
 
   const handleSlashArgumentCompletion = useCallback(
     (match: SlashCommandArgumentCompletionMatch) => {
-      const replacement = `${match.completion.value.trim()} `;
+      const separator =
+        match.start > 0 && !/\s/.test(text[match.start - 1] ?? "") ? " " : "";
+      const replacement = `${separator}${match.completion.value.trim()} `;
       const nextText =
         text.slice(0, match.start) + replacement + text.slice(match.end);
       const nextCursor = match.start + replacement.length;
@@ -2501,6 +2504,7 @@ export function MessageInput({
       if (
         e.key === "Tab" ||
         (e.key === "Enter" &&
+          !hasExactSlashCommand &&
           !e.ctrlKey &&
           !e.metaKey &&
           !e.shiftKey &&

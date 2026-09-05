@@ -1,4 +1,4 @@
-# Codex idle manual compaction lacks an active event consumer
+# Codex idle manual compaction needs an event-consumption regression
 
 Code-path review found that Codex `runProviderCommand("compact")` sends
 `thread/compact/start` out of band and returns after acceptance, while the
@@ -13,6 +13,11 @@ subprocess regression that finishes an ordinary turn, requests compaction
 while idle, and requires compact status, boundary, and completion without
 another user message. Then connect native command turns to the existing
 consumer without adding an idle poll or sending `/compact` as model text.
+
+The goal-continuation fix now observes `turn/started` while idle and connects
+provider-started turns to the event consumer. The compaction-specific status,
+boundary, and completion sequence still needs the regression described above
+before this gap can be closed; it has not been exercised by the goal tests.
 
 This remains a static finding, not a reproduced live failure. The reported
 foreground-wait rejection was instead the intentional active-turn guard;

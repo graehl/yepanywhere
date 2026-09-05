@@ -1,0 +1,40 @@
+.notice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 2px solid var(--text-secondary);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.label {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.objective {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.flag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0.35rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}

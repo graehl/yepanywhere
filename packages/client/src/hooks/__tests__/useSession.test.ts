@@ -1506,6 +1506,29 @@ describe("useSession completion reconciliation", () => {
     ]);
   });
 
+  it("settles a local command receipt without a provider user echo", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", { owner: "self", processId: "proc-1" }),
+    );
+    let tempId = "";
+    act(() => {
+      tempId = result.current.addPendingMessage("/goal ship it").tempId;
+    });
+    expect(result.current.pendingMessages).toHaveLength(1);
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "system",
+        subtype: "local_command",
+        uuid: "goal-receipt",
+        tempId,
+        content: "/goal",
+        details: ["ship it"],
+      });
+    });
+    expect(result.current.pendingMessages).toEqual([]);
+  });
+
   it("clears pending direct sends when persisted history contains the user turn", () => {
     const { result, rerender } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

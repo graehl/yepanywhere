@@ -79,19 +79,52 @@ as the runtime skills directory.
 Codex `/goal`, `/goal clear`, `/goal pause`, `/goal resume`, and
 `/goal <objective>` are provider-native control operations. YA dispatches them
 through `thread/goal/get`, `thread/goal/clear`, and `thread/goal/set`; none may
-become model-visible turn text. Setting a new objective while an unfinished
-goal exists fails visibly and directs the user to clear it first. Clearing and
-then setting a new objective resets the provider goal without falsely marking
-the preceding goal complete. Pause and resume results report the status Codex
+become model-visible turn text, including when starting or reopening a session.
+Setting a new objective clears any preceding goal before setting the new one.
+This resets the provider goal without falsely marking the preceding goal
+complete. Pause and resume results report the status Codex
 actually returns, including a preserved usage- or budget-limited state, rather
 than echoing the requested transition.
 
 The Codex inventory preserves the original “Keep working toward a verifiable
 end state until it is met” description and `<verifiable end state>` free-form
-argument hint, and offers `clear`, `pause`, and `resume` as completions.
+argument hint, and offers `clear`, `pause`, and `resume` as completions. When
+the attached provider reports a current objective, typing exact `/goal` offers
+that objective first; Tab inserts it into the composer for editing. Enter on
+bare `/goal` submits the read-only goal query and shows the objective (or “No
+goal set”) in the session. The session header also shows a flag with the
+provider-reported objective as its tooltip. Clearing the goal removes the flag
+and objective suggestion. Historical receipts are not used to infer current
+provider state when no live inventory is available.
 Interactive `/goal edit` is not advertised because YA has no provider goal
-editor; an explicit attempt fails visibly with the supported clear-and-set
-route.
+editor; an explicit attempt directs the user to `/goal <objective>`.
+
+Successful goal commands produce a compact, always-readable local receipt with
+the objective itself, rather than a collapsed “Goal set” heading. Read, clear,
+pause, and resume receipts share that style. The receipt acknowledges the
+submitted composer temp ID, so the local command does not leave a “Sending…”
+bubble while waiting for a provider user-turn echo that will never exist.
+
+Goal receipts are YA-owned display history. YA saves the existing
+`system/local_command` row in session metadata before publishing it, preserving
+its UUID, timestamp, details, and preceding provider-message anchor. Live,
+replayed, and reloaded copies render once with the same style and placement;
+bounded history reads include only receipts within that history window. They
+never enter provider transcripts or model context. Earlier transient receipts
+cannot be reconstructed after their replay buffer has expired.
+
+Codex can start another turn autonomously after a goal command or a preceding
+turn ends. YA continues observing the app-server notification stream while
+waiting for input, and streams that work without requiring another user send
+or a browser reload. Waiting is event-driven and releases its queue listener
+on every wake or abort.
+
+Compatibility: goal receipts use the existing local-command message shape and
+session-read routes; older clients can show the generic command receipt.
+Current-objective metadata and argument completions are optional inventory
+fields. Servers that omit them retain command-name completion and no current
+goal flag; the client makes no additional provider or REST requests for these
+enhancements. No existing capability is expanded.
 
 ## Default Skill Vocabulary
 

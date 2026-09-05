@@ -6,6 +6,7 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
 const sessionId = "mock-session-001";
+const objective = "Keep goal changes visible during work and after reload";
 
 test.use({ serviceWorkers: "block" });
 
@@ -49,13 +50,28 @@ test("shows provider-owned slash hints and argument completions", async ({
         response,
         json: {
           ...body,
+          messages: [
+            ...(body.messages as Record<string, unknown>[]),
+            {
+              id: "saved-goal",
+              uuid: "saved-goal",
+              type: "system",
+              subtype: "local_command",
+              content: "/goal",
+              details: [objective, "Goal set"],
+              timestamp: new Date().toISOString(),
+              isSynthetic: true,
+            },
+          ],
           slashCommands: [
             {
               name: "goal",
               description:
                 "Keep working toward a verifiable end state until it is met",
               argumentHint: "<verifiable end state>",
+              providerDetails: { codex: { goalObjective: objective } },
               argumentCompletions: [
+                { value: objective, description: "Current goal" },
                 { value: "clear", description: "Remove the current goal" },
                 { value: "pause", description: "Pause the current goal" },
                 { value: "resume", description: "Resume the current goal" },
@@ -77,6 +93,18 @@ test("shows provider-owned slash hints and argument completions", async ({
   await expect(
     page.getByText("Previous message", { exact: true }).last(),
   ).toBeVisible();
+  await expect(page.getByText(objective, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Current goal: ${objective}` }),
+  ).toBeVisible();
+  await capture(page, "goal-marker-desktop-1000x600.png");
+  await composer.fill("/goal");
+  await expect(
+    page.getByRole("menuitem", { name: `/goal ${objective}`, exact: true }),
+  ).toBeVisible();
+  await capture(page, "goal-current-desktop-1000x600.png");
+  await composer.press("Tab");
+  await expect(composer).toHaveValue(`/goal ${objective} `);
   await composer.fill("/go");
   const goalCommand = page.getByRole("menuitem", { name: "/goal" });
   await expect(goalCommand).toContainText("<verifiable end state>");
@@ -105,6 +133,11 @@ test("shows provider-owned slash hints and argument completions", async ({
   await expect(
     page.getByText("Previous message", { exact: true }).last(),
   ).toBeVisible();
+  await composer.fill("");
+  await expect(page.getByText(objective, { exact: true })).toBeVisible();
+  await capture(page, "goal-marker-mobile-375x812.png");
+  await composer.fill("/goal");
+  await capture(page, "goal-current-mobile-375x812.png");
   await composer.fill("/go");
   await expect(goalCommand).toContainText("<verifiable end state>");
   await capture(page, "goal-hint-mobile-375x812.png");

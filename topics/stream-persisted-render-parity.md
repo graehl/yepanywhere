@@ -235,6 +235,13 @@ the sole durable source of truth. In particular, Codex rollout files are the
 canonical durable transcript; YA must not create a second durable message or
 metadata record to preserve live-only shape.
 
+User-requested goal-command receipts are an explicit display-history exception:
+they record a YA-local control operation, not provider output. YA stores the
+same local-command row used for live delivery in session metadata, with stable
+identity and placement, so reloading preserves the marker. See
+[emulated-slash-commands.md](emulated-slash-commands.md#codex-goal-commands).
+This does not authorize copying provider-only stream output into YA storage.
+
 ## Draft-first augmentation decision
 
 The implementation has two publication phases per identified finalized item:

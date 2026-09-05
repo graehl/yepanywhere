@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   DurableRecapMessage,
+  DurableLocalCommandMessage,
   EffortLevel,
   ModelInfo,
   PermissionRules,
@@ -2250,24 +2251,44 @@ export class Process {
   async runProviderCommand(
     command: string,
     argument?: string,
+    options?: {
+      tempId?: string;
+      persistOutput?: (message: DurableLocalCommandMessage) => Promise<void>;
+    },
   ): Promise<ProviderCommandResult> {
     if (!this.runProviderCommandFn) {
       return { handled: false };
     }
     const result = await this.runProviderCommandFn(command, argument);
     if (result.handled && result.output) {
-      const synthetic = this.withTimestamp({
+      const placementAfterMessageId = this.getMessageHistory()
+        .reverse()
+        .find(
+          (message) =>
+            typeof message.uuid === "string" &&
+            !message.isSynthetic &&
+            (message.type === "assistant" || message.type === "user"),
+        )?.uuid;
+      const id = randomUUID();
+      const synthetic: DurableLocalCommandMessage = {
         type: "system",
         subtype: "local_command",
         content: result.output.summary,
         ...(result.output.details ? { details: result.output.details } : {}),
         session_id: this._sessionId,
-        uuid: randomUUID(),
+        uuid: id,
+        id,
+        timestamp: new Date().toISOString(),
+        tempId: options?.tempId,
+        ...(typeof placementAfterMessageId === "string"
+          ? { placementAfterMessageId }
+          : {}),
         isMeta: false,
         isSynthetic: true,
-      } as unknown as SDKMessage);
-      this.currentBucket.push(synthetic);
-      this.emit({ type: "message", message: synthetic });
+      };
+      await options?.persistOutput?.(synthetic);
+      this.currentBucket.push(synthetic as SDKMessage);
+      this.emit({ type: "message", message: synthetic as SDKMessage });
     }
     return result;
   }

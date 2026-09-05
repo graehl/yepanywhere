@@ -66,7 +66,7 @@ export function getSlashCommandArgumentCompletionMatches(
 ): SlashCommandArgumentCompletionMatch[] {
   if (cursor !== text.length) return [];
 
-  const match = /^([/$])([^\s/]+)[ \t]+([^\s]*)$/.exec(text);
+  const match = /^([/$])([^\s/]+)(?:[ \t]+([^\n]*))?$/.exec(text);
   if (!match) return [];
 
   const sigil = match[1];

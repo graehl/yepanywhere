@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   CodexSessionEntry,
+  DurableLocalCommandMessage,
   DurableRecapMessage,
   ProviderName,
   TranscriptDisplayObject,
@@ -533,7 +534,9 @@ describe("Sessions metadata route", () => {
     });
 
     await vi.waitFor(() => {
-      expect(runProviderCommand).toHaveBeenCalledWith("compact", "");
+      expect(runProviderCommand).toHaveBeenCalledWith("compact", "", {
+        tempId: undefined,
+      });
     });
     expect(noteInputIntent).toHaveBeenCalledOnce();
 
@@ -566,7 +569,9 @@ describe("Sessions metadata route", () => {
     });
 
     expect(response.status).toBe(409);
-    expect(runProviderCommand).toHaveBeenCalledWith("compact", "");
+    expect(runProviderCommand).toHaveBeenCalledWith("compact", "", {
+      tempId: undefined,
+    });
     await expect(response.json()).resolves.toMatchObject({
       error: reason,
       reason,
@@ -2927,6 +2932,58 @@ describe("Sessions metadata route", () => {
       updatedAt: recap.timestamp,
       hasUnread: false,
     });
+  });
+
+  it("returns saved goal receipts in place and accepts their ids as forward cursors", async () => {
+    const project = { ...createProject(), provider: "grok" as const };
+    const receipt: DurableLocalCommandMessage = {
+      type: "system",
+      subtype: "local_command",
+      content: "/goal",
+      details: ["Finish the work", "Goal set"],
+      timestamp: "2026-03-10T09:45:00.000Z",
+      id: "goal-1",
+      uuid: "goal-1",
+      session_id: "sess-1",
+      isSynthetic: true,
+      placementAfterMessageId: "provider-1",
+    };
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSession: vi.fn(async () => createLoadedGrokSession()),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+        getProvider: vi.fn(() => "grok"),
+        getLocalCommandMessages: vi.fn(() => [receipt]),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+    for (let reload = 0; reload < 2; reload++) {
+      const response = await routes.request(
+        `/projects/${project.id}/sessions/sess-1`,
+      );
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(
+        json.messages.map((message: Message) => message.uuid ?? message.id),
+      ).toEqual(["provider-1", "goal-1"]);
+      expect(json.messages[1]).toMatchObject(receipt);
+    }
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?afterMessageId=goal-1`,
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).messages).toEqual([]);
   });
 
   it("handles durable recap ids as overlay cursors", async () => {

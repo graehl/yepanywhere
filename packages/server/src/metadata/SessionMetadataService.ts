@@ -10,6 +10,7 @@ import * as path from "node:path";
 import {
   type CacheMissBillingRecord,
   type DurableRecapMessage,
+  type DurableLocalCommandMessage,
   type DurableSyntheticDoneMessage,
   type EffortLevel,
   type PermissionMode,
@@ -65,6 +66,7 @@ export interface SessionMetadata {
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   /** Durable YA-owned recap rows merged into the transcript view only. */
   recapMessages?: DurableRecapMessage[];
+  localCommandMessages?: DurableLocalCommandMessage[];
   /** Durable YA-only `/done` rows merged into the transcript view only. */
   syntheticDoneMessages?: DurableSyntheticDoneMessage[];
   /** Requested boundary awaiting the live provider turn's idle edge. */
@@ -293,6 +295,29 @@ export class SessionMetadataService {
       ...(this.state.sessions[this.resolveSessionId(sessionId)]
         ?.syntheticDoneMessages ?? []),
     ];
+  }
+
+  getLocalCommandMessages(sessionId: string): DurableLocalCommandMessage[] {
+    return [
+      ...(this.state.sessions[this.resolveSessionId(sessionId)]
+        ?.localCommandMessages ?? []),
+    ];
+  }
+
+  async addLocalCommandMessage(
+    sessionId: string,
+    message: DurableLocalCommandMessage,
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      localCommandMessages: [
+        ...(metadata.localCommandMessages ?? []).filter(
+          (row) => row.uuid !== message.uuid,
+        ),
+        message,
+      ],
+    }));
+    await this.save();
   }
 
   getCacheMissBillingEvents(
@@ -936,6 +961,9 @@ export class SessionMetadataService {
     }
     if (updated.recapMessages?.length) {
       cleaned.recapMessages = updated.recapMessages;
+    }
+    if (updated.localCommandMessages?.length) {
+      cleaned.localCommandMessages = updated.localCommandMessages;
     }
     if (updated.syntheticDoneMessages?.length) {
       cleaned.syntheticDoneMessages = updated.syntheticDoneMessages;

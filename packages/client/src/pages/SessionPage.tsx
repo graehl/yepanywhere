@@ -45,6 +45,7 @@ import {
   SessionViewerTranscriptGate,
 } from "../components/SessionManagedViewer";
 import styles from "./SessionPage.module.css";
+import { GoalFlag } from "../components/GoalNotice";
 import { buildBangEchoText, collectBangHistory } from "../lib/bangCommands";
 import { serverSupportsBangCommands } from "../lib/bangCommandAvailability";
 import { BtwAsidePane } from "../components/BtwAsidePane";
@@ -658,6 +659,8 @@ function SessionPageContent({
   );
   const providerRuntimeStatus =
     useProviderRuntimeStatusForSession(actualSessionId);
+  const currentGoal = slashCommands.find((command) => command.name === "goal")
+    ?.providerDetails?.codex?.goalObjective;
   const sessionLoadingProgressText =
     sessionLoadingProgressEnabled && sessionLoadingProgressDetailsVisible
       ? getSessionLoadingProgressText(sessionLoadProgress, t)
@@ -5077,6 +5080,7 @@ function SessionPageContent({
                   >
                     <span className="session-title-text">{displayTitle}</span>
                   </button>
+                  {currentGoal && <GoalFlag objective={currentGoal} />}
                   <button
                     type="button"
                     className={`session-title-chevron-trigger${

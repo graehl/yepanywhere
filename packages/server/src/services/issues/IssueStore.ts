@@ -6,6 +6,7 @@ import type {
 } from "../../storage/sqlite.js";
 import {
   extractIssueReferences,
+  issueUrl,
   issueExcerpt,
   type IssueText,
 } from "./extract.js";
@@ -96,7 +97,128 @@ export class IssueStore {
       )[0]!.id,
     );
   }
-  /** At most 25 observations per transaction (up to 100 domain-row writes). */
+  knownJiraProjects() {
+    return this.rows(
+      "SELECT DISTINCT prefix,site FROM jira_project_sites ORDER BY prefix,site",
+    ).map((row) => ({ prefix: String(row.prefix), site: String(row.site) }));
+  }
+  private learnJira(url: string, project: string): void {
+    const ref = issueUrl(url);
+    if (ref?.provider !== "jira" || !ref.url) return;
+    const prefix = ref.key.split("-")[0]!;
+    const site = ref.url.slice(0, -`/browse/${ref.key}`.length);
+    if (
+      this.rows(
+        "SELECT 1 FROM jira_project_sites WHERE prefix=? AND site=? AND project_id=?",
+        prefix,
+        site,
+        project,
+      ).length
+    )
+      return;
+    this.run(
+      "INSERT INTO jira_project_sites VALUES (?,?,?,?)",
+      prefix,
+      site,
+      project,
+      Date.now(),
+    );
+    this.reconcileJira();
+  }
+  /** Coalesce rule changes into one resumable pass; never scan provider files. */
+  reconcileJira(): void {
+    this.run(`INSERT INTO issue_registry_work(id,phase,after_id) VALUES (1,1,0)
+      ON CONFLICT(id) DO UPDATE SET after_id=CASE WHEN phase=0 THEN after_id ELSE 0 END`);
+  }
+  private jiraIdentity(key: string, project: string): string | null {
+    const prefix = key.split("-")[0]!;
+    const blocked =
+      this.settings().jiraKeyBlocklist ?? DEFAULT_JIRA_KEY_BLOCKLIST;
+    if (blocked.some((name) => name === prefix)) return null;
+    const sites = this.rows(
+      "SELECT DISTINCT site FROM jira_project_sites WHERE prefix=? ORDER BY site",
+      prefix,
+    );
+    const local =
+      sites.length > 1
+        ? this.rows(
+            "SELECT DISTINCT site FROM jira_project_sites WHERE prefix=? AND project_id=? ORDER BY site",
+            prefix,
+            project,
+          )
+        : sites;
+    if (local.length !== 1) return null;
+    const ref = issueUrl(`${local[0]!.site}/browse/${key}`)!;
+    this.run(
+      `INSERT OR IGNORE INTO external_issues(id,ref_key,url,provider,kind,created_at) VALUES (?,?,?,'jira','issue',?)`,
+      ref.identity!,
+      key,
+      ref.url!,
+      Date.now(),
+    );
+    return ref.identity;
+  }
+  /** One bounded transaction per worker turn, including upgrade URL learning. */
+  private processJiraRegistry(): boolean {
+    const job = this.rows(
+      "SELECT phase,after_id FROM issue_registry_work WHERE id=1",
+    )[0];
+    if (!job) return false;
+    this.database.transaction(() => {
+      const learning = job.phase === 0;
+      const batch = this.rows(
+        `SELECT e.*,l.state FROM session_issue_evidence e
+        LEFT JOIN session_issue_links l ON l.id=e.link_id
+        WHERE e.id>? AND e.provider='jira' AND ${learning ? "e.kind IN ('message-url','manual')" : "e.kind='ticket-key'"}
+        ORDER BY e.id LIMIT 25`,
+        job.after_id!,
+      );
+      for (const row of batch) {
+        if (learning)
+          this.learnJira(String(row.observed_value), String(row.project_id));
+        else if (row.state !== "confirmed") {
+          const identity = this.jiraIdentity(
+            String(row.ref_key),
+            String(row.project_id),
+          );
+          const link = identity
+            ? this.link(identity, String(row.session_id))
+            : null;
+          this.run(
+            "UPDATE session_issue_evidence SET link_id=?,suppressed=MAX(suppressed,?) WHERE id=?",
+            link,
+            row.state === "dismissed" ? 1 : 0,
+            row.id!,
+          );
+        }
+      }
+      if (batch.length === 25)
+        this.run(
+          "UPDATE issue_registry_work SET after_id=? WHERE id=1",
+          batch.at(-1)!.id!,
+        );
+      else if (learning)
+        this.run(
+          "UPDATE issue_registry_work SET phase=1,after_id=0 WHERE id=1",
+        );
+      else this.run("DELETE FROM issue_registry_work WHERE id=1");
+    });
+    return true;
+  }
+  /** Rules affect old observations immediately, including already linked keys. */
+  private visibleEvidence(): string {
+    const blocked =
+      this.settings().jiraKeyBlocklist ?? DEFAULT_JIRA_KEY_BLOCKLIST;
+    // Only normalized word-shaped project keys enter this literal list.
+    const names = blocked
+      .filter((name) => /^[A-Z][A-Z0-9_]*$/.test(name))
+      .map((name) => `'${name}'`)
+      .join(",");
+    return `(e.provider!='jira' OR e.kind!='ticket-key' OR l.state='confirmed' OR
+      (${names ? `substr(e.ref_key,1,instr(e.ref_key,'-')-1) NOT IN (${names}) AND` : ""}
+      (e.link_id IS NOT NULL OR ${this.settings().aggressiveMatching ? 1 : 0}=1)))`;
+  }
+  /** At most 25 observations per transaction, including namespace learning. */
   capture(
     source: IssueSource,
     message: IssueText,
@@ -105,10 +227,7 @@ export class IssueStore {
     ownedEnd = Number.POSITIVE_INFINITY,
   ): void {
     const settings = this.settings();
-    const refs = extractIssueReferences(message.text, {
-      blockedJiraProjects:
-        settings.jiraKeyBlocklist ?? DEFAULT_JIRA_KEY_BLOCKLIST,
-    }).filter(
+    const refs = extractIssueReferences(message.text).filter(
       (ref) =>
         ref.start + offset >= ownedStart && ref.start + offset < ownedEnd,
     );
@@ -130,7 +249,16 @@ export class IssueStore {
           // confirmation is on, so turning it on never asks about a backlog.
           // OR IGNORE is the whole retry policy: a reference that already has
           // a verdict, even an unreachable one, is never asked about again.
-          if (settings.confirmation?.enabled)
+          if (
+            settings.confirmation?.enabled &&
+            (ref.identity ||
+              ref.provider === "github" ||
+              (!(settings.jiraKeyBlocklist ?? DEFAULT_JIRA_KEY_BLOCKLIST).some(
+                (prefix) => prefix === ref.key.split("-")[0],
+              ) &&
+                (settings.aggressiveMatching ||
+                  this.jiraIdentity(ref.key, source.projectId))))
+          )
             this.run(
               "INSERT OR IGNORE INTO issue_confirmations(project_id,provider,ref_key,state,checked_at) VALUES (?,?,?,'pending',0)",
               source.projectId,
@@ -139,6 +267,8 @@ export class IssueStore {
             );
           let identity = ref.identity;
           if (identity) {
+            if (ref.provider === "jira" && ref.url)
+              this.learnJira(ref.url, source.projectId);
             this.run(
               `INSERT INTO external_issues(id,ref_key,url,provider,kind,title,created_at) VALUES (?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET kind=CASE WHEN external_issues.kind='pr' THEN 'pr' ELSE excluded.kind END,url=CASE WHEN external_issues.kind='pr' THEN external_issues.url ELSE excluded.url END,title=COALESCE(external_issues.title,excluded.title)`,
@@ -150,6 +280,8 @@ export class IssueStore {
               ref.title,
               Date.now(),
             );
+          } else if (ref.provider === "jira") {
+            identity = this.jiraIdentity(ref.key, source.projectId);
           } else {
             // Only observations in this project establish a namespace mapping.
             const matches = this.rows(
@@ -210,11 +342,20 @@ export class IssueStore {
   }
   /** A bounded resolution batch; the index worker resumes remaining durable jobs. */
   processResolutions(): boolean {
+    if (this.processJiraRegistry()) return true;
     const job = this.rows("SELECT * FROM issue_resolution_jobs LIMIT 1")[0];
     if (!job) return false;
     this.database.transaction(() => {
       const project = String(job.project_id),
         key = String(job.ref_key);
+      if (!key.includes("#")) {
+        this.run(
+          "DELETE FROM issue_resolution_jobs WHERE project_id=? AND ref_key=?",
+          project,
+          key,
+        );
+        return;
+      }
       const candidates = this.rows(
         `SELECT DISTINCT i.id FROM external_issues i JOIN session_issue_links l ON l.issue_id=i.id JOIN session_issue_evidence e ON e.link_id=l.id WHERE e.project_id=? AND i.ref_key=? AND e.kind IN ('message-url','manual','contextual-number') LIMIT 2`,
         project,
@@ -268,7 +409,7 @@ export class IssueStore {
       `WITH observations AS (
       SELECT e.*,l.issue_id,l.state,COALESCE(j.project_id,e.project_id) AS current_project
       FROM session_issue_evidence e LEFT JOIN session_issue_links l ON l.id=e.link_id LEFT JOIN issue_index_jobs j ON j.session_id=e.session_id
-      WHERE (?=1 OR (e.suppressed=0 AND COALESCE(l.state,'discovered')!='dismissed'))
+      WHERE ${this.visibleEvidence()} AND (?=1 OR (e.suppressed=0 AND COALESCE(l.state,'discovered')!='dismissed'))
       AND (?='' OR COALESCE(j.project_id,e.project_id)=?) AND (?='' OR e.session_id=?)
     ), items AS (
       SELECT i.id,i.ref_key,COALESCE(i.manual_title,i.title) AS title,i.url,i.provider,i.kind,COUNT(DISTINCT e.session_id) AS count,NULL AS context
@@ -330,11 +471,20 @@ export class IssueStore {
       values: parsed,
     };
   }
-  evidence(id: string, limit = 50, offset = 0): IssueEvidence[] {
+  evidence(
+    id: string,
+    limit = 50,
+    offset = 0,
+    session = "",
+    dismissed = true,
+  ): IssueEvidence[] {
     const match = this.selector(id);
     return this.rows(
-      `SELECT e.*,COALESCE(j.project_id,e.project_id) AS current_project,CASE WHEN e.suppressed=1 THEN 'dismissed' ELSE COALESCE(l.state,'discovered') END AS state FROM session_issue_evidence e LEFT JOIN session_issue_links l ON l.id=e.link_id LEFT JOIN issue_index_jobs j ON j.session_id=e.session_id WHERE ${match.sql} ORDER BY e.id DESC LIMIT ? OFFSET ?`,
+      `SELECT e.*,COALESCE(j.project_id,e.project_id) AS current_project,CASE WHEN e.suppressed=1 THEN 'dismissed' ELSE COALESCE(l.state,'discovered') END AS state FROM session_issue_evidence e LEFT JOIN session_issue_links l ON l.id=e.link_id LEFT JOIN issue_index_jobs j ON j.session_id=e.session_id WHERE ${match.sql} AND ${this.visibleEvidence()} AND (?='' OR e.session_id=?) AND (?=1 OR (e.suppressed=0 AND COALESCE(l.state,'discovered')!='dismissed')) ORDER BY CASE WHEN julianday(e.source_time) IS NULL THEN 1 ELSE 0 END,julianday(e.source_time),e.id LIMIT ? OFFSET ?`,
       ...match.values,
+      session,
+      session,
+      dismissed ? 1 : 0,
       limit,
       offset,
     ).map((row) => ({
@@ -350,13 +500,34 @@ export class IssueStore {
       state: String(row.state),
     }));
   }
+  sessions(id: string, dismissed = false) {
+    const match = this.selector(id);
+    return this.rows(
+      `SELECT e.session_id,COALESCE(j.project_id,e.project_id) AS project_id,
+      COUNT(*) AS count, MIN(CASE WHEN e.suppressed=1 THEN 'dismissed' ELSE COALESCE(l.state,'discovered') END) AS state,
+      MAX(e.source_time) AS last_mention
+      FROM session_issue_evidence e LEFT JOIN session_issue_links l ON l.id=e.link_id
+      LEFT JOIN issue_index_jobs j ON j.session_id=e.session_id
+      WHERE ${match.sql} AND ${this.visibleEvidence()}
+      AND (?=1 OR (e.suppressed=0 AND COALESCE(l.state,'discovered')!='dismissed'))
+      GROUP BY e.session_id`,
+      ...match.values,
+      dismissed ? 1 : 0,
+    ).map((row) => ({
+      sessionId: String(row.session_id),
+      projectId: String(row.project_id),
+      evidenceCount: Number(row.count),
+      state: String(row.state),
+      lastMention: row.last_mention as string | null,
+    }));
+  }
   decide(
     id: string,
     session: string,
     state: "confirmed" | "dismissed" | "discovered",
   ): void {
     this.database.transaction(() => {
-      if (!id.startsWith("ref:"))
+      if (!id.startsWith("ref:")) {
         this.run(
           "UPDATE session_issue_links SET state=?,decision_at=? WHERE issue_id=? AND session_id=?",
           state,
@@ -364,7 +535,13 @@ export class IssueStore {
           id,
           session,
         );
-      else {
+        if (state !== "dismissed")
+          this.run(
+            "UPDATE session_issue_evidence SET suppressed=0 WHERE link_id IN (SELECT id FROM session_issue_links WHERE issue_id=? AND session_id=?)",
+            id,
+            session,
+          );
+      } else {
         const match = this.selector(id);
         this.run(
           `UPDATE session_issue_evidence SET suppressed=? WHERE id IN (SELECT e.id FROM session_issue_evidence e LEFT JOIN session_issue_links l ON l.id=e.link_id LEFT JOIN issue_index_jobs j ON j.session_id=e.session_id WHERE ${match.sql} AND e.session_id=?)`,
@@ -375,8 +552,14 @@ export class IssueStore {
       }
     });
   }
-  title(id: string, title: string | null): void {
+  title(id: string, title: string | null): string | null {
     this.run("UPDATE external_issues SET manual_title=? WHERE id=?", title, id);
+    return (
+      (this.rows(
+        "SELECT COALESCE(manual_title,title) AS title FROM external_issues WHERE id=?",
+        id,
+      )[0]?.title as string | null) ?? null
+    );
   }
   delete(id: string): void {
     const match = this.selector(id);

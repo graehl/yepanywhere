@@ -90,6 +90,8 @@ interface SessionListItemProps {
   mode: "card" | "compact";
   showProjectName?: boolean;
   showTimestamp?: boolean;
+  /** Hide session management when the enclosing surface owns its actions. */
+  showMenu?: boolean;
   showContextUsage?: boolean;
   showStatusBadge?: boolean;
   showActivityIndicator?: boolean;
@@ -193,6 +195,7 @@ export function SessionListItem({
   mode,
   showProjectName = false,
   showTimestamp = true,
+  showMenu = true,
   showContextUsage = true,
   showStatusBadge = true,
   showActivityIndicator = false,
@@ -1006,7 +1009,7 @@ export function SessionListItem({
         )}
 
         {/* Only show menu when provider is available (required for clone) */}
-        {provider && (
+        {provider && showMenu && (
           <SessionMenu
             sessionId={sessionId}
             projectId={projectId}

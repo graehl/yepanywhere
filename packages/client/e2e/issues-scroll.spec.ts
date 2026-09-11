@@ -53,6 +53,37 @@ for (const viewport of [
         },
       });
     });
+    await page.route("**/api/issues/sessions?*", (route) =>
+      route.fulfill({
+        json: {
+          sessions: [
+            {
+              sessionId: "scroll-session",
+              projectId: "scroll-project",
+              title: "A session with many mentions",
+              state: "discovered",
+              sourceAvailable: false,
+              evidenceCount: 80,
+              evidence: [
+                {
+                  id: 0,
+                  sessionId: "scroll-session",
+                  projectId: "scroll-project",
+                  messageId: "first",
+                  excerpt: "The first mention",
+                  value: "SCROLL-51",
+                  kind: "message-url",
+                  observedAt: 1789000000000,
+                  sourceTime: null,
+                  state: "discovered",
+                },
+              ],
+            },
+          ],
+          nextOffset: null,
+        },
+      }),
+    );
     await page.route("**/api/issues/evidence?*", (route) =>
       route.fulfill({
         json: {
@@ -92,6 +123,7 @@ for (const viewport of [
     const lastIssue = results.getByRole("button", { name: /^SCROLL-51 / });
     await expect(lastIssue).toBeInViewport();
     await lastIssue.click();
+    await page.getByRole("button", { name: "Show 79 more mentions" }).click();
     const more = page.getByRole("button", {
       name: "More evidence",
       exact: true,

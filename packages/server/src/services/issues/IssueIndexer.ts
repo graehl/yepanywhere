@@ -63,6 +63,7 @@ export class IssueIndexer {
     this.controller.abort();
     this.controller = new AbortController();
     this.lastError = null;
+    this.store.reconcileJira();
     // Settings decide what a sweep admits, so a change invalidates the mark.
     this.sweptMark = undefined;
     this.store.run(
@@ -376,6 +377,7 @@ export class IssueIndexer {
   coverage() {
     return {
       settings: this.settings(),
+      knownJiraProjects: this.store.knownJiraProjects(),
       active: Boolean(this.work || this.enumeration || this.viewTasks.size),
       error: this.lastError,
       counts: this.store

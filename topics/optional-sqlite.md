@@ -195,8 +195,11 @@ its receipts/counts/staging tables. The remaining vocabulary state table is no
 longer used: active learning settings and counts live in their separate JSON and
 `speech-vocabulary.sqlite` files. See
 [learned vocabulary](pluggable-speech-recognition.md#learned-vocabulary-contract).
-Versions 4 and 5 add [issue/session associations](issue-session-associations.md):
-three durable domain tables and operational indexing/resolution/deletion state.
+Versions 4 through 7 add [issue/session associations](issue-session-associations.md):
+durable issue/evidence tables, tracker confirmation, learned Jira prefix/site
+mappings, and operational indexing/resolution/deletion state. Migration 7 only
+schedules its URL-learning and candidate backfill; bounded post-startup worker
+batches own the conversion.
 Opening the database does not enable that experiment.
 
 One statically registered, consecutive migration sequence owns `user_version`.

@@ -227,7 +227,12 @@ describe("session detail compact-tail pagination", () => {
     const settings = new ServerSettingsService({ dataDir });
     await settings.initialize();
     await settings.updateSettings({
-      issueAssociations: { enabled: true, scope: "viewed", recentDays: 7 },
+      issueAssociations: {
+        enabled: true,
+        scope: "viewed",
+        recentDays: 7,
+        aggressiveMatching: true,
+      },
     });
     const { app, disposeSessionReaders } = createApp({
       sdk: new MockClaudeSDK(),

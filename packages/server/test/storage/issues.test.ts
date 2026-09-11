@@ -22,7 +22,16 @@ function fixture() {
   dirs.push(dir);
   const service = new DiscoverySqliteService({ dataDir: dir, mode: "auto" });
   services.push(service);
-  return { dir, store: new IssueStore(service.getDatabase()!), service };
+  return {
+    dir,
+    store: new IssueStore(service.getDatabase()!, () => ({
+      enabled: true,
+      scope: "viewed",
+      recentDays: 7,
+      aggressiveMatching: true,
+    })),
+    service,
+  };
 }
 afterEach(() => {
   for (const s of services.splice(0)) s.close();
@@ -185,7 +194,7 @@ describe("durable issue evidence", () => {
         .evidence(store.list("", "a")[0]!.id)
         .find((e) => e.messageId === "m")?.state,
     ).toBe("dismissed");
-    expect(store.list("", "b")[0]?.unresolved).toBe(true);
+    expect(store.list("", "b")[0]?.unresolved).toBe(false);
   });
   it("restores ambiguity when a second Jira tenant is observed in the same project", () => {
     const { store } = fixture();
@@ -216,8 +225,9 @@ describe("durable issue evidence", () => {
     expect(store.list("_")).toHaveLength(0);
     expect(store.list("", "", "", false, 1)).toHaveLength(1);
     const item = store.list("%")[0]!;
-    store.title(item.id, "New title");
+    expect(store.title(item.id, "New title")).toBe("New title");
     expect(store.list("New title")).toHaveLength(1);
+    expect(store.title(item.id, null)).toBe("Fix 100%");
     store.delete(item.id);
     expect(store.list()).toHaveLength(1);
   });
@@ -238,7 +248,7 @@ describe("durable issue evidence", () => {
 });
 
 describe("append-only discovery migrations", () => {
-  it.each([0, 1, 2, 3, 4, 5, 6])(
+  it.each([0, 1, 2, 3, 4, 5, 6, 7])(
     "upgrades prefix %i without losing unrelated data",
     (prefix) => {
       const db = loadSqliteDriver()!.open(":memory:");
@@ -280,7 +290,10 @@ describe("append-only discovery migrations", () => {
       expect(() =>
         migrateDiscoveryDatabase(db, [
           ...DISCOVERY_MIGRATIONS,
-          { version: 6, sql: "CREATE TABLE broken (" },
+          {
+            version: DISCOVERY_MIGRATIONS.length + 1,
+            sql: "CREATE TABLE broken (",
+          },
         ]),
       ).toThrow();
       const store = new IssueStore(db);

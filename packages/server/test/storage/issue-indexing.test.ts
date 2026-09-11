@@ -150,7 +150,12 @@ it("indexes Codex visible user/assistant text with stable source identity and ex
 it("automatically drains a durable recent queue larger than its in-memory batch and preserves state on restart", async () => {
   const dir = directory();
   const service = new DiscoverySqliteService({ dataDir: dir, mode: "auto" });
-  const store = new IssueStore(service.getDatabase()!);
+  const store = new IssueStore(service.getDatabase()!, () => ({
+    enabled: true,
+    scope: "viewed",
+    recentDays: 7,
+    aggressiveMatching: true,
+  }));
   let settings: IssueSettings = {
     enabled: true,
     scope: "recent",
@@ -213,7 +218,12 @@ it("automatic viewed windows need no registered issues and disable fences delaye
     dataDir: directory(),
     mode: "auto",
   });
-  const store = new IssueStore(service.getDatabase()!);
+  const store = new IssueStore(service.getDatabase()!, () => ({
+    enabled: true,
+    scope: "viewed",
+    recentDays: 7,
+    aggressiveMatching: true,
+  }));
   let settings: IssueSettings = {
     enabled: true,
     scope: "viewed",
@@ -328,7 +338,12 @@ it("deletion fences an in-flight batch without losing other references in the sa
     dataDir: directory(),
     mode: "auto",
   });
-  const store = new IssueStore(service.getDatabase()!);
+  const store = new IssueStore(service.getDatabase()!, () => ({
+    enabled: true,
+    scope: "viewed",
+    recentDays: 7,
+    aggressiveMatching: true,
+  }));
   const source = { sessionId: "s", projectId: "p", sourceVersion: "v1" };
   store.capture(source, { id: "m", text: "https://github.com/a/b/pull/42" });
   const id = store.list()[0]!.id;
@@ -400,7 +415,16 @@ it("sweeps a catalog for moved projects without a write transaction per session"
       return database.transaction(operation);
     },
   };
-  const store = new IssueStore(counted);
+  const store = new IssueStore(counted, () => ({
+    enabled: true,
+    scope: "viewed",
+    recentDays: 7,
+    aggressiveMatching: true,
+  }));
+  while (store.processResolutions()) {
+    /* Finish one-time schema backfill before measuring idle sweeps. */
+  }
+  transactions = 0;
   let project = "p";
   const rows = Array.from(
     { length: 200 },
@@ -451,7 +475,12 @@ it("sweeps a catalog for moved projects without a write transaction per session"
 it("skips a republished catalog that has not changed, and still sweeps on demand", async () => {
   const dir = directory();
   const service = new DiscoverySqliteService({ dataDir: dir, mode: "auto" });
-  const store = new IssueStore(service.getDatabase()!);
+  const store = new IssueStore(service.getDatabase()!, () => ({
+    enabled: true,
+    scope: "viewed",
+    recentDays: 7,
+    aggressiveMatching: true,
+  }));
   let enumerations = 0;
   const rows = Array.from(
     { length: 5 },

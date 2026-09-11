@@ -2149,8 +2149,8 @@ export function createApp(options: AppOptions): AppResult {
         indexer,
         settings,
         async (projectId, sessionId) => {
-          const canonical =
-            supervisor.getProcessForSession(sessionId)?.sessionId ?? sessionId;
+          const process = supervisor.getProcessForSession(sessionId);
+          const canonical = process?.sessionId ?? sessionId;
           if (canonical !== sessionId) return { available: false };
           const metadata =
             options.sessionMetadataService?.getMetadata(sessionId);
@@ -2169,10 +2169,20 @@ export function createApp(options: AppOptions): AppResult {
           return {
             available: Boolean(summary),
             title: metadata?.customTitle ?? summary?.title ?? undefined,
+            initialPrompt: summary?.initialPrompt ?? summary?.fullTitle,
+            lastAgentText: summary?.lastAgentText,
+            model: summary?.model,
+            ownership: process
+              ? { owner: "self" as const, processId: process.id }
+              : summary?.ownership,
+            activity: process?.getInfo().state,
+            provider: summary?.provider,
+            createdAt: summary?.createdAt,
           };
         },
         issueCredentials,
         confirmer,
+        async () => (await catalog.read()).rows,
       ),
     );
     indexer.configure();

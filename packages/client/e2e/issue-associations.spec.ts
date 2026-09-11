@@ -42,12 +42,12 @@ test("automatically discovers Jira and GitHub references from viewed and recent 
   };
   await write(
     "issues-view-one",
-    "Working on AUTOTEST-123. [Repair cancellation handling](https://github.com/example/engine/pull/42).",
+    "Working on https://jira.example.test/browse/AUTOTEST-123. [Repair cancellation handling](https://github.com/example/engine/pull/42).",
   );
   await write("issues-view-two", "Another conversation about AUTOTEST-123.");
   await write(
     "issues-unopened",
-    "Index this unopened session: RECENTTEST-345.",
+    "Index this unopened session: https://jira.example.test/browse/RECENTTEST-345.",
   );
   await write("issues-old", "Do not index this old session: OLDTEST-999.", 21);
   await page.request.put(`${baseURL}/api/settings`, {
@@ -112,24 +112,20 @@ test("automatically discovers Jira and GitHub references from viewed and recent 
       .getByRole("button", { name: /AUTOTEST-123.*2 sessions/ })
       .click();
     await expect(
-      page.getByText("Another conversation about AUTOTEST-123.", {
+      page.getByRole("article", {
+        name: "Another conversation about AUTOTEST-123.",
         exact: true,
       }),
     ).toBeVisible();
-    await page
-      .getByRole("textbox", { name: "Full URL for this ticket" })
-      .fill("https://jira.example.test/browse/AUTOTEST-123");
-    await page
-      .getByRole("button", { name: "Resolve tracker", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: /AUTOTEST-123.*2 sessions/ })
-      .click();
     await expect(
-      page.getByRole("link", { name: "Open issue or pull request" }),
+      page.getByRole("link", { name: "AUTOTEST-123 ↗" }),
     ).toHaveAttribute("href", "https://jira.example.test/browse/AUTOTEST-123");
     await page
-      .getByRole("textbox", { name: "Custom issue title" })
+      .getByRole("button", { name: "Actions for AUTOTEST-123" })
+      .click();
+    await page.getByRole("menuitem", { name: "Set display title…" }).click();
+    await page
+      .getByRole("textbox", { name: "Display title in Yep Anywhere" })
       .fill("Automatic association evidence");
     await page.getByRole("button", { name: "Save title" }).click();
     await search.fill("Automatic association evidence");
@@ -139,9 +135,10 @@ test("automatically discovers Jira and GitHub references from viewed and recent 
       }),
     ).toBeVisible();
     await page
-      .getByRole("button", { name: "Dismiss association" })
+      .getByRole("button", { name: "Association actions", exact: true })
       .first()
       .click();
+    await page.getByRole("menuitem", { name: "Dismiss association" }).click();
     await page.reload();
     await search.fill("AUTOTEST-123");
     await expect(

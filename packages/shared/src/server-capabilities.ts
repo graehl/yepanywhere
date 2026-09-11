@@ -195,6 +195,7 @@ export const SERVER_CAPABILITIES = {
         "GET /api/issues/credentials",
         "PUT /api/issues/credentials",
         "GET /api/issues/evidence",
+        "GET /api/issues/sessions",
         "POST /api/issues/confirm",
         "POST /api/issues/decision",
         "POST /api/issues/resolve",

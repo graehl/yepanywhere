@@ -1351,6 +1351,9 @@ export type {
   IssueCoverage,
   IssueSearchResult,
   IssueEvidenceResult,
+  IssueSession,
+  IssueSessionsResult,
+  KnownJiraProject,
 } from "./issues.js";
 
 export {

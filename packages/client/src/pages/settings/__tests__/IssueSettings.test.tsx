@@ -68,6 +68,7 @@ function coverage(settings: Record<string, unknown>) {
     active: false,
     error: null,
     counts: [],
+    knownJiraProjects: [{ prefix: "TF", site: "https://tomfit.atlassian.net" }],
   };
 }
 
@@ -90,6 +91,23 @@ async function renderPane(settings: Record<string, unknown> = {}) {
 describe("IssueSettings tracker confirmation", () => {
   beforeEach(() => state.fetch.mockReset());
   afterEach(cleanup);
+
+  it("requires known projects by default and exposes aggressive matching as an explicit setting", async () => {
+    await renderPane();
+    const toggle = await screen.findByLabelText<HTMLInputElement>(
+      "Match unknown ticket keys",
+    );
+    expect(toggle.checked).toBe(false);
+    expect(screen.getByText("TF")).toBeTruthy();
+    expect(screen.getByText(/tomfit.atlassian.net/)).toBeTruthy();
+    await act(async () => fireEvent.click(toggle));
+    expect(state.fetch).toHaveBeenCalledWith(
+      "/issues/settings",
+      expect.objectContaining({
+        body: expect.stringContaining('"aggressiveMatching":true'),
+      }),
+    );
+  });
 
   it("keeps confirmation off and its credentials hidden until opted in", async () => {
     await renderPane();

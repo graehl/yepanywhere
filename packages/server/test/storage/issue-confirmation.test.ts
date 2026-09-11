@@ -22,6 +22,7 @@ function harness(overrides: Partial<IssueSettings> = {}) {
     enabled: true,
     scope: "viewed",
     recentDays: 7,
+    aggressiveMatching: true,
     confirmation: {
       enabled: true,
       jiraSite: "https://example.atlassian.net",

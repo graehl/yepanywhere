@@ -17,7 +17,10 @@ it("gates all data routes, validates settings, saves through the shared settings
   const settings = new ServerSettingsService({ dataDir });
   await settings.initialize();
   const db = new DiscoverySqliteService({ dataDir, mode: "auto" });
-  const store = new IssueStore(db.getDatabase()!);
+  const store = new IssueStore(
+    db.getDatabase()!,
+    () => settings.getSetting("issueAssociations") ?? DEFAULT_ISSUE_SETTINGS,
+  );
   const indexer = new IssueIndexer(store, {
     settings: () =>
       settings.getSetting("issueAssociations") ?? DEFAULT_ISSUE_SETTINGS,
@@ -54,6 +57,7 @@ it("gates all data routes, validates settings, saves through the shared settings
           enabled: true,
           scope: "viewed",
           recentDays: 7,
+          aggressiveMatching: true,
         })
       ).status,
     ).toBe(200);
@@ -95,7 +99,9 @@ it("gates all data routes, validates settings, saves through the shared settings
     ).toHaveLength(0);
     expect(resolved.items[0].unresolved).toBe(false);
     const proof = await (
-      await request(`/evidence?id=${encodeURIComponent(resolved.items[0].id)}`)
+      await request(
+        `/evidence?id=${encodeURIComponent(resolved.items[0].id)}&limit=100`,
+      )
     ).json();
     expect(
       proof.evidence.every(
@@ -107,7 +113,9 @@ it("gates all data routes, validates settings, saves through the shared settings
       { id: "historic", text: "https://jira.test/browse/ABC-123" },
     );
     const retained = await (
-      await request(`/evidence?id=${encodeURIComponent(resolved.items[0].id)}`)
+      await request(
+        `/evidence?id=${encodeURIComponent(resolved.items[0].id)}&limit=100`,
+      )
     ).json();
     expect(
       retained.evidence.find(
@@ -156,4 +164,82 @@ it("advertises only when SQLite and the implementation are both available", () =
       getIssueAssociationsAvailable: () => true,
     }),
   ).not.toContain(capability);
+});
+
+it("paginates distinct sessions by catalog activity before loading their first mention", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "ya-issue-sessions-"));
+  const settings = new ServerSettingsService({ dataDir });
+  await settings.initialize();
+  await settings.updateSettings({
+    issueAssociations: { enabled: true, scope: "viewed", recentDays: 7 },
+  });
+  const db = new DiscoverySqliteService({ dataDir, mode: "auto" });
+  const store = new IssueStore(db.getDatabase()!);
+  const indexer = new IssueIndexer(store, {
+    settings: () => settings.getSetting("issueAssociations")!,
+    candidates: async function* () {},
+    read: async () => null,
+  });
+  const catalog = [
+    { sessionId: "old", updatedAt: "2026-09-01T00:00:00Z" },
+    { sessionId: "recent", updatedAt: "2026-09-11T00:00:00Z" },
+  ];
+  const app = createIssueRoutes(
+    indexer,
+    settings,
+    async (_, id) => ({ available: true, title: id }),
+    undefined,
+    undefined,
+    async () => catalog,
+  );
+  try {
+    for (const sessionId of ["recent", "old", "missing-time"])
+      for (let i = 0; i < 55; i++)
+        store.capture(
+          { projectId: "p", sessionId },
+          {
+            id: `m${i}`,
+            text: `Mention ${i}: https://github.com/a/b/issues/1`,
+            timestamp: `2026-09-01T00:${String(i).padStart(2, "0")}:00Z`,
+          },
+        );
+    const id = store.list()[0]!.id;
+    const read = async (suffix = "") =>
+      (
+        await app.request(
+          `/issues/sessions?id=${encodeURIComponent(id)}&limit=1${suffix}`,
+        )
+      ).json();
+    const first = await read();
+    expect(
+      first.sessions.map((s: { sessionId: string }) => s.sessionId),
+    ).toEqual(["recent"]);
+    expect(first.sessions[0].evidenceCount).toBe(55);
+    expect(first.sessions[0].evidence).toHaveLength(1);
+    expect(first.sessions[0].evidence[0].excerpt).toContain("Mention 0:");
+    expect(first.nextOffset).toBe(1);
+    expect((await read("&offset=1")).sessions[0].sessionId).toBe("old");
+    expect((await read("&offset=2")).sessions[0].sessionId).toBe(
+      "missing-time",
+    );
+    expect((await read("&sort=oldest")).sessions[0].sessionId).toBe("old");
+    const mentions = await (
+      await app.request(
+        `/issues/evidence?id=${encodeURIComponent(id)}&sessionId=recent&offset=1`,
+      )
+    ).json();
+    expect(mentions.evidence).toHaveLength(50);
+    expect(
+      mentions.evidence.every(
+        (e: { sessionId: string }) => e.sessionId === "recent",
+      ),
+    ).toBe(true);
+    store.decide(id, "recent", "dismissed");
+    expect((await read()).sessions[0].sessionId).toBe("old");
+    expect((await read("&dismissed=1")).sessions[0].sessionId).toBe("recent");
+  } finally {
+    await indexer.close();
+    db.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  }
 });

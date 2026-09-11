@@ -31,7 +31,10 @@ The browser content scrolls vertically within the app while its page header
 remains visible. Long result lists, pagination controls, and association evidence
 remain reachable at desktop and phone widths. Controls and evidence cards use the
 app theme colors, typography and focus states. Results occupy the available width
-until evidence is selected; phone layouts stack the result and evidence.
+until an issue is selected. Desktop shows issues beside their associated
+sessions; phone shows the selected issue's sessions, with the close control
+returning to the issue list. An active issue-title/link editor remains visible
+in the list on phones.
 
 A shared ticket glyph identifies Issues & PRs in the sidebar, settings category
 (including emoji icon mode), and the session header. The session shortcut is a
@@ -39,8 +42,11 @@ compact button-style link; on phones it keeps its accessible name and tooltip
 while showing only the icon with a 44-pixel touch target. Discovery settings use
 the standard searchable settings rows and toggle, with scope guidance above
 the control.
-An unresolved reference is useful and searchable before a tracker host is known.
-Its detail can resolve it by supplying the matching full URL. Markdown labels
+Bare Jira keys require a known project prefix by default. Unknown bare keys are
+retained as inactive candidates, without creating an issue/session link or
+appearing in search or session counts. **Match unknown ticket keys** is an
+explicit opt-in that exposes these candidates as references with **Issue link
+unknown**. Their issue menu accepts a matching full URL through **Add issue link**. Markdown labels
 supply observed titles; a user can override a resolved item's title. Discovery
 itself makes no tracker request and changes no external issue; the only
 outbound requests come from the opt-in confirmation step below.
@@ -60,6 +66,72 @@ restarts that sequence when the transcript grows. It then stops rather than
 polling. A count the server does not currently confirm shows no badge at all,
 so the number on screen is one the client actually read, and a later
 association can go unnoticed until the session is reopened or extended.
+
+## Learned Jira projects and matching rules
+
+A supported absolute Jira browse URL in persisted user/assistant message text
+teaches its ticket prefix and canonical site/context path automatically, without
+an external request. For example, `https://tomfit.atlassian.net/browse/TF-3996`
+teaches `TF → https://tomfit.atlassian.net`. Query strings, fragments and URL
+credentials never enter a mapping. Tool-call commands/arguments, tool output,
+reasoning, and setup remain excluded. Command-only tool evidence is deferred.
+
+Mappings persist in `jira_project_sites`, independently of the originating
+session or issue. Settings lists the learned prefix/site pairs. One known site
+for a prefix applies across this server's code projects and sessions. Multiple
+sites stay distinct: exactly one learned site in the current code project can
+resolve a bare key; otherwise it remains ambiguous. Explicit URLs always retain
+their own site. No personal Jira site is hardcoded.
+
+The existing editable prefix blocklist excludes bare-key matches, including old
+ones and learned prefixes, but never explicit URLs. Confirmed manual association
+decisions remain authoritative. Aggressive matching defaults off for both new
+and existing installations lacking an explicit setting; the feature itself
+remains experimental/default-off. Turning aggressive matching off hides unknown
+candidates immediately. Changing exclusions or learning a mapping reconciles
+stored candidates in bounded batches, preserving titles, occurrences and explicit
+dismissals. Restoring an association explicitly clears occurrence suppression.
+
+Migration 7 adds the mapping table and a durable `issue_registry_work` cursor.
+It schedules work only: the existing worker first learns from stored URL/manual
+evidence, then resolves candidates, in transactions of at most 25 evidence rows
+with a yield between turns. Restart resumes the cursor. No provider reads or
+large backfill occur in migration initialization. Rule changes coalesce into
+that worker; unchanged sources and idle clients introduce no recurring work.
+
+## Associated-session browser
+
+The left list sorts by ticket key A–Z and labels that order. Each issue's overflow
+menu owns display-title editing, adding a missing issue URL, and deleting the
+saved item. A cleared display override falls back to its observed title, then key.
+Coverage counts and the dismissed-association filter live in a collapsed discovery
+disclosure. Ordinary browsing does not require confirming or dismissing items.
+
+The right pane renders one row per distinct canonical YA session, reusing the
+sidebar's compact `SessionListItem` and shared themed hover detail. Navigation
+and Native tooltip preferences retain the shared row behavior. Association
+corrections live in a per-session overflow menu; a correction affects the whole
+issue/session relationship, not one displayed mention. Per-occurrence correction
+and tool evidence remain deferred.
+
+**Last activity ↓** is the default, using the retained session catalog's activity
+timestamp (including agent activity), not indexing or mention insertion time.
+**Last activity ↑** reverses the known timestamps. Unknown activity sorts last in
+both directions; canonical session ID breaks ties. Rows display the activity age,
+or explicitly say the activity time is unavailable. This differs deliberately
+from the sidebar's browser-local visits/submissions chronology. Refresh reloads
+the ordering; background agent output does not continuously reorder this pane.
+
+`GET /api/issues/sessions` groups and sorts before pagination (50 sessions by
+default, maximum 100). It loads source summaries only for the returned page and
+returns one initial mention per session. Mentions sort by source-message time,
+then occurrence ID; unknown source times follow dated mentions in occurrence
+order. Expand loads further mentions through session-filtered
+`GET /api/issues/evidence`, in bounded pages. Collapsing preserves loaded mentions.
+Dismissed evidence stays hidden unless the filter includes it. Unavailable source
+sessions keep historical excerpts but have no navigation or preview request.
+Selections, expansions and asynchronous responses belong to the selected source;
+switching servers or issues cannot append an earlier source's evidence.
 
 ## Tracker confirmation
 
@@ -114,9 +186,10 @@ GitHub issue and PR URLs for the same repository/number share identity; discover
 a PR cannot subsequently downgrade its kind. Credentials are rejected. URL
 tracking/query/fragment payloads are removed from saved URLs and excerpts.
 
-Unknown keys are grouped by current observed project plus key, not globally.
-One explicit URL identity in that project can resolve matching observations.
-A second tenant with the same key restores ambiguity for inferred, unconfirmed
+Unknown candidates are grouped by current observed project plus key, not globally.
+Jira prefix/site learning follows the rules above. Repository-qualified GitHub
+references retain the existing exact-reference resolution within a code project.
+A second matching GitHub identity restores ambiguity for inferred, unconfirmed
 observations. Confirmed decisions remain authoritative. Contextual bare-number
 observations record their repository-based provenance separately from a seen
 issue URL. This is evidence of mention, never proof that work was completed.
@@ -198,7 +271,8 @@ independent tail watcher or recurring per-session task.
 
 Operational tables `issue_index_jobs`, `issue_resolution_jobs`,
 `issue_deleted_snapshots` and `issue_confirmations` retain checkpoints,
-resolution continuations, deletion fences and tracker verdicts. SQL statements finalize; startup migrations do no provider acquisition.
+resolution continuations, deletion fences and tracker verdicts. `issue_registry_work`
+owns the bounded mapping/candidate reconciliation pass. SQL statements finalize; startup migrations do no provider acquisition.
 Storage errors do not acknowledge unsaved writes or become successful empty lists.
 The server owns disposal and awaits indexing before closing its database.
 
@@ -209,7 +283,7 @@ The approved optional-feature review covered v0.8.0 (2026-08-31) and v0.8.1
 preceding 14 days on 2026-09-10. Sparse optional capability
 `issue-session-associations-v1` (permanent ID 68) covers:
 
-- `GET /api/issues`, `GET /api/issues/evidence`;
+- `GET /api/issues`, `GET /api/issues/evidence`, `GET /api/issues/sessions`;
 - `GET /api/issues/settings`, `PUT /api/issues/settings`;
 - `GET /api/issues/credentials`, `PUT /api/issues/credentials`;
 - `POST /api/issues/decision`, `POST /api/issues/resolve`;
@@ -233,7 +307,8 @@ review for subsequent changes.
 [SQLite storage](optional-sqlite.md) owns migration policy. Frozen historical
 v2/v3 SQL moved out of the mutable vocabulary schema. Migration 4 adds the domain
 and indexing tables; migration 5 adds resolution/deletion continuations;
-migration 6 adds the one-verdict-per-reference confirmation table. Prefix
+migration 6 adds the one-verdict-per-reference confirmation table; migration 7
+adds durable Jira project mappings and resumable reconciliation. Prefix
 fixtures test fresh installation, each historical upgrade, repeat initialization,
 rollback and old-reader refusal. No down migrations, resets, WAL switch or longer
 lock timeout were added. An older binary refusing the newer discovery schema

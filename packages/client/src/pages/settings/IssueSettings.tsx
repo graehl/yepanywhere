@@ -3,6 +3,7 @@ import {
   SERVER_CAPABILITIES,
   serverHasCapability,
   type IssueCoverage,
+  type KnownJiraProject,
   type IssueCredentialStatus,
   type IssueCredentialsResult,
   type IssueSettings as Settings,
@@ -44,6 +45,7 @@ function IssueSettingsControls() {
   const { transport } = useCurrentSourceRuntime();
   const { refetch } = useServerSettings();
   const [settings, setSettings] = useState<Settings>();
+  const [projects, setProjects] = useState<KnownJiraProject[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const source = useRef(transport);
@@ -56,7 +58,10 @@ function IssueSettingsControls() {
     transport
       .fetch<IssueCoverage>("/issues/settings")
       .then((result) => {
-        if (!disposed) setSettings(result.settings);
+        if (!disposed) {
+          setSettings(result.settings);
+          setProjects(result.knownJiraProjects ?? []);
+        }
       })
       .catch(() => {
         if (!disposed) setError(t("issuesLoadError"));
@@ -77,6 +82,7 @@ function IssueSettingsControls() {
       });
       if (source.current === transport) {
         setSettings(result.settings);
+        setProjects(result.knownJiraProjects ?? []);
         await refetch();
       }
     } catch {
@@ -155,6 +161,44 @@ function IssueSettingsControls() {
           />
         </SettingsItem>
       )}
+      <SettingsItem
+        as="label"
+        id="issue-aggressive-matching"
+        label={t("issuesAggressiveMatching")}
+        description={t("issuesAggressiveHelp")}
+      >
+        <span className={`toggle-switch ${styles.toggle}`}>
+          <input
+            type="checkbox"
+            aria-label={t("issuesAggressiveMatching")}
+            checked={settings?.aggressiveMatching ?? false}
+            disabled={!settings || busy}
+            onChange={(e) =>
+              settings &&
+              void save({ ...settings, aggressiveMatching: e.target.checked })
+            }
+          />
+          <span className="toggle-slider" />
+        </span>
+      </SettingsItem>
+      <SettingsItem
+        id="issue-known-projects"
+        className={styles.scopeRow}
+        label={t("issuesKnownProjects")}
+        description={t("issuesKnownProjectsHelp")}
+      >
+        {projects.length ? (
+          <ul className={styles.projects}>
+            {projects.map((project) => (
+              <li key={`${project.prefix}:${project.site}`}>
+                <strong>{project.prefix}</strong> · {project.site}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span>{t("issuesNoKnownProjects")}</span>
+        )}
+      </SettingsItem>
       {settings && (
         <ConfirmationControls settings={settings} busy={busy} save={save} />
       )}

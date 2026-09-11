@@ -10,6 +10,8 @@ export interface IssueSettings {
    * Absent means {@link DEFAULT_JIRA_KEY_BLOCKLIST}; an empty array means none.
    */
   jiraKeyBlocklist?: string[];
+  /** Recognize unknown bare ticket keys. Absent/false requires URL evidence. */
+  aggressiveMatching?: boolean;
 }
 
 /**
@@ -126,7 +128,34 @@ export interface IssueEvidence {
   sessionTitle?: string;
   state: string;
 }
+export interface KnownJiraProject {
+  prefix: string;
+  site: string;
+}
+export interface IssueSession {
+  sessionId: string;
+  projectId: string;
+  title?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  provider?: import("./types.js").ProviderName;
+  projectName?: string;
+  initialPrompt?: string | null;
+  model?: string;
+  ownership?: import("./app-types.js").SessionOwnership;
+  activity?: import("./app-types.js").AgentActivity;
+  lastAgentText?: string | null;
+  sourceAvailable?: boolean;
+  state: string;
+  evidenceCount: number;
+  evidence: IssueEvidence[];
+}
+export interface IssueSessionsResult {
+  sessions: IssueSession[];
+  nextOffset: number | null;
+}
 export interface IssueCoverage {
+  knownJiraProjects?: KnownJiraProject[];
   settings: IssueSettings;
   active: boolean;
   error: string | null;

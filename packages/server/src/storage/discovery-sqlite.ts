@@ -16,6 +16,8 @@ import { ISSUE_RESOLUTION_SCHEMA } from "./migrations/005-issue-resolution.js";
 import { ISSUE_SCHEMA } from "./migrations/004-issues.js";
 import { ISSUE_CONFIRMATION_SCHEMA } from "./migrations/006-issue-confirmation.js";
 
+import { JIRA_PROJECT_SCHEMA } from "./migrations/007-jira-projects.js";
+
 export type SqliteMode = "off" | "auto" | "on";
 
 export function parseSqliteMode(value: string | undefined): SqliteMode {
@@ -39,6 +41,7 @@ export const DISCOVERY_MIGRATIONS: readonly DiscoveryMigration[] = [
   { version: 4, sql: ISSUE_SCHEMA },
   { version: 5, sql: ISSUE_RESOLUTION_SCHEMA },
   { version: 6, sql: ISSUE_CONFIRMATION_SCHEMA },
+  { version: 7, sql: JIRA_PROJECT_SCHEMA },
 ];
 
 /** Construct fixtures with the actual historical schema, never a parallel SQL copy. */

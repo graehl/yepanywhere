@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from "hono";
-import type { IssueSettings } from "@yep-anywhere/shared";
+import type { IssueSettings, IssueSession } from "@yep-anywhere/shared";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { IssueIndexer } from "../services/issues/IssueIndexer.js";
 import type { IssueCredentials } from "../services/issues/credentials.js";
@@ -49,9 +49,19 @@ export function createIssueRoutes(
   validSource: (
     projectId: string,
     sessionId: string,
-  ) => Promise<{ available: boolean; title?: string }>,
+  ) => Promise<{ available: boolean } & Partial<IssueSession>>,
   credentials?: IssueCredentials,
   confirmer?: IssueConfirmer,
+  sessionCatalog: () => Promise<
+    readonly {
+      sessionId: string;
+      updatedAt: string;
+      title?: string | null;
+      projectName?: string;
+      provider?: IssueSession["provider"];
+      createdAt?: string;
+    }[]
+  > = async () => [],
 ) {
   const routes = new Hono();
   routes.get("/issues/settings", (c) => c.json(indexer.coverage()));
@@ -67,7 +77,9 @@ export function createIssueRoutes(
       body.recentDays < 1 ||
       body.recentDays > 90 ||
       confirm === null ||
-      blocked === null
+      blocked === null ||
+      (body.aggressiveMatching !== undefined &&
+        typeof body.aggressiveMatching !== "boolean")
     )
       return c.json(
         {
@@ -81,6 +93,7 @@ export function createIssueRoutes(
         enabled: body.enabled,
         scope: body.scope,
         recentDays: body.recentDays,
+        aggressiveMatching: body.aggressiveMatching ?? false,
         ...(confirm ? { confirmation: confirm } : {}),
         ...(blocked ? { jiraKeyBlocklist: blocked } : {}),
       },
@@ -159,13 +172,87 @@ export function createIssueRoutes(
       nextOffset: items.length === p.size ? p.start + p.size : null,
     });
   });
+  routes.get("/issues/sessions", async (c) => {
+    const p = page(c.req.query("limit"), c.req.query("offset"));
+    const id = c.req.query("id");
+    const sort = c.req.query("sort") ?? "activity";
+    if (!p || !id || id.length > 4096 || !["activity", "oldest"].includes(sort))
+      return c.json({ error: "Invalid session request" }, 400);
+    try {
+      const catalog = new Map(
+        (await sessionCatalog()).map((row) => [row.sessionId, row]),
+      );
+      const associations = indexer.store.sessions(
+        id,
+        c.req.query("dismissed") === "1",
+      );
+      const time = (sessionId: string) => {
+        const value = Date.parse(catalog.get(sessionId)?.updatedAt ?? "");
+        return Number.isFinite(value) ? value : null;
+      };
+      associations.sort((a, b) => {
+        const x = time(a.sessionId),
+          y = time(b.sessionId);
+        if (x === null || y === null)
+          return x === y
+            ? a.sessionId.localeCompare(b.sessionId)
+            : x === null
+              ? 1
+              : -1;
+        return (
+          (sort === "oldest" ? x - y : y - x) ||
+          a.sessionId.localeCompare(b.sessionId)
+        );
+      });
+      const sessions: IssueSession[] = [];
+      for (const association of associations.slice(p.start, p.start + p.size)) {
+        const row = catalog.get(association.sessionId);
+        const source = await validSource(
+          association.projectId,
+          association.sessionId,
+        );
+        sessions.push({
+          ...association,
+          ...source,
+          sessionId: association.sessionId,
+          projectId: association.projectId,
+          title: source.title ?? row?.title ?? undefined,
+          updatedAt: row?.updatedAt,
+          createdAt: source.createdAt ?? row?.createdAt,
+          provider: source.provider ?? row?.provider,
+          projectName: source.projectName ?? row?.projectName,
+          sourceAvailable: source.available,
+          evidence: indexer.store.evidence(
+            id,
+            1,
+            0,
+            association.sessionId,
+            c.req.query("dismissed") === "1",
+          ),
+        });
+      }
+      return c.json({
+        sessions,
+        nextOffset:
+          p.start + p.size < associations.length ? p.start + p.size : null,
+      });
+    } catch {
+      return c.json({ error: "Sessions unavailable" }, 503);
+    }
+  });
   routes.get("/issues/evidence", async (c) => {
     const p = page(c.req.query("limit"), c.req.query("offset")),
       id = c.req.query("id");
     if (!p || !id || id.length > 4096)
       return c.json({ error: "Invalid evidence request" }, 400);
     try {
-      const evidence = indexer.store.evidence(id, p.size, p.start);
+      const evidence = indexer.store.evidence(
+        id,
+        p.size,
+        p.start,
+        c.req.query("sessionId") ?? "",
+        c.req.query("dismissed") !== "0",
+      );
       const available = new Map<
         string,
         { available: boolean; title?: string }
@@ -234,8 +321,8 @@ export function createIssueRoutes(
         (typeof body.title !== "string" || body.title.length > 512))
     )
       return c.json({ error: "Invalid title" }, 400);
-    indexer.store.title(body.id, body.title);
-    return c.json({ ok: true });
+    const title = indexer.store.title(body.id, body.title);
+    return c.json({ ok: true, title });
   });
   routes.delete("/issues/item", async (c) => {
     const id = c.req.query("id");

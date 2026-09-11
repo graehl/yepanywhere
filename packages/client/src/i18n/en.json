@@ -1,6 +1,7 @@
 {
-  "toolDisplay.rawNotice": "Rich preview unavailable. Showing the original tool data.",
+  "toolDisplay.rawNotice": "View original tool data (preview unavailable)",
   "toolDisplay.input": "Input",
+  "toolDisplay.output": "Output",
   "toolDisplay.status.pending": "In progress",
   "toolDisplay.status.complete": "Completed",
   "toolDisplay.status.error": "Failed",

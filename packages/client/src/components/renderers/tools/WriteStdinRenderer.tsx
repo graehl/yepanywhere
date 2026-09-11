@@ -1,3 +1,5 @@
+import { decodeCodeModeOutput } from "@yep-anywhere/shared";
+import { CodeModeOutput } from "./CodeModeOutput";
 import { toolDisplayContracts } from "./toolDisplayContracts";
 import { defineTool } from "./defineTool";
 import { type ReactNode, useState } from "react";
@@ -158,6 +160,12 @@ function formatChars(chars: string | undefined): string {
 }
 
 function getResultText(result: unknown): string {
+  const decoded = decodeCodeModeOutput(result);
+  if (decoded)
+    return decoded.parts
+      .filter((part) => part.kind !== "script-status")
+      .map((part) => part.text)
+      .join("\n");
   if (typeof result === "string") {
     return result;
   }
@@ -332,6 +340,12 @@ export const writeStdinRenderer = defineTool(toolDisplayContracts.WriteStdin, {
   },
 
   renderToolResult(result, isError, _context, input) {
+    if (
+      decodeCodeModeOutput(result) &&
+      !(getLinkedToolName(input) === "Read" && getLinkedFilePath(input))
+    ) {
+      return <CodeModeOutput result={result} isError={isError} shellMetadata />;
+    }
     const text = getResultText(result);
     const parsed = parseShellToolOutput(text);
     const linkedToolName = getLinkedToolName(input);
@@ -421,6 +435,18 @@ export const writeStdinRenderer = defineTool(toolDisplayContracts.WriteStdin, {
       return "Error";
     }
 
+    const decoded = decodeCodeModeOutput(result);
+    const failedCommands = decoded?.parts.flatMap((part) =>
+      part.kind === "command-output" && part.exitCode
+        ? [`rc=${part.exitCode}`]
+        : [],
+    );
+    if (failedCommands?.length) return failedCommands.join(" · ");
+    if (decoded?.parts.every((part) => part.kind === "script-status")) {
+      return decoded.parts[0]?.text.startsWith("Script running")
+        ? "still running"
+        : "No output";
+    }
     const text = getResultText(result);
     const parsed = parseShellToolOutput(text);
     const meta = getCommandResultMeta(result);

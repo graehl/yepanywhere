@@ -1,3 +1,4 @@
+import { toolDisplayContracts } from "../../client/src/components/renderers/tools/toolDisplayContracts.js";
 import {
   mkdtemp,
   mkdir,
@@ -56,13 +57,13 @@ function meta(sessionId = id) {
     },
   };
 }
-function imagePair(callId: string) {
+function imagePair(callId: string, path: unknown = "/private/secret.png") {
   return [
     entry({
       type: "function_call",
       name: "view_image",
       call_id: callId,
-      arguments: JSON.stringify({ path: "/private/secret.png" }),
+      arguments: JSON.stringify({ path }),
     }),
     entry({
       type: "function_call_output",
@@ -105,7 +106,7 @@ function row(
 it("separates successful, failed and unfinished fallback without leaking payloads", () => {
   const result = auditRows(
     [
-      row("view_image", { path: "/secret" }, [
+      row("view_image", { path: 42 }, [
         { type: "input_image", image_url: "SECRET" },
       ]),
       row("Write", { content: "SECRET" }, "rejected SECRET", "error"),
@@ -144,7 +145,7 @@ it("bounds structural examples and redacts arbitrary keys and type values", () =
   expect(result.groups[0]?.examples).toHaveLength(3);
 });
 
-it("identifies consumed aliases lost by successful input parsing", () => {
+it("does not report supported aliases retained by display preparation", () => {
   const result = auditRows(
     [
       row("WriteStdin", { cellId: "SECRET", command: "SECRET" }, "done"),
@@ -157,12 +158,34 @@ it("identifies consumed aliases lost by successful input parsing", () => {
     ],
     { fileId: "hash", provider: "codex", version: "unknown" },
   );
+  expect(result.counts["projection-loss"]).toBeUndefined();
+  expect(result.counts.rich).toBe(3);
+  expect(result.groups).toEqual([]);
+});
+
+it("detects alias loss by comparing the successful checked projection", () => {
+  // Simulate the pre-fix gate, which accepted these inputs and stripped aliases.
+  vi.spyOn(toolDisplayContracts.WriteStdin.input, "safeParse").mockReturnValue({
+    success: true,
+    data: {},
+  });
+  vi.spyOn(toolDisplayContracts.create_goal.input, "safeParse").mockReturnValue(
+    { success: true, data: {} },
+  );
+  const result = auditRows(
+    [
+      row("WriteStdin", { cellId: "SECRET", command: "SECRET" }, "done"),
+      row("create_goal", { objective: "SECRET", tokenBudget: 100 }, "done"),
+    ],
+    { fileId: "hash", provider: "codex", version: "unknown" },
+  );
   expect(result.counts["projection-loss"]).toBe(3);
   expect(result.groups.map((group) => group.reason)).toEqual([
     "cellId",
     "command/cmd",
     "tokenBudget",
   ]);
+  expect(JSON.stringify(result)).not.toContain("SECRET");
 });
 
 it("discovers overlapping roots once and prefers plain over compressed twins", async () => {
@@ -199,7 +222,8 @@ it("uses full Codex history across compaction and keeps the source tree unchange
   expect(result).not.toHaveProperty("failure");
   if ("failure" in result) throw new Error(result.failure);
   expect(result.entries).toBe(6);
-  expect(result.counts["successful-raw"]).toBe(2);
+  expect(result.counts.rich).toBe(2);
+  expect(result.counts["successful-raw"]).toBeUndefined();
   expect(result.malformedLines).toBe(0);
   expect(JSON.stringify(result)).not.toMatch(
     /CONFIDENTIAL|private|secret\.png|data:image/,
@@ -251,7 +275,8 @@ it("resolves inherited Codex history and reports missing parents as failures", a
   };
   const result = await auditTranscript(request);
   expect(result.referenceBacked).toBe(true);
-  expect(result.counts["successful-raw"]).toBe(1);
+  expect(result.counts.rich).toBe(1);
+  expect(result.counts["successful-raw"]).toBeUndefined();
   await expect(
     auditTranscript({ ...request, rolloutPaths: {} }),
   ).rejects.toThrow();
@@ -360,7 +385,7 @@ it("returns a bounded worker timeout instead of hanging the scan", async () => {
 it("reports findings through opt-in exit 1 and isolates unreadable files", async () => {
   const root = await directory();
   const path = join(root, `rollout-${id}.jsonl`);
-  await writeFile(path, jsonl([meta(), ...imagePair("one")]));
+  await writeFile(path, jsonl([meta(), ...imagePair("one", 42)]));
   vi.spyOn(process.stderr, "write").mockReturnValue(true);
   const output = join(root, "report.json");
   const locations = join(root, "locations.json");
@@ -411,7 +436,8 @@ it.skipIf(!compress)(
       file: { provider: "codex", path, fileId: "hash" },
       rolloutPaths: {},
     });
-    expect(result.counts["successful-raw"]).toBe(1);
+    expect(result.counts.rich).toBe(1);
+    expect(result.counts["successful-raw"]).toBeUndefined();
     expect(await readdir(root)).toEqual([`rollout-${id}.jsonl.zst`]);
   },
 );

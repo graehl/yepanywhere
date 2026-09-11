@@ -35,13 +35,16 @@ export function RawToolDisplay({
           {t(`toolDisplay.status.${status}`)}
         </span>
       </div>
-      <p className={styles.notice}>{t("toolDisplay.rawNotice")}</p>
       {error && <pre className={styles.output}>{error.message}</pre>}
-      {toolResult !== undefined && (
-        <pre className={styles.output}>{rawText(toolResult)}</pre>
-      )}
-      <details open={toolResult === undefined}>
-        <summary>{t("toolDisplay.input")}</summary>
+      <details className={styles.details}>
+        <summary>{t("toolDisplay.rawNotice")}</summary>
+        {toolResult !== undefined && (
+          <>
+            <strong>{t("toolDisplay.output")}</strong>
+            <pre className={styles.output}>{rawText(toolResult)}</pre>
+          </>
+        )}
+        <strong>{t("toolDisplay.input")}</strong>
         <pre className={styles.output}>{rawText(toolInput)}</pre>
       </details>
     </div>

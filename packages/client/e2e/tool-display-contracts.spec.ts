@@ -45,9 +45,17 @@ for (const width of [1000, 375])
     ).toBeVisible();
     await page.getByText("Subagent tools", { exact: true }).click();
     await page.getByText("Subagent tools", { exact: true }).click();
-    await expect(
-      page.getByText("Missing file_path in subagent Write", { exact: true }),
-    ).toBeVisible();
+    const fallback = page.locator('[data-tool-display="raw"]');
+    const rejection = page.getByText("Missing file_path in subagent Write", {
+      exact: true,
+    });
+    await expect(rejection).toBeHidden();
+    await expect(fallback.getByText("Failed", { exact: true })).toBeVisible();
+    const disclosure = fallback.locator("summary");
+    await disclosure.click();
+    await expect(rejection).toBeVisible();
+    await disclosure.click();
+    await expect(rejection).toBeHidden();
     await expect(page.getByTestId("catches")).toHaveText("0");
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),

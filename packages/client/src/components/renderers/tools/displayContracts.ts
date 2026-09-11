@@ -67,6 +67,18 @@ const string = z.string();
 const number = z.number();
 const optionalString = string.optional();
 const optionalNumber = number.optional();
+// Provider acknowledgements are ordered text blocks, not successful file bodies.
+const TextResultBlocksSchema = z
+  .array(
+    z.object({
+      type: z.enum(["input_text", "output_text", "text"]),
+      text: string,
+    }),
+  )
+  .min(1);
+const TextAcknowledgementSchema = TextResultBlocksSchema.transform((blocks) =>
+  blocks.map((block) => block.text).join("\n"),
+);
 const highlight = {
   _highlightedContentHtml: optionalString,
   _highlightedLanguage: optionalString,
@@ -94,7 +106,7 @@ export const PdfFileDisplaySchema = MediaFileDisplaySchema.extend({
 });
 export const ReadDisplayResultSchema = z.union([
   z.object({
-    type: z.literal("text").optional(),
+    type: z.enum(["text", "file_unchanged"]).optional(),
     file: z.union([
       TextFileDisplaySchema,
       z.object({
@@ -173,16 +185,22 @@ export const EditDisplayInputSchema = z.union([
     .object({ ...editFields, file_path: string })
     .transform((v) => ({ ...v, displayVariant: "target" as const })),
 ]);
-export const EditDisplayResultSchema = z.object({
+const EditResultObjectSchema = z.object({
   filePath: optionalString,
   oldString: optionalString,
   newString: optionalString,
-  originalFile: optionalString,
+  originalFile: string.nullable().optional(),
   replaceAll: z.boolean().optional(),
   userModified: z.boolean().optional(),
   structuredPatch: z.array(PatchHunkDisplaySchema).optional(),
   content: optionalString,
 });
+export const EditDisplayResultSchema = z.union([
+  EditResultObjectSchema,
+  TextAcknowledgementSchema.transform((content) =>
+    EditResultObjectSchema.parse({ content }),
+  ),
+]);
 export const EditDisplayFailureSchema = z.union([
   z.string().transform((content) => ({ content })),
   z.object({ content: string }),
@@ -352,7 +370,11 @@ export const WebFetchDisplayResultSchema = z.object({
   url: string,
 });
 export const AskUserQuestionDisplayResultSchema = z.object({
-  questions: z.array(QuestionDisplaySchema).optional(),
+  questions: z
+    .array(
+      QuestionDisplaySchema.extend({ multiSelect: z.boolean().optional() }),
+    )
+    .optional(),
   answers: z.record(string, z.union([string, z.array(string)])).optional(),
 });
 export const ExitPlanModeDisplayInputSchema = z.object({
@@ -376,11 +398,15 @@ export const UpdatePlanDisplayInputSchema = z.object({
 });
 export const UpdatePlanDisplayResultSchema = z.union([
   string,
+  TextResultBlocksSchema,
   z.object({ message: optionalString }),
 ]);
 export const WriteStdinDisplayInputSchema = z.object({
   session_id: z.union([string, number]).optional(),
-  cell_id: optionalString,
+  cell_id: z.union([string, number]).optional(),
+  cellId: z.union([string, number]).optional(),
+  command: optionalString,
+  cmd: optionalString,
   chars: optionalString,
   linked_command: optionalString,
   linked_file_path: optionalString,
@@ -388,6 +414,7 @@ export const WriteStdinDisplayInputSchema = z.object({
 });
 export const WriteStdinDisplayResultSchema = z.union([
   string,
+  TextResultBlocksSchema,
   z.object({
     content: optionalString,
     stdout: optionalString,
@@ -446,6 +473,22 @@ export const KillShellDisplayResultSchema = z.object({
 export const ViewImageDisplayInputSchema = z.object({ path: string });
 export const ViewImageDisplayResultSchema = z.union([
   string,
+  // The path action consumes no image bytes; stored media is handled separately.
+  z
+    .array(
+      z.union([
+        z.object({
+          type: z.enum(["input_text", "output_text", "text"]),
+          text: string,
+        }),
+        z.object({
+          type: z.literal("input_image"),
+          image_url: string,
+          detail: optionalString,
+        }),
+      ]),
+    )
+    .min(1),
   z.object({}),
   z.null(),
 ]);
@@ -483,6 +526,8 @@ export const SpawnAgentDisplayResultSchema = z.union([
       }
     })
     .pipe(SpawnAgentObjectSchema),
+  // A textual rejection has no agent id. Keep it readable and visibly failed.
+  string,
 ]);
 const taskSnapshot = z.object({
   version: z.literal(1),
@@ -515,6 +560,7 @@ export const TaskListDisplayResultSchema = z.union([
 export const GoalDisplayInputSchema = z.object({
   objective: optionalString,
   token_budget: optionalNumber,
+  tokenBudget: optionalNumber,
   status: optionalString,
 });
 const goal = z.object({

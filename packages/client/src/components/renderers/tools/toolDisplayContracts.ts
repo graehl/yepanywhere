@@ -121,7 +121,9 @@ export const toolDisplayContracts = {
     standaloneResultSchema: UpdatePlanDisplayResultSchema.refine((value) =>
       typeof value === "string"
         ? value.trim().length > 0
-        : Boolean(value.message?.trim()),
+        : Array.isArray(value)
+          ? value.some((block) => block.text.trim().length > 0)
+          : Boolean(value.message?.trim()),
     ),
     variants: ["standard"],
     standaloneResult: true,
@@ -171,6 +173,7 @@ export const toolDisplayContracts = {
   spawn_agent: {
     input: SpawnAgentDisplayInputSchema,
     result: SpawnAgentDisplayResultSchema,
+    failure: SpawnAgentDisplayResultSchema,
     variants: ["standard"],
     standaloneResult: false,
   },

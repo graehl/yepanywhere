@@ -246,18 +246,25 @@ export function auditRows(
       typeof row.toolInput === "object"
     ) {
       const input = row.toolInput as Record<string, unknown>;
+      const projection = prepared.input.data as Record<string, unknown>;
+      const lost = (key: string) =>
+        input[key] !== undefined && projection[key] !== input[key];
       const aliases =
         tool === "WriteStdin"
           ? [
-              !input.cell_id && input.cellId !== undefined ? "cellId" : "",
+              !input.cell_id && lost("cellId") ? "cellId" : "",
               !input.linked_command &&
-              (input.command !== undefined || input.cmd !== undefined)
+              lost(
+                typeof input.command === "string" && input.command.trim()
+                  ? "command"
+                  : "cmd",
+              )
                 ? "command/cmd"
                 : "",
             ]
           : tool === "create_goal" &&
               input.token_budget === undefined &&
-              input.tokenBudget !== undefined
+              lost("tokenBudget")
             ? ["tokenBudget"]
             : [];
       for (const alias of aliases.filter(Boolean))

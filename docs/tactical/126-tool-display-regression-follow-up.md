@@ -1,10 +1,116 @@
 # Restore supported tool displays after contract hardening
 
-Status: targeted media and failed-Shell repairs locally validated, 2026-09-11;
-deployment pending. The reusable read-only audit is implemented
-and the larger second-machine corpus has been audited and triaged against the
-September 10 changes. The broader text/schema and compact-fallback repairs
-below remain pending.
+Status: all 11 confirmed display follow-ups implemented and locally validated,
+2026-09-11. No confirmed display repair in this tactical remains pending.
+Broader native-fixture coverage, pairing, and provider error classification
+remain separate investigations. The historical audit/triage below records the
+pre-repair state; its candidate totals are not an outstanding-bug count.
+
+## Completion of the remaining display repairs
+
+The checked projections now accept observed text acknowledgements for Codex
+Edit and UpdatePlan, nullable Claude Edit original context, `file_unchanged`
+Read results, echoed questions without `multiSelect`, and Shell result arrays.
+Input patches/hunks, unchanged filenames, selected answers, and plan steps/counts
+remain visible. `originalFile: null` does not imply a new-file operation.
+
+Shell uses the existing ordered code-mode decoder and a shared output component:
+text and command output remain readable, nonzero exit metadata remains visible,
+stdout is not recursively decoded, and original checked blocks remain behind
+raw disclosure. Linked Read-via-PTY file actions retain their own presentation.
+Plan acknowledgement arrays may include unrelated sibling output; that output
+is inspectable behind a closed disclosure beneath the input-side plan.
+
+ViewImage accepts checked text/image descriptors for its validated path action,
+independently of stored-media availability. A deleted source still displays its
+unavailable state; accepting its descriptor does not recover image bytes.
+Plain-text spawn rejections again display a failed badge and readable rejection,
+including when native normalization supplies `isError: false`. The rejection
+wraps on phones. This restores the old presentation without changing the
+underlying execution flag or inventing an agent session.
+
+Shell retains `cellId`, `command`, and `cmd`; goal input retains `tokenBudget`.
+These remain synthetic supported-input controls, not newly observed native
+variants. The audit now compares the original and parsed consumed aliases;
+merely encountering an alias no longer reports a loss after the repair. A
+negative control simulates the old stripping projection to verify detection.
+
+Unsupported records show a compact name/status row with an explicit, closed
+original-data disclosure. Opening it preserves input and output, while actual
+renderer exceptions stay visible and retain recovery behavior. The boundary
+still rejects malformed acknowledgement text and malformed required fields.
+
+### Validation and evidence
+
+The reusable CLI re-audited the seven complete historical witness files through
+production parsing, normalization, persisted augmentation, and final tool-row
+compilation: **1,858 rows, complete scan, zero successful-raw candidates**.
+Against those same files in the original full-machine report, successful raw
+falls from **589 to 0**; rich rows rise from 1,246 to 1,837. Seven error-raw rows,
+one partial row, and 13 unregistered rows remain. Two other error-raw rows were
+already addressed by the earlier failed-Shell repair. This is a focused
+post-repair scan, not a repeat of the original 9,196-file census.
+Private report: `/tmp/ya-126-fixed-final-audit.json`; native files are unchanged.
+
+On the existing `localhost:3400` backend, loaded all eight historical cases
+listed below at desktop 1000×600 and phone 375×812. Older history was explicitly
+expanded where the default recent window omitted the witness. Browser checks
+asserted the actual row content and absence of raw fallback, then captured and
+inspected both sizes. All final captures have no page errors or failed requests;
+the harness's service-worker-blocking warning is expected.
+
+| Historical case | File id | Call id | Observed presentation |
+| --- | --- | --- | --- |
+| Codex Edit acknowledgement | `b65297b7c82868f46842` | `679bbd73c47e0f68e535` | Input-side before/after diff and filename |
+| Shell text blocks | `b65297b7c82868f46842` | `40847c8ec8280b4ab04a` | Readable ordered compiler/test output; raw execution closed |
+| ViewImage unavailable source | `e1e1afe59d26c119e46c` | `66caeed6e2e2dd4f01b1` | Filename and explicit unavailable state |
+| Nullable Claude Edit | `45350ba3d830e0d8e8e7` | `05f3b8c12a2a4b77bf7b` | Both sides of the replacement |
+| Unchanged Read | `c60a18d96679384173b9` | `583c5125f9e91520ab34` | Filename and unchanged marker |
+| Question result omission | `57270cf9d7bccdcfa32b` | `bdeccd9ef9daf0b968f1` | Selected custom answer |
+| UpdatePlan acknowledgement | `14dcd484180865980459` | `a7937db5666e0f0d484d` | Four steps, statuses, and completion count |
+| Spawn rejection | `5e0282804a12554e869e` | `c56855ce366733d8ea0f` | Failed badge and wrapped rejection text |
+
+The existing private locations map resolves each hashed file; hashing the native
+call id locates its row. Local browser evidence, including session ids and call
+ids, is in `/tmp/ya-126-local-validation.jsonl`; it is not committed. Captures
+live under `.artifacts/ui-testing/2026-09-11-tactical126-*`.
+
+A separately labeled browser-only response fixture on localhost verified both
+Shell command aliases and cell targets, the goal budget, opening/closing raw
+input/output, and the no-stored-media ViewImage action. The latter fetched and
+decoded the repository's real 192×192 icon through the normal local media API.
+No provider was invoked and no synthetic session/transcript was written.
+
+Committed regression coverage adds 18 mounted complete-row cases independent of
+the registry fixture matrix, plus the audit projection-loss negative control.
+Audit CLI tests now expect valid native image pairs to prepare richly and keep
+malformed-input controls for findings/exit-code behavior. All 11,711 workspace
+tests pass (55 existing skips). The full browser run passed 218 cases; its two
+remaining cases asserted the old always-visible raw output. After updating
+them to assert closed/open/closed disclosure, all four focused contract browser
+cases pass, covering the two sizes (220 suite cases validated, seven existing
+skips). Lint passes with zero warnings and two existing informational findings;
+typecheck, formatting, CSS containment/module contracts, and console budget pass.
+After rebasing onto the concurrent Jira/session-browser update, all 11,720
+workspace tests and the four display-contract browser cases pass again.
+
+Rechecked the user's original session `01a08eeb-28c9-7112-b8bf-a5d19fef841f`
+on localhost at both sizes after the shared output extraction. Its affected
+Exec row still expands and decodes the stored 886×703 PNG. The bitmap contains
+the earlier failure screenshot; that image content is not a current raw row.
+
+CSS ownership review deferred existing shared/coupled global renderer rules;
+new output/disclosure styles are modules. No global CSS ceiling increased.
+The shared code-mode output helper preserves Exec's existing display behavior.
+
+### Remaining gaps
+
+The original 222 pairing warnings (210 repeated results and 12 result-before-use
+cases), broader native error classification, older goal/Web decoding limitations,
+and independent fixtures for the wider provider matrix remain unclosed. The
+[native coverage gap](../../gaps/tool-display-native-provider-coverage.md) and
+[tactical 127](127-captured-provider-fixtures.md) remain pending. These repairs
+do not establish universal renderer or native-transport coverage.
 
 ## Current-session media and failed-Shell repair
 
@@ -28,9 +134,9 @@ Declare its supported string/command-output failure form so the existing Shell
 renderer can show readable output and nonzero exit metadata. A mounted full-row
 regression retains failed status and rejects raw-envelope presentation.
 
-Remaining: text-only result arrays, no-media ViewImage path-only eligibility,
+At that earlier repair, remaining work was: text-only result arrays, no-media ViewImage path-only eligibility,
 input aliases, Edit/Read/question/plan cases, failed subagents, and compact raw
-fallback. The historical audit's text-preparation classifications are unchanged
+fallback (now completed above). The historical audit's text-preparation classifications were unchanged
 for media-bearing arrays; those counts alone do not describe media visibility.
 No provider compatibility marker or native transcript is changed.
 

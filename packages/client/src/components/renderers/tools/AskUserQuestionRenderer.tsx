@@ -19,7 +19,7 @@ function QuestionDisplay({
   question,
   selectedAnswer,
 }: {
-  question: Question;
+  question: Omit<Question, "multiSelect"> & { multiSelect?: boolean };
   selectedAnswer?: string | string[];
 }) {
   const selectedAnswers = Array.isArray(selectedAnswer)

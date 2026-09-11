@@ -122,7 +122,7 @@ function SpawnAgentInline({
   toolUseId,
 }: {
   input: SpawnAgentInput;
-  result: SpawnAgentResult | undefined;
+  result: SpawnAgentResult | string | undefined;
   isError: boolean;
   status: ToolCallItem["status"];
   toolUseId?: string;
@@ -223,7 +223,9 @@ function SpawnAgentInline({
       </div>
 
       {failedWithoutAgent && rawResultText(result) && (
-        <pre className="tool-fallback tool-fallback-error">
+        <pre
+          className={`tool-fallback tool-fallback-error ${styles.rejection}`}
+        >
           <code>{rawResultText(result)}</code>
         </pre>
       )}
@@ -264,8 +266,12 @@ export const spawnAgentRenderer = defineTool(toolDisplayContracts.spawn_agent, {
   renderToolResult(result, isError) {
     const parsed = normalizeSpawnAgentResult(result);
     return (
-      <div className={isError ? "todo-error" : "todo-summary"}>
-        {parsed?.agentId ? `Agent ${parsed.agentId}` : "Agent spawned"}
+      <div
+        className={isError || !parsed?.agentId ? "todo-error" : "todo-summary"}
+      >
+        {parsed?.agentId
+          ? `Agent ${parsed.agentId}`
+          : rawResultText(result) || "Failed to spawn agent"}
       </div>
     );
   },
@@ -279,7 +285,7 @@ export const spawnAgentRenderer = defineTool(toolDisplayContracts.spawn_agent, {
       return "Error";
     }
     const parsed = normalizeSpawnAgentResult(result);
-    return parsed?.agentId ? `Agent ${parsed.agentId}` : "Spawned";
+    return parsed?.agentId ? `Agent ${parsed.agentId}` : "Failed";
   },
 
   renderInline(input, result, isError, status, context) {

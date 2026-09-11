@@ -529,14 +529,30 @@ they do not pass unchecked text results to rich renderer callbacks. As before,
 media-bearing rows use the media presentation in place of the text preview.
 
 When required display data is missing or has the wrong type, the tool row
-shows its name and actual status, the original output when available, and
-inspectable original input. A failed Write missing `file_path` or `content`
-shows the provider's validation error without deriving a path or splitting
+shows its name and actual status with a closed, explicit original-data
+disclosure. Expanding it reveals the original output and input. A failed Write
+missing `file_path` or `content` keeps a visible failed status and its provider
+validation error in that disclosure, without deriving a path or splitting
 missing content. Partial successful Read files, Edit hunks without lines, and
 questions without options use the same fallback. No successful result is
 relabeled as a failed execution merely because its preview is unavailable.
 Unknown augmentation fields are retained, and Claude Read dedup records with a
 file path but no body keep their distinct “unchanged” display.
+
+Observed text-block acknowledgements do not suppress input-side Edit diffs or
+UpdatePlan steps/counts. Plan sibling output is available behind disclosure.
+Nullable Edit original context means unavailable context, not proof of a new
+file. Read `file_unchanged` and echoed question results without `multiSelect`
+retain their existing presentation. Checked Shell and goal projections retain
+the aliases their helpers consume. The audit compares those original/parsed
+values rather than treating alias presence as evidence of loss.
+
+Shell text arrays reuse the ordered code-mode decoder and shared output view,
+including command metadata and closed raw inspection; command stdout stays a
+leaf. ViewImage's checked path action accepts text/image descriptor arrays even
+without materialized media. A missing source remains unavailable. Spawn text
+rejections with no agent id retain the specialized failed badge even when the
+native error flag is missing; this does not rewrite the provider record.
 
 Every tool row also contains unexpected React rendering exceptions locally,
 including exceptions from commentary and nested tool displays. Adjacent rows

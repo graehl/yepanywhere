@@ -1,6 +1,6 @@
 # Reload-Safe Provider Runtimes
 
-> Reload-safe provider runtimes keep active local Linux sessions running across
+> Reload-safe provider runtimes keep active supported local sessions running across
 > replacement of YA's Hono server by placing each live provider protocol owner
 > under a durable host outside Hono; shutdown of that host's wrapper or
 > foreground terminal still reaps every hosted provider process within a
@@ -9,8 +9,10 @@
 
 Topic: reload-safe-provider-runtimes
 
-Status: **implemented on Linux for the non-watch development wrapper and the
-foreground headless host.** Codex, Claude, Gemini, Grok, OpenCode, Pi, and
+Status: **implemented on Linux and macOS Node source checkouts for the non-watch
+development wrapper and foreground host.** macOS live Codex continuity is
+verified; live Claude and simultaneous Claude/Codex verification remain blocked
+by native account access. See [macOS evidence](#macos-verification-2026-09-11). Codex, Claude, Gemini, Grok, OpenCode, Pi, and
 Codex OSS all use the shared provider host. The former
 `codexReloadSafeSessions` setting remains accepted and stored for compatibility
 but is inert and hidden from the current client.
@@ -348,7 +350,7 @@ The wrapper receives every worker process-group id from the host and performs
 the same final sweep if the host itself fails. EOF on the host's inherited IPC
 channel is terminal owner loss, never a reload signal.
 
-Each reported Linux process group is paired with the start time of its leader
+Each reported native process group is paired with the start time of its leader
 from `/proc`. The host and wrapper verify that identity before signaling it, so
 a stale registry entry cannot kill an unrelated process after PID reuse. If a
 leader exits while its original descendants remain in the group, the missing
@@ -361,10 +363,67 @@ Routing is evaluated on every provider launch, including a durable resume:
 | Launch | Runtime backend |
 |---|---|
 | Any provider, shared host available | shared provider host |
-| Shared host unavailable or incompatible | Linux boot attaches or starts the host; if that fails, ordinary in-Hono provider plus a non-dismissible degraded banner. SSH remote executors still launch from this server |
+| Shared host unavailable or incompatible | Supported boot attaches or starts the host; if that fails, ordinary in-Hono provider plus a non-dismissible degraded banner. SSH remote executors still launch from this server |
 
 The retained Codex setting does not participate in this decision. A runtime
 keeps the owner selected when it launched until it reaches terminal cleanup.
+
+Before an eligible Hono detaches, it serializes and flushes the current standing
+permission mode and launch settings. Failure aborts that session rather than
+retaining a callback under stale policy. Reattachment prefers the durable
+standing permission mode over the worker's original launch mode. The attached
+worker snapshot also supplies its active-turn state, so acknowledged activity
+does not disappear into a transient idle controller after replacement.
+
+## macOS source runtime boundary
+
+The macOS port uses the shared host/worker protocol with Node source checkouts.
+Its availability probe reads the current process identity before starting a
+host. Windows, macOS Bun, compiled/package servers, and Desktop retain ordinary
+in-Hono ownership; their hosting enablement requires separate native evidence.
+`--watch` does not promise continuity. Existing ordinary sessions cannot migrate
+into hosted workers, and volatile input remains a seamless-reload blocker.
+
+Process identity is shared by discovery, host cleanup and the development
+wrapper. Linux retains its `/proc/<pid>/stat` start-time identity. On macOS,
+`/usr/bin/osascript` runs a fixed JavaScript/Objective-C bridge to the system
+`proc_pidinfo(PROC_PIDTBSDINFO)` function. The public 136-byte `proc_bsdinfo`
+record supplies PID and microsecond start time; the bridge includes zombies so
+an unreaped child is not confused with inaccessible metadata. See Apple's
+[record definition](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_info.h)
+and [process-info implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c).
+
+This integration needs no compiler, Python installation, native addon, binary
+packaging or install-time build. Both arm64 and x64 use the fixed-width ABI;
+native CI must exercise each architecture. Each read has a one-second deadline
+and 4 KiB output limit. Invalid/partial output, inaccessible metadata and probe
+failure refuse ownership; they never mean absence. Only a missing process
+confirmed by the OS is absent. Changed identities are never signalled and
+failed cleanup retains its registry/descriptor state. Original process groups
+remain cleanable after their leader exits because Unix retains the group ID
+while its descendants belong to it. Idle hosts add no identity polling loop.
+
+The default Mac directory is `/tmp/yep-anywhere-<uid>/provider-host`, avoiding
+macOS's long per-user temporary-directory names. An explicit
+`YEP_PROVIDER_HOST_RUNTIME_DIR` is authoritative. Control and worker socket
+paths exceeding 103 UTF-8 bytes fail with a short-directory instruction; they
+are never truncated or replaced with TCP. Private directory/file permissions,
+tokens, source fingerprints and exclusive launch reservations still apply.
+
+A wrapper-owned host survives API reload and wrapper HUP. Terminal INT/TERM
+or wrapper IPC loss shuts it down. A separately foreground-owned host survives
+an attached wrapper's shutdown; its own INT/TERM/HUP shuts down its workers.
+On Mac, source-server attach-or-start gives a newly started host an inherited
+IPC owner, so loss of that source launcher ends the host lifetime. Attaching to
+an existing host does not transfer terminal ownership. Linux's obsolete-bind
+provenance reaper remains Linux-only: a Mac bind collision cannot authorize
+killing another development instance.
+
+A failed host ensure advertises the existing `providerHostDegraded` field.
+Its notice reserves space in the shared navigation shell so headers, settings
+and session input remain reachable on desktop and phone. Older servers that
+omit the field retain the existing no-notice fallback; no new client contract
+or capability field is required.
 
 ## Retired Codex-Native Runtime Boundary
 
@@ -829,19 +888,20 @@ The server continues to accept, store, and return
 render it, and the native-host availability capability is no longer
 advertised. Its capability ids remain reserved for their original meanings.
 
-The shared host is enabled on Linux under the non-watch development wrapper or
-through `pnpm provider-host`. Host capability requires:
+The shared host is enabled on Linux and macOS Node source checkouts under the
+non-watch development wrapper or through `pnpm provider-host`. Host capability requires:
 
-- `process.platform === "linux"`;
+- a supported platform/runtime and successful native process-identity probe;
 - launch through the recognized development wrapper or foreground host;
 - the exact compatible host protocol;
 - a private, connectable runtime socket;
 - wrapper-generation registration for Hono control; and
 - bounded owner-loss cleanup owned by the host and its terminal owner.
 
-macOS and Windows retain ordinary in-Hono provider ownership. Direct Linux
-server launches attach or start the host instead of silently skipping it. Failed
-or ambiguous Linux probes continue in-process with the degraded banner. An
+Windows, macOS Bun, compiled macOS servers and Desktop retain ordinary in-Hono
+provider ownership. Supported direct source launches attach or start the host
+instead of silently skipping it. Failed or ambiguous probes on supported
+launches continue in-process with the degraded banner. An
 ambiguous stable descriptor is not removed or replaced.
 
 Any later use of `systemd-run --user`, Linux abstract sockets, `/proc`, cgroup
@@ -903,6 +963,78 @@ was stable releases `v0.7.0` and `v0.6.2`: neither knows the new field, so a new
 client hides it and makes no unsupported write. Older clients omit the field
 and retain the server's default-off behavior.
 
+## macOS verification, 2026-09-11
+
+Tested from the uncommitted implementation based on `1b44fa073`, macOS 26.6.2
+(25G83), arm64, Node 25.8.2. The independent Linux arm64 testbed used Node
+22.16.0: 52 focused tests passed, with only the explicitly Darwin-specific
+identity-failure case skipped. The equivalent Mac suites pass all 54 cases. Final repository checks passed:
+`pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test` (11,757 tests
+passed, 29 skipped), and `pnpm test:e2e` (224 passed, 8 skipped). Lint reports
+two existing informational template-string suggestions, with no errors.
+The focused CI job in `.github/workflows/ci.yml` runs Node 22.16.0 on Linux,
+Mac arm64, Mac Intel and Windows; those hosted CI executions are pending.
+Runner labels follow the [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+Bun, compiled macOS servers and Desktop remain disabled. This does not close
+[general CI platform coverage](../gaps/ci-platform-coverage-holes.md).
+
+```bash
+pnpm --filter @yep-anywhere/server exec vitest run \
+  test/scripts/provider-process-identity.test.mjs \
+  test/scripts/dev-reload.test.mjs \
+  test/scripts/provider-host-ownership.test.mjs \
+  test/scripts/provider-host-system.test.mjs \
+  test/sdk/providers/provider-runtime-host.test.ts \
+  test/sdk/providers/provider-host-status.test.ts \
+  test/sdk/providers/managed-runner.test.ts \
+  test/supervisor/sessionActivationCoordinator.test.ts \
+  --maxWorkers=1 --minWorkers=1 --testTimeout=20000
+```
+
+The assembled case runs actual wrapper, Hono, production worker,
+`ProviderSessionOwner`, socket adapter and proxy. An explicit test-only Node
+preload substitutes `getRawProvider("claude").startSession` with a file-barrier
+provider and native child; it does not replace the worker. An output suffix and
+approval are emitted at confirmed detach, the original callback resolves after
+attach, a second turn completes, and exactly one provider start is recorded.
+It also changes the standing mode from bypass to default before replacement,
+preventing the launch-mode regression discovered in the live test. Pure owner
+and socket tests separately assert sequence acknowledgement and replay.
+
+| Live Mac scenario | Result |
+| --- | --- |
+| New Codex session, API reload during numbered command | Same worker, provider group, native session and runtime; command completes |
+| Second Codex turn, wrapper HUP during command | Same retained runtime; numbered command completes |
+| Ordinary durable resume after terminal wrapper shutdown | Same native conversation, fresh hosted worker |
+| Hono-only edit, browser Server changed → Reload | New backend returns the test property; same worker; command and unsent draft survive; edit restored |
+| Native Codex approval across API reload | Request remains actionable under current default mode; answer completes original command in same worker |
+| Terminal shutdown after live runs | Host descriptor/socket absent and all recorded worker/provider groups gone |
+| Real Claude and both providers active | Blocked: native `oauth_org_not_allowed`, organization disables subscription access |
+
+Codex app-server 0.154.0 used `gpt-6-astra` with low effort. The account rejects
+`gpt-5.4-mini`; that failed launch is not counted as continuity. Claude SDK
+0.3.258 was attempted and produced the native organization error before a turn.
+The synthetic project, YA data, ports and private host directory were isolated;
+native same-user Claude/Codex authentication and transcript stores were
+intentionally shared. No credentials were copied. Only created-session evidence
+was read, and no unrelated native session was removed.
+
+Local run evidence is retained under `.artifacts/ui-testing/2026-09-11-macos-provider-host`
+and `.artifacts/ui-testing/2026-09-11-macos-provider-host-live`; compact structured
+results and test logs are archived with the latter. Browser captures at 1000×600
+and 375×812 verify the resulting transcript and the degraded banner's reachable
+navigation. `e2e/provider-host-live.spec.ts` plus
+`playwright.provider-host.config.ts` is an explicit credentialed runner: set
+`YA_LIVE_HOST_STATE` to the isolated launcher metadata and
+`YEP_E2E_UI_CAPTURE_DIR` to a capture directory. Ordinary CI skips this spec.
+The two numbered native turns each have one start and one terminal result;
+both reload intervals fall inside their original native turn. Request-to-attach
+was 2730 ms for API reload and 2556 ms for wrapper HUP on this run. The native
+conversation contains nine distinct test turns with no duplicate starts or
+terminal records across the repeated smoke attempts.
+A live smoke does not provide exact cursor/byte replay telemetry; the native
+transcript and live-only lifecycle evidence serve different assertions.
+
 ## Verification Matrix
 
 Continuity must be proved rather than inferred from a surviving PID. Historical
@@ -914,7 +1046,7 @@ remaining cases are an extended hardening matrix:
 
 1. With the retained Codex setting both off and on, prove new and resumed Codex
    sessions use the shared worker and the saved value remains unchanged.
-2. Start a fresh Linux development wrapper, then launch a new local Codex
+2. Start a fresh supported development wrapper, then launch a new local Codex
    thread and resume an existing one through shared workers. Prove neither path
    starts the retired native host.
 3. Begin a turn that remains active long enough to reload, with visible text or
@@ -948,7 +1080,7 @@ remaining cases are an extended hardening matrix:
     Break wrapper/host control independently and prove the surviving owner reaps
     the provider process rather than leaking it.
 13. Force an incompatible host/server generation and prove no second writer is
-    started. Repeat on a non-Linux target and prove no host/socket launch is
+    started. Repeat on an unsupported target and prove no host/socket launch is
     attempted and **Reload When Safe** remains available.
 
 Record at least:
@@ -1059,7 +1191,7 @@ provider-neutral routing including Codex.
 
 **Still not implied:** survival of a provider process or in-flight turn after
 the provider host's terminal owner ends, crash recovery of a launch recipe, a
-machine-persistent daemon, enabling the mechanism outside Linux, sharing one
+machine-persistent daemon, enabling unsupported runtime distributions, sharing one
 provider process across sandbox boundaries, or replacing the existing safe-
 restart flow. A replacement started within five minutes of an orderly stop may
 resume a later new turn from an exact private recipe. A separately owned

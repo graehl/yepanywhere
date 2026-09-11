@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { createConnection, type Socket } from "node:net";
 import { getLogger } from "../../logging/logger.js";
 import { getModuleEnv, harvestYaModuleEnv } from "../../yaModuleEnv.js";
-import { setLinuxProviderHostDegraded } from "./provider-host-status.js";
+import { setProviderHostDegraded } from "./provider-host-status.js";
 import type {
   PermissionMode,
   ThinkingConfig,
@@ -165,8 +165,19 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function supportsProviderHostRuntime(): boolean {
+  return (
+    process.platform === "linux" ||
+    (process.platform === "darwin" &&
+      !process.versions.bun &&
+      fileURLToPath(import.meta.url).endsWith(
+        "/src/sdk/providers/provider-runtime-host.ts",
+      ))
+  );
+}
+
 function getEnvironment(): RuntimeHostEnvironment | null {
-  if (process.platform !== "linux") return null;
+  if (!supportsProviderHostRuntime()) return null;
   const runtimeEnv = getModuleEnv("provider-runtime");
   const socketPath = runtimeEnv.SOCKET?.trim();
   const token = runtimeEnv.TOKEN?.trim();
@@ -218,17 +229,17 @@ function applyProviderHostConnection(connection: {
 }
 
 /**
- * Attach to a live Linux provider host, or start one when absent.
+ * Attach to a live provider host, or start one when absent.
  * Remote SSH executor sessions stay allowed either way: they still launch
  * from this YA server. A failed ensure continues in-process and sets the
- * Linux degraded notice.
+ * provider-host degraded notice.
  */
 export async function ensureProviderRuntimeHost(): Promise<boolean> {
   if (isProviderRuntimeHostAvailable()) {
-    setLinuxProviderHostDegraded(false);
+    setProviderHostDegraded(false);
     return true;
   }
-  if (process.platform !== "linux") return false;
+  if (!supportsProviderHostRuntime()) return false;
   // Mock servers must not discover or bootstrap an ambient real-provider host.
   // A wrapper may still supply an explicit simulated host for lifecycle tests.
   if (process.env.VITEST || process.env.USE_MOCK_SDK === "true") {
@@ -238,7 +249,7 @@ export async function ensureProviderRuntimeHost(): Promise<boolean> {
     process.env.YEP_SERVER_GENERATION = `${process.pid}-1`;
   }
   if (await initializeProviderRuntimeHost()) {
-    setLinuxProviderHostDegraded(false);
+    setProviderHostDegraded(false);
     return true;
   }
 
@@ -281,7 +292,7 @@ export async function ensureProviderRuntimeHost(): Promise<boolean> {
         discovery: result.discovery,
       });
       if (await initializeProviderRuntimeHost()) {
-        setLinuxProviderHostDegraded(false);
+        setProviderHostDegraded(false);
         return true;
       }
     }
@@ -291,7 +302,7 @@ export async function ensureProviderRuntimeHost(): Promise<boolean> {
         state: result.state,
         error: result.error,
       },
-      "Linux YA could not attach or start the provider host",
+      "YA could not attach or start the provider host",
     );
   } catch (error) {
     getLogger().error(
@@ -299,10 +310,10 @@ export async function ensureProviderRuntimeHost(): Promise<boolean> {
         event: "provider_host_ensure_failed",
         error: error instanceof Error ? error.message : String(error),
       },
-      "Linux YA could not attach or start the provider host",
+      "YA could not attach or start the provider host",
     );
   }
-  setLinuxProviderHostDegraded(true);
+  setProviderHostDegraded(true);
   return false;
 }
 
@@ -747,6 +758,7 @@ class HostedAgentSession {
   private failure: Error | null = null;
   private detaching = false;
   private providerAlive = true;
+  private activeProviderTurn = false;
   private providerActivity: ProviderActivitySnapshot;
   private providerRetention: ProviderRetentionSnapshot;
   private handledApprovals = new Set<string>();
@@ -888,6 +900,7 @@ class HostedAgentSession {
 
   private applyAttachedState(message: Record<string, unknown>): void {
     this.providerAlive = message.providerAlive !== false;
+    this.activeProviderTurn = message.activeProviderTurn === true;
     this.queue.updateDepth(Number(message.queueDepth ?? 0));
     this.providerActivity = reviveActivity(
       message.providerActivity as ProviderActivitySnapshot | undefined,
@@ -1201,6 +1214,7 @@ class HostedAgentSession {
       pid: this.runtime.pid,
       sessionId: this.runtime.worker.sessionId,
       initializedSessionId: this.initializedSessionId,
+      initialTurnState: this.activeProviderTurn ? "in-turn" : "idle",
       ...(capabilities.probeLiveness
         ? {
             probeLiveness: async () => {

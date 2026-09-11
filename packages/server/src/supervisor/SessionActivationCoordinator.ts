@@ -399,6 +399,14 @@ export class SessionActivationCoordinator {
     }
   }
 
+  /** Persist standing policy before its replaceable controller releases ownership. */
+  async prepareForServerReload(process: Process): Promise<void> {
+    await this.enqueueConfiguration(process.sessionId, async () => {
+      await this.persistProcessLaunchSettings(process);
+      await this.options.sessionMetadataService?.flushPendingWrites();
+    });
+  }
+
   private async flushPendingProcessLaunchSettings(
     process: Process,
   ): Promise<void> {

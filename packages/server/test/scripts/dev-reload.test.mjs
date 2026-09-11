@@ -51,12 +51,17 @@ function reload({ port, token }) {
   });
 }
 
-// The real shared provider host and its process-group ownership are Linux-only.
-describe.skipIf(process.platform !== "linux")(
+// The real shared provider host and its process-group ownership run on Linux and macOS.
+describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")(
   "development wrapper reload",
   () => {
     it("replaces frontend and backend while preserving a live provider worker", async () => {
-      const directory = await mkdtemp(join(tmpdir(), "ya-dev-reload-"));
+      const directory = await mkdtemp(
+        join(
+          process.platform === "darwin" ? "/tmp" : tmpdir(),
+          "ya-dev-reload-",
+        ),
+      );
       const bin = join(directory, "bin");
       const runtime = join(directory, "host");
       const eventsFile = join(directory, "events.jsonl");

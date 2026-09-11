@@ -85,6 +85,12 @@ vi.mock("../../components/Sidebar", () => ({
   SidebarToggleIcon: () => <svg aria-hidden="true" />,
 }));
 
+// Layout tests do not own the banner's asynchronous version polling.
+// The degraded-host E2E cases exercise the real banner and navigation together.
+vi.mock("../../hooks/useVersion", () => ({
+  useVersion: () => ({ version: null }),
+}));
+
 vi.mock("../../contexts/GlossaryContext", () => ({
   GlossaryProjectProvider: mocks.GlossaryProjectProvider,
 }));

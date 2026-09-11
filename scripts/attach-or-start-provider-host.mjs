@@ -9,6 +9,7 @@ import {
   recoverProviderHost,
   resolveProviderHostPaths,
 } from "./provider-runtime-discovery.mjs";
+import { providerHostCapability } from "./provider-process-identity.mjs";
 import { resolveProviderRuntimeWorkerPath } from "./provider-runtime-host.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -48,7 +49,7 @@ async function waitForAvailable(paths, identity, timeoutMs = 5_000) {
 }
 
 /**
- * Attach to a compatible Linux provider host, or start one when absent.
+ * Attach to a compatible provider host, or start one when absent.
  * SSH remote-executor sessions are unrelated: they still run through this
  * local host once it is up.
  */
@@ -56,6 +57,9 @@ export async function attachOrStartProviderHost({
   env = process.env,
   projectRoot = rootDir,
 } = {}) {
+  const capability = providerHostCapability();
+  if (!capability.supported)
+    return { state: "unsupported", error: capability.reason };
   const paths = resolveProviderHostPaths(env);
   if (!paths) return { state: "unsupported" };
 
@@ -99,14 +103,23 @@ export async function attachOrStartProviderHost({
   };
   delete hostEnvironment.YEP_PROVIDER_RUNTIME_TOKEN;
 
-  const host = spawn(process.execPath, [hostEntrypoint, "--headless"], {
-    cwd: projectRoot,
-    env: hostEnvironment,
-    detached: true,
-    stdio: ["ignore", "inherit", "inherit"],
-    shell: false,
-  });
+  const launcherOwned = process.platform === "darwin";
+  const host = spawn(
+    process.execPath,
+    [hostEntrypoint, ...(launcherOwned ? [] : ["--headless"])],
+    {
+      cwd: projectRoot,
+      env: hostEnvironment,
+      detached: true,
+      stdio: launcherOwned
+        ? ["ignore", "inherit", "inherit", "ipc"]
+        : ["ignore", "inherit", "inherit"],
+      shell: false,
+    },
+  );
+  host.on("error", () => {}); // Report bounded discovery failure below.
   host.unref();
+  host.channel?.unref();
 
   discovery = await waitForAvailable(paths, identity);
   if (discovery.state === "available") {

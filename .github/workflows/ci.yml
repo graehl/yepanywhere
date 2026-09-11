@@ -8,6 +8,33 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  provider-host-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, macos-15-intel, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.16.0
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @yep-anywhere/shared build
+      - name: Native ownership, replacement, real-worker callbacks and Windows fallback
+        run: >-
+          pnpm --filter @yep-anywhere/server exec vitest run
+          test/scripts/provider-process-identity.test.mjs
+          test/scripts/dev-reload.test.mjs
+          test/scripts/provider-host-ownership.test.mjs
+          test/scripts/provider-host-system.test.mjs
+          test/sdk/providers/provider-runtime-host.test.ts
+          test/sdk/providers/provider-host-status.test.ts
+          --maxWorkers=1 --minWorkers=1 --testTimeout=20000
+
   agent-self-source:
     strategy:
       fail-fast: false

@@ -1,14 +1,15 @@
-let linuxProviderHostDegraded = false;
+let providerHostDegraded = false;
 
-export function setLinuxProviderHostDegraded(degraded: boolean): void {
-  linuxProviderHostDegraded = process.platform === "linux" && degraded;
+export function setProviderHostDegraded(degraded: boolean): void {
+  providerHostDegraded =
+    (process.platform === "linux" || process.platform === "darwin") && degraded;
 }
 
-export function resetLinuxProviderHostDegradedForTests(): void {
-  linuxProviderHostDegraded = false;
+export function resetProviderHostDegradedForTests(): void {
+  providerHostDegraded = false;
 }
 
-/** Linux boot tried to attach or start the provider host and still has none. */
-export function isLinuxProviderHostDegraded(): boolean {
-  return linuxProviderHostDegraded;
+/** Boot tried to attach or start the provider host and still has none. */
+export function isProviderHostDegraded(): boolean {
+  return providerHostDegraded;
 }

@@ -86,7 +86,7 @@ import {
   listHostedProviderRuntimes,
   retainProviderRuntimeProcessGroup,
 } from "./sdk/providers/provider-runtime-host.js";
-import { isLinuxProviderHostDegraded } from "./sdk/providers/provider-host-status.js";
+import { isProviderHostDegraded } from "./sdk/providers/provider-host-status.js";
 import { ClaudeGatewayProvider } from "./sdk/providers/claude-gateway.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { grokACPProvider } from "./sdk/providers/grok-acp.js";
@@ -292,6 +292,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
               p.queueDepth === 0 &&
               !p.hasVolatileDeferredMessages()
             ) {
+              try {
+                await supervisorForShutdown?.prepareForServerReload(p);
+              } catch (error) {
+                // A retained callback must never resume under stale standing policy.
+                await p.abort();
+                throw error;
+              }
               await p.detachForServerReload();
               console.log(
                 `[Shutdown] Detached ${p.provider} session ${p.sessionId}`,
@@ -774,9 +781,9 @@ async function startServer() {
   }
   if (await ensureProviderRuntimeHost()) {
     console.log("[ProviderRuntimeHost] Registered this server generation");
-  } else if (isLinuxProviderHostDegraded()) {
+  } else if (isProviderHostDegraded()) {
     console.error(
-      "[ProviderRuntimeHost] Linux server is running without the provider host; local sessions stay in-process",
+      "[ProviderRuntimeHost] Server is running without the provider host; local sessions stay in-process",
     );
   }
   markStartup("Provider runtime host registration checked");
@@ -1147,7 +1154,8 @@ async function startServer() {
       await supervisor.reactivateSession(
         runtime.projectPath,
         runtime.sessionId,
-        runtime.reattach.permissionMode,
+        sessionMetadataService.getEffectiveLaunchSettings(runtime.sessionId)
+          ?.permissionMode ?? runtime.reattach.permissionMode,
         {
           providerName: runtime.providerName,
           model: runtime.reattach.model,

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 
-const role = process.argv[process.argv.indexOf("--filter") + 1];
+const role = process.argv[process.argv.indexOf("--filter") + 1]
+  .split("/")
+  .pop();
 appendFileSync(
   process.env.YA_TEST_WRAPPER_EVENTS,
   `${JSON.stringify({

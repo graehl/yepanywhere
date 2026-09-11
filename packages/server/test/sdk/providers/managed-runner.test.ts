@@ -116,6 +116,15 @@ describe("ProviderSessionOwner", () => {
     await waitFor(() =>
       replayed.some((message) => message.type === "approval"),
     );
+    // The controller snapshot must retain the active turn even after its
+    // earlier activity events have already been acknowledged.
+    owner.detach("controller-two");
+    const attached = owner.attach(
+      "controller-two",
+      "generation-three",
+      (message) => replayed.push(message as Record<string, unknown>),
+    );
+    expect(attached.activeProviderTurn).toBe(true);
     const approval = replayed.find((message) => message.type === "approval");
     await owner.handleControllerRequest("controller-two", {
       type: "approvalResult",

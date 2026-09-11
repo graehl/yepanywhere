@@ -15,7 +15,6 @@ import {
   createProviderHostToken,
   discoverProviderHost,
   ensurePrivateProviderHostDirectory,
-  readLinuxProcessStartTime,
   readProviderHostReceipts,
   recoverProviderHost,
   removeProviderHostArtifacts,
@@ -24,6 +23,13 @@ import {
   writeProviderHostRecentRuntimes,
   writeProviderHostReceipts,
 } from "./provider-runtime-discovery.mjs";
+import {
+  assertProviderSocketPath,
+  readProcessStartTime,
+  processGroupAlive as isProcessGroupAlive,
+  isOwnedProcessGroupAlive,
+  providerHostCapability,
+} from "./provider-process-identity.mjs";
 import {
   ProviderRuntimeTurnLedger,
   normalizeProviderSessionOptions,
@@ -140,33 +146,14 @@ function removePathIfPresent(path) {
   }
 }
 
-function isProcessGroupAlive(processGroupId) {
-  try {
-    process.kill(-processGroupId, 0);
-    return true;
-  } catch (error) {
-    if (error?.code === "ESRCH") return false;
-    if (error?.code === "EPERM") return true;
-    throw error;
-  }
-}
-
 function captureProcessGroup(processGroupId) {
-  const leaderStartTime = readLinuxProcessStartTime(processGroupId);
+  const leaderStartTime = readProcessStartTime(processGroupId);
   if (!leaderStartTime) {
     throw new Error(
       `Cannot capture provider process group ${processGroupId} identity`,
     );
   }
   return { processGroupId, leaderStartTime };
-}
-
-function isOwnedProcessGroupAlive(target) {
-  if (!isProcessGroupAlive(target.processGroupId)) return false;
-  const currentStartTime = readLinuxProcessStartTime(target.processGroupId);
-  return (
-    currentStartTime === null || currentStartTime === target.leaderStartTime
-  );
 }
 
 async function waitForProcessGroupExit(target, timeoutMs) {
@@ -787,6 +774,7 @@ export class ProviderRuntimeHost {
       this.runtimeDir,
       `provider-${runtimeId.replaceAll("-", "").slice(0, 16)}.sock`,
     );
+    assertProviderSocketPath(socketPath);
     removePathIfPresent(socketPath);
 
     const options = request.options ?? {};
@@ -1390,9 +1378,13 @@ export class ProviderRuntimeHost {
     if (this.shuttingDown) return await this.shuttingDown;
     this.shuttingDown = (async () => {
       const recentRuntimeCandidates = [...this.runtimes.values()]
-        .filter(
-          (entry) => entry.providerSessionId && this.isRuntimeClaimable(entry),
-        )
+        .filter((entry) => {
+          try {
+            return entry.providerSessionId && this.isRuntimeClaimable(entry);
+          } catch {
+            return false;
+          } // Cleanup below retains each failed identity.
+        })
         .map((entry) => ({
           target: {
             harness: entry.harness,
@@ -1411,9 +1403,11 @@ export class ProviderRuntimeHost {
       );
       const failures = results.filter((result) => result.status === "rejected");
       const retainedResults = await Promise.allSettled(
-        [...this.retainedProcessGroups.values()].map(this.terminateGroup),
+        [...this.retainedProcessGroups.values()].map(async (target) => {
+          await this.terminateGroup(target);
+          this.retainedProcessGroups.delete(target.processGroupId);
+        }),
       );
-      this.retainedProcessGroups.clear();
       this.refreshDescriptor();
       failures.push(
         ...retainedResults.filter((result) => result.status === "rejected"),
@@ -1460,7 +1454,7 @@ async function main() {
   if (process.argv.includes("--help")) {
     process.stdout.write(
       "Usage: node scripts/provider-runtime-host.mjs --headless\n\n" +
-        "Start the Linux provider host in the foreground. The stable local\n" +
+        "Start the Linux/macOS Node source provider host in the foreground. The stable local\n" +
         "descriptor and private capability token are created automatically.\n",
     );
     return;
@@ -1468,9 +1462,13 @@ async function main() {
   if (!headless && typeof process.send !== "function") {
     throw new Error("Use --headless when starting the provider host directly");
   }
+  const capability = providerHostCapability();
+  if (!capability.supported) throw new Error(capability.reason);
   const stablePaths = resolveProviderHostPaths();
   if (!stablePaths) {
-    throw new Error("The provider runtime host is available only on Linux");
+    throw new Error(
+      "The provider runtime host is unavailable on this platform/runtime",
+    );
   }
   const runtimeDir =
     process.env.YEP_PROVIDER_RUNTIME_DIR ?? stablePaths.runtimeDir;
@@ -1498,6 +1496,7 @@ async function main() {
       process.env.YEP_PROVIDER_RUNTIME_RECENT_RUNTIMES ??
       join(runtimeDir, basename(stablePaths.recentRuntimePath)),
   };
+  assertProviderSocketPath(paths.controlSocketPath);
   ensurePrivateProviderHostDirectory(paths.runtimeDir);
   const workerPath = resolveProviderRuntimeWorkerPath();
   const identities = createProviderHostSourceIdentity({
@@ -1614,6 +1613,7 @@ async function main() {
   }
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGHUP", () => shutdown("terminal SIGHUP"));
   try {
     await host.start();
   } catch (error) {

@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { isLinuxProviderHostDegraded } from "../sdk/providers/provider-host-status.js";
+import { isProviderHostDegraded } from "../sdk/providers/provider-host-status.js";
 import {
   APPROVAL_AUDIT_LOG_CAPABILITY,
   SERVER_CAPABILITIES,
@@ -698,7 +698,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       latestDeviceBridgeVersion: deviceBridgeStatus.latestVersion ?? null,
       ...(clientDefaults ? { clientDefaults } : {}),
       ...(options?.desktopRuntime ? { desktopRuntime: true } : {}),
-      ...(isLinuxProviderHostDegraded() ? { providerHostDegraded: true } : {}),
+      ...(isProviderHostDegraded() ? { providerHostDegraded: true } : {}),
     };
 
     return c.json(info);

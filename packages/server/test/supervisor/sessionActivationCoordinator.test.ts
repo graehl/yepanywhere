@@ -53,6 +53,48 @@ describe("SessionActivationCoordinator", () => {
     await expect(state.waitForActivation("session-1")).resolves.toBe(false);
   });
 
+  it("flushes the latest standing policy before reload and propagates write failures", async () => {
+    const gate = deferred<void>();
+    const writes: string[] = [];
+    let fail = false;
+    const state = coordinator({
+      sessionMetadataService: {
+        recordEffectiveLaunchSettings: async (
+          _id: string,
+          value: { permissionMode: string },
+        ) => {
+          writes.push(value.permissionMode);
+          if (fail) throw new Error("disk unavailable");
+        },
+        flushPendingWrites: async () => {
+          writes.push("flushed");
+        },
+      } as unknown as NonNullable<
+        SessionActivationCoordinatorOptions["sessionMetadataService"]
+      >,
+    });
+    const process = {
+      id: "process-1",
+      sessionId: "session-1",
+      permissionMode: "bypassPermissions",
+    } as Process;
+    const pending = state.enqueueConfiguration("session-1", async () => {
+      await gate.promise;
+      Object.assign(process, { permissionMode: "default" });
+    });
+    const reload = state.prepareForServerReload(process);
+    expect(writes).toEqual([]);
+    gate.resolve();
+    await pending;
+    await reload;
+    expect(writes).toEqual(["default", "flushed"]);
+    fail = true;
+    await expect(state.prepareForServerReload(process)).rejects.toThrow(
+      "disk unavailable",
+    );
+    expect(writes).toEqual(["default", "flushed", "default"]);
+  });
+
   it("runs configuration transitions in request order", async () => {
     const firstGate = deferred<void>();
     const state = coordinator();

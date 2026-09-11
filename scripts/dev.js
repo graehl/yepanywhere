@@ -31,6 +31,10 @@ import {
   recoverProviderHost,
   resolveProviderHostPaths,
 } from "./provider-runtime-discovery.mjs";
+import {
+  isOwnedProcessGroupAlive,
+  providerHostCapability,
+} from "./provider-process-identity.mjs";
 import { exitIfUnsafeHome } from "./safe-home.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -177,7 +181,10 @@ const env = {
 };
 
 const reloadSafeRuntimeHostsEnabled =
-  process.platform === "linux" && !backendWatch;
+  providerHostCapability().supported &&
+  !backendWatch &&
+  (env.USE_MOCK_SDK !== "true" ||
+    Boolean(env.YEP_PROVIDER_RUNTIME_WORKER_PATH));
 const providerHostPaths = reloadSafeRuntimeHostsEnabled
   ? resolveProviderHostPaths(env)
   : null;
@@ -226,22 +233,6 @@ function processTargetAlive(target) {
   }
 }
 
-function readProcessStartTime(pid) {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const commandEnd = stat.lastIndexOf(")");
-    if (commandEnd < 0) return null;
-    const fields = stat
-      .slice(commandEnd + 1)
-      .trim()
-      .split(/\s+/);
-    return fields[19] ?? null;
-  } catch (error) {
-    if (error?.code === "ENOENT" || error?.code === "ESRCH") return null;
-    throw error;
-  }
-}
-
 function reportedProcessGroups(message) {
   if (Array.isArray(message?.processGroups)) {
     return message.processGroups.filter(
@@ -260,14 +251,7 @@ function reportedProcessGroups(message) {
     .map((processGroupId) => ({ processGroupId }));
 }
 
-function runtimeProcessGroupAlive(target) {
-  if (!processTargetAlive(-target.processGroupId)) return false;
-  if (!target.leaderStartTime) return true;
-  const currentStartTime = readProcessStartTime(target.processGroupId);
-  return (
-    currentStartTime === null || currentStartTime === target.leaderStartTime
-  );
-}
+const runtimeProcessGroupAlive = isOwnedProcessGroupAlive;
 
 async function waitForRuntimeProcessGroupExit(target, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -367,13 +351,13 @@ async function reapRuntimeProcessGroup(reportedTarget) {
       : reportedTarget;
   const signalTarget = -target.processGroupId;
   if (!runtimeProcessGroupAlive(target)) return;
-  process.kill(signalTarget, "SIGTERM");
+  if (runtimeProcessGroupAlive(target)) process.kill(signalTarget, "SIGTERM");
   if (await waitForRuntimeProcessGroupExit(target, 1_500)) return;
   if (!runtimeProcessGroupAlive(target)) return;
-  process.kill(signalTarget, "SIGTERM");
+  if (runtimeProcessGroupAlive(target)) process.kill(signalTarget, "SIGTERM");
   if (await waitForRuntimeProcessGroupExit(target, 500)) return;
   if (!runtimeProcessGroupAlive(target)) return;
-  process.kill(signalTarget, "SIGKILL");
+  if (runtimeProcessGroupAlive(target)) process.kill(signalTarget, "SIGKILL");
   if (!(await waitForRuntimeProcessGroupExit(target, 1_000))) {
     throw new Error(
       `Runtime process group ${target.processGroupId} survived SIGKILL`,
@@ -816,12 +800,16 @@ function startServer() {
 
   serverGeneration += 1;
   const generation = `${process.pid}-${serverGeneration}`;
-  const server = spawnManaged(pnpmBin, ["--filter", "server", serverScript], {
-    cwd: rootDir,
-    env: { ...env, YEP_SERVER_GENERATION: generation },
-    stdio: "inherit",
-    ...shellOption,
-  });
+  const server = spawnManaged(
+    pnpmBin,
+    ["--filter", "@yep-anywhere/server", serverScript],
+    {
+      cwd: rootDir,
+      env: { ...env, YEP_SERVER_GENERATION: generation },
+      stdio: "inherit",
+      ...shellOption,
+    },
+  );
   server.yaGeneration = generation;
   serverChild = server;
 
@@ -848,12 +836,16 @@ function startServer() {
  * Start the client dev server
  */
 function startClient() {
-  const client = spawnManaged(pnpmBin, ["--filter", "client", "dev"], {
-    cwd: rootDir,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    ...shellOption,
-  });
+  const client = spawnManaged(
+    pnpmBin,
+    ["--filter", "@yep-anywhere/client", "dev"],
+    {
+      cwd: rootDir,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...shellOption,
+    },
+  );
 
   forwardWithLineFilter(
     client.stdout,

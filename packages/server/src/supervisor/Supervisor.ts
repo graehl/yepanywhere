@@ -2517,7 +2517,7 @@ export class Supervisor {
       projectId,
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
-      initialState: "idle",
+      initialState: result.initialTurnState ?? "idle",
       queue,
       sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       toolResultMediaStore: this.toolResultMediaStore,
@@ -3910,6 +3910,10 @@ export class Supervisor {
     }
 
     return { success: false, error: result.error ?? "Failed to queue message" };
+  }
+
+  async prepareForServerReload(process: Process): Promise<void> {
+    await this.activationCoordinator.prepareForServerReload(process);
   }
 
   getAllProcesses(): Process[] {

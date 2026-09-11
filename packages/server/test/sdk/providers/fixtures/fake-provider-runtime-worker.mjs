@@ -59,19 +59,17 @@ const server = createServer((socket) => {
             input: { attachment: attachedCount },
           })}\n`,
         );
-        if (launchRequest.providerName === "pi") {
-          setTimeout(() => {
-            socket.write(
-              `${JSON.stringify({
-                type: "approvalCancelled",
-                requestId: "fake-pending-approval",
-              })}\n`,
-            );
-          }, 20);
-        }
       } else if (request.type === "ack") {
         acknowledgedSequence = Math.max(acknowledgedSequence, request.sequence);
       } else if (request.type === "rpc") {
+        if (
+          launchRequest.providerName === "pi" &&
+          request.method === "probeLiveness"
+        ) {
+          socket.write(
+            `${JSON.stringify({ type: "approvalCancelled", requestId: "fake-pending-approval" })}\n`,
+          );
+        }
         if (
           request.method === "publishAgentctlSessionId" &&
           request.args?.[1]?.YEP_BROWSER_DEBUG_CALLER_TOKEN
@@ -94,6 +92,10 @@ const server = createServer((socket) => {
             type: "rpcResult",
             id: request.id,
             ok: true,
+            result:
+              request.method === "probeLiveness"
+                ? { status: "alive" }
+                : undefined,
           })}\n`,
         );
       } else if (request.type === "approvalResult") {
@@ -191,7 +193,7 @@ server.listen(socketPath, () => {
     metadata: {
       sessionId: launchRequest.options.resumeSessionId,
       queueDepth: 0,
-      capabilities: {},
+      capabilities: { probeLiveness: true },
       agentLaunchEnvironment: {
         harness: process.env.AGENT_LAUNCH_HARNESS,
         model: process.env.AGENT_LAUNCH_MODEL,

@@ -1,0 +1,17 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.frame:global(.session-page) {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  position: relative;
+}
+
+.frame :global(.sidebar-floating-restore) {
+  position: absolute;
+}

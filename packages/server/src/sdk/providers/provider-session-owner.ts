@@ -138,6 +138,7 @@ export interface ProviderSessionAttachedState {
   protocolVersion: number;
   runtimeId: string;
   acknowledgedSequence: number;
+  activeProviderTurn: boolean;
   queueDepth: number;
   providerAlive: boolean;
   providerActivity: ProviderActivitySnapshot;
@@ -395,6 +396,7 @@ export class ProviderSessionOwner {
       protocolVersion: PROVIDER_SESSION_PROTOCOL_VERSION,
       runtimeId: this.options.runtimeId,
       acknowledgedSequence: this.acknowledgedSequence,
+      activeProviderTurn: this.activeProviderTurn,
       queueDepth: this.queueDepth,
       providerAlive: this.providerAlive,
       providerActivity: this.providerActivity,

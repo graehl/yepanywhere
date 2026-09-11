@@ -133,7 +133,7 @@ documents before defining work.
 | Node 22 and built-in SQLite | Follow the approved [runtime cutover plan](../tactical/123-node-22-builtin-sqlite-cutover.md): raise the server runtime floor now, retain older-server hosted frontend support with advisory runtime warnings, and gate new SQLite-backed features by their exact capabilities before considering any separate frontend cutoff. |
 | Source workflow depth and traceability | Build on [Source Control](../../topics/source-control.md), [review handoff](../../topics/source-review-to-session.md), and [commit/session attribution](../../gaps/committed-change-session-attribution.md). Additional Git or terminal controls need a concrete user workflow. |
 | Provider maturity and other deferred work | Consult the owning provider topics and [deferred backlog](../../topics/deferred-roadmap.md); its local ordering does not override this product priority. |
-| macOS backend reload continuity | [Provider-host port plan](../tactical/128-macos-provider-host.md) recorded; implementation pending. Native process identity/cleanup and deterministic plus live Claude/Codex verification are prerequisites. This developer iteration work does not displace release delivery. |
+| macOS backend reload continuity | [Provider-host port](../tactical/128-macos-provider-host.md) implemented for Node source checkouts; native Mac ownership and live Codex reload/approval verified. Live Claude and simultaneous-provider verification remain blocked by organization access; Linux native and assembled tests pass; detailed evidence is tracked in the plan. This developer iteration work does not displace release delivery. |
 
 ## What changed from the old roadmap
 

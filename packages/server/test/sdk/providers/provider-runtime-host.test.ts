@@ -19,7 +19,7 @@ import {
   createProviderHostSourceIdentity,
   createProviderHostToken,
   discoverProviderHost,
-  readLinuxProcessStartTime,
+  readProcessStartTime,
   readProviderHostReceipts,
   recoverProviderHost,
   requestProviderHost,
@@ -51,6 +51,10 @@ const expectedProviderHostIdentity = createProviderHostSourceIdentity({
   hostPath: providerHostEntrypoint,
   workerPath: fixtureWorker,
 });
+
+const nativeHostSupported =
+  process.platform === "linux" || process.platform === "darwin";
+const runtimeTmpDir = process.platform === "darwin" ? "/tmp" : tmpdir();
 
 describe("resolveProviderRuntimeWorkerPath", () => {
   it("uses an explicit absolute worker path for harness-controlled runtimes", () => {
@@ -149,7 +153,7 @@ async function waitUntil(
 
 async function waitForChildExit(
   child: ReturnType<typeof spawn>,
-  timeoutMs = 3_000,
+  timeoutMs = 10_000,
 ): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
   if (child.exitCode !== null || child.signalCode !== null) {
     return { code: child.exitCode, signal: child.signalCode };
@@ -167,7 +171,7 @@ async function waitForChildExit(
 
 async function waitForAvailableHost(
   paths: NonNullable<ReturnType<typeof resolveProviderHostPaths>>,
-  timeoutMs = 3_000,
+  timeoutMs = 10_000,
 ) {
   const deadline = Date.now() + timeoutMs;
   while (true) {
@@ -185,8 +189,12 @@ async function waitForAvailableHost(
 
 describe("provider host source identity", () => {
   it("distinguishes checkouts and hashes imported source changes", async () => {
-    const firstRoot = await mkdtemp(join(tmpdir(), "provider-source-first-"));
-    const secondRoot = await mkdtemp(join(tmpdir(), "provider-source-second-"));
+    const firstRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-source-first-"),
+    );
+    const secondRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-source-second-"),
+    );
     temporaryPaths.push(firstRoot, secondRoot);
     const writeFixture = async (root: string) => {
       await Promise.all([
@@ -373,9 +381,11 @@ afterEach(async () => {
   );
 });
 
-describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
+describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
   it("does not bootstrap an ambient host for a standalone mock server", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "mock-provider-host-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "mock-provider-host-"),
+    );
     temporaryPaths.push(runtimeRoot);
     vi.stubEnv("VITEST", undefined);
     vi.stubEnv("USE_MOCK_SDK", "true");
@@ -388,12 +398,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("publishes one private stable descriptor for a foreground host", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-stable-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-stable-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const host = spawn(
       process.execPath,
       [providerHostEntrypoint, "--headless"],
@@ -511,12 +523,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("consumes only fresh private recent-runtime recovery state", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-recent-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-recent-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const candidate = {
       target: {
         harness: "claude",
@@ -569,7 +583,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
 
   it("refuses absent live-only targets and retains resumed workers for the requested idle period", async () => {
     const runtimeRoot = await mkdtemp(
-      join(tmpdir(), "provider-host-live-only-"),
+      join(runtimeTmpDir, "provider-host-live-only-"),
     );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
@@ -625,12 +639,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("launches and exchanges a bounded turn without Hono", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-turn-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-turn-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const host = spawn(
       process.execPath,
       [providerHostEntrypoint, "--headless"],
@@ -777,12 +793,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("detaches after acceptance and resumes one turn from a record cursor", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-await-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-await-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const host = spawn(
       process.execPath,
       [providerHostEntrypoint, "--headless"],
@@ -873,12 +891,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("lazily resumes a cleanly stopped runtime for a later turn", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-restart-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-restart-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const startHost = () =>
       spawn(process.execPath, [providerHostEntrypoint, "--headless"], {
         cwd: dirname(providerHostEntrypoint),
@@ -1017,7 +1037,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   }, 15_000);
 
   it("does not report acceptance before its recovery receipt is durable", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-receipt-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-receipt-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const host = new ProviderRuntimeHost({
@@ -1066,7 +1088,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("reports uncertainty when the terminal receipt cannot be persisted", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-receipt-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-receipt-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     let receiptWrites = 0;
@@ -1121,12 +1145,14 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("recovers only a stale host with verified process identities", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-stale-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-stale-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const owner = spawn(
       process.execPath,
       ["-e", "setInterval(() => {}, 1000)"],
@@ -1145,11 +1171,11 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     try {
       await waitUntil(
         () =>
-          readLinuxProcessStartTime(owner.pid ?? 0) !== null &&
-          readLinuxProcessStartTime(worker.pid ?? 0) !== null,
+          readProcessStartTime(owner.pid ?? 0) !== null &&
+          readProcessStartTime(worker.pid ?? 0) !== null,
       );
       const ownerIdentity = captureProcessIdentity(owner.pid);
-      const workerStartTime = readLinuxProcessStartTime(worker.pid);
+      const workerStartTime = readProcessStartTime(worker.pid);
       if (!workerStartTime) throw new Error("worker identity unavailable");
       createProviderHostToken(paths.tokenPath);
       writeProviderHostDescriptor(paths, {
@@ -1215,7 +1241,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       });
 
       await waitUntil(() => !processGroupAlive(worker.pid ?? 0));
-      expect(readLinuxProcessStartTime(owner.pid)).toBeNull();
+      expect(readProcessStartTime(owner.pid)).toBeNull();
       expect(existsSync(paths.descriptorPath)).toBe(false);
       expect(existsSync(paths.tokenPath)).toBe(false);
       expect(existsSync(paths.lockPath)).toBe(false);
@@ -1237,13 +1263,13 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
 
   it("fails closed when a stale descriptor PID identity is ambiguous", async () => {
     const runtimeRoot = await mkdtemp(
-      join(tmpdir(), "provider-host-ambiguous-"),
+      join(runtimeTmpDir, "provider-host-ambiguous-"),
     );
     temporaryPaths.push(runtimeRoot);
     const paths = resolveProviderHostPaths({
       YEP_PROVIDER_HOST_RUNTIME_DIR: runtimeRoot,
     });
-    if (!paths) throw new Error("expected Linux provider host paths");
+    if (!paths) throw new Error("expected provider host paths");
     const owner = spawn(
       process.execPath,
       ["-e", "setInterval(() => {}, 1000)"],
@@ -1280,7 +1306,7 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       await expect(
         recoverProviderHost(paths, discovery.descriptor),
       ).rejects.toThrow("PID identity is ambiguous");
-      expect(readLinuxProcessStartTime(owner.pid)).not.toBeNull();
+      expect(readProcessStartTime(owner.pid)).not.toBeNull();
       expect(existsSync(paths.descriptorPath)).toBe(true);
     } finally {
       owner.kill("SIGKILL");
@@ -1288,7 +1314,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("injects the same launch identity locally and remotely", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1345,7 +1373,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("retains a worker for replacement and reaps it after attach timeout", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1370,7 +1400,10 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
       },
       owner,
     );
-    await host.bind({ runtimeId: launched.runtimeId, sessionId: "session-1" });
+    await host.bind({
+      runtimeId: launched.runtimeId,
+      sessionId: "session-1",
+    });
     host.confirmAttach({ runtimeId: launched.runtimeId, generation: "one" });
     expect(processGroupAlive(launched.processGroupId)).toBe(true);
 
@@ -1395,7 +1428,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("reaps all workers on terminal host shutdown", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1426,7 +1461,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("refuses to launch a second live runtime for one session", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1459,7 +1496,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("retries failed cleanup before rebinding a closing session", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     let cleanupAttempts = 0;
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -1531,7 +1570,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("serializes concurrent launches after stale cleanup", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     let cleanupAttempts = 0;
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -1584,7 +1625,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("reaps a claimed runtime when its controller never attaches", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1616,7 +1659,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("reaps wrapper-lifetime provider resources on terminal shutdown", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1657,8 +1702,10 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     }
   });
 
-  it("does not signal a process group whose Linux identity changed", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-host-test-"));
+  it("does not signal a process group whose native identity changed", async () => {
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-host-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const host = new ProviderRuntimeHost({
       runtimeDir: runtimeRoot,
@@ -1679,7 +1726,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
     });
 
     try {
-      await host.shutdown("stale identity test");
+      await expect(host.shutdown("stale identity test")).rejects.toThrow(
+        "survived shutdown",
+      );
       expect(processGroupAlive(resource.pid)).toBe(true);
     } finally {
       if (processGroupAlive(resource.pid)) {
@@ -1689,7 +1738,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("holds replayed callbacks until Process installs its handlers", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-proxy-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const host = new ProviderRuntimeHost({
@@ -1728,7 +1779,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("resolves hosted child environment for the selected executor", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-proxy-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const host = new ProviderRuntimeHost({
@@ -1760,7 +1813,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("propagates provider approval cancellation to the active callback", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-proxy-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const host = new ProviderRuntimeHost({
@@ -1791,6 +1846,8 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
               },
               { once: true },
             );
+            // Cancel only after the real callback has installed its listener.
+            void session.probeLiveness?.();
           });
         },
       },
@@ -1805,7 +1862,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("reattaches the AgentSession proxy to the same worker", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-proxy-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const host = new ProviderRuntimeHost({
@@ -1887,7 +1946,9 @@ describe.skipIf(process.platform !== "linux")("ProviderRuntimeHost", () => {
   });
 
   it("replaces a retained runtime when its network boundary changes", async () => {
-    const runtimeRoot = await mkdtemp(join(tmpdir(), "provider-proxy-test-"));
+    const runtimeRoot = await mkdtemp(
+      join(runtimeTmpDir, "provider-proxy-test-"),
+    );
     temporaryPaths.push(runtimeRoot);
     const controlSocketPath = join(runtimeRoot, "host.sock");
     const host = new ProviderRuntimeHost({

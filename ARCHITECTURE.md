@@ -61,7 +61,7 @@ linked docs when the details change.
 
 ## Provider runtime ownership and reload
 
-On a capable Linux non-watch development launch, `scripts/dev.js` owns a shared
+On a capable Linux or macOS Node source-checkout non-watch development launch, `scripts/dev.js` owns a shared
 provider host outside the replaceable Hono process. One worker per session owns
 the real provider adapter, SDK/TUI transport, message queue, callbacks, and
 sequenced output; Hono's `Process` talks to it through an `AgentSession` proxy.

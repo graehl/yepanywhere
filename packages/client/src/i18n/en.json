@@ -3217,7 +3217,7 @@
   "desktopProviderNoticeRetry": "Check again",
   "desktopProviderNoticeDismiss": "Dismiss provider setup notice",
   "providerHostDegradedTitle": "Provider host is not running",
-  "providerHostDegradedDescription": "This Linux YA server could not start or attach the provider host. Local agent sessions are running inside the web server instead of isolated workers. SSH remote sessions still work. Check the server logs, then restart YA.",
+  "providerHostDegradedDescription": "This YA server could not start or attach the provider host. Local agent sessions are running inside the web server instead of isolated workers. SSH remote sessions still work. Check the server logs, then restart YA.",
   "storageNetworkFilesystemTitle": "Move the YA data directory to local disk",
   "storageNetworkFilesystemDescription": "This server's data directory is on {filesystem}, where every database lock is a network round trip and a busy server stops answering. YA left its database closed to stay responsive, so issue associations and learned speech vocabulary are unavailable. Point YEP_DATA_DIR at a local disk and restart the server.",
   "storageNetworkFilesystemDismiss": "Dismiss",

@@ -10,7 +10,8 @@ Status: stable same-user discovery, foreground headless bootstrap,
 attach-or-start recovery, bounded auxiliary session turns, detached
 submission observation, recent orderly-restart recovery, explicit
 provider-session generation options, and an authenticated Hono adapter are
-implemented on Linux. The non-watch development wrapper attaches to a
+implemented on Linux and macOS Node source checkouts. macOS Bun, compiled
+servers and Desktop are not enabled; see the [runtime support boundary](reload-safe-provider-runtimes.md#macos-source-runtime-boundary). The non-watch development wrapper attaches to a
 compatible incumbent host or starts one, and Codex uses the shared provider
 host rather than a separate native host. Public feature copy labels this
 source-checkout surface experimental and points back to this exact availability
@@ -55,16 +56,17 @@ remains useful for authenticated remote callers.
 
 ## Current topology and protocols
 
-On Linux, `pnpm provider-host` starts
+On Linux and macOS Node source checkouts, `pnpm provider-host` starts
 `scripts/provider-runtime-host.mjs` in the foreground without Hono or Vite.
 The host publishes `host.json`, `token`, `host.lock`, and `control.sock` under
-`$YEP_PROVIDER_HOST_RUNTIME_DIR`, then `$XDG_RUNTIME_DIR`, with a private
-per-user temporary-runtime fallback. The directory is mode 0700 and the
+`$YEP_PROVIDER_HOST_RUNTIME_DIR` when explicit. Linux otherwise uses
+`$XDG_RUNTIME_DIR` with a private per-user temporary-runtime fallback; macOS
+uses the short `/tmp/yep-anywhere-<uid>/provider-host` path. The directory is mode 0700 and the
 descriptor, token, and socket are mode 0600. The descriptor records owner and
 worker process identities plus source/build identity without exposing the
 token value.
 
-The Linux non-watch `scripts/dev.js` path probes that descriptor before
+The supported non-watch `scripts/dev.js` path probes that descriptor before
 starting Hono. It attaches to a compatible host, starts one when absent, or
 performs verified bounded recovery when an identified host is nonresponsive.
 Hono receives the discovered endpoint and token through private environment
@@ -387,6 +389,13 @@ Replacing a nonresponsive host may interrupt active provider turns and reports
 that outcome. Endpoint absence alone never authorizes killing an unverified
 process.
 
+On macOS, a host started by a direct source server holds an IPC lease to that
+server. Its exit ends that newly created host; this mode alone does not promise
+continuity across replacing the source process. The non-watch wrapper owns the
+lease across Hono replacement. A separately launched foreground host remains
+owned by its own terminal, and merely attaching a wrapper does not transfer
+that ownership. Linux's existing headless bootstrap remains unchanged.
+
 ## Reload, code adoption, configuration, and defaults
 
 Safe Reload is a Hono-generation operation. It intentionally preserves shared
@@ -397,12 +406,12 @@ guarantees adoption across all hosted sessions. UI and operator documentation
 must not equate `Server changed` or `Reload` with provider-runtime refresh.
 
 Shared provider hosting is automatic when its launch capability is present. It
-has no user-facing enable setting. Linux server boot attaches to a compatible
+has no user-facing enable setting. Supported server boot attaches to a compatible
 host or starts one (`scripts/attach-or-start-provider-host.mjs`). SSH remote
 executor sessions still launch from this YA server and are not a reason to skip
-the local host. If Linux still has no host after that attempt, local sessions
+the local host. If a supported launch still has no host after that attempt, local sessions
 continue in-process and the UI shows a non-dismissible warning banner.
-Unsupported non-Linux platforms keep ordinary in-Hono ownership without that
+Unsupported platforms and runtime distributions keep ordinary in-Hono ownership without that
 banner; headless session control then reports unavailable.
 
 The `codexReloadSafeSessions` setting remains in the server schema and storage
@@ -461,7 +470,7 @@ version, while the permanent capability ledger retains all prior assignments.
   worker-code deployment still requires a wrapper restart.
 - Full wrapper shutdown and nonresponsive-host replacement leave no host,
   worker, provider process group, socket, descriptor, or token artifact behind.
-- Host absence on Linux after attach-or-start continues in-process and raises
+- Host absence on a supported launch after attach-or-start continues in-process and raises
   the provider-host degraded banner; it never weakens network admission or
   makes the provider-host socket remotely reachable.
 

@@ -42,6 +42,12 @@ export async function stopProviderHostRuntime(
       discovery.readProviderHostDescriptor(paths),
     );
   } catch (error) {
+    // A source-owned macOS host can finish IPC shutdown during this read.
+    if (
+      (error as NodeJS.ErrnoException).code === "ENOENT" &&
+      !existsSync(join(runtimeDir, "host.json"))
+    )
+      return;
     console.warn(
       `[E2E] Could not stop provider host in ${runtimeDir}: ${
         error instanceof Error ? error.message : String(error)

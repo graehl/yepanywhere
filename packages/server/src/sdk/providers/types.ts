@@ -281,6 +281,8 @@ export interface StartSessionOptions {
  * This is the common interface all providers must return.
  */
 export interface AgentSession {
+  /** Active turn retained by an existing provider owner during controller reload. */
+  initialTurnState?: "idle" | "in-turn";
   /** Publish selected/pending settings to the optional owning-session projection. */
   publishAgentSelfSelection?: (
     selection: import("../../agent-tools/protocol.js").AgentSelfSelection,

@@ -18,6 +18,19 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 
+import {
+  assertProviderSocketPath,
+  captureProcessIdentity,
+  processIdentityState,
+  processGroupIdentityState,
+  providerHostCapability,
+} from "./provider-process-identity.mjs";
+export {
+  captureProcessIdentity,
+  readLinuxProcessStartTime,
+  readProcessStartTime,
+} from "./provider-process-identity.mjs";
+
 export const PROVIDER_HOST_PROTOCOL_VERSION = 3;
 export const PROVIDER_HOST_DESCRIPTOR_VERSION = 1;
 
@@ -67,14 +80,21 @@ export function resolveProviderHostPaths(
   env = process.env,
   { platform = process.platform, uid = currentUid() } = {},
 ) {
-  if (platform !== "linux") return null;
+  if (!providerHostCapability({ platform, probe: false }).supported)
+    return null;
   const explicit = env.YEP_PROVIDER_HOST_RUNTIME_DIR?.trim();
   const xdgRuntimeDir = env.XDG_RUNTIME_DIR?.trim();
   const runtimeDir = explicit
     ? resolve(explicit)
-    : xdgRuntimeDir
-      ? join(resolve(xdgRuntimeDir), "yep-anywhere", "provider-host")
-      : join(tmpdir(), `yep-anywhere-${uid ?? "user"}`, "provider-host");
+    : platform === "darwin"
+      ? join("/tmp", `yep-anywhere-${uid ?? "user"}`, "provider-host")
+      : xdgRuntimeDir
+        ? join(resolve(xdgRuntimeDir), "yep-anywhere", "provider-host")
+        : join(tmpdir(), `yep-anywhere-${uid ?? "user"}`, "provider-host");
+  assertProviderSocketPath(
+    join(runtimeDir, "provider-0000000000000000.sock"),
+    platform,
+  );
   return {
     runtimeDir,
     controlSocketPath: join(runtimeDir, "control.sock"),
@@ -356,54 +376,6 @@ export function writeProviderHostRecentRuntimes(paths, candidates) {
   writePrivateFileAtomic(paths.recentRuntimePath, value);
 }
 
-export function readLinuxProcessStartTime(pid) {
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const commandEnd = stat.lastIndexOf(")");
-    if (commandEnd < 0) return null;
-    const fields = stat
-      .slice(commandEnd + 1)
-      .trim()
-      .split(/\s+/);
-    return fields[19] ?? null;
-  } catch (error) {
-    if (error?.code === "ENOENT" || error?.code === "ESRCH") return null;
-    throw error;
-  }
-}
-
-export function captureProcessIdentity(pid = process.pid) {
-  const startTime = readLinuxProcessStartTime(pid);
-  if (!startTime) {
-    throw new Error(`Cannot capture process ${pid} start identity`);
-  }
-  return { pid, startTime };
-}
-
-function processIdentityState(target) {
-  const currentStartTime = readLinuxProcessStartTime(target.pid);
-  if (currentStartTime === null) return "absent";
-  return currentStartTime === target.startTime ? "same" : "different";
-}
-
-function processGroupAlive(processGroupId) {
-  try {
-    process.kill(-processGroupId, 0);
-    return true;
-  } catch (error) {
-    if (error?.code === "ESRCH") return false;
-    if (error?.code === "EPERM") return true;
-    throw error;
-  }
-}
-
-function processGroupIdentityState(target) {
-  if (!processGroupAlive(target.processGroupId)) return "absent";
-  const currentStartTime = readLinuxProcessStartTime(target.processGroupId);
-  if (currentStartTime === null) return "same";
-  return currentStartTime === target.leaderStartTime ? "same" : "different";
-}
-
 async function waitForIdentityState(readState, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (true) {
@@ -527,6 +499,7 @@ function acquireExclusiveRecord(path, record, occupiedMessage) {
       if (error?.code !== "EEXIST") throw error;
       let existing;
       try {
+        assertPrivateOwnedPath(path, "file");
         existing = JSON.parse(readFileSync(path, "utf8"));
       } catch (readError) {
         throw new Error(`${occupiedMessage}: ${errorMessage(readError)}`);
@@ -846,9 +819,11 @@ export async function discoverProviderHost(
       "Provider host discovery requires expected source identity",
     );
   }
-  if (!existsSync(paths.descriptorPath)) return { state: "absent" };
   let descriptor;
   try {
+    if (existsSync(paths.runtimeDir))
+      assertPrivateOwnedPath(paths.runtimeDir, "directory");
+    if (!existsSync(paths.descriptorPath)) return { state: "absent" };
     descriptor = readProviderHostDescriptor(paths);
   } catch (error) {
     return { state: "ownership-unknown", error: errorMessage(error) };

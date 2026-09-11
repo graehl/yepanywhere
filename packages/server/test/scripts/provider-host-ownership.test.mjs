@@ -82,6 +82,7 @@ describe.skipIf(!["linux", "darwin"].includes(process.platform))(
         const descriptor = async () =>
           JSON.parse(await readFile(join(runtime, "host.json"), "utf8"));
         let worker;
+        let cleanupError;
         try {
           let owner;
           if (mode === "foreground") {
@@ -169,13 +170,14 @@ describe.skipIf(!["linux", "darwin"].includes(process.platform))(
               try {
                 process.kill(event.pid, "SIGTERM");
               } catch (error) {
-                if (error.code !== "ESRCH") throw error;
+                if (error.code !== "ESRCH") cleanupError ??= error;
               }
             }
           if (worker)
             await waitFor(() => !processGroupAlive(worker.processGroupId));
           await rm(directory, { recursive: true, force: true });
         }
+        if (cleanupError) throw cleanupError;
       },
       60_000,
     );

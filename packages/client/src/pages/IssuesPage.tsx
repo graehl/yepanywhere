@@ -1,6 +1,8 @@
-import { IssueIcon } from "../components/IssueIcon";
+import { IssueTypeBadge } from "./IssueTypeBadge";
+import { formatBriefAge } from "../lib/sessionAge";
 import type {
   IssueItem,
+  IssueSort,
   IssueSearchResult,
   IssueSessionsResult,
 } from "@yep-anywhere/shared";
@@ -46,6 +48,9 @@ function IssueBrowser() {
   const [detail, setDetail] = useState<IssueSessionsResult>();
   const [sessionOffset, setSessionOffset] = useState(0);
   const [sort, setSort] = useState("activity");
+  const [issueSort, setIssueSort] = useState<IssueSort>("activity");
+  const supportedIssueSort =
+    result?.supportedSorts?.includes(issueSort) ?? false;
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -73,7 +78,7 @@ function IssueBrowser() {
     const load = async () => {
       try {
         const next = await transport.fetch<IssueSearchResult>(
-          `/issues?${new URLSearchParams({ q: query, offset: String(offset), dismissed: dismissed ? "1" : "0", sessionId, projectId, revision: String(revision) })}`,
+          `/issues?${new URLSearchParams({ q: query, offset: String(offset), dismissed: dismissed ? "1" : "0", sessionId, projectId, revision: String(revision), ...(supportedIssueSort ? { sort: issueSort } : {}) })}`,
         );
         if (!disposed) {
           setResult(next);
@@ -98,7 +103,18 @@ function IssueBrowser() {
       disposed = true;
       if (timer) clearTimeout(timer);
     };
-  }, [transport, query, offset, dismissed, sessionId, projectId, revision, t]);
+  }, [
+    transport,
+    query,
+    offset,
+    dismissed,
+    sessionId,
+    projectId,
+    revision,
+    supportedIssueSort,
+    issueSort,
+    t,
+  ]);
   useEffect(() => {
     let disposed = false;
     setDetail(undefined);
@@ -269,7 +285,29 @@ function IssueBrowser() {
           className={`${styles.list} ${editing ? styles.editingList : ""}`}
           aria-label={t("issuesResults")}
         >
-          <div className={styles.listHeading}>{t("issuesKeyOrder")}</div>
+          <div className={styles.listHeading}>
+            {supportedIssueSort ? (
+              <label className={styles.issueSort}>
+                {t("issuesSortLabel")}
+                <select
+                  aria-label={t("issuesSortLabel")}
+                  value={issueSort}
+                  onChange={(e) => {
+                    setIssueSort(e.target.value as IssueSort);
+                    setOffset(0);
+                  }}
+                >
+                  {result?.supportedSorts?.map((value) => (
+                    <option key={value} value={value}>
+                      {t(`issuesSort_${value}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              t("issuesKeyOrder")
+            )}
+          </div>
           {result?.items.length === 0 && (
             <p className={styles.empty}>{t("issuesEmpty")}</p>
           )}
@@ -286,17 +324,24 @@ function IssueBrowser() {
                   onClick={() => select(item)}
                 >
                   <span className={styles.itemTitle}>
-                    <IssueIcon />
-                    <strong>{item.title ?? item.key}</strong>
+                    <strong>{item.key}</strong>
+                    <IssueTypeBadge item={item} />
                   </span>
+                  {item.title && item.title !== item.key && (
+                    <span className={styles.itemSummary}>{item.title}</span>
+                  )}
                   <span className={styles.itemMeta}>
-                    {item.title ? `${item.key} · ` : ""}
-                    {item.provider} ·{" "}
                     {t(
                       item.sessionCount === 1
                         ? "issuesSingleSession"
                         : "issuesSessionCount",
                       { count: item.sessionCount },
+                    )}
+                    {result?.sort && result.sort !== "key" && (
+                      <>
+                        {" "}
+                        · <IssueActivity item={item} sort={result.sort} />
+                      </>
                     )}
                   </span>
                   {item.unresolved && <small>{t("issuesUnresolved")}</small>}
@@ -494,5 +539,33 @@ function IssueBrowser() {
       </div>
       {menu.menu}
     </main>
+  );
+}
+
+function IssueActivity({ item, sort }: { item: IssueItem; sort: IssueSort }) {
+  const { t } = useI18n();
+  const timestamp =
+    sort === "mentioned" ? item.lastMentionAt : item.lastSessionActivityAt;
+  const age = formatBriefAge(timestamp);
+  return age ? (
+    <time
+      dateTime={timestamp ?? undefined}
+      title={new Date(timestamp!).toLocaleString()}
+    >
+      {t(
+        sort === "mentioned"
+          ? "issuesRecentlyMentionedAge"
+          : "issuesSessionActiveAge",
+        { age },
+      )}
+    </time>
+  ) : (
+    <span>
+      {t(
+        sort === "mentioned"
+          ? "issuesMentionTimeUnknown"
+          : "issuesActivityUnknown",
+      )}
+    </span>
   );
 }

@@ -101,7 +101,30 @@ that worker; unchanged sources and idle clients introduce no recurring work.
 
 ## Associated-session browser
 
-The left list sorts by ticket key A–Z and labels that order. Each issue's overflow
+The issue list defaults to **Recent session activity**: the latest retained
+catalog activity among sessions with visible evidence for that issue.
+**Recently mentioned** instead uses the latest source-message timestamp, so
+indexing an old conversation today does not make it a recent mention.
+**Issue number ↑** groups by tracker and project/repository key, then orders
+numbers numerically (9, 10, 100). Reference key and canonical identity break
+ties; missing or invalid activity/mention timestamps sort last. Search,
+project/session scope and dismissed filtering apply before aggregation and
+pagination. Refresh reads the current catalog; sorting adds no idle polling,
+transcript reads, durable activity copies or migrations.
+
+Each row keeps its key in the identity line, next to a colored Jira, GitHub
+issue, or GitHub PR badge; unknown GitHub types say GitHub reference. Type icons
+and labels carry the distinction without relying on color. Colors never claim
+open, closed or merged state. A title, when available and distinct from the
+key, occupies its own line. Session count and the chosen recency basis sit
+below it; number order shows session activity. Unknown times are explicit.
+
+`GET /api/issues` advertises `supportedSorts` and echoes `sort`, with additive
+`lastSessionActivityAt` and `lastMentionAt` on items. Clients learn support from
+the first ordinary search response before sending a sort parameter. Earlier
+experimental servers without this advertisement retain **Reference key A–Z**
+and get no sorting parameter; omitted sort preserves the legacy wire order.
+Each issue's overflow
 menu owns display-title editing, adding a missing issue URL, and deleting the
 saved item. A cleared display override falls back to its observed title, then key.
 Coverage counts and the dismissed-association filter live in a collapsed discovery

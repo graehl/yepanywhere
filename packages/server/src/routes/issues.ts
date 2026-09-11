@@ -1,5 +1,9 @@
 import { Hono, type MiddlewareHandler } from "hono";
-import type { IssueSettings, IssueSession } from "@yep-anywhere/shared";
+import type {
+  IssueSettings,
+  IssueSession,
+  IssueSort,
+} from "@yep-anywhere/shared";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { IssueIndexer } from "../services/issues/IssueIndexer.js";
 import type { IssueCredentials } from "../services/issues/credentials.js";
@@ -153,10 +157,16 @@ export function createIssueRoutes(
       return null;
     return { size, start };
   };
-  routes.get("/issues", (c) => {
+  routes.get("/issues", async (c) => {
     const p = page(c.req.query("limit"), c.req.query("offset"));
     const query = c.req.query("q") ?? "";
-    if (!p || query.length > 4096)
+    const supportedSorts: IssueSort[] = ["activity", "mentioned", "number"];
+    const sort = c.req.query("sort") ?? "key";
+    if (
+      !p ||
+      query.length > 4096 ||
+      (sort !== "key" && !supportedSorts.includes(sort as IssueSort))
+    )
       return c.json({ error: "Invalid search or pagination" }, 400);
     const items = indexer.store.list(
       issueUrl(query)?.url ?? query,
@@ -165,8 +175,14 @@ export function createIssueRoutes(
       c.req.query("dismissed") === "1",
       p.size,
       p.start,
+      {
+        sort: sort as IssueSort | "key",
+        sessionActivity: sort === "key" ? [] : await sessionCatalog(),
+      },
     );
     return c.json({
+      supportedSorts,
+      sort,
       items,
       coverage: indexer.coverage(),
       nextOffset: items.length === p.size ? p.start + p.size : null,

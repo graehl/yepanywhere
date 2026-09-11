@@ -95,6 +95,8 @@ export interface IssueCredentialStatus {
 export interface IssueCredentialsResult {
   credentials: IssueCredentialStatus[];
 }
+export type IssueSort = "activity" | "mentioned" | "number";
+
 export interface IssueItem {
   id: string;
   key: string;
@@ -103,6 +105,8 @@ export interface IssueItem {
   provider: string;
   kind: string;
   sessionCount: number;
+  lastSessionActivityAt?: string | null;
+  lastMentionAt?: string | null;
   unresolved: boolean;
   /**
    * What the tracker said when this reference was first seen, when
@@ -162,6 +166,9 @@ export interface IssueCoverage {
   counts: Array<{ state: string; count: number }>;
 }
 export interface IssueSearchResult {
+  /** Absent on earlier experimental servers; do not offer unsupported sorting. */
+  supportedSorts?: IssueSort[];
+  sort?: IssueSort | "key";
   items: IssueItem[];
   coverage: IssueCoverage;
   nextOffset: number | null;

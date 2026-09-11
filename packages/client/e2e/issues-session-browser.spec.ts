@@ -28,8 +28,11 @@ for (const viewport of [
       });
     });
     let title: string | null = null;
-    await page.route("**/api/issues?*", (route) =>
-      route.fulfill({
+    await page.route("**/api/issues?*", (route) => {
+      expect(new URL(route.request().url()).searchParams.has("sort")).toBe(
+        false,
+      );
+      return route.fulfill({
         json: {
           items: [
             {
@@ -64,8 +67,8 @@ for (const viewport of [
             ],
           },
         },
-      }),
-    );
+      });
+    });
     const mention = (id: number, sessionId = "recent") => ({
       id,
       sessionId,
@@ -138,7 +141,11 @@ for (const viewport of [
       await route.fulfill({ json: { ok: true } });
     });
     await page.goto(`${baseURL}/issues`);
-    await page.getByRole("button", { name: /^TF-3996 jira/ }).click();
+    await expect(
+      page.getByRole("combobox", { name: "Sort issues & PRs" }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Reference key A–Z")).toBeVisible();
+    await page.getByRole("button", { name: /^TF-3996 Jira/ }).click();
     const pane = page.getByRole("region", {
       name: "Associated sessions",
       exact: true,
@@ -200,7 +207,9 @@ for (const viewport of [
       .fill("Repair mapping request");
     await page.getByRole("button", { name: "Save title" }).click();
     await expect(
-      page.getByRole("button", { name: /^Repair mapping request/ }),
+      page.getByRole("button", {
+        name: /^TF-3996 Jira Repair mapping request/,
+      }),
     ).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,

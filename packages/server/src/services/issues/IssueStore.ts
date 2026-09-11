@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_JIRA_KEY_BLOCKLIST,
   type IssueItem,
+  type IssueSort,
   type IssueEvidence,
   type IssueSettings,
 } from "@yep-anywhere/shared";
@@ -404,25 +405,56 @@ export class IssueStore {
     dismissed = false,
     limit = 50,
     offset = 0,
+    options: {
+      sort?: IssueSort | "key";
+      sessionActivity?: readonly { sessionId: string; updatedAt: string }[];
+    } = {},
   ): IssueItem[] {
+    // Only these fixed clauses enter SQL. Sort the complete filtered aggregate
+    // before LIMIT; the catalog snapshot needs no transcript reads or DB writes.
+    const order = {
+      key: "ref_key",
+      activity: "last_activity DESC",
+      mentioned: "last_mention DESC",
+      number: `provider, substr(ref_key,1,number_start-1),
+        length(substr(ref_key,number_start)), substr(ref_key,number_start)`,
+    }[options.sort ?? "key"];
+    const isoTime = (day: SqliteValue | undefined): string | null =>
+      typeof day === "number"
+        ? new Date(Math.round((day - 2440587.5) * 86400000)).toISOString()
+        : null;
     const rows = this.rows(
-      `WITH observations AS (
-      SELECT e.*,l.issue_id,l.state,COALESCE(j.project_id,e.project_id) AS current_project
+      `WITH activity AS MATERIALIZED (
+      -- Match the evidence column's TEXT affinity so SQLite can index this join.
+      SELECT CAST(json_extract(value,'$.sessionId') AS TEXT) AS session_id,
+        julianday(json_extract(value,'$.updatedAt')) AS activity
+      FROM json_each(?)
+    ), observations AS (
+      SELECT e.*,l.issue_id,l.state,COALESCE(j.project_id,e.project_id) AS current_project,a.activity
       FROM session_issue_evidence e LEFT JOIN session_issue_links l ON l.id=e.link_id LEFT JOIN issue_index_jobs j ON j.session_id=e.session_id
+      LEFT JOIN activity a ON a.session_id=e.session_id
       WHERE ${this.visibleEvidence()} AND (?=1 OR (e.suppressed=0 AND COALESCE(l.state,'discovered')!='dismissed'))
       AND (?='' OR COALESCE(j.project_id,e.project_id)=?) AND (?='' OR e.session_id=?)
     ), items AS (
-      SELECT i.id,i.ref_key,COALESCE(i.manual_title,i.title) AS title,i.url,i.provider,i.kind,COUNT(DISTINCT e.session_id) AS count,NULL AS context
+      SELECT i.id,i.ref_key,COALESCE(i.manual_title,i.title) AS title,i.url,i.provider,i.kind,COUNT(DISTINCT e.session_id) AS count,NULL AS context,MAX(e.activity) AS last_activity,MAX(julianday(e.source_time)) AS last_mention
       FROM external_issues i JOIN observations e ON e.issue_id=i.id GROUP BY i.id
       UNION ALL
-      SELECT NULL,ref_key,NULL,NULL,provider,'unknown',COUNT(DISTINCT session_id),current_project FROM observations WHERE link_id IS NULL GROUP BY current_project,provider,ref_key
+      SELECT NULL,ref_key,NULL,NULL,provider,'unknown',COUNT(DISTINCT session_id),current_project,MAX(activity),MAX(julianday(source_time)) FROM observations WHERE link_id IS NULL GROUP BY current_project,provider,ref_key
+    ), numbered AS (
+      SELECT *,CASE WHEN provider='github' THEN instr(ref_key,'#')+1 ELSE instr(ref_key,'-')+1 END AS number_start FROM items
     ) SELECT items.*,
       -- The most decisive verdict for this reference: one project confirming
       -- it settles the key even when another only recorded an outage.
       (SELECT c.state FROM issue_confirmations c WHERE c.ref_key=items.ref_key
         ORDER BY CASE c.state WHEN 'confirmed' THEN 0 WHEN 'rejected' THEN 1 WHEN 'unreachable' THEN 2 ELSE 3 END LIMIT 1) AS confirm_state,
       (SELECT c.title FROM issue_confirmations c WHERE c.ref_key=items.ref_key AND c.state='confirmed' AND c.title IS NOT NULL LIMIT 1) AS confirm_title
-      FROM items WHERE ref_key LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\' ORDER BY ref_key,context,id LIMIT ? OFFSET ?`,
+      FROM numbered items WHERE ref_key LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\' ORDER BY ${order},ref_key,context,id LIMIT ? OFFSET ?`,
+      JSON.stringify(
+        (options.sessionActivity ?? []).map(({ sessionId, updatedAt }) => ({
+          sessionId,
+          updatedAt,
+        })),
+      ),
       dismissed ? 1 : 0,
       project,
       project,
@@ -444,6 +476,8 @@ export class IssueStore {
       provider: String(row.provider),
       kind: String(row.kind),
       sessionCount: Number(row.count),
+      lastSessionActivityAt: isoTime(row.last_activity),
+      lastMentionAt: isoTime(row.last_mention),
       unresolved: row.id === null,
       ...(row.confirm_state
         ? {

@@ -1347,6 +1347,7 @@ export type {
   IssueCredentialStatus,
   IssueCredentialsResult,
   IssueItem,
+  IssueSort,
   IssueEvidence,
   IssueCoverage,
   IssueSearchResult,

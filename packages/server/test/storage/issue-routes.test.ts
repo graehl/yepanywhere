@@ -243,3 +243,133 @@ it("paginates distinct sessions by catalog activity before loading their first m
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+it("sorts issues across pages by session activity, source mention time, and namespace/number", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "ya-issue-sort-"));
+  const settings = new ServerSettingsService({ dataDir });
+  await settings.initialize();
+  await settings.updateSettings({
+    issueAssociations: {
+      enabled: true,
+      scope: "viewed",
+      recentDays: 7,
+      aggressiveMatching: true,
+    },
+  });
+  const db = new DiscoverySqliteService({ dataDir, mode: "auto" });
+  const store = new IssueStore(
+    db.getDatabase()!,
+    () => settings.getSetting("issueAssociations")!,
+  );
+  const indexer = new IssueIndexer(store, {
+    settings: () => settings.getSetting("issueAssociations")!,
+    candidates: async function* () {},
+    read: async () => null,
+  });
+  const catalog = [
+    { sessionId: "active", updatedAt: "2026-09-11T10:00:00Z" },
+    { sessionId: "older", updatedAt: "2026-09-10T10:00:00Z" },
+    { sessionId: "invalid", updatedAt: "not-a-date" },
+  ];
+  let sourceReads = 0;
+  const app = createIssueRoutes(
+    indexer,
+    settings,
+    async () => {
+      sourceReads++;
+      return { available: true };
+    },
+    undefined,
+    undefined,
+    async () => catalog,
+  );
+  const capture = (
+    key: string,
+    sessionId: string,
+    timestamp?: string,
+    projectId = "p",
+  ) =>
+    store.capture(
+      { projectId, sessionId },
+      { id: `${key}-${sessionId}-${timestamp}`, text: key, timestamp },
+    );
+  const read = async (query: string) =>
+    (await app.request(`/issues?${query}`)).json();
+  try {
+    // Discover the old mention last: discovery time must never replace source time.
+    capture("https://jira.test/browse/TF-10", "older", "2026-09-11T09:00:00Z");
+    capture("https://jira.test/browse/TF-9", "active", "2026-09-01T10:00:00Z");
+    capture("https://jira.test/browse/TF-100", "missing");
+    capture("https://jira.test/browse/TF-101", "invalid", "invalid");
+    const first = await read("sort=activity&limit=1");
+    expect(first.supportedSorts).toEqual(["activity", "mentioned", "number"]);
+    expect(first.sort).toBe("activity");
+    expect(first.items[0]).toMatchObject({
+      key: "TF-9",
+      lastSessionActivityAt: "2026-09-11T10:00:00.000Z",
+      lastMentionAt: "2026-09-01T10:00:00.000Z",
+    });
+    expect(first.nextOffset).toBe(1);
+    expect((await read("sort=activity&limit=1&offset=1")).items[0].key).toBe(
+      "TF-10",
+    );
+    expect(
+      (await read("sort=activity&offset=2")).items.map(
+        (x: { key: string }) => x.key,
+      ),
+    ).toEqual(["TF-100", "TF-101"]);
+    expect((await read("sort=mentioned&limit=1")).items[0].key).toBe("TF-10");
+    expect(
+      (await read("sort=number")).items.map((x: { key: string }) => x.key),
+    ).toEqual(["TF-9", "TF-10", "TF-100", "TF-101"]);
+    // Omitted sort retains the old experimental wire order.
+    expect((await read("")).items[0].key).toBe("TF-10");
+    capture(
+      "https://jira.test/browse/TF-10",
+      "active",
+      "2026-09-12T10:00:00+02:00",
+      "other",
+    );
+    const ten = (await read("q=TF-10&sort=activity")).items.find(
+      (x: { key: string }) => x.key === "TF-10",
+    );
+    expect(ten.sessionCount).toBe(2);
+    expect(ten.lastMentionAt).toBe("2026-09-12T08:00:00.000Z");
+    expect((await read("sort=activity&projectId=p&limit=1")).items[0].key).toBe(
+      "TF-9",
+    );
+    expect((await read("sort=mentioned&sessionId=older")).items).toHaveLength(
+      1,
+    );
+    store.decide(ten.id, "active", "dismissed");
+    expect(
+      (await read("q=TF-10&sort=activity")).items[0].lastSessionActivityAt,
+    ).toBe("2026-09-10T10:00:00.000Z");
+    expect(
+      (await read("q=TF-10&sort=activity&dismissed=1")).items[0]
+        .lastSessionActivityAt,
+    ).toBe("2026-09-11T10:00:00.000Z");
+    // Retained catalog changes affect ordering without another capture.
+    catalog[1]!.updatedAt = "2026-09-13T00:00:00Z";
+    expect((await read("sort=activity&limit=1")).items[0].key).toBe("TF-10");
+    capture("UNKNOWN-7", "older", "2026-09-14T00:00:00Z");
+    expect((await read("sort=mentioned&limit=1")).items[0]).toMatchObject({
+      key: "UNKNOWN-7",
+      unresolved: true,
+    });
+    for (const repo of ["a/b", "a/c"])
+      for (const n of [100, 10, 9])
+        capture(`https://github.com/${repo}/pull/${n}`, "older");
+    expect(
+      (await read("sort=number&q=github.com")).items.map(
+        (x: { key: string }) => x.key,
+      ),
+    ).toEqual(["a/b#9", "a/b#10", "a/b#100", "a/c#9", "a/c#10", "a/c#100"]);
+    expect((await app.request("/issues?sort=garbage")).status).toBe(400);
+    expect(sourceReads).toBe(0);
+  } finally {
+    await indexer.close();
+    db.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});

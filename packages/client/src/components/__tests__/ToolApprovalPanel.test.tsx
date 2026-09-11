@@ -120,8 +120,20 @@ describe("ToolApprovalPanel", () => {
       vi.advanceTimersByTime(150);
     });
 
+    // Keystrokes outside the panel (the composer, or the page body after the
+    // composer unmounts under a typing user) must never answer the prompt.
     await act(async () => {
       fireEvent.keyDown(window, { key: "Enter" });
+      fireEvent.keyDown(document.body, { key: "2" });
+      await Promise.resolve();
+    });
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(onDeny).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("button", { name: /Yes/ }), {
+        key: "Enter",
+      });
       await Promise.resolve();
     });
     expect(onApprove).toHaveBeenCalledTimes(1);

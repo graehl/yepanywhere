@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useToolApprovalFeedbackDraft } from "../hooks/useDrafts";
 import { useI18n } from "../i18n";
 import {
@@ -118,9 +125,11 @@ export function ToolApprovalPanel({
     }
   }, [showFeedback]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+  // Keyboard shortcuts. Bound to the panel, not the window: bare digits,
+  // Enter, and Escape are ordinary composer keystrokes, so they act only
+  // while focus is inside this panel.
+  const handleKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
       if (submitting || !armed) return;
 
       // Don't handle shortcuts when typing in feedback
@@ -178,24 +187,22 @@ export function ToolApprovalPanel({
           handleDeny();
         }
       }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    handleApprove,
-    handleApproveAcceptEdits,
-    handleDeny,
-    handleDenyWithFeedback,
-    submitting,
-    armed,
-    showFeedback,
-    feedback,
-    clearFeedback,
-    isEditTool,
-    onApproveAcceptEdits,
-    request.toolName,
-  ]);
+    },
+    [
+      handleApprove,
+      handleApproveAcceptEdits,
+      handleDeny,
+      handleDenyWithFeedback,
+      submitting,
+      armed,
+      showFeedback,
+      feedback,
+      clearFeedback,
+      isEditTool,
+      onApproveAcceptEdits,
+      request.toolName,
+    ],
+  );
 
   const displayToolInput = useMemo(
     () => makeSecurityVisibleValue(request.toolInput),
@@ -230,7 +237,8 @@ export function ToolApprovalPanel({
   );
 
   return (
-    <div className={styles.root}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: keyboard shortcuts for the focusable buttons inside
+    <div className={styles.root} onKeyDown={handleKeyDown}>
       {/* Floating toggle button */}
       <button
         type="button"

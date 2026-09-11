@@ -5405,6 +5405,57 @@ describe("MessageInput", () => {
     ).toBe(null);
   });
 
+  it("shows the Now steering toggle only when the provider has a now lane", () => {
+    const renderSteerToolbar = (showSteerNowMode: boolean) =>
+      render(
+        <MessageInputToolbarView
+          t={toolbarT}
+          visibility={toolbarVisibility}
+          attachmentControl={{ attachmentCount: 0 }}
+          shortcutsControl={{
+            open: false,
+            isearchScope: null,
+            setOpen:
+              vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+            settingsOpen: false,
+            setSettingsOpen:
+              vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+            hasDualActions: true,
+            enterActionKind: "steer",
+            canSwapEnterAction: true,
+            queueShortcutLabel: "Queue while agent runs",
+          }}
+          actionsControl={{
+            send: {
+              onSteer: vi.fn(),
+              canSend: true,
+              primaryActionKind: "steer",
+              primaryActionLabel: "Steer",
+              tooltip: "Steer current turn",
+              icon: "↗",
+              showSteerNowMode,
+              steerNowEnabled: true,
+              onToggleSteerNow: vi.fn(),
+              queue: {
+                onQueue: vi.fn(),
+                hasDualActions: true,
+                queueTooltip: "Queue",
+              },
+            },
+          }}
+        />,
+      );
+
+    // Codex and other steering providers have no "now" lane, so the toggle
+    // would change nothing there and must stay hidden.
+    const withoutLane = renderSteerToolbar(false);
+    expect(screen.queryByRole("checkbox", { name: "Steer now" })).toBe(null);
+    withoutLane.unmount();
+
+    renderSteerToolbar(true);
+    expect(screen.getByRole("checkbox", { name: "Steer now" })).toBeDefined();
+  });
+
   it("renders the project queue toolbar action when visible", () => {
     const onProjectQueue = vi.fn();
     const onProjectQueueNewSession = vi.fn();

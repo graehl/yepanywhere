@@ -82,6 +82,12 @@ Action gating rules:
 - Process state controls primary action availability; liveness is advisory/copy.
 - Only queue/steer paths are valid when active turn is in progress and there is no
   immediate send path.
+- Prompt keyboard shortcuts (`1`/`2`/`3`, Enter, Escape, Tab in
+  `ToolApprovalPanel` and `QuestionAnswerPanel`) act only while focus is
+  inside that panel. A keystroke aimed at the composer, another input, or
+  the page body never answers a prompt: those keys are ordinary typing, and
+  a tool approval unmounts the composer under a user who is still typing.
+  Neither panel takes focus when it appears.
 - The compacting overlay never changes process-level controls; it only changes
   visible status copy.
 

@@ -196,4 +196,48 @@ describe("QuestionAnswerPanel", () => {
     });
     expect(localStorage.length).toBe(0);
   });
+
+  it("answers keyboard shortcuts only while focus is inside the panel", async () => {
+    const request: InputRequest = {
+      id: "req-keys",
+      sessionId: "sess-keys",
+      type: "question",
+      prompt: "Proceed?",
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          {
+            question: "Proceed?",
+            header: "Go",
+            options: [{ label: "Yes", description: "Continue" }],
+            multiSelect: false,
+          },
+        ],
+      },
+      timestamp: "2026-09-11T00:00:00.000Z",
+    };
+    const onDeny = vi.fn(async () => {});
+
+    render(
+      <QuestionAnswerPanel
+        request={request}
+        sessionId="sess-keys"
+        onSubmit={vi.fn()}
+        onDeny={onDeny}
+      />,
+    );
+
+    // The composer stays mounted beside a question prompt, so an Escape or
+    // Enter typed there (or on the page body) must not reach the prompt.
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onDeny).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /Cancel/ }), {
+      key: "Escape",
+    });
+    await waitFor(() => {
+      expect(onDeny).toHaveBeenCalledTimes(1);
+    });
+  });
 });

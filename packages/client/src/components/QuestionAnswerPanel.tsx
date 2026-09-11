@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useQuestionOtherDrafts } from "../hooks/useDrafts";
 import { useI18n } from "../i18n";
 import type { InputRequest, UserQuestionAnswers } from "../types";
@@ -200,9 +206,11 @@ export function QuestionAnswerPanel({
     }
   }, [onDeny]);
 
-  // Keyboard handling
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+  // Keyboard handling. Bound to the panel, not the window: Enter, Escape,
+  // and Tab are ordinary composer keystrokes (send, stop, completion), so
+  // they act only while focus is inside this panel.
+  const handleKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
       if (submitting) return;
 
       // Escape to deny
@@ -234,21 +242,19 @@ export function QuestionAnswerPanel({
           setCurrentTab((prev) => Math.min(questions.length - 1, prev + 1));
         }
       }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    submitting,
-    currentQuestionAnswered,
-    isLastQuestion,
-    allAnswered,
-    isOtherSelected,
-    questions.length,
-    handleDeny,
-    handleSubmit,
-    advanceToNext,
-  ]);
+    },
+    [
+      submitting,
+      currentQuestionAnswered,
+      isLastQuestion,
+      allAnswered,
+      isOtherSelected,
+      questions.length,
+      handleDeny,
+      handleSubmit,
+      advanceToNext,
+    ],
+  );
 
   if (!questions.length) {
     return (
@@ -261,7 +267,8 @@ export function QuestionAnswerPanel({
   }
 
   return (
-    <div className={styles.wrapper}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: keyboard shortcuts for the focusable buttons inside
+    <div className={styles.wrapper} onKeyDown={handleKeyDown}>
       {/* Floating toggle button */}
       <button
         type="button"

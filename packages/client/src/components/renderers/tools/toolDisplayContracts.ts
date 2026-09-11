@@ -195,6 +195,9 @@ export const toolDisplayContracts = {
   WriteStdin: {
     input: WriteStdinDisplayInputSchema,
     result: WriteStdinDisplayResultSchema,
+    // Failed command polls carry the same output/exit metadata as successes.
+    // The Shell renderer already preserves their error styling and status.
+    failure: WriteStdinDisplayResultSchema,
     variants: ["standard"],
     standaloneResult: true,
   },

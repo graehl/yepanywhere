@@ -594,6 +594,22 @@ function PreparedToolCallRow(props: Props & { originalOutput?: unknown }) {
     metadata.tool,
     reportValidationError,
   ]);
+  // Stored media has its own validated server contract and presentation.
+  // Eligibility for an unrelated text preview must not hide those assets.
+  if (props.toolResult?.media?.length) {
+    return (
+      <ToolResultMediaRows
+        displayName={prepared.getDisplayName()}
+        media={props.toolResult.media}
+        sourcePath={getToolResultImageSourcePath(
+          props.toolName,
+          props.toolInput,
+          props.toolResult.media.length,
+        )}
+        status={props.status}
+      />
+    );
+  }
   if (prepared.kind === "raw" && metadata.registered)
     return <RawToolDisplay {...props} toolResult={output} />;
   return <ToolCallRowContent {...props} prepared={prepared} />;
@@ -1171,21 +1187,6 @@ const ToolCallRowContent = memo(function ToolCallRowContent({
     shouldFocusExpandedTopRef.current = false;
     queueExpandedToolTopFocus(rowRef);
   }, [previewExpanded, expanded, dotExpanded, rowRef]);
-
-  if (toolResult?.media?.length) {
-    return (
-      <ToolResultMediaRows
-        displayName={prepared.getDisplayName()}
-        media={toolResult.media}
-        sourcePath={getToolResultImageSourcePath(
-          toolName,
-          toolInput,
-          toolResult.media.length,
-        )}
-        status={status}
-      />
-    );
-  }
 
   // Inline renderers bypass the entire tool-row structure
   if (hasInlineRenderer) {

@@ -75,6 +75,37 @@ afterEach(() => {
 });
 
 describe("tool display boundary", () => {
+  it("keeps a failed Shell poll readable with its actual exit status", () => {
+    // Sanitized from the failed push shown in the same incident session.
+    const output = "Push rejected: remote contains newer commits.\n";
+    const { container } = render(
+      providers(
+        row({
+          toolName: "WriteStdin",
+          toolInput: { session_id: 42, chars: "" },
+          toolResult: {
+            content: output,
+            structured: {
+              chunk_id: "failure",
+              wall_time_seconds: 0.1,
+              exit_code: 1,
+              output,
+              stdout: output,
+            },
+            isError: true,
+          },
+          status: "error",
+        }),
+        true,
+      ),
+    );
+    expect(container.querySelector('[data-tool-display="raw"]')).toBeNull();
+    expect(container.querySelector(".status-error")).not.toBeNull();
+    expect(container.textContent).toContain("rc=1");
+    expect(container.textContent).toContain(output.trim());
+    expect(container.textContent).not.toContain("chunk_id");
+  });
+
   // This input/error pair is reduced from the unmodified live SDK and child
   // JSONL reproduction of #124. Invalid tool arguments are valid records.
   const rejectedWrite = {

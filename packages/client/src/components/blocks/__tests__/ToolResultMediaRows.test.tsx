@@ -11,6 +11,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
+import { SchemaValidationProvider } from "../../../contexts/SchemaValidationContext";
+import { ToastProvider } from "../../../contexts/ToastContext";
 import { setInlineMediaExpandedPreference } from "../../../hooks/useInlineMedia";
 import { I18nProvider } from "../../../i18n";
 import { asClientSummarySourceKey } from "../../../lib/clientSummaryStore";
@@ -21,6 +23,7 @@ import {
   getToolResultImageSourcePath,
   ToolResultMediaRows,
 } from "../ToolResultMediaRows";
+import { ToolCallRow } from "../ToolCallRow";
 
 const STORED_MEDIA: ToolResultMedia[] = [
   {
@@ -59,6 +62,7 @@ function renderRows(
   media: ToolResultMedia[],
   transport: FakeSourceTransport,
   sourcePath?: string,
+  tool?: { name: string; input: unknown; result: unknown },
 ) {
   return render(
     <I18nProvider>
@@ -68,12 +72,31 @@ function renderRows(
           projectPath="/project"
           sessionId="session id"
         >
-          <ToolResultMediaRows
-            displayName="Viewed"
-            media={media}
-            sourcePath={sourcePath}
-            status="complete"
-          />
+          {tool ? (
+            <ToastProvider>
+              <SchemaValidationProvider>
+                <ToolCallRow
+                  id="tool-media"
+                  toolName={tool.name}
+                  toolInput={tool.input}
+                  toolResult={{
+                    content: "",
+                    structured: tool.result,
+                    media,
+                    isError: false,
+                  }}
+                  status="complete"
+                />
+              </SchemaValidationProvider>
+            </ToastProvider>
+          ) : (
+            <ToolResultMediaRows
+              displayName="Viewed"
+              media={media}
+              sourcePath={sourcePath}
+              status="complete"
+            />
+          )}
         </SessionMetadataProvider>
       </SourceRuntimeProvider>
     </I18nProvider>,
@@ -98,6 +121,54 @@ describe("ToolResultMediaRows", () => {
     act(() => setInlineMediaExpandedPreference(false));
     vi.restoreAllMocks();
   });
+
+  // Reduced from the 2026-09-11 retained Exec result: two text blocks and an
+  // input_image whose bytes were already materialized by the server. These
+  // shapes are independent of the renderer's positive fixture catalogue.
+  const retainedOutput = [
+    {
+      type: "input_text",
+      text: "Script completed\nWall time 1.1 seconds\nOutput:\n",
+    },
+    { type: "input_text", text: "Checked deployment status.\n" },
+    {
+      type: "input_image",
+      image_url: "[inline image/png data omitted, 156 kb]",
+      detail: "high",
+    },
+  ];
+  it.each([
+    { name: "Exec", input: { calls: [], source: "image(result)" } },
+    { name: "WriteStdin", input: { cell_id: "42" } },
+    { name: "ViewImage", input: { path: "/tmp/first.png" } },
+    // Even unusable text arguments cannot invalidate independently stored media.
+    { name: "ViewImage", input: {} },
+  ])(
+    "keeps stored media actionable through the complete $name row",
+    async (tool) => {
+      const fetchBlob = vi.fn(
+        async () => new Blob(["png"], { type: "image/png" }),
+      );
+      const { container } = renderRows(
+        [STORED_MEDIA[0]!],
+        new FakeSourceTransport({ kind: "secure", fetchBlob }),
+        undefined,
+        { ...tool, result: retainedOutput },
+      );
+      expect(container.querySelector('[data-tool-display="raw"]')).toBeNull();
+      expect(screen.getByText("first.png")).toBeTruthy();
+      expect(fetchBlob).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Expand image preview" }),
+      );
+      expect(
+        await screen.findByRole("img", { name: "first.png tool result" }),
+      ).toBeTruthy();
+      expect(fetchBlob).toHaveBeenCalledWith(
+        "/projects/project%2Fid/sessions/session%20id/media/media-a",
+      );
+    },
+  );
 
   for (const transportCase of [
     { name: "direct", kind: "localhost" as const, sameOriginUrls: true },

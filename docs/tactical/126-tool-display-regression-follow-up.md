@@ -1,9 +1,54 @@
 # Restore supported tool displays after contract hardening
 
-Status: renderer repairs remain proposed, 2026-09-11. The reusable read-only
-audit is implemented and the larger second-machine corpus has been audited and
-triaged against the September 10 changes. This follow-up records evidence and
-remaining gaps only; renderer and provider compatibility fixes remain pending.
+Status: targeted media and failed-Shell repairs locally validated, 2026-09-11;
+deployment pending. The reusable read-only audit is implemented
+and the larger second-machine corpus has been audited and triaged against the
+September 10 changes. The broader text/schema and compact-fallback repairs
+below remain pending.
+
+## Current-session media and failed-Shell repair
+
+The 09:01 screenshot from session `01a08eeb-28c9-7112-b8bf-a5d19fef841f`
+shows a completed Exec result rejected as raw. The local session API confirms
+call `call_XhxUWf5ThAwosPSnChKd0etZ` retains two `input_text` blocks and an
+`input_image` descriptor, plus one stored 886×703 PNG. The text-preview gate
+returned before `ToolResultMediaRows`, hiding an already-materialized image.
+Latest had successfully deployed `fd327fccd`; this was not stale backend data.
+
+Move the existing media presentation ahead of the unrelated text-preview
+rejection. This preserves media actions for Exec, ViewImage, and detached Shell
+rows without widening their text schemas or changing storage/decoding. The
+existing choice to show media in place of a text preview is preserved. Complete
+row tests use a sanitized observed envelope and exercise lazy image expansion
+through a fake relay transport, including a malformed-input control.
+
+The earlier screenshot's failed Git push is a separate WriteStdin case:
+`exit_code: 1` is correctly marked failed, but no failure contract was declared.
+Declare its supported string/command-output failure form so the existing Shell
+renderer can show readable output and nonzero exit metadata. A mounted full-row
+regression retains failed status and rejects raw-envelope presentation.
+
+Remaining: text-only result arrays, no-media ViewImage path-only eligibility,
+input aliases, Edit/Read/question/plan cases, failed subagents, and compact raw
+fallback. The historical audit's text-preparation classifications are unchanged
+for media-bearing arrays; those counts alone do not describe media visibility.
+No provider compatibility marker or native transcript is changed.
+
+Validation: 1,129 focused checks and all 11,692 workspace tests pass (55 existing
+skips), plus 220 browser tests (seven environment-dependent skips). Typecheck,
+formatting, console budget, and lint pass with zero lint warnings. A separate
+cleanup removes an unused quote-rail test suppression exposed by root lint.
+
+At the user's request, loaded this exact session on `localhost:3400` with the
+working client at desktop 1000×600 and phone 375×812. The Exec row displays its
+filename/dimensions and expands a decoded 886×703 PNG; the media endpoint returns
+HTTP 200 with 160,071 bytes. The earlier failed Shell row expands readable Git
+stderr with error styling and `rc=1`, without the JSON envelope. Inspected both
+sizes sequentially for each case; no stale-runtime banner or page errors.
+The capture harness reports its expected service-worker-blocking warning.
+Captures are local-only under `.artifacts/ui-testing/2026-09-11-renderer-repair-local/`
+and `.artifacts/ui-testing/2026-09-11-shell-repair-local/`; the image shown by
+Exec is the previous screenshot, so its contents still depict the old failure.
 
 ## Evidence and scope
 

@@ -521,6 +521,13 @@ Provider schemas and advisory warnings stay separate; they describe retained
 records rather than proving rich rendering eligibility. Unknown tools retain
 ordinary disclosure behavior with generic original-data inspection.
 
+Server-materialized tool media is independently eligible for its existing
+image/video presentation. A rejected text-preview schema must not hide stored
+media, its expansion control, or validated source-path actions. Media rows
+preserve actual execution status and use the session's normal source transport;
+they do not pass unchecked text results to rich renderer callbacks. As before,
+media-bearing rows use the media presentation in place of the text preview.
+
 When required display data is missing or has the wrong type, the tool row
 shows its name and actual status, the original output when available, and
 inspectable original input. A failed Write missing `file_path` or `content`
@@ -571,6 +578,10 @@ nested message/detail forms. Other failures without an explicit checked failure
 contract remain inspectable raw records. Failure eligibility is independent of
 success schemas; commentary must retain an absent error flag's status fallback,
 including when status changes without replacing the output object.
+
+Shell/WriteStdin failures explicitly accept the checked string or command-output
+envelope used by successful polls. They retain readable output, nonzero exit
+metadata, and failed status instead of exposing the envelope as raw JSON.
 
 ExitPlanMode and UpdatePlan standalone results display their plan or
 acknowledgement. Standalone Edit requires a result fact (path, patch, or text);

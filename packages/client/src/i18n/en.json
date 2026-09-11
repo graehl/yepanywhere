@@ -3346,5 +3346,13 @@
   "issuesAggressiveHelp": "Off by default. Normally, bare Jira keys match only projects learned from full issue URLs. Turning this on also guesses unknown prefixes, which can mistake ordinary text for tickets.",
   "issuesKnownProjects": "Known Jira projects",
   "issuesKnownProjectsHelp": "Learned automatically from full Jira issue URLs in user and assistant messages. These mappings persist across sessions on this server. Blocked prefixes below exclude bare-key matches, including existing discoveries.",
-  "issuesNoKnownProjects": "No Jira projects learned yet."
+  "issuesNoKnownProjects": "No Jira projects learned yet.",
+  "issuesKind_issue": "Issue",
+  "issuesKind_pr": "Pull request",
+  "issuesKind_unknown": "Reference",
+  "issuesMenuEmpty": "Nothing found in this session yet.",
+  "issuesMenuMore": "{count} more in the full list",
+  "issuesMenuBrowse": "Show all in this session",
+  "issuesMenuOpenHint": "Click to open it; middle-click for a new tab",
+  "issuesMenuNoUrlHint": "No tracker link known; opens this session's list"
 }

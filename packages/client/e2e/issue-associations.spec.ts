@@ -2,6 +2,7 @@ import { mkdir, writeFile, utimes } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { e2ePaths, expect, test } from "./fixtures.js";
+import { recordUiCapture } from "./support/ui-capture.js";
 
 test("automatically discovers Jira and GitHub references from viewed and recent sessions", async ({
   page,
@@ -98,11 +99,35 @@ test("automatically discovers Jira and GitHub references from viewed and recent 
     await page.goto(
       `${baseURL}/projects/${projectId}/sessions/issues-view-one`,
     );
+    const headerMenu = page.getByRole("button", {
+      name: "2 issues and pull requests associated with this session",
+    });
+    await expect(headerMenu).toBeVisible({ timeout: 30_000 });
+    // The header opens a menu of those references rather than leaving the
+    // session; each row links at the reference itself.
+    await headerMenu.click();
     await expect(
-      page.getByRole("link", {
-        name: "2 issues and pull requests associated with this session",
-      }),
-    ).toBeVisible({ timeout: 30_000 });
+      page.getByRole("menuitem", { name: /AUTOTEST-123/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Show all in this session" }),
+    ).toHaveAttribute("href", /\/issues\?sessionId=issues-view-one/);
+    await page.keyboard.press("Escape");
+    // Resizing dismisses the menu, so each width opens its own before its shot.
+    const original = page.viewportSize();
+    for (const [name, size] of [
+      ["session-issues-menu-desktop", { width: 1200, height: 600 }],
+      ["session-issues-menu-phone", { width: 375, height: 812 }],
+    ] as const) {
+      await page.setViewportSize(size);
+      await headerMenu.click();
+      await expect(
+        page.getByRole("menuitem", { name: /AUTOTEST-123/ }),
+      ).toBeVisible();
+      await recordUiCapture(page, name);
+      await page.keyboard.press("Escape");
+    }
+    if (original) await page.setViewportSize(original);
     await page.goto(`${baseURL}/issues`);
     const search = page.getByRole("searchbox", {
       name: "Search ticket keys, titles, or paste an issue/PR URL",

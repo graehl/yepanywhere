@@ -38,9 +38,10 @@ in the list on phones.
 
 A shared ticket glyph identifies Issues & PRs in the sidebar, settings category
 (including emoji icon mode), and the session header. The session shortcut is a
-compact button-style link; on phones it keeps its accessible name and tooltip
-while showing only the icon with a 44-pixel touch target. Discovery settings use
-the standard searchable settings rows and toggle, with scope guidance above
+compact icon button carrying that glyph and its count at every width; the
+feature name lives in its tooltip and accessible name rather than in a
+word-wide chip, and a phone keeps a 44-pixel touch target. Discovery settings
+use the standard searchable settings rows and toggle, with scope guidance above
 the control.
 Bare Jira keys require a known project prefix by default. Unknown bare keys are
 retained as inactive candidates, without creating an issue/session link or
@@ -57,9 +58,19 @@ not the whole transcript corpus. Empty search results explicitly refer to indexe
 content. The page refreshes while its worker is active; there is no idle global
 client poll. Refresh reloads results, rather than forcing a full scan.
 
-The session header link carries the count of that session's undismissed
+The session header button carries the count of that session's undismissed
 associations, read from one page of the same search route, so more than a full
-page reads as `100+`. Because indexing this session's own text starts when the
+page reads as `100+`. That count also says in advance how many rows the button
+opens: pressing it opens a menu built from the page already read, so the menu
+costs no further request and the session stays on screen. At most twelve
+references are listed, newest page order, with a note naming how many more the
+full list holds and a final row that opens that list filtered to this session.
+Each row links at its tracker URL when one is known and at the same filtered
+list otherwise, so a left click follows the reference and a middle or
+modifier click opens it in a new tab. Hovering or focusing a row describes it
+before the click: full title, key, provider, kind, how many sessions mention
+it, whether its tracker context is still unresolved, and where the click
+leads. Because indexing this session's own text starts when the
 session is opened, the first answer usually predates it: the header asks again
 a bounded number of times, sooner while the server reports active indexing, and
 restarts that sequence when the transcript grows. It then stops rather than

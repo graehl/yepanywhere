@@ -80,7 +80,6 @@ function Harness() {
         sourceRef={contentRef}
         surfaceRef={surfaceRef}
       />
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: inert fixture content */}
       <div ref={contentRef} className="text-block-content">
         <p>first paragraph</p>
         <p>second paragraph</p>

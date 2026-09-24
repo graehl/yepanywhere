@@ -82,6 +82,9 @@ cross-origin frame requires cooperation from that app; YA cannot inspect or
 intercept arbitrary embedded app events.
 Pane width is persisted per browser. The session column may shrink to a
 readable minimum but is never removed.
+The session column clips only vertically, so popovers anchored in it (the
+context-usage detail, composer menus) draw over the pane rather than being
+cut off at the column edge (2026-09-24).
 
 A detected-app action opens the latest discovered app, including after Close.
 A file viewer's interactive play activation also announces its grant as the

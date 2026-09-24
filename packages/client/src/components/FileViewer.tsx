@@ -241,6 +241,13 @@ function isImageFile(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
+/**
+ * Check if file is a PDF, which the browser's built-in viewer renders inline.
+ */
+function isPdfFile(mimeType: string): boolean {
+  return mimeType === "application/pdf";
+}
+
 function isHtmlLikeFile(filePath: string, mimeType: string): boolean {
   return (
     /\.(?:html?|xhtml)$/i.test(filePath) ||
@@ -668,7 +675,7 @@ export const FileViewer = memo(function FileViewer({
     x: number;
     y: number;
   } | null>(null);
-  const [imageObjectUrl, setImageObjectUrl] = useState<string | null>(null);
+  const [rawObjectUrl, setRawObjectUrl] = useState<string | null>(null);
   const [highlightedLineRef, setHighlightedLineRef] =
     useState<HTMLElement | null>(null);
   const viewerDensity = useFileViewerDensity();
@@ -1249,24 +1256,33 @@ export const FileViewer = memo(function FileViewer({
   ]);
 
   useEffect(() => {
-    if (!fileData || !isImageFile(fileData.metadata.mimeType)) {
-      setImageObjectUrl(null);
+    const mimeType = fileData?.metadata.mimeType;
+    if (
+      !fileData ||
+      !mimeType ||
+      !(isImageFile(mimeType) || isPdfFile(mimeType))
+    ) {
+      setRawObjectUrl(null);
       return;
     }
     if (!source.fetchRawFileBlob) {
-      setImageObjectUrl(null);
+      setRawObjectUrl(null);
       return;
     }
 
     let cancelled = false;
     let objectUrl: string | null = null;
-    setImageObjectUrl(null);
+    setRawObjectUrl(null);
     void source
       .fetchRawFileBlob(fileData, filePath, false)
       .then((blob) => {
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setImageObjectUrl(objectUrl);
+        // The PDF viewer keys off the blob's type, which a relayed fetch may
+        // leave empty.
+        objectUrl = URL.createObjectURL(
+          blob.type === mimeType ? blob : new Blob([blob], { type: mimeType }),
+        );
+        setRawObjectUrl(objectUrl);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -1418,7 +1434,7 @@ export const FileViewer = memo(function FileViewer({
   const imageOpenUrl = loadedIsImage
     ? sameOriginUrls && rawFileUrl
       ? rawFileUrl
-      : (imageObjectUrl ?? (!source.fetchRawFileBlob ? rawFileUrl : null))
+      : (rawObjectUrl ?? (!source.fetchRawFileBlob ? rawFileUrl : null))
     : null;
   const openImageInNewTabLabel = t("fileViewerOpenImageNewTab" as never);
   const startNewSession = useStartNewSessionFromFile(projectId, filePath);
@@ -1589,7 +1605,7 @@ export const FileViewer = memo(function FileViewer({
 
     // Image files
     if (isImage) {
-      const imageUrl = source.fetchRawFileBlob ? imageObjectUrl : rawFileUrl;
+      const imageUrl = source.fetchRawFileBlob ? rawObjectUrl : rawFileUrl;
       const imageLinkUrl = imageOpenUrl ?? imageUrl;
       return (
         <div className="file-viewer-image">
@@ -1610,6 +1626,17 @@ export const FileViewer = memo(function FileViewer({
               {t("fileViewerLoading" as never, { name: fileName })}
             </div>
           )}
+        </div>
+      );
+    }
+
+    if (isPdfFile(metadata.mimeType)) {
+      const pdfUrl = source.fetchRawFileBlob ? rawObjectUrl : rawFileUrl;
+      return pdfUrl ? (
+        <iframe className="file-viewer-pdf" src={pdfUrl} title={fileName} />
+      ) : (
+        <div className="file-viewer-loading">
+          {t("fileViewerLoading" as never, { name: fileName })}
         </div>
       );
     }

@@ -1214,6 +1214,50 @@ describe("FileViewer", () => {
     ).toBe("false");
   });
 
+  it("renders a PDF inline from a correctly typed blob", async () => {
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: "docs/report.pdf",
+        size: 39_000,
+        mimeType: "application/pdf",
+        isText: false,
+      },
+      rawUrl: "/api/projects/project-id/files/raw?path=docs%2Freport.pdf",
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+      // A relayed fetch can return an untyped blob.
+      fetchRawFileBlob: vi.fn(async () => new Blob(["%PDF-1.7"])),
+    };
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:file-viewer-pdf");
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="docs/report.pdf"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    const frame = await screen.findByTitle("report.pdf");
+    expect(frame.tagName).toBe("IFRAME");
+    expect(frame.getAttribute("src")).toBe("blob:file-viewer-pdf");
+    expect(createObjectURL.mock.calls[0]?.[0].type).toBe("application/pdf");
+    expect(screen.queryByText("This file cannot be displayed inline.")).toBe(
+      null,
+    );
+  });
+
   it("keeps raw image links and moves the viewer through its stable URL", async () => {
     const fileResponse: FileContentResponse = {
       metadata: {

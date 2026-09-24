@@ -4288,6 +4288,14 @@ pre.code-highlighter-plain code {
   min-height: 200px;
 }
 
+.file-viewer-pdf {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: min(68vh, 720px);
+  border: 0;
+}
+
 .file-viewer-image img {
   max-width: 100%;
   max-height: 80vh;
@@ -4359,6 +4367,10 @@ pre.code-highlighter-plain code {
 
 .file-viewer-fullscreen .file-viewer-code {
   padding: 0.5rem;
+}
+
+.file-viewer-fullscreen .file-viewer-pdf {
+  height: calc(100vh - 50px);
 }
 
 .file-viewer-fullscreen .file-viewer-image {

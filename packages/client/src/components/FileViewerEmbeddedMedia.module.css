@@ -1,0 +1,43 @@
+.pdf {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: min(68vh, 720px);
+  border: 0;
+}
+
+:global(.file-viewer-fullscreen) .pdf {
+  height: calc(100vh - 50px);
+}
+
+.media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.media audio {
+  width: 100%;
+  max-width: 40rem;
+}
+
+.media video {
+  max-width: 100%;
+  max-height: 80vh;
+}
+
+.font {
+  padding: 1rem;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.font p {
+  margin: 0 0 0.75rem;
+  line-height: 1.25;
+}
+
+.font .glyphs {
+  font-size: 24px;
+}

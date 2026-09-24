@@ -21,7 +21,8 @@ const APP_CONTENT_SECURITY_POLICY = [
   "object-src 'none'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
+  // blob: carries the file viewer's font specimens.
+  "font-src 'self' data: blob:",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",
   // Artifact origins can be configured while this app document is open.

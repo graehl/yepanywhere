@@ -145,6 +145,13 @@ every file response. PDF and other document formats need an explicit browser-
 capability review; absence from the initial confirmed list is not a declaration
 that they are inert.
 
+The YA-origin file viewer (2026-09-24) frames a same-origin PDF's own inline
+`/files/raw` response, unsandboxed, so Chromium's viewer runs under that
+response's headers rather than the app document's; a `blob:` frame would
+inherit the app's `object-src 'none'` and be blocked. Audio, video, and font
+files render from typed `blob:` URLs (`media-src`, `font-src blob:`). The
+relay-only PDF path remains open in `gaps/file-viewer-relay-pdf.md`.
+
 ### Untrusted executable applications
 
 An Interactive or another deliberately runnable agent-built app is allowed to

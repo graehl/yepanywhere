@@ -1214,7 +1214,7 @@ describe("FileViewer", () => {
     ).toBe("false");
   });
 
-  it("renders a PDF inline from a correctly typed blob", async () => {
+  it("frames a same-origin PDF's own response, not a CSP-inheriting blob", async () => {
     const fileResponse: FileContentResponse = {
       metadata: {
         path: "docs/report.pdf",
@@ -1226,18 +1226,8 @@ describe("FileViewer", () => {
     };
     const source: FileViewerSource = {
       loadFile: vi.fn(async () => fileResponse),
-      // A relayed fetch can return an untyped blob.
       fetchRawFileBlob: vi.fn(async () => new Blob(["%PDF-1.7"])),
     };
-    const createObjectURL = vi.fn((_blob: Blob) => "blob:file-viewer-pdf");
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: createObjectURL,
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
 
     render(
       <I18nProvider>
@@ -1251,11 +1241,153 @@ describe("FileViewer", () => {
 
     const frame = await screen.findByTitle("report.pdf");
     expect(frame.tagName).toBe("IFRAME");
-    expect(frame.getAttribute("src")).toBe("blob:file-viewer-pdf");
-    expect(createObjectURL.mock.calls[0]?.[0].type).toBe("application/pdf");
+    expect(frame.getAttribute("src")).toBe(fileResponse.rawUrl);
+    expect(source.fetchRawFileBlob).not.toHaveBeenCalled();
     expect(screen.queryByText("This file cannot be displayed inline.")).toBe(
       null,
     );
+  });
+
+  function stubObjectUrls(url: string) {
+    const createObjectURL = vi.fn((_blob: Blob) => url);
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    return createObjectURL;
+  }
+
+  function binarySource(path: string, mimeType: string): FileViewerSource {
+    return {
+      loadFile: vi.fn(async () => ({
+        metadata: { path, size: 2048, mimeType, isText: false },
+        rawUrl: `/api/projects/project-id/files/raw?path=${path}`,
+      })),
+      fetchRawFileBlob: vi.fn(async () => new Blob(["media"])),
+    };
+  }
+
+  it("plays audio inline and falls back when the browser cannot decode it", async () => {
+    const createObjectURL = stubObjectUrls("blob:file-viewer-audio");
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="clips/take.m4a"
+          source={binarySource("clips/take.m4a", "audio/mp4")}
+        />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(container.querySelector("audio")).toBeTruthy());
+    const audio = container.querySelector("audio")!;
+    expect(audio.getAttribute("src")).toBe("blob:file-viewer-audio");
+    expect(audio.hasAttribute("controls")).toBe(true);
+    // The relayed blob arrived untyped; the player needs the file's type.
+    expect(createObjectURL.mock.calls[0]?.[0].type).toBe("audio/mp4");
+
+    fireEvent.error(audio);
+    expect(
+      await screen.findByText("This file cannot be displayed inline."),
+    ).toBeTruthy();
+  });
+
+  it("plays video inline", async () => {
+    stubObjectUrls("blob:file-viewer-video");
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="clips/demo.mp4"
+          source={binarySource("clips/demo.mp4", "video/mp4")}
+        />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(container.querySelector("video")).toBeTruthy());
+    expect(container.querySelector("video")!.getAttribute("src")).toBe(
+      "blob:file-viewer-video",
+    );
+  });
+
+  it("shows a font specimen from the loaded face", async () => {
+    stubObjectUrls("blob:file-viewer-font");
+    const added: unknown[] = [];
+    class FakeFontFace {
+      constructor(
+        readonly family: string,
+        readonly source: string,
+      ) {}
+      load() {
+        return Promise.resolve(this);
+      }
+    }
+    vi.stubGlobal("FontFace", FakeFontFace);
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: { add: (face: unknown) => added.push(face), delete: vi.fn() },
+    });
+    try {
+      const { container } = render(
+        <I18nProvider>
+          <FileViewer
+            projectId="project-id"
+            filePath="fonts/Brand.woff2"
+            source={binarySource("fonts/Brand.woff2", "font/woff2")}
+          />
+        </I18nProvider>,
+      );
+
+      await screen.findAllByText("The quick brown fox jumps over the lazy dog");
+      const specimen = container.querySelector<HTMLElement>(
+        "[data-font-specimen]",
+      )!;
+      const face = added[0] as FakeFontFace;
+      expect(face.source).toBe('url("blob:file-viewer-font")');
+      expect(specimen.style.fontFamily).toContain(face.family);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("renders only the leading lines of large unhighlighted text", async () => {
+    const content = Array.from(
+      { length: 10_005 },
+      (_, i) => `row ${i + 1}`,
+    ).join("\n");
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "data/big.log",
+          size: content.length,
+          mimeType: "application/octet-stream",
+          isText: true,
+        },
+        content,
+        rawUrl: "/api/projects/project-id/files/raw?path=data/big.log",
+      })),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="data/big.log"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+
+    expect(
+      await screen.findByText("Showing the first 10000 of 10005 lines"),
+    ).toBeTruthy();
+    expect(
+      container.querySelectorAll(".code-content [data-line]"),
+    ).toHaveLength(10_000);
   });
 
   it("keeps raw image links and moves the viewer through its stable URL", async () => {

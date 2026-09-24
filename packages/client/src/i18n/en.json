@@ -3475,6 +3475,8 @@
   "fileViewerReloadFresh": "Unchanged on disk since loaded. Click to reload anyway.",
   "fileViewerReloadStale": "Changed on disk at {time}. Click to reload.",
   "fileViewerHighlightTruncated": "File truncated for highlighting (showing first 2000 lines)",
+  "fileViewerPlainTruncated": "Showing the first {count} of {total} lines",
+  "fileViewerFontSample": "The quick brown fox jumps over the lazy dog",
   "fileViewerBinary": "This file cannot be displayed inline.",
   "fileViewerType": "Type:",
   "fileViewerSize": "Size:",

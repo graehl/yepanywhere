@@ -122,6 +122,10 @@ import { FileViewerModal } from "./FilePathLink";
 import { ViewerSelectAllButton } from "./ViewerSelectAllButton";
 import { ParagraphQuoteRail } from "./ParagraphQuoteRail";
 import { shouldStackFileViewerActions } from "./fileViewerHeaderLayout";
+import {
+  FileViewerEmbeddedMedia,
+  getEmbeddedMediaKind,
+} from "./FileViewerEmbeddedMedia";
 
 export interface FileViewerSource {
   loadFile: (
@@ -241,12 +245,8 @@ function isImageFile(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
-/**
- * Check if file is a PDF, which the browser's built-in viewer renders inline.
- */
-function isPdfFile(mimeType: string): boolean {
-  return mimeType === "application/pdf";
-}
+/** Lines the unhighlighted fallback renders; matches server highlighting. */
+const PLAIN_RENDER_MAX_LINES = 10_000;
 
 function isHtmlLikeFile(filePath: string, mimeType: string): boolean {
   return (
@@ -1260,12 +1260,15 @@ export const FileViewer = memo(function FileViewer({
     if (
       !fileData ||
       !mimeType ||
-      !(isImageFile(mimeType) || isPdfFile(mimeType))
+      !(isImageFile(mimeType) || getEmbeddedMediaKind(mimeType))
     ) {
       setRawObjectUrl(null);
       return;
     }
-    if (!source.fetchRawFileBlob) {
+    if (
+      !source.fetchRawFileBlob ||
+      (getEmbeddedMediaKind(mimeType) === "pdf" && sameOriginUrls)
+    ) {
       setRawObjectUrl(null);
       return;
     }
@@ -1277,8 +1280,8 @@ export const FileViewer = memo(function FileViewer({
       .fetchRawFileBlob(fileData, filePath, false)
       .then((blob) => {
         if (cancelled) return;
-        // The PDF viewer keys off the blob's type, which a relayed fetch may
-        // leave empty.
+        // PDF and media players key off the blob's type, which a relayed
+        // fetch may leave empty.
         objectUrl = URL.createObjectURL(
           blob.type === mimeType ? blob : new Blob([blob], { type: mimeType }),
         );
@@ -1295,7 +1298,7 @@ export const FileViewer = memo(function FileViewer({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [fileData, filePath, source]);
+  }, [fileData, filePath, sameOriginUrls, source]);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -1428,6 +1431,11 @@ export const FileViewer = memo(function FileViewer({
   const loadedIsImage = fileData
     ? isImageFile(fileData.metadata.mimeType)
     : false;
+  // Split once per load: inline text may be up to 100 MB.
+  const contentLines = useMemo(
+    () => (fileData?.content ? fileData.content.split("\n") : []),
+    [fileData?.content],
+  );
   const rawFileUrl = fileData
     ? (source.getRawFileUrl?.(projectId, filePath, false) ?? fileData.rawUrl)
     : null;
@@ -1630,10 +1638,24 @@ export const FileViewer = memo(function FileViewer({
       );
     }
 
-    if (isPdfFile(metadata.mimeType)) {
-      const pdfUrl = source.fetchRawFileBlob ? rawObjectUrl : rawFileUrl;
-      return pdfUrl ? (
-        <iframe className="file-viewer-pdf" src={pdfUrl} title={fileName} />
+    const embeddedMediaKind = getEmbeddedMediaKind(metadata.mimeType);
+    if (embeddedMediaKind) {
+      // A blob document inherits this app's `object-src 'none'`, which makes
+      // Chromium block its PDF viewer, so a directly addressable PDF frames
+      // its own response instead.
+      const mediaUrl =
+        !source.fetchRawFileBlob ||
+        (embeddedMediaKind === "pdf" && sameOriginUrls)
+          ? rawFileUrl
+          : rawObjectUrl;
+      return mediaUrl ? (
+        <FileViewerEmbeddedMedia
+          kind={embeddedMediaKind}
+          url={mediaUrl}
+          fileName={fileName}
+          sampleText={t("fileViewerFontSample" as never)}
+          unsupported={binaryCard}
+        />
       ) : (
         <div className="file-viewer-loading">
           {t("fileViewerLoading" as never, { name: fileName })}
@@ -1724,8 +1746,12 @@ export const FileViewer = memo(function FileViewer({
         );
       }
 
-      // Fallback: plain code (no syntax highlighting available)
-      const lines = content.length > 0 ? content.split("\n") : [];
+      // Fallback: plain code (no syntax highlighting available). A large file
+      // renders only its leading lines, as server highlighting does.
+      const lines =
+        contentLines.length > PLAIN_RENDER_MAX_LINES
+          ? contentLines.slice(0, PLAIN_RENDER_MAX_LINES)
+          : contentLines;
       const contentStartLine = getContentStartLine(fileData);
       const highlightStart = effectiveLineNumber ?? 0;
       const highlightEnd = Math.max(
@@ -1805,6 +1831,14 @@ export const FileViewer = memo(function FileViewer({
           ) : (
             <div className="file-viewer-empty-content">No content read</div>
           )}
+          {lines.length < contentLines.length && (
+            <div className="file-viewer-truncated">
+              {t("fileViewerPlainTruncated" as never, {
+                count: lines.length,
+                total: contentLines.length,
+              })}
+            </div>
+          )}
           {contentWindowLabel && (
             <div className="file-viewer-truncated">{contentWindowLabel}</div>
           )}
@@ -1812,29 +1846,31 @@ export const FileViewer = memo(function FileViewer({
       );
     }
 
-    // Binary files or files too large
-    return (
-      <div className="file-viewer-binary">
-        <p>{t("fileViewerBinary" as never)}</p>
-        <p>
-          <strong>{t("fileViewerType" as never)}</strong> {metadata?.mimeType}
-        </p>
-        <p>
-          <strong>{t("fileViewerSize" as never)}</strong>{" "}
-          {metadata ? formatFileSize(metadata.size) : ""}
-        </p>
-        {canDownload && (
-          <button
-            type="button"
-            className="file-viewer-download-btn"
-            onClick={handleDownload}
-          >
-            {t("fileViewerDownloadFile" as never)}
-          </button>
-        )}
-      </div>
-    );
+    return binaryCard;
   };
+
+  // Binary files, or media this browser cannot decode
+  const binaryCard = (
+    <div className="file-viewer-binary">
+      <p>{t("fileViewerBinary" as never)}</p>
+      <p>
+        <strong>{t("fileViewerType" as never)}</strong> {metadata?.mimeType}
+      </p>
+      <p>
+        <strong>{t("fileViewerSize" as never)}</strong>{" "}
+        {metadata ? formatFileSize(metadata.size) : ""}
+      </p>
+      {canDownload && (
+        <button
+          type="button"
+          className="file-viewer-download-btn"
+          onClick={handleDownload}
+        >
+          {t("fileViewerDownloadFile" as never)}
+        </button>
+      )}
+    </div>
+  );
 
   // Header with file info and actions
   const header = (
@@ -1893,8 +1929,7 @@ export const FileViewer = memo(function FileViewer({
                         : ""
                     }`
                   : t("fileViewerLines" as never, {
-                      count:
-                        content.length > 0 ? content.split("\n").length : 0,
+                      count: contentLines.length,
                     })}
               </>
             )}

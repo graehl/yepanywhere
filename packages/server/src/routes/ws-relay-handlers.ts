@@ -933,6 +933,7 @@ export async function handleRequest(
       contentType.startsWith("image/") ||
       contentType.startsWith("audio/") ||
       contentType.startsWith("video/") ||
+      contentType.startsWith("font/") ||
       contentType === "application/pdf" ||
       contentType === "application/octet-stream"
     ) {

@@ -204,8 +204,12 @@ Current source refresh, 2026-09-24 (0.156.1):
   Astra in upstream's priority order, applies the 272K window to every
   `gpt-6-` model, and renders them as `Cd So` and `Cd Lu`
   ([provider model glyphs](provider-model-glyphs.md)). Both stay out of the
-  discovery-failure fallbacks, like Astra. `model-prices.ts` has no GPT-6 Sol
-  or Luna price because no published price was checked for them.
+  discovery-failure fallbacks, like Astra. Codex's catalog carries no prices,
+  so `model-prices.ts` takes their standard short-context rates from
+  OpenAI's API pricing page (read 2026-09-24): Sol $2 input, $0.20 cached,
+  $2.50 cache write, $10 output per million tokens; Luna $0.10, $0.01,
+  $0.125, $0.50. Their listed long-context rates match YA's existing OpenAI
+  long-context multiples.
 
 Status: Codex 0.156.1 fork compatibility, generated protocol, and model
 catalog are refreshed without raising the runtime floor. Typed forks already

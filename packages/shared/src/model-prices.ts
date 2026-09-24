@@ -53,8 +53,8 @@ const UPSTREAM_PROVIDER_BY_YA_PROVIDER: Readonly<Record<string, string>> = {
  *   Sonnet 5, Fable 5.1 and Mythos 5/5.1. **Fable 5.1 and Mythos 5.1 break the
  *   family's usual 0.1x cache-read ratio at 0.025x**, which is exactly why this
  *   is a per-model table and not a set of per-provider ratios.
- * - `developers.openai.com/api/docs/pricing` — the GPT-5.6 family, GPT-6 Astra
- *   and the Daybreak alias. `gpt-daybreak-blue` is an alias of `gpt-5.6-sol`
+ * - `developers.openai.com/api/docs/pricing` — the GPT-5.6 family, GPT-6
+ *   Astra/Sol/Luna (standard short-context rates) and the Daybreak alias. `gpt-daybreak-blue` is an alias of `gpt-5.6-sol`
  *   and carries its rates.
  *
  * Read before the vendored table, so a model both name resolves to whichever
@@ -92,6 +92,13 @@ const PUBLISHED_MODEL_PRICES: Readonly<
   },
   "openai-codex": {
     "gpt-6-astra": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+    "gpt-6-sol": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+    "gpt-6-luna": {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+    },
     "gpt-5.6-sol": { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 },
     "gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
     "gpt-5.6-luna": {

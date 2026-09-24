@@ -72,6 +72,18 @@ describe("findModelPrices", () => {
       input: 10,
       output: 50,
     });
+    expect(findModelPrices("codex", "gpt-6-sol")).toMatchObject({
+      input: 2,
+      output: 10,
+      cacheRead: 0.2,
+      cacheWrite: 2.5,
+    });
+    expect(findModelPrices("codex", "gpt-6-luna")).toMatchObject({
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+    });
   });
 
   it("prices the Daybreak alias as Sol, which is what it is", () => {

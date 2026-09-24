@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-24
+
+### Fixed
+- Recover the session catalog from a corrupt or missing shard instead of
+  failing every session list with "Invalid session catalog row" until the
+  `session-catalog` folder was deleted by hand (#125). The catalog restarts
+  empty and rebuilds from provider session files.
+- Keep a session-catalog generation on disk while a reader still walks it,
+  fixing an intermittent ENOENT on All Sessions.
+- Stream OpenCode replies live instead of only after a reload (#115).
+- Bound live Codex command output so a command printing about 1 MiB no
+  longer kills its turn, and label provider deaths YA did not request in the
+  transcript instead of showing a plain interrupt.
+- Let All Sessions select several rows and archive them; bulk actions no
+  longer hide unselected rows.
+- Keep filter menus from leaving the sessions page scrolled.
+- Fix the settings "moved to Apps" link.
+
+### Added
+- Transcript search from a toolbar button, clickable and touch-reachable
+  search controls, and a Ctrl+Alt+K Links scope over link labels.
+- File and artifact viewers render HTML by default, offer an explicit edit
+  mode for original sources, a reload button with a freshness check, and
+  rebuild of edited artifacts through an approved `ya-artifact:v1` hook.
+- Public file shares can play a shared HTML document in a new tab, and
+  project-file links offer Copy public URL.
+
+### Changed
+- `AGENT_LAUNCH_MODEL` carries the concrete model id (for example
+  `claude-opus-5-5`) instead of the UI alias.
+- The effort-change cache warning is skipped on Opus 5.5, whose prompt
+  cache survives the change.
+
 ## [0.9.0] - 2026-09-22
 
 ### Added

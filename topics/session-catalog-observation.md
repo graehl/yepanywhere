@@ -285,7 +285,11 @@ Every durable catalog lineage has a random `catalogEpoch` and a monotonic
 the epoch; restart over valid persisted state preserves it. Durable state is a
 cache and must never keep the server from starting: state that cannot be read
 or that no longer matches the current shard layout ends its lineage at a fresh
-epoch and generation 0, and reconciliation refills it. Each accepted row,
+epoch and generation 0, and reconciliation refills it. This includes a shard
+the current manifest names but that is missing or holds an unparseable row,
+whenever a read finds it: the read answers from generation 0 instead of
+failing, and a reconciliation still based on the abandoned generation fails
+rather than publishing over the reset. Each accepted row,
 membership, count, and delta identifies the catalog generation and provider
 source version from which it was derived.
 
@@ -481,5 +485,7 @@ relocated session visibly grouped under its former project.
   complete pass over the same store still produces that entry.
 - Unreadable or layout-incompatible durable catalog state starts a new epoch
   and still serves requests, rather than failing initialization.
+- A missing or corrupt shard in the current generation starts a new epoch on
+  the read that finds it, and the next reconciliation rebuilds the catalog.
 - Loss/eviction of browser persistence changes only cold-fetch cost, not visible
   correctness or the ability to reconnect.

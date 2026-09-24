@@ -428,13 +428,24 @@ export class SessionCatalogService {
       // unreadable or incompatible ends this lineage: the catalog restarts at
       // a fresh epoch and reconciliation refills it.
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") {
-        this.resetFailures += 1;
-        this.lastResetReason =
-          error instanceof Error ? error.message : String(error);
-      }
+      if (code !== "ENOENT") this.recordReset(error);
     }
-    this.manifest = {
+    return this.snapshotFrom(await this.startLineage());
+  }
+
+  private recordReset(reason: unknown): void {
+    this.resetFailures += 1;
+    this.lastResetReason =
+      reason instanceof Error ? reason.message : String(reason);
+  }
+
+  /**
+   * End the current lineage at a fresh epoch and generation 0. The in-memory
+   * manifest is replaced before any await, so concurrent callers observe the
+   * reset at once and no reader returns to the abandoned generation.
+   */
+  private async startLineage(): Promise<PersistedSessionCatalogManifest> {
+    const manifest: PersistedSessionCatalogManifest = {
       schemaVersion: MANIFEST_SCHEMA_VERSION,
       bucketCount: this.bucketCount,
       catalogEpoch: this.createEpoch(),
@@ -448,9 +459,32 @@ export class SessionCatalogService {
       recentRows: [],
       deltas: [],
     };
-    await this.persistManifest(this.manifest);
+    this.manifest = manifest;
+    await this.persistManifest(manifest);
     await this.cleanupGenerationDirectories(null);
-    return this.snapshotFrom(this.manifest);
+    return manifest;
+  }
+
+  /**
+   * A shard the current manifest names but cannot be read back (a torn or
+   * interrupted write, a full disk, outside damage) is the same unreadable
+   * cache state `initialize` recovers from. Rethrowing it would fail every
+   * collection read and, because reconciliation starts with a read, keep the
+   * catalog from ever rebuilding itself.
+   */
+  private async resetUnreadableGeneration(
+    manifest: PersistedSessionCatalogManifest,
+    error: unknown,
+  ): Promise<boolean> {
+    if (
+      !(error instanceof SessionCatalogCorruptionError || isMissingFile(error))
+    )
+      return false;
+    // Concurrent readers of one generation fail together; one reset serves all.
+    if (this.manifest !== manifest) return true;
+    this.recordReset(error);
+    await this.startLineage();
+    return true;
   }
 
   getSnapshot(): SessionCatalogSnapshot {
@@ -516,9 +550,9 @@ export class SessionCatalogService {
           isCurrent: () => this.manifest === manifest && !this.stopped,
         });
       } catch (error) {
-        // A shard that vanished under a superseded manifest is a retarget,
-        // not a failure; under the current manifest it is real corruption.
-        if (isMissingFile(error) && this.manifest !== manifest) continue;
+        // A shard that vanished under a superseded manifest is a retarget;
+        // under the current manifest it is corruption, and ends the lineage.
+        if (await this.resetUnreadableGeneration(manifest, error)) continue;
         throw error;
       }
       if (result.status !== "stale") {
@@ -647,8 +681,7 @@ export class SessionCatalogService {
           this.currentShardContentHash(token.bucket) === candidate,
       });
     } catch (error) {
-      if (isMissingFile(error) && this.requireManifest() !== manifest)
-        return null;
+      if (await this.resetUnreadableGeneration(manifest, error)) return null;
       throw error;
     }
     if (result.status === "stale") {
@@ -831,6 +864,11 @@ export class SessionCatalogService {
           this.maxDeltaBytes,
         ),
       };
+      // A reader that found this pass's base generation unreadable ended its
+      // lineage; publishing onto the abandoned epoch would resurrect it.
+      if (this.manifest !== previous) {
+        throw new Error("Session catalog lineage was reset during reconcile");
+      }
       await this.persistManifest(manifest);
       this.manifest = manifest;
       cleanupFailures =
@@ -1301,6 +1339,8 @@ async function readProjectRowsFromShard(
   };
 }
 
+class SessionCatalogCorruptionError extends Error {}
+
 async function* readShardRows(filePath: string): AsyncGenerator<ShardLine> {
   const input = createReadStream(filePath, { encoding: "utf-8" });
   const lines = createInterface({ input, crlfDelay: Number.POSITIVE_INFINITY });
@@ -1313,7 +1353,7 @@ async function* readShardRows(filePath: string): AsyncGenerator<ShardLine> {
       try {
         parsed = JSON.parse(line);
       } catch (error) {
-        throw new Error(
+        throw new SessionCatalogCorruptionError(
           `Invalid session catalog row at ${filePath}:${lineNumber}: ${
             error instanceof Error ? error.message : String(error)
           }`,

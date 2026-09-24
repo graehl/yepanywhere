@@ -357,6 +357,103 @@ describe("SessionCatalogService", () => {
     ).toEqual([]);
   });
 
+  async function currentShardPaths(): Promise<string[]> {
+    const manifest = JSON.parse(
+      await readFile(
+        join(dataDir, "session-catalog", "manifest.json"),
+        "utf-8",
+      ),
+    ) as { generationDirectory: string; shards: Array<{ file: string }> };
+    return manifest.shards.map((shard) =>
+      join(
+        dataDir,
+        "session-catalog",
+        "generations",
+        manifest.generationDirectory,
+        shard.file,
+      ),
+    );
+  }
+
+  it("rebuilds after a torn shard write instead of failing every read", async () => {
+    const first = createService();
+    await first.initialize();
+    const rows = [
+      row({ sessionId: "a", project: "alpha" }),
+      row({ sessionId: "b", project: "beta" }),
+    ];
+    await first.reconcile([adapter(rows)]);
+    const originalEpoch = first.getMetrics().catalogEpoch;
+    const [shard] = await currentShardPaths();
+    // A crash after rename can leave zero-filled blocks where rows belonged.
+    await writeFile(shard!, "\0\0\0\0\n", "utf-8");
+
+    const restarted = createService();
+    await restarted.initialize();
+    const read = await restarted.readRows();
+
+    expect(read.rows).toEqual([]);
+    expect(read.snapshot.catalogGeneration).toBe(0);
+    expect(read.snapshot.catalogEpoch).not.toBe(originalEpoch);
+    expect(restarted.getMetrics()).toMatchObject({
+      resetFailures: 1,
+      lastResetReason: expect.stringContaining("Invalid session catalog row"),
+    });
+    expect(
+      await readdir(join(dataDir, "session-catalog", "generations")),
+    ).toEqual([]);
+
+    await restarted.reconcile([adapter(rows)]);
+    expect((await restarted.readRows()).rows).toHaveLength(2);
+  });
+
+  it("rebuilds after a shard the current manifest names goes missing", async () => {
+    const first = createService();
+    await first.initialize();
+    await first.reconcile([
+      adapter([row({ sessionId: "a", project: "alpha" })]),
+    ]);
+    for (const shard of await currentShardPaths()) await rm(shard);
+
+    const restarted = createService();
+    await restarted.initialize();
+
+    expect(await restarted.readProjectRows("/projects/alpha")).toMatchObject({
+      catalogGeneration: 0,
+      rows: [],
+    });
+    expect(restarted.getMetrics().resetFailures).toBe(1);
+  });
+
+  it("does not publish onto a lineage a reader reset mid-reconcile", async () => {
+    const service = createService();
+    await service.initialize();
+    const rows = [row({ sessionId: "a", project: "alpha" })];
+    await service.reconcile([adapter(rows, { sourceVersion: "v1" })]);
+    const [shard] = await currentShardPaths();
+
+    const resetting: NativeSessionCatalogAdapter = {
+      catalogFamily: "codex",
+      storeKey: "default",
+      scan: async () => {
+        await writeFile(shard!, "{ torn", "utf-8");
+        await service.readRows();
+        return {
+          sourceVersion: "v2",
+          rows: rows.map((entry) => ({ ...entry })),
+        };
+      },
+    };
+    // The reset also removed the pass's staging directory; either way the
+    // abandoned pass must fail rather than publish over generation 0.
+    await expect(service.reconcile([resetting])).rejects.toThrow();
+    expect(service.getSnapshot().catalogGeneration).toBe(0);
+
+    await service.reconcile([adapter(rows, { sourceVersion: "v3" })]);
+    expect(service.getSnapshot().catalogGeneration).toBe(1);
+    expect((await service.readRows()).rows).toHaveLength(1);
+  });
+
   it("starts a fresh epoch when the shard layout no longer matches", async () => {
     const first = createService({ bucketCount: 8 });
     await first.initialize();

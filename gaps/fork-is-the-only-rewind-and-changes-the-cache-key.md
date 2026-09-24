@@ -49,14 +49,13 @@ records what each harness actually does, what YA already has, and the gap.
   store supports it (`thread_processor.rs:1434-1437`), so `thread/revert` is
   the primitive for YA-started threads and `thread/rollback` for older legacy
   rollouts.
-- **YA already speaks `thread/rollback`, but only to a fork child.**
-  `packages/server/src/sdk/providers/codex.ts:2504-2527` forks first and then
-  rolls the child back when the caller supplied `upToMessageId` without a
-  turn boundary. Because Codex fork children are paginated
-  ([tactical 121](../docs/tactical/121-codex-reference-backed-fork-history.md)),
-  that rollback call is refused on current Codex; the live client path passes
-  a turn boundary and skips it. The live per-session `CodexAppServerClient`
-  can send `thread/revert` to the running thread today.
+- **Codex 0.156.1 removed `thread/rollback`.** YA used to call it only on a
+  fresh fork child, which paginated children already refused
+  ([tactical 121](../docs/tactical/121-codex-reference-backed-fork-history.md)).
+  Every YA fork now bounds the copy with `thread/fork.lastTurnId` instead
+  ([provider fork support](../topics/provider-fork-support.md#codex)), so
+  `thread/revert` is the only in-place primitive left. The live per-session
+  `CodexAppServerClient` can send it to the running thread today.
 
 ## Claude (Agent SDK 0.3.273, CLI 2.1.276)
 
@@ -106,7 +105,7 @@ present and already partly exercised:
 | Provider | In-place primitive | YA status |
 |---|---|---|
 | Codex paginated thread | `thread/revert {threadId, beforeTurnId}` | in the pinned 0.154.0 schema, absent from YA's generated protocol types; needs a protocol refresh |
-| Codex legacy thread | `thread/rollback {threadId, numTurns}` | called only on a fresh fork child |
+| Codex legacy thread | `thread/rollback {threadId, numTurns}` | removed in Codex 0.156.1; YA no longer calls it |
 | Claude | `resume` + `resumeSessionAt` (+ `resumeDropsTurn`) | used only for API-error tail recovery |
 
 An in-place rewind is the right shape for "try that turn again" and for the

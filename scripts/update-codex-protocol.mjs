@@ -48,7 +48,6 @@ const SUBSET_EXPORTS = [
   { name: "ThreadResumeParams", file: "v2/ThreadResumeParams.ts" },
   { name: "ThreadReadParams", file: "v2/ThreadReadParams.ts" },
   { name: "ThreadForkParams", file: "v2/ThreadForkParams.ts" },
-  { name: "ThreadRollbackParams", file: "v2/ThreadRollbackParams.ts" },
   { name: "ThreadRevertParams", file: "v2/ThreadRevertParams.ts" },
   { name: "TurnStartParams", file: "v2/TurnStartParams.ts" },
   {
@@ -65,7 +64,6 @@ const SUBSET_EXPORTS = [
   { name: "ThreadResumeResponse", file: "v2/ThreadResumeResponse.ts" },
   { name: "ThreadReadResponse", file: "v2/ThreadReadResponse.ts" },
   { name: "ThreadForkResponse", file: "v2/ThreadForkResponse.ts" },
-  { name: "ThreadRollbackResponse", file: "v2/ThreadRollbackResponse.ts" },
   { name: "ThreadRevertResponse", file: "v2/ThreadRevertResponse.ts" },
   {
     name: "ThreadRevertedNotification",

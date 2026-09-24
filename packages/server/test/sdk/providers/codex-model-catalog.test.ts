@@ -266,6 +266,25 @@ describe("Codex model catalog", () => {
     });
   });
 
+  it("ranks the GPT-6 family together with the bundled 272K window", () => {
+    const models = normalizeCodexModelList([
+      { id: "gpt-5.6-sol", model: "gpt-5.6-sol" },
+      { id: "gpt-6-luna", model: "gpt-6-luna" },
+      { id: "gpt-6-sol", model: "gpt-6-sol" },
+      { id: "gpt-6-astra", model: "gpt-6-astra", isDefault: true },
+    ]);
+
+    expect(models.map((model) => model.id)).toEqual([
+      "gpt-6-astra",
+      "gpt-6-sol",
+      "gpt-6-luna",
+      "gpt-5.6-sol",
+    ]);
+    for (const model of models) {
+      expect(model.contextWindow).toBe(272_000);
+    }
+  });
+
   it("honors a provider default even when a preferred model is available", () => {
     const models = normalizeCodexModelList([
       { id: "gpt-5.4", model: "gpt-5.4", isDefault: true },

@@ -2845,7 +2845,7 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
-  it("forks a Codex thread and rolls back trailing turns", async () => {
+  it("forks a Codex thread through the turn holding a message anchor", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-fork-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
     const codexPath = createFakeCodexCommand(
@@ -2873,9 +2873,6 @@ describe("CodexProvider app-server lifecycle", () => {
       const forkRequest = requests.find(
         (request) => request.method === "thread/fork",
       );
-      const rollback = requests.find(
-        (request) => request.method === "thread/rollback",
-      );
 
       expect(read?.params).toMatchObject({
         threadId: "source-thread",
@@ -2883,15 +2880,42 @@ describe("CodexProvider app-server lifecycle", () => {
       });
       expect(forkRequest?.params).toMatchObject({
         threadId: "source-thread",
+        lastTurnId: "turn-2",
         cwd: tempDir,
         approvalPolicy: "on-request",
         sandbox: "workspace-write",
         excludeTurns: true,
       });
-      expect(rollback?.params).toMatchObject({
-        threadId: "fork-thread",
-        numTurns: 1,
+      expect(
+        requests.some((request) => request.method === "thread/rollback"),
+      ).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("forks the whole Codex thread when the anchor ends the last turn", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-fork-last-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-fork-last",
+      buildFakeCodexAppServerForFork(logPath),
+    );
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      await testProvider.forkSession({
+        sessionId: "source-thread",
+        cwd: tempDir,
+        upToMessageId: "assistant-3-turn-3",
       });
+
+      const forkRequest = readFakeCodexRequests(logPath).find(
+        (request) => request.method === "thread/fork",
+      );
+      expect(forkRequest?.params).toMatchObject({ threadId: "source-thread" });
+      expect(forkRequest?.params).not.toHaveProperty("lastTurnId");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -4226,11 +4250,6 @@ function handleMessage(message) {
         activePermissionProfile: null,
         reasoningEffort: null,
         multiAgentMode: "disabled",
-      });
-      break;
-    case "thread/rollback":
-      respond(message.id, {
-        thread: { id: message.params?.threadId ?? "fork-thread", turns: [] },
       });
       break;
     default:

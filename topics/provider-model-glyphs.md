@@ -89,6 +89,8 @@ Model sub-family abbreviations (appended after provider abbrev):
 | haiku        | `Hk`  | `Cl Hk3`                  |
 | (unknown)    | —     | `Cl 4.6` (version only)   |
 | gpt-6-astra  | `As`  | `Cd As`                   |
+| gpt-6-sol    | `So`  | `Cd So`                   |
+| gpt-6-luna   | `Lu`  | `Cd Lu`                   |
 | gpt-5.6-sol  | `☀`   | `Cd ☀`                    |
 | gpt-5.6-terra| `♁`   | `Cd ♁`                    |
 | gpt-5.6-luna | `☾`   | `Cd ☾`                    |
@@ -110,6 +112,8 @@ for all common cases. Tooltip shows the raw full model ID (already wired).
 Named variants use a recognizable semantic glyph where the name supplies one;
 the GPT-5.6 Sol/Terra/Luna family is the current example. Sol's `☀` is
 deliberately a sun-with-rays glyph that remains legible at status-badge size.
+The GPT-6 family uses two-letter names instead (`As`, `So`, `Lu`) so GPT-6
+Sol and Luna stay distinct from their GPT-5.6 namesakes.
 Daybreak uses `Db` rather than another sun glyph, and colors that model token
 blue independently of the Codex-green provider text, dot, and outline.
 

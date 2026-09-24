@@ -29,6 +29,8 @@ type ModelGlyphRule = {
 
 const codexModelGlyphRules: ReadonlyArray<ModelGlyphRule> = [
   { patterns: ["gpt-6-astra"], glyph: "As", fixedSuffix: "" },
+  { patterns: ["gpt-6-sol"], glyph: "So", fixedSuffix: "" },
+  { patterns: ["gpt-6-luna"], glyph: "Lu", fixedSuffix: "" },
   {
     patterns: ["gpt-daybreak-blue-latest"],
     glyph: "Db",

@@ -99,8 +99,6 @@ import type {
   ThreadItem as CodexThreadItem,
   ThreadCompactStartParams,
   ThreadCompactStartResponse,
-  ThreadRollbackParams,
-  ThreadRollbackResponse,
   CommandExecutionApprovalDecision,
   CommandExecutionRequestApprovalParams,
   FileChangeApprovalDecision,
@@ -2543,40 +2541,36 @@ export class CodexProvider implements AgentProvider {
       const experimentalApiEnabled = await this.initializeAppServer(appServer);
       appServer.notify("initialized");
 
-      const rollbackCount = options.boundary
-        ? 0
-        : options.upToMessageId
-          ? await this.resolveCodexForkRollbackCount(
-              appServer,
-              options.sessionId,
-              options.upToMessageId,
-            )
-          : 0;
+      const lastTurnId =
+        options.boundary?.kind === "turn"
+          ? options.boundary.turnId
+          : options.upToMessageId
+            ? await this.resolveCodexForkLastTurnId(
+                appServer,
+                options.sessionId,
+                options.upToMessageId,
+              )
+            : undefined;
       const policy = this.mapPermissionModeToThreadPolicy(undefined);
       const fork = await appServer.request<ThreadForkResponse>(
         "thread/fork",
-        this.createThreadForkParams(options, policy, experimentalApiEnabled),
+        this.createThreadForkParams(
+          { ...options, lastTurnId },
+          policy,
+          experimentalApiEnabled,
+        ),
       );
       const forkSessionId = fork.thread?.id;
       if (!forkSessionId) {
         throw new Error("Codex thread/fork did not return a thread id");
       }
 
-      if (rollbackCount > 0) {
-        await appServer.request<ThreadRollbackResponse>("thread/rollback", {
-          threadId: forkSessionId,
-          numTurns: rollbackCount,
-        } satisfies ThreadRollbackParams);
-      }
-
       log.info(
         {
           sourceSessionId: options.sessionId,
           forkSessionId,
-          boundaryTurnId:
-            options.boundary?.kind === "turn" ? options.boundary.turnId : null,
+          lastTurnId: lastTurnId ?? null,
           upToMessageId: options.upToMessageId ?? null,
-          rollbackCount,
         },
         "Forked Codex app-server thread",
       );
@@ -3902,16 +3896,14 @@ export class CodexProvider implements AgentProvider {
     options: {
       sessionId: string;
       cwd: string;
-      boundary?: ProviderForkBoundary;
+      lastTurnId?: string;
     },
     policy: CodexThreadPolicy,
     experimentalApiEnabled = false,
   ): CodexThreadForkParamsForRequest {
     const params: CodexThreadForkParamsForRequest = {
       threadId: options.sessionId,
-      ...(options.boundary?.kind === "turn"
-        ? { lastTurnId: options.boundary.turnId }
-        : {}),
+      ...(options.lastTurnId ? { lastTurnId: options.lastTurnId } : {}),
       cwd: options.cwd,
       ...this.buildThreadPermissionParams(policy),
       config: this.buildThreadConfigOverrides({}),
@@ -3922,11 +3914,16 @@ export class CodexProvider implements AgentProvider {
     return params;
   }
 
-  private async resolveCodexForkRollbackCount(
+  /**
+   * Maps a legacy message-id fork anchor to the completed turn the fork keeps
+   * through. Undefined means the anchor ends the thread, so the fork copies
+   * everything, including a turn that may still be in progress.
+   */
+  private async resolveCodexForkLastTurnId(
     appServer: CodexAppServerClient,
     sessionId: string,
     upToMessageId: string,
-  ): Promise<number> {
+  ): Promise<string | undefined> {
     const response = await appServer.request<ThreadReadResponse>(
       "thread/read",
       {
@@ -3935,13 +3932,13 @@ export class CodexProvider implements AgentProvider {
       } satisfies ThreadReadParams,
     );
     const turns = response.thread.turns ?? [];
-    return this.computeCodexForkRollbackCount(turns, upToMessageId);
+    return this.computeCodexForkLastTurnId(turns, upToMessageId);
   }
 
-  private computeCodexForkRollbackCount(
+  private computeCodexForkLastTurnId(
     turns: CodexThreadTurn[],
     upToMessageId: string,
-  ): number {
+  ): string | undefined {
     const anchor = this.findCodexForkAnchor(turns, upToMessageId);
     if (!anchor) {
       throw new Error(
@@ -3963,7 +3960,9 @@ export class CodexProvider implements AgentProvider {
       }
     }
 
-    return turns.length - anchor.turnIndex - 1;
+    return anchor.turnIndex < turns.length - 1
+      ? turns[anchor.turnIndex]?.id
+      : undefined;
   }
 
   private findCodexForkAnchor(

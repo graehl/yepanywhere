@@ -101,8 +101,8 @@ under a fresh id without needing a live agent process.
 
 **LANDED 2026-06-23.** `CodexProvider.forkSession` uses the native app-server
 `thread/fork` RPC and returns the forked Codex thread id as YA's provider
-session id. YA vendors the generated `ThreadFork*`, `ThreadRollback*`, and
-`ThreadReadResponse` protocol types through
+session id. YA vendors the generated `ThreadFork*` and `ThreadReadResponse`
+protocol types through
 `scripts/update-codex-protocol.mjs`.
 
 Current Codex stores a durable fork in paginated mode by writing canonical
@@ -122,9 +122,8 @@ Codex models forks natively in its app-server protocol. The vendored v2
   tree" (Codex already models a session as a *tree of threads*);
 - `forkedFromId` — "Source thread id when this thread was created by forking
   another thread";
-- a docstring naming `thread/fork` and `thread/rollback` as real methods (turns
-  are populated on `thread/resume`, `thread/rollback`, `thread/fork`,
-  `thread/read`).
+- a docstring naming `thread/fork` as a real method (turns are populated on
+  `thread/resume`, `thread/fork`, and `thread/read`).
 
 Implementation:
 
@@ -138,9 +137,13 @@ Implementation:
 3. The adapter sends that id directly as inclusive
    `thread/fork.lastTurnId`. This is the stable boundary in the pinned Codex
    `0.145.0` protocol and requires neither `thread/read` nor rollback.
-4. Legacy `{ upToMessageId }` requests retain the old `thread/read` mapping and
-   whole-turn rollback implementation. Codex still rejects an item anchor
-   inside a turn rather than silently retaining later items.
+4. Legacy `{ upToMessageId }` requests keep the `thread/read` mapping from a
+   message id to the turn that contains it, then fork through that turn with
+   the same `lastTurnId`. An anchor in the last turn forks the whole thread
+   without `lastTurnId`, so an in-progress final turn still copies. YA still
+   rejects an item anchor inside a turn rather than silently retaining later
+   items. Codex 0.156.1 removed `thread/rollback`, which this path used to
+   call on the fork child; `lastTurnId` needs no such method.
 
 The 2026-08-01 addressability repair deliberately preserves synthesized
 `codex-N-<timestamp>` ids as renderer identities. They no longer cross the
@@ -198,8 +201,8 @@ runtime), `canSwitchActivePath`, `canForkAtNode`. `forkSession` here is the
   implements `forkSession` by writing a new top-level session file. Active-path
   switching/tree UI is still separate work.
 - Codex: models a thread tree (`sessionId`/`forkedFromId`) and implements new
-  typed boundaries through native `thread/fork.lastTurnId`; rollback remains a
-  legacy-anchor compatibility path. Tree UI is still separate work.
+  both typed boundaries and legacy message anchors through native
+  `thread/fork.lastTurnId`. Tree UI is still separate work.
 
 The tree doc's `canForkAtNode` should be defined as "the provider implements
 `forkSession` anchored at a tree node id" — i.e. it is satisfied exactly when

@@ -1,5 +1,5 @@
 import {
-  CODEX_GPT6_ASTRA_CONTEXT_WINDOW,
+  CODEX_GPT6_CONTEXT_WINDOW,
   CODEX_GPT56_CONTEXT_WINDOW,
   type ModelInfo,
 } from "@yep-anywhere/shared";
@@ -11,6 +11,8 @@ export const CODEX_CLI_GPT56_RESTORED_CATALOG_MIN_VERSION = "0.145.0";
 
 const PREFERRED_MODEL_ORDER = [
   "gpt-6-astra",
+  "gpt-6-sol",
+  "gpt-6-luna",
   "gpt-5.6-sol",
   "gpt-5.5",
   "gpt-5.6-terra",
@@ -370,8 +372,8 @@ export function normalizeCodexModelList(models: AppServerModel[]): ModelInfo[] {
           ? { contextWindow: model.contextWindow }
           : modelId.startsWith("gpt-5.6-")
             ? { contextWindow: CODEX_GPT56_CONTEXT_WINDOW }
-            : modelId === "gpt-6-astra"
-              ? { contextWindow: CODEX_GPT6_ASTRA_CONTEXT_WINDOW }
+            : modelId.startsWith("gpt-6-")
+              ? { contextWindow: CODEX_GPT6_CONTEXT_WINDOW }
               : {}),
         ...(typeof model.supportsPersonality === "boolean"
           ? { supportsPersonality: model.supportsPersonality }

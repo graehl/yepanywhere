@@ -164,6 +164,54 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
+Current source refresh, 2026-09-24 (0.156.1):
+
+- Installed Codex is `codex-cli 0.156.1`. The official `rust-v0.156.1` tag
+  peels to commit `b412ff32c417f855c2b2d1581b77058eed87c84b`. Root
+  `expectedVersion`, `compatibleThroughVersion`, and the reference checkout all
+  record `0.156.1`.
+- Codex removed `thread/rollback` from the app-server, including under the
+  experimental API. A live probe returns `unknown variant 'thread/rollback'`.
+  YA's legacy message-anchor fork called it on the fork child, so
+  `pnpm codex:protocol:check` failed on the missing `ThreadRollbackResponse`.
+  That fork now resolves the anchor's turn and passes it as
+  `thread/fork.lastTurnId`, the boundary typed forks already used
+  ([provider fork support](provider-fork-support.md#codex)). The rollback types
+  leave the checked-in subset. `thread/revert` and `ThreadForkParams`'
+  `lastTurnId`/`beforeTurnId` are unchanged.
+- The other generated changes are additive or deprecations YA does not use.
+  Images in `UserInput`, `ContentItem`, and function-call output may carry a
+  `file_id` instead of an inline URL. YA sends only inline and local images, and
+  its `input_image` transcript schema already makes `image_url` optional and
+  passes unknown keys through. Thread start, resume, and fork responses gain
+  `disabledPluginIds`; resume also gains `collaborationMode`, and
+  `turn/start` accepts `disabledPluginIds`. `thread/start` accepts
+  `daybreakEnabled`. MCP tool-call items gain `mcpAppUi`. `personality` is
+  deprecated on thread start, resume, and turn start; YA never sends it.
+- Durable transcripts: the legacy `ThreadRollback` event is gone from new
+  rollouts, and YA keeps `thread_rolled_back` parsing for older files. User
+  message events gain `file_ids`, `file_id_details`, and `image_order` for
+  file-backed images, which YA's own sends never create. Codex's rollout
+  compression worker gains trigger kinds, but the `.jsonl.zst` format YA already
+  reads is unchanged. No 0.156.1 rollout exists locally yet, so the deferred
+  0.155.1 census ran instead: 80,596 rows across 27 local 0.155.1 rollouts
+  parse against `CodexSessionEntrySchema` with no failures.
+- The authenticated no-token `model/list` returns eight models: Astra
+  (default, medium effort), GPT-6 Sol, GPT-6 Luna, GPT-5.6 Sol/Terra/Luna,
+  `gpt-daybreak-blue-latest`, and `gpt-5.5`. GPT-6 Sol and Luna are new. The
+  live catalog omits their context window, and the tagged bundled catalog
+  records 272,000 tokens for the whole GPT-6 family. YA now ranks them after
+  Astra in upstream's priority order, applies the 272K window to every
+  `gpt-6-` model, and renders them as `Cd So` and `Cd Lu`
+  ([provider model glyphs](provider-model-glyphs.md)). Both stay out of the
+  discovery-failure fallbacks, like Astra. `model-prices.ts` has no GPT-6 Sol
+  or Luna price because no published price was checked for them.
+
+Status: Codex 0.156.1 fork compatibility, generated protocol, and model
+catalog are refreshed without raising the runtime floor. Typed forks already
+required `lastTurnId`, so legacy anchors need nothing newer. Re-run the
+persisted-JSONL census once a 0.156.1 rollout exists.
+
 Subset extension, 2026-09-19 (still 0.154.0 source, 0.155.1 binary): the
 checked-in subset gained `ThreadRevertParams`, `ThreadRevertResponse`, and
 `ThreadRevertedNotification` for the in-place `thread/revert` rewind
@@ -173,7 +221,7 @@ checked-in subset gained `ThreadRevertParams`, `ThreadRevertResponse`, and
 file moved and no version marker changes; `pnpm codex:protocol:check` is
 clean. Approved by graehl in the session-rewind follow-up request.
 
-Current compatibility audit, 2026-09-18 (0.155.1):
+Previous compatibility audit, 2026-09-18 (0.155.1):
 
 - Installed Codex is `codex-cli 0.155.1`. The official `rust-v0.155.1` tag peels
   to commit `be2951ea34f0d295ed0becf97079f92fa5f6950e`, 220 commits past

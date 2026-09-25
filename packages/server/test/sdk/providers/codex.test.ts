@@ -2731,6 +2731,54 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it("maps thinking off to the model's lowest effort on a cold catalog", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-thinking-off-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-thinking-off",
+      buildFakeCodexAppServer(logPath, "chatgpt", undefined, false, {
+        data: [
+          {
+            id: "gpt-6-astra",
+            model: "gpt-6-astra",
+            displayName: "Astra",
+            isDefault: true,
+            defaultReasoningEffort: "medium",
+            supportedReasoningEfforts: ["low", "medium", "high", "max"].map(
+              (reasoningEffort) => ({ reasoningEffort, description: "" }),
+            ),
+          },
+        ],
+        nextCursor: null,
+      }),
+    );
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    try {
+      // A fresh provider has no model catalog yet, like a new session worker.
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        model: "gpt-6-astra",
+        effort: "high",
+        thinking: { type: "disabled" },
+      });
+      await session.iterator.next();
+
+      const threadStart = readFakeCodexRequests(logPath).find(
+        (request) => request.method === "thread/start",
+      );
+      expect(threadStart?.params).toMatchObject({
+        config: { model_reasoning_effort: "low" },
+      });
+    } finally {
+      session?.abort();
+      await session?.iterator.return?.(undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("generates simulated recaps through an ephemeral helper thread", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-recap-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -3049,6 +3097,7 @@ function buildFakeCodexAppServer(
   accountType: "chatgpt" | "apiKey" = "chatgpt",
   goalStatusOverride?: "budgetLimited",
   goalStartsTurn = false,
+  modelList?: unknown,
 ): string {
   return `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
@@ -3057,6 +3106,7 @@ const logPath = ${JSON.stringify(logPath)};
 const accountType = ${JSON.stringify(accountType)};
 const goalStatusOverride = ${JSON.stringify(goalStatusOverride)};
 const goalStartsTurn = ${JSON.stringify(goalStartsTurn)};
+const modelList = ${JSON.stringify(modelList ?? null)};
 let buffer = "";
 let goal = null;
 let activeTurn = false;
@@ -3207,6 +3257,9 @@ function handleMessage(message) {
       break;
     case "turn/steer":
       respond(message.id, { turnId: "turn-steered" });
+      break;
+    case "model/list":
+      respond(message.id, modelList ?? {});
       break;
     case "turn/interrupt":
       respond(message.id, {});

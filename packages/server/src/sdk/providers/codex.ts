@@ -1814,8 +1814,11 @@ export class CodexProvider implements AgentProvider {
   private async startSessionInternal(
     options: StartSessionOptions,
   ): Promise<AgentSession> {
+    // These effort mappings read the model's supported efforts, which a fresh
+    // session worker has not loaded yet.
     if (
       options.effort === "max" ||
+      options.thinking?.type === "disabled" ||
       options.initialMessage?.metadata?.turnEffort
     )
       await this.getAvailableModels();

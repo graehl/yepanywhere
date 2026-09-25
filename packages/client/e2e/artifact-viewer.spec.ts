@@ -293,9 +293,11 @@ test("finds within a running artifact frame only, from its own Ctrl+F", async ({
   await recordUiCapture(page, "viewer-find-artifact-1200");
   await page.keyboard.press("Escape");
   await expect(findBox).toHaveValue("");
-  expect(
-    await child.evaluate(() => CSS.highlights.get("yep-find")?.size ?? 0),
-  ).toBe(0);
+  // The frame clears on a posted message, so its highlights drop a moment
+  // after the field empties.
+  await expect
+    .poll(() => child.evaluate(() => CSS.highlights.get("yep-find")?.size ?? 0))
+    .toBe(0);
   // Focus is back in the frame, so its Ctrl+F reopens the field.
   await page.keyboard.press("Control+f");
   await expect(findBox).toBeFocused();

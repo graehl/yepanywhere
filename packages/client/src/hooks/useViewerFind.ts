@@ -49,6 +49,9 @@ export function useViewerFind(source: ViewerFindSource | null): ViewerFind {
   const request = useRef(0);
   const lastDuration = useRef(0);
   const focusRequest = useRef(false);
+  /** The query whose search has been issued to the target, if any. */
+  const searchedQuery = useRef<string | null>(null);
+  const pendingSearch = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const openField = useCallback((seed: string) => {
     const text = findSeed(seed);
@@ -78,9 +81,21 @@ export function useViewerFind(source: ViewerFindSource | null): ViewerFind {
     (direction: 1 | -1) => {
       if (!target || !query.trim()) return;
       const id = ++request.current;
-      void target.step(direction).then((next) => {
-        if (id === request.current) setCounts(next);
-      });
+      // A step right after typing belongs to the typed query, not to the
+      // results of the query before it, so run its pending search first.
+      const searched =
+        searchedQuery.current === query
+          ? Promise.resolve()
+          : (() => {
+              clearTimeout(pendingSearch.current);
+              searchedQuery.current = query;
+              return target.find(query);
+            })();
+      void searched
+        .then(() => target.step(direction))
+        .then((next) => {
+          if (id === request.current) setCounts(next);
+        });
     },
     [target, query],
   );
@@ -97,14 +112,16 @@ export function useViewerFind(source: ViewerFindSource | null): ViewerFind {
   useEffect(() => {
     if (!target) return;
     const id = ++request.current;
+    searchedQuery.current = null;
     if (!query.trim()) {
       target.clear();
       setCounts(null);
       return;
     }
-    const timer = setTimeout(
+    pendingSearch.current = setTimeout(
       () => {
         const started = performance.now();
+        searchedQuery.current = query;
         void target.find(query).then((next) => {
           lastDuration.current = performance.now() - started;
           if (id === request.current) setCounts(next);
@@ -112,7 +129,7 @@ export function useViewerFind(source: ViewerFindSource | null): ViewerFind {
       },
       lastDuration.current > SLOW_SEARCH_MS ? SLOW_SEARCH_DELAY_MS : 0,
     );
-    return () => clearTimeout(timer);
+    return () => clearTimeout(pendingSearch.current);
   }, [target, query]);
 
   // A new target starts clean; the old one drops its highlights.

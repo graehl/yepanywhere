@@ -26,6 +26,17 @@ settle. Compare ordinary browser navigation to distinguish document layout
 behavior from viewer navigation. Keep cross-origin isolation intact; avoid
 parent DOM access or arbitrary delayed scrolling as a workaround.
 
+2026-09-25 finding, fixed in the same change as this note: section links
+*inside* the sanitized (scriptless) HTML preview navigated the srcdoc frame to
+the embedding YA route plus `#section`, because a srcdoc document resolves
+fragments against its parent's URL. The preview wrapper now addresses them on
+`about:srcdoc`; see
+[active content security](../topics/active-content-security.md). Links inside
+the interactive (play) frame were checked in Chromium and scroll correctly on
+the artifact origin. What remains open is only the transcript-link case above.
+Its likeliest sub-case is re-requesting the anchor the frame already has:
+an unchanged iframe `src` does not navigate.
+
 Deferred because the user requested a brief investigation or gap while paper
 review continues; a correct fix needs an actual viewer reproduction. A small
 standalone excerpt is the current paper-review workaround. Close with a

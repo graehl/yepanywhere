@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ResourceContextMenu } from "./FileResourceActions";
 import { useSessionAppAnnouncer } from "./SessionAppLinks";
@@ -34,6 +34,11 @@ export function ArtifactPreview(props: Props) {
   // A running preview is an App the session should be able to recall from
   // its App action after the viewer closes, minimized or not.
   const announceApp = useSessionAppAnnouncer();
+  // Rendering reparses a possibly multi-megabyte document; do it per source.
+  const scriptlessDocument = useMemo(
+    () => createScriptlessHtmlPreviewDocument(props.html),
+    [props.html],
+  );
   useEffect(() => {
     if (!grant) return;
     announceApp({
@@ -132,7 +137,7 @@ export function ArtifactPreview(props: Props) {
           aria-label={props.title}
           sandbox=""
           referrerPolicy="no-referrer"
-          srcDoc={createScriptlessHtmlPreviewDocument(props.html)}
+          srcDoc={scriptlessDocument}
         />
       )}
     </div>

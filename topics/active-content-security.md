@@ -63,6 +63,13 @@ and a restrictive meta CSP that denies scripts, connections, frames, objects,
 workers, forms, base URLs, and ambient image/media loads. Markdown keeps its
 sanitized preview default and can be requested as source.
 
+A srcdoc document resolves URLs against the embedding YA page, and it
+inherits YA's own `base-uri` policy, which refuses a `<base href=
+"about:srcdoc">`. The wrapper therefore rewrites fragment-only link targets
+(`#section`) to `about:srcdoc#section` in an inert parse, so a
+table-of-contents or cross-reference link scrolls within the preview instead
+of navigating the frame to the YA route (2026-09-25).
+
 This is defense in depth at the client presentation boundary. The later server
 containment protects old clients, address-bar visits, modified browser
 navigation that escapes interception, redirects, and copied raw endpoints.

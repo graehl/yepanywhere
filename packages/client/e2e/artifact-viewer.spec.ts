@@ -252,6 +252,29 @@ test("viewer icon modes toggle locally and open through Shift and middle clicks"
   ).toHaveAttribute("sandbox", "");
 });
 
+test("sanitized preview section links scroll within the document", async ({
+  page,
+}) => {
+  const htmlPath = join(directory, "bundle", "sections.html");
+  await writeFile(
+    htmlPath,
+    '<!doctype html><base href="https://example.invalid/"><p><a href="#far">Jump to far section</a></p><div style="height:4000px"></div><h2 id="far">Far section</h2><div style="height:1000px"></div>',
+  );
+  await page.goto(
+    `${base}/e2e/fixtures/artifact-viewer.html?editor&path=${encodeURIComponent(htmlPath)}`,
+  );
+  const preview = page.frameLocator('iframe[title="sections.html"]');
+  await preview.getByRole("link", { name: "Jump to far section" }).click();
+  // Resolving against the embedding page would navigate the frame to YA.
+  await expect(
+    preview.getByRole("heading", { name: "Far section" }),
+  ).toBeInViewport();
+  const frame = page
+    .frames()
+    .find((candidate) => candidate.url().startsWith("about:srcdoc"));
+  expect(frame?.url()).toBe("about:srcdoc#far");
+});
+
 test("artifact Edit links open an authenticated editor tab and preserve the original view", async ({
   page,
   context,

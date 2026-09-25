@@ -39,6 +39,7 @@ import { useRegisterQuoteableTextSource } from "../hooks/useQuoteableTextSource"
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useSessionFileComments } from "../hooks/useSessionFileComments";
 import { useVersion } from "../hooks/useVersion";
+import { useViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import {
@@ -51,6 +52,7 @@ import { downloadBlob } from "../lib/imageActions";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { extractMarkdownSnippetsFromSelection } from "../lib/markdownSelectionCopy";
 import { getRenderedFileClipboardPayload } from "../lib/renderedFileClipboard";
+import type { ViewerFindSource } from "../lib/viewerFind";
 import { ArtifactPreview } from "./ArtifactPreview";
 import { ViewerModeToggle } from "./ViewerModeToggle";
 import {
@@ -58,6 +60,7 @@ import {
   publicSharePlayUrlFromFileShareUrl,
 } from "../lib/publicSharePlay";
 import { SourceEditAction } from "./SourceEditor";
+import { ViewerFindField } from "./ViewerFindField";
 import { ViewerWindowActions } from "./ViewerWindowActions";
 import {
   annotateShikiSourceOffsets,
@@ -1509,6 +1512,35 @@ export const FileViewer = memo(function FileViewer({
   }, []);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+  // Find searches what this view shows: the HTML preview's frame, else the
+  // source, text, Markdown or diff rendered in the body.
+  const [findBody, setFindBody] = useState<HTMLDivElement | null>(null);
+  const [htmlFindSource, setHtmlFindSource] = useState<ViewerFindSource | null>(
+    null,
+  );
+  const setBodyElement = useCallback((element: HTMLDivElement | null) => {
+    fileViewerBodyRef.current = element;
+    setFindBody(element);
+  }, []);
+  const showsHtmlPreview =
+    !diffActive &&
+    showPreview &&
+    fileData?.content !== undefined &&
+    fileData.metadata !== undefined &&
+    isHtmlLikeFile(filePath, fileData.metadata.mimeType);
+  const showsText = diffActive || fileData?.content !== undefined;
+  const find = useViewerFind(
+    useMemo(
+      () =>
+        showsHtmlPreview
+          ? htmlFindSource
+          : showsText && findBody
+            ? ({ kind: "element", element: findBody } as const)
+            : null,
+      [showsHtmlPreview, htmlFindSource, showsText, findBody],
+    ),
+  );
+
   // Render loading state
   if (
     loading ||
@@ -1690,6 +1722,7 @@ export const FileViewer = memo(function FileViewer({
             autoStart={interactivePreviewIdentity === viewIdentity}
             toolbarHost={modeControlsHost}
             reloadKey={frameReloadKey}
+            onFindSource={setHtmlFindSource}
           />
         );
       }
@@ -1936,6 +1969,7 @@ export const FileViewer = memo(function FileViewer({
           </span>
         </div>
       </div>
+      <ViewerFindField find={find} />
       <div
         ref={fileHeaderActionsRef}
         className={`file-viewer-actions ${headerStyles.actions} ${viewerStyles.actions}`}
@@ -2194,7 +2228,7 @@ export const FileViewer = memo(function FileViewer({
             ? viewerStyles.quoteReplySurface
             : ""
         }`}
-        ref={fileViewerBodyRef}
+        ref={setBodyElement}
         tabIndex={-1}
         {...(commentMode ? { [SESSION_FILE_COMMENT_MODE_ATTR]: "true" } : {})}
         onClick={handleViewerBodyClick}

@@ -11,6 +11,8 @@
     "codex:protocol:update": "node scripts/update-codex-protocol.mjs",
     "codex:protocol:check": "node scripts/update-codex-protocol.mjs --check",
     "codex:user-turns:audit": "tsx scripts/audit-codex-user-turn-provenance.ts",
+    "find-agent:generate": "node scripts/generate-frame-find-agent.mjs",
+    "find-agent:check": "node scripts/generate-frame-find-agent.mjs --check",
     "tools:audit": "tsx --conditions source scripts/audit-tool-displays.ts",
     "i18n:check": "node scripts/prune-i18n-placeholders.mjs --check",
     "i18n:health": "node scripts/prune-i18n-placeholders.mjs --health",

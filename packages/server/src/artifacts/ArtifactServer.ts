@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import { basename, dirname, extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { getRequestListener } from "@hono/node-server";
+import { FRAME_FIND_AGENT_SCRIPT } from "@yep-anywhere/shared/find/frameFindAgent.generated";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getMimeType } from "hono/utils/mime";
@@ -45,6 +46,13 @@ function pdfInFrameDocument(url: string, name: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(name)}</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:24px;color:#222;background:#fafafa}p{margin:0 0 12px}a{color:#1a56c4}button{font:inherit;padding:4px 10px}</style></head><body><p><strong>${escapeHtml(name)}</strong> is a PDF. The embedded preview cannot display PDFs, so open it in its own tab.</p><p><a href="${href}" target="_blank" rel="noopener">Open PDF in a new tab</a> · <a href="${href}${url.includes("?") ? "&" : "?"}download=true">Download</a></p><p><button type="button" onclick="history.back()">Back</button></p></body></html>`;
 }
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
+/**
+ * Appended to HTML framed by a YA viewer so the viewer's find field can search
+ * that document alone. Content after `</html>` still parses into the body.
+ */
+const FIND_AGENT_TAIL = Buffer.from(
+  `\n<script data-yep-find-agent>${FRAME_FIND_AGENT_SCRIPT}</script>\n`,
+);
 // Popups may escape the sandbox so an artifact can hand a PDF, or any
 // document the sandboxed frame cannot show, to a real top-level tab on this
 // same isolated origin; the popup never gains YA's origin.
@@ -198,6 +206,32 @@ export class ArtifactServer {
       ) {
         await handle.close();
         return c.html(pdfInFrameDocument(c.req.url, basename(canonical)));
+      }
+      // Only a frame navigation gets the find agent: downloads, top-level
+      // tabs, fetches and range reads still receive the original bytes.
+      // XHTML is left alone, since an appended element would make it invalid.
+      if (
+        mime.startsWith("text/html") &&
+        c.req.header("Sec-Fetch-Dest") === "iframe" &&
+        new URL(c.req.url).searchParams.get("download") !== "true" &&
+        !c.req.header("Range")
+      ) {
+        c.header("Content-Type", mime);
+        if (c.req.method === "HEAD") {
+          await handle.close();
+          c.header(
+            "Content-Length",
+            String(stats.size + FIND_AGENT_TAIL.length),
+          );
+          return c.body(null, 200);
+        }
+        const framed = Buffer.concat([
+          await handle.readFile(),
+          FIND_AGENT_TAIL,
+        ]);
+        await handle.close();
+        c.header("Content-Length", String(framed.length));
+        return c.body(framed, 200);
       }
       c.header("Content-Type", mime);
       if (new URL(c.req.url).searchParams.get("download") === "true") {

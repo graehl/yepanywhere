@@ -8,6 +8,7 @@ import { useI18n } from "../i18n";
 import { ARTIFACT_FRAME_SANDBOX } from "../lib/artifactPreview";
 import { writeClipboardTextLater } from "../lib/clipboard";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
+import type { ViewerFindSource } from "../lib/viewerFind";
 import styles from "./ArtifactPreview.module.css";
 
 interface Props {
@@ -23,7 +24,19 @@ interface Props {
   toolbarHost?: HTMLElement | null;
   /** Changing this remounts a running frame so it refetches from disk. */
   reloadKey?: number;
+  /**
+   * The frame now showing, so the owning viewer can search it: the scriptless
+   * preview directly, a running artifact through its find agent.
+   */
+  onFindSource?: (source: ViewerFindSource | null) => void;
 }
+
+/**
+ * The scriptless preview is same-origin so the trusted viewer can search it,
+ * and never also `allow-scripts`: the pair would hand the previewed HTML YA's
+ * origin. Its CSP denies scripts as well (scriptlessHtmlPreview.ts).
+ */
+export const SCRIPTLESS_PREVIEW_SANDBOX = "allow-same-origin";
 
 export function ArtifactPreview(props: Props) {
   const { t } = useI18n();
@@ -39,6 +52,13 @@ export function ArtifactPreview(props: Props) {
     () => createScriptlessHtmlPreviewDocument(props.html),
     [props.html],
   );
+  const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
+  const running = Boolean(grant);
+  const { onFindSource } = props;
+  useEffect(() => {
+    onFindSource?.(frame ? { kind: running ? "agent" : "frame", frame } : null);
+  }, [frame, running, onFindSource]);
+  useEffect(() => () => onFindSource?.(null), [onFindSource]);
   useEffect(() => {
     if (!grant) return;
     announceApp({
@@ -123,6 +143,7 @@ export function ArtifactPreview(props: Props) {
       ) : grant ? (
         <iframe
           key={`${grant.id}:${props.reloadKey ?? 0}`}
+          ref={setFrame}
           className={styles.frame}
           title={props.title}
           aria-label={props.title}
@@ -132,10 +153,11 @@ export function ArtifactPreview(props: Props) {
         />
       ) : (
         <iframe
+          ref={setFrame}
           className={styles.frame}
           title={props.title}
           aria-label={props.title}
-          sandbox=""
+          sandbox={SCRIPTLESS_PREVIEW_SANDBOX}
           referrerPolicy="no-referrer"
           srcDoc={scriptlessDocument}
         />

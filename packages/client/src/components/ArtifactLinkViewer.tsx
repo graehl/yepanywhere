@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
 import { ARTIFACT_FRAME_SANDBOX } from "../lib/artifactPreview";
 import type { SessionViewerControllerState } from "../lib/sessionViewerController";
@@ -10,6 +11,7 @@ import {
 } from "./ui/Modal";
 import styles from "./ArtifactLinkViewer.module.css";
 import headerStyles from "./ViewerHeader.module.css";
+import { ViewerFindField } from "./ViewerFindField";
 import { ViewerWindowActions } from "./ViewerWindowActions";
 import { SourceEditAction } from "./SourceEditor";
 
@@ -33,6 +35,13 @@ export function ArtifactLinkViewer({
   // Manual only: the artifact origin serves from disk per request with
   // no-store, so remounting the frame refetches; nothing watches the file.
   const [reloadKey, setReloadKey] = useState(0);
+  const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
+  const find = useViewerFind(
+    useMemo(
+      () => (frame ? ({ kind: "agent", frame } as const) : null),
+      [frame],
+    ),
+  );
   useModalBackGesture(
     controller.close,
     !hidden && !standalone,
@@ -78,6 +87,7 @@ export function ArtifactLinkViewer({
             {controller.label}
           </span>
         </span>
+        <ViewerFindField find={find} />
         <SourceEditAction
           source={{ artifactUrl: controller.url }}
           artifact
@@ -99,6 +109,7 @@ export function ArtifactLinkViewer({
       ) : (
         <iframe
           key={reloadKey}
+          ref={setFrame}
           className={styles.frame}
           title={controller.label}
           src={controller.url}

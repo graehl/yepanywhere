@@ -58,10 +58,24 @@ viewer, preview, and isolated-application work lives in
 The shared file context menu now distinguishes Source from Preview without
 navigating either selection to a raw active response. Ordinary HTML opens as
 a rendered preview; an explicit Source choice remains available. Either viewer uses the same
-client-owned `srcdoc` wrapper with an empty iframe sandbox, no-referrer policy,
-and a restrictive meta CSP that denies scripts, connections, frames, objects,
-workers, forms, base URLs, and ambient image/media loads. Markdown keeps its
-sanitized preview default and can be requested as source.
+client-owned `srcdoc` wrapper with a scriptless iframe sandbox, no-referrer
+policy, and a restrictive meta CSP that denies scripts, connections, frames,
+objects, workers, forms, base URLs, and ambient image/media loads. Markdown
+keeps its sanitized preview default and can be requested as source.
+
+Since 2026-09-25 that sandbox is `allow-same-origin` rather than empty, so the
+trusted viewer can search the preview (find in this view,
+[media rendering](media-rendering-and-routing.md)). This was a
+maintainer-approved trade. The preview still cannot run code: the sandbox
+withholds `allow-scripts` and the CSP denies scripts, and a browser test adds a
+script element to the preview and checks it does not run. What changes is that
+the preview's origin is YA's rather than opaque. A link the reader clicks
+inside it navigates the frame with YA cookies, so a GET to a YA route can
+display its response in the frame; nothing in the frame can read or act on
+it. `allow-same-origin` must never be combined with `allow-scripts` here:
+that pair would run previewed HTML with YA's authority.
+`SCRIPTLESS_PREVIEW_SANDBOX` in `ArtifactPreview.tsx` is the one definition,
+and component tests pin its literal value.
 
 A srcdoc document resolves URLs against the embedding YA page, and it
 inherits YA's own `base-uri` policy, which refuses a `<base href=
@@ -126,7 +140,8 @@ See
 
 HTML, XHTML, SVG, and other browser-active formats supplied by a project,
 agent, upload, or share are data to YA's normal file-viewing surfaces. They are
-shown as source, downloaded, or rendered in a scriptless opaque sandbox. They
+shown as source, downloaded, or rendered in a scriptless sandbox (same-origin
+for the file viewer's preview, so the viewer can search it). They
 must not execute as top-level documents on a YA origin. One viewer-chosen
 exception exists for a public file share's HTML root: the hosted play page
 runs it with scripts inside an opaque-origin `srcdoc` frame that lacks
@@ -261,7 +276,10 @@ these constraints before it ships:
 - **Brokered host communication.** `postMessage` is schema-validated,
   capability-scoped, and tied to the expected child window. With an opaque
   origin, `event.origin` is `"null"`, so the parent must verify `event.source`
-  and never send ambient secrets through a wildcard channel.
+  and never send ambient secrets through a wildcard channel. The find
+  protocol follows this: the viewer accepts `yep-find/1` reports only from its
+  own frame's window and sends requests to the frame's origin; the agent
+  accepts requests only from its parent window.
 - **Safe top-level opens.** A script-enabled new-tab view exists only on the
   isolated application host and is opened with `noopener`. A blob URL or
   `srcdoc` created by the trusted client is not used as an unsandboxed
@@ -325,6 +343,13 @@ files is sufficient; no YA manifest or ZIP packaging is required. Artifact
 producers provide compatible relative asset URLs and any mocked or real
 services needed by the application. YA serves original bytes; it does not
 rewrite JavaScript, emulate an application backend, or run a project's dev server.
+The one addition is find: an HTML response to a frame navigation
+(`Sec-Fetch-Dest: iframe`) gets a small script appended after the document,
+the find agent generated from `packages/shared/src/find/`. It lets the
+embedding viewer search that frame alone. It answers only its parent window,
+through the validated `yep-find/1` messages, and reports match counts plus
+the reader's selection when they press Ctrl+F. Downloads, top-level tabs,
+fetches, range reads and XHTML still receive the original bytes.
 
 ### Configuration and delivery
 

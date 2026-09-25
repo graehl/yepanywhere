@@ -63,7 +63,9 @@ it("does not contact an artifact origin or request grants from an old server", (
   vi.stubGlobal("fetch", fetch);
   mount();
   expect(screen.queryByRole("button")).toBeNull();
-  expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe("");
+  expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe(
+    "allow-same-origin",
+  );
   expect(fetch).not.toHaveBeenCalled();
   expect(state.fetch).not.toHaveBeenCalled();
 });
@@ -79,7 +81,9 @@ it("keeps a static preview when resolution fails and retries only on request", a
   );
   await screen.findByRole("status");
   expect(state.fetch).not.toHaveBeenCalled();
-  expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe("");
+  expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe(
+    "allow-same-origin",
+  );
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(fetch).toHaveBeenCalledWith(
     expect.stringContaining("/health"),
@@ -180,7 +184,9 @@ it("offers stop and a public artifact link from the running toggle's menu", asyn
   await screen.findByRole("button", {
     name: "Run full HTML/CSS/JavaScript preview (current view is sanitized)",
   });
-  expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe("");
+  expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe(
+    "allow-same-origin",
+  );
 });
 
 it("never offers private grants in a public share", () => {

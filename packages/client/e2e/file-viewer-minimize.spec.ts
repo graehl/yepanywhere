@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { e2ePaths, expect, test } from "./fixtures.js";
+import { recordUiCapture } from "./support/ui-capture.js";
 
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
@@ -138,6 +139,59 @@ test("keeps the viewer open and responsive across session width changes", async 
     );
     await expect(viewer).toBeVisible();
     await capture(page, "desktop-1000-large-resize");
+  } finally {
+    writeFileSync(externalReadmePath, originalReadme);
+  }
+});
+
+test("finds within the file viewer after a click in its content", async ({
+  page,
+  baseURL,
+}) => {
+  const originalReadme = readFileSync(externalReadmePath, "utf8");
+  writeFileSync(
+    externalReadmePath,
+    "# Find specimen\n\nalpha needle\n\nbeta needle\n\ngamma needle\n",
+  );
+  try {
+    await page.setViewportSize({ width: 1200, height: 600 });
+    await page.goto(`${baseURL}/projects/${projectId}/sessions/${sessionId}`);
+    await dismissOnboardingIfVisible(page);
+    const absoluteLink = page.locator(
+      'a[data-ya-private-project-file-link="true"]',
+    );
+    await expect(absoluteLink).toBeVisible({ timeout: 10000 });
+    await absoluteLink.click();
+    const viewer = page.locator(".file-viewer");
+    await expect(viewer.getByText("beta needle")).toBeVisible();
+    await recordUiCapture(page, "file-viewer-find-idle-1200");
+    await viewer.getByText("beta needle").click();
+    await page.keyboard.press("Control+f");
+    const findBox = page.getByRole("searchbox", { name: "Find in this view" });
+    await expect(findBox).toBeFocused();
+    // Every keystroke lands in the field promptly while matches repaint.
+    let typed = "";
+    for (const character of "needle") {
+      typed += character;
+      await findBox.press(character);
+      await expect(findBox).toHaveValue(typed, { timeout: 100 });
+    }
+    await expect(page.getByRole("search").getByText("1/3")).toBeVisible();
+    await findBox.press("Enter");
+    await expect(page.getByRole("search").getByText("2/3")).toBeVisible();
+    // The transcript's own "needle" text, if any, is outside this search.
+    expect(
+      await page.evaluate(() => {
+        const highlight = CSS.highlights.get("yep-find-current");
+        const range = highlight ? [...highlight][0] : undefined;
+        return range?.startContainer.parentElement?.closest(".file-viewer")
+          ? range.toString()
+          : null;
+      }),
+    ).toBe("needle");
+    await recordUiCapture(page, "file-viewer-find-1200");
+    await findBox.press("Escape");
+    await expect(findBox).toHaveValue("");
   } finally {
     writeFileSync(externalReadmePath, originalReadme);
   }

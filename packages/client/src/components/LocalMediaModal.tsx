@@ -26,8 +26,10 @@ import { useInlineMedia } from "../hooks/useInlineMedia";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRetainedVersionInfo } from "../hooks/useVersion";
+import { useViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
 import { isArtifactLink } from "../lib/artifactPreview";
+import type { ViewerFindSource } from "../lib/viewerFind";
 import {
   writeClipboardRichTextLater,
   writeClipboardText,
@@ -36,6 +38,7 @@ import {
 import { downloadBlob, writeClipboardImageLater } from "../lib/imageActions";
 import { ArtifactPreview } from "./ArtifactPreview";
 import { SourceEditAction } from "./SourceEditor";
+import { ViewerFindField } from "./ViewerFindField";
 import {
   requireRenderedFileClipboardPayload,
   requireRenderedHtmlClipboardPayload,
@@ -819,6 +822,22 @@ export function LocalFileModal({
   const [sourceRevision, setSourceRevision] = useState(0);
   const [modeControlsHost, setModeControlsHost] =
     useState<HTMLSpanElement | null>(null);
+  // Find searches the shown text, or the HTML preview's frame.
+  const [textFrame, setTextFrame] = useState<HTMLDivElement | null>(null);
+  const [htmlFindSource, setHtmlFindSource] = useState<ViewerFindSource | null>(
+    null,
+  );
+  const find = useViewerFind(
+    useMemo(
+      () =>
+        state.status === "html"
+          ? htmlFindSource
+          : state.status === "text" && textFrame
+            ? ({ kind: "element", element: textFrame } as const)
+            : null,
+      [state.status, htmlFindSource, textFrame],
+    ),
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a successful explicit save invalidates the viewed source even when its URL is unchanged.
   useEffect(() => {
@@ -881,6 +900,7 @@ export function LocalFileModal({
       actions={
         state.status === "text" || state.status === "html" ? (
           <>
+            <ViewerFindField find={find} />
             <SourceEditAction
               initiallyOpen={initialMode === "edit"}
               source={{
@@ -919,7 +939,11 @@ export function LocalFileModal({
           <div className={styles.fileError}>{state.error}</div>
         )}
         {state.status === "text" && (
-          <div className={styles.fileTextFrame}>
+          <div
+            ref={setTextFrame}
+            className={styles.fileTextFrame}
+            tabIndex={-1}
+          >
             {/* The global class is the shared fixed-font hook in renderers.css. */}
             <pre className={`${styles.fileText} local-file-text`}>
               <code>{state.text}</code>
@@ -937,6 +961,7 @@ export function LocalFileModal({
             }
             className={styles.fileHtmlFrame}
             title={fileName}
+            onFindSource={setHtmlFindSource}
           />
         )}
         {state.status === "blob" && isPdfContentType(state.contentType) && (

@@ -249,7 +249,110 @@ test("viewer icon modes toggle locally and open through Shift and middle clicks"
   await expect(run).toHaveAttribute("aria-pressed", "false");
   await expect(
     page.locator('iframe[title="mode-controls.html"]'),
-  ).toHaveAttribute("sandbox", "");
+  ).toHaveAttribute("sandbox", "allow-same-origin");
+});
+
+test("finds within a running artifact frame only, from its own Ctrl+F", async ({
+  page,
+}) => {
+  const htmlPath = join(directory, "bundle", "findable.html");
+  await writeFile(
+    htmlPath,
+    `<!doctype html><title>Findable</title><p>alpha beta</p><p>beta gamma</p><div style="height:3000px"></div><p id="last">last beta</p>`,
+  );
+  const grant = await instance.artifactServer.createGrant(htmlPath, "local");
+  await page.setViewportSize({ width: 1200, height: 600 });
+  await page.goto(
+    `${base}/file-view?mode=interactive&artifactUrl=${encodeURIComponent(grant.url)}`,
+  );
+  const findBox = page.getByRole("searchbox", { name: "Find in this view" });
+  // The agent announced itself, and a desktop header has room for the field.
+  await expect(findBox).toBeVisible();
+  const frame = page.frameLocator('iframe[title="findable.html"]');
+  await frame.getByText("alpha beta").click();
+  await page.keyboard.press("Control+f");
+  await expect(findBox).toBeFocused();
+  await page.keyboard.type("beta");
+  const count = page.getByRole("search").getByText("1/3");
+  await expect(count).toBeVisible();
+  // The viewer page's own URL names the file too, so match the frame's origin.
+  const child = page
+    .frames()
+    .find((f) => new URL(f.url()).hostname === "artifacts.localhost");
+  if (!child) throw new Error("Missing artifact frame");
+  expect(await child.evaluate(() => CSS.highlights.get("yep-find")?.size)).toBe(
+    3,
+  );
+  // The YA page's own text is not searched.
+  expect(
+    await page.evaluate(() => CSS.highlights.get("yep-find")?.size ?? 0),
+  ).toBe(0);
+  await page.keyboard.press("Shift+Enter");
+  await expect(page.getByRole("search").getByText("3/3")).toBeVisible();
+  await expect(frame.locator("#last")).toBeInViewport();
+  await recordUiCapture(page, "viewer-find-artifact-1200");
+  await page.keyboard.press("Escape");
+  await expect(findBox).toHaveValue("");
+  expect(
+    await child.evaluate(() => CSS.highlights.get("yep-find")?.size ?? 0),
+  ).toBe(0);
+  // Focus is back in the frame, so its Ctrl+F reopens the field.
+  await page.keyboard.press("Control+f");
+  await expect(findBox).toBeFocused();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.keyboard.type("gamma");
+  await expect(page.getByRole("search").getByText("1/1")).toBeVisible();
+  await recordUiCapture(page, "viewer-find-artifact-375");
+});
+
+test("finds within the scriptless preview without giving it scripts", async ({
+  page,
+}) => {
+  const htmlPath = join(directory, "bundle", "static-find.html");
+  await writeFile(
+    htmlPath,
+    "<!doctype html><h1>Static find</h1><p>needle one</p><p>needle two</p>",
+  );
+  await page.setViewportSize({ width: 1200, height: 600 });
+  await page.goto(
+    `${base}/e2e/fixtures/artifact-viewer.html?editor&path=${encodeURIComponent(htmlPath)}`,
+  );
+  const preview = page.locator('iframe[title="static-find.html"]');
+  await expect(preview).toHaveAttribute("sandbox", "allow-same-origin");
+  const frame = page.frameLocator('iframe[title="static-find.html"]');
+  await expect(frame.getByText("needle one")).toBeVisible();
+  await recordUiCapture(page, "viewer-find-local-idle-1200");
+  await frame.getByText("needle one").click();
+  await page.keyboard.press("Control+f");
+  const findBox = page.getByRole("searchbox", { name: "Find in this view" });
+  await expect(findBox).toBeFocused();
+  // Typed into the field while the fixture re-renders every 25ms.
+  await page.keyboard.type("needle", { delay: 20 });
+  await expect(findBox).toHaveValue("needle");
+  await expect(page.getByRole("search").getByText("1/2")).toBeVisible();
+  await recordUiCapture(page, "viewer-find-local-1200");
+  const child = page
+    .frames()
+    .find((candidate) => candidate.url().startsWith("about:srcdoc"));
+  if (!child) throw new Error("Missing preview frame");
+  expect(
+    await preview.evaluate(
+      (element: HTMLIFrameElement) =>
+        (element.contentWindow as typeof globalThis | null)?.CSS.highlights.get(
+          "yep-find",
+        )?.size,
+    ),
+  ).toBe(2);
+  // Same-origin grants the viewer access, not the preview any scripts: a
+  // script element added to the document does not run.
+  expect(
+    await child.evaluate(() => {
+      const script = document.createElement("script");
+      script.textContent = "document.title = 'ran'";
+      document.body.append(script);
+      return document.title;
+    }),
+  ).toBe("");
 });
 
 test("sanitized preview section links scroll within the document", async ({

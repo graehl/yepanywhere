@@ -34,7 +34,7 @@ test.describe("Files API", () => {
     await expect(frame.getByText("End of complete document")).toBeVisible();
     await expect(
       page.locator('iframe[aria-label="paper-canvas.html"]'),
-    ).toHaveAttribute("sandbox", "");
+    ).toHaveAttribute("sandbox", "allow-same-origin");
     expect(artifactRequests).toBe(0);
     await expect(
       page.getByRole("button", { name: "Edit mode", exact: true }),

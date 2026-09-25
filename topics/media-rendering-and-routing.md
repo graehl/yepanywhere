@@ -210,8 +210,10 @@ vocabulary even though their authorization routes remain distinct:
   narrow viewports use the compact replacement panel with an explicit **Back**
   action, so hover is never the only route to the presentation choice.
 - HTML defaults to a rendered Preview, a client-owned `srcdoc`
-  document under an empty iframe sandbox, no-referrer policy, and restrictive
-  meta CSP. Markdown remains preview-first and may be opened as source. Both
+  document under an `allow-same-origin`-only iframe sandbox (scripts stay
+  denied by both the sandbox and the CSP; see
+  [active-content security](active-content-security.md)), no-referrer policy,
+  and restrictive meta CSP. Markdown remains preview-first and may be opened as source. Both
   representations remain toggleable inside the project `FileViewer` through
   one **Raw source** icon button whose pressed state means the source is
   showing; the local-file modal takes its initial representation from the
@@ -230,6 +232,24 @@ vocabulary even though their authorization routes remain distinct:
   is unchanged or was changed on disk at a given time; the icon takes the
   warning color when stale. Servers without `modifiedAt` in file metadata
   keep the plain tooltip.
+- **Find in this view.** The project `FileViewer`, the local-file modal, the
+  session artifact viewer and artifact frames in the session right pane carry
+  an isearch-style find field in their header. It searches only what that
+  viewer shows: rendered source, text, Markdown or diff; the scriptless HTML
+  preview, searched directly because it is same-origin; or a running artifact,
+  through the find agent the artifact server appends to framed HTML. After the
+  reader clicks or focuses inside the viewer's content, Ctrl/Cmd+F opens the
+  field instead of the browser's page-wide find, which still owns every other
+  part of the page; a proxied live app and PDFs keep the browser's own find.
+  The idle field is shown only when the header has room for it on its first
+  row; Ctrl+F shows it regardless. Matching is smart-case, lets any
+  whitespace match any whitespace, and never spans two blocks. Enter or
+  Ctrl+S steps forward, Shift+Enter or Ctrl+R back, and Escape clears the
+  highlights and returns focus to the content. Matches are painted with the
+  CSS Custom Highlight API, so the searched document is never modified. One
+  engine, `packages/shared/src/find/documentFind.ts`, serves every host; the
+  agent is generated from it (`pnpm find-agent:generate`, checked by a shared
+  test).
 - Authenticated ordinary file and artifact viewers offer
   [source editing](file-source-editing.md). HTML Edit mode selects producer-mapped
   original file locations; without mappings it edits HTML directly. Editing

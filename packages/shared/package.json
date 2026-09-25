@@ -26,6 +26,11 @@
       "import": "./dist/transcript/*.js",
       "types": "./dist/transcript/*.d.ts"
     },
+    "./find/*": {
+      "source": "./src/find/*.ts",
+      "import": "./dist/find/*.js",
+      "types": "./dist/find/*.d.ts"
+    },
     "./experimental/*": {
       "source": "./src/experimental/*.ts",
       "import": "./dist/experimental/*.js",

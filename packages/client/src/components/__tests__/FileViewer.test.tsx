@@ -1169,7 +1169,8 @@ describe("FileViewer", () => {
     const frame = container.querySelector<HTMLIFrameElement>("iframe");
     expect(frame).toBeTruthy();
     expect(rawSource.getAttribute("aria-pressed")).toBe("false");
-    expect(frame?.getAttribute("sandbox")).toBe("");
+    // Same-origin so the viewer's find can search it; never with scripts.
+    expect(frame?.getAttribute("sandbox")).toBe("allow-same-origin");
     expect(frame?.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(frame?.srcdoc).toContain("Content-Security-Policy");
     expect(frame?.srcdoc).toContain("default-src 'none'");
@@ -1391,6 +1392,55 @@ describe("FileViewer", () => {
     // Rendering the full 10,000-line cap in jsdom takes ~1s locally but has
     // exceeded the 5s default on a loaded upstream CI runner.
   }, 20_000);
+
+  it("finds within its own content after a click there", async () => {
+    // jsdom has no layout; a real browser reports an empty box off-screen.
+    Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => ({
+        metadata: {
+          path: "notes.txt",
+          size: 22,
+          mimeType: "text/plain",
+          isText: true,
+        },
+        content: "alpha beta\nbeta gamma",
+        rawUrl: "/api/projects/project-id/files/raw?path=notes.txt",
+      })),
+    };
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer
+          projectId="project-id"
+          filePath="notes.txt"
+          source={source}
+        />
+      </I18nProvider>,
+    );
+    await screen.findByText("alpha beta");
+    const findBox = () =>
+      screen.queryByRole("searchbox", { name: "Find in this view" });
+    // Until the reader has clicked into the viewer, Ctrl+F stays the browser's.
+    expect(fireEvent.keyDown(document.body, { key: "f", ctrlKey: true })).toBe(
+      true,
+    );
+    expect(findBox()).toBeNull();
+
+    const body = container.querySelector<HTMLElement>(".file-viewer-body")!;
+    fireEvent.pointerDown(body);
+    expect(fireEvent.keyDown(body, { key: "f", ctrlKey: true })).toBe(false);
+    const input = findBox()!;
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: "beta" } });
+    expect(await screen.findByText("1/2")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByText("2/2")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "r", ctrlKey: true });
+    expect(await screen.findByText("1/2")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(findBox()).toBeNull());
+    expect(document.activeElement).toBe(body);
+  });
 
   it("keeps raw image links and moves the viewer through its stable URL", async () => {
     const fileResponse: FileContentResponse = {

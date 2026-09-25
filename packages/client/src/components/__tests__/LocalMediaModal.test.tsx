@@ -449,7 +449,8 @@ describe("LocalFileModal project paths", () => {
       return candidate;
     });
     if (!frame) throw new Error("Expected HTML preview iframe");
-    expect(frame.getAttribute("sandbox")).toBe("");
+    // Same-origin so the viewer's find can search it; never with scripts.
+    expect(frame.getAttribute("sandbox")).toBe("allow-same-origin");
     expect(frame.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(frame.srcdoc).toContain("default-src 'none'");
     expect(document.body.dataset.pwned).toBeUndefined();

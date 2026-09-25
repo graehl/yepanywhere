@@ -204,6 +204,54 @@ it("serves an authorized HTML directory with executable bytes and revocable acce
   expect((await server.app.request(grant.url)).status).toBe(404);
 });
 
+it("adds the find agent only to HTML framed by a viewer", async () => {
+  directory = await mkdtemp(join(tmpdir(), "ya-artifact-find-"));
+  const source = "<p>Findable text</p>";
+  await writeFile(join(directory, "index.html"), source);
+  await writeFile(join(directory, "doc.xhtml"), "<html/>");
+  const server = new ArtifactServer(
+    { port: 4402, localOrigin: "http://artifacts.localhost:4402" },
+    createLocalResourcePathPolicy({ allowedPaths: [directory] }),
+  );
+  const grant = await server.createGrant(
+    join(directory, "index.html"),
+    "local",
+  );
+  const iframe = { "Sec-Fetch-Dest": "iframe" };
+  const framed = await server.app.request(grant.url, { headers: iframe });
+  const body = await framed.text();
+  expect(body.startsWith(source)).toBe(true);
+  expect(body).toContain("<script data-yep-find-agent>");
+  expect(body.trimEnd().endsWith("</script>")).toBe(true);
+  expect(Number(framed.headers.get("content-length"))).toBe(
+    Buffer.byteLength(body),
+  );
+  const framedHead = await server.app.request(grant.url, {
+    method: "HEAD",
+    headers: iframe,
+  });
+  expect(framedHead.headers.get("content-length")).toBe(
+    framed.headers.get("content-length"),
+  );
+  for (const [url, headers] of [
+    [grant.url, { "Sec-Fetch-Dest": "document" }],
+    [`${grant.url}?download=true`, iframe],
+    [grant.url, { ...iframe, Range: "bytes=0-2" }],
+  ] as const) {
+    const plain = await (await server.app.request(url, { headers })).text();
+    expect(source.startsWith(plain)).toBe(true);
+    expect(plain).not.toContain("yep-find");
+  }
+  expect(
+    await (
+      await server.app.request(new URL("doc.xhtml", grant.url), {
+        headers: iframe,
+      })
+    ).text(),
+  ).toBe("<html/>");
+  await server.close();
+});
+
 it("routes the artifact Host on YA's actual HTTP port before YA APIs", async () => {
   directory = await mkdtemp(join(tmpdir(), "ya-artifact-host-"));
   await writeFile(join(directory, "index.html"), "<h1>Isolated</h1>");

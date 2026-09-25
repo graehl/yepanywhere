@@ -636,7 +636,7 @@ describe("TextBlock", () => {
       expect(candidate).toBeTruthy();
       return candidate;
     });
-    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-same-origin");
     expect(frame?.srcdoc).toContain("Rendered local preview");
   });
 

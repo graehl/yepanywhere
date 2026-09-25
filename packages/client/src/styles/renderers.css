@@ -668,6 +668,18 @@
   font-weight: 700;
 }
 
+/* Viewer find (useViewerFind): all matches, then the current one on top.
+   Same yellow as transcript isearch; frames get their own copy of these. */
+::highlight(yep-find) {
+  background-color: rgba(255, 220, 112, 0.55);
+  color: inherit;
+}
+
+::highlight(yep-find-current) {
+  background-color: #ff9632;
+  color: #171717;
+}
+
 ::highlight(comment-tint) {
   background-color: rgba(5, 150, 105, 0.18);
   background-color: color-mix(

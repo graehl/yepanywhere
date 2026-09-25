@@ -130,7 +130,6 @@ export function ArtifactPreview(props: Props) {
           className={styles.frame}
           title={props.title}
           aria-label={props.title}
-          data-tooltip=""
           sandbox=""
           referrerPolicy="no-referrer"
           srcDoc={createScriptlessHtmlPreviewDocument(props.html)}

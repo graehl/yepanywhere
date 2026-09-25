@@ -79,6 +79,13 @@ function finiteCoordinate(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * An iframe's `title` names the embedded document for assistive technology;
+ * it is not a hover hint. The pointer crosses the frame edge on its way into
+ * the content, so treating it as one pops the file name over the preview.
+ */
+const HINT_TITLE_SELECTOR = "[title]:not(iframe)";
+
 function tooltipTargetFromNode(
   node: EventTarget | null,
   activeTarget: Element | null,
@@ -86,7 +93,7 @@ function tooltipTargetFromNode(
   if (!(node instanceof Element)) return null;
   if (activeTarget && node.closest(`#${TOOLTIP_ID}`)) return activeTarget;
   return (
-    node.closest("[data-tooltip], [title]") ??
+    node.closest(`[data-tooltip], ${HINT_TITLE_SELECTOR}`) ??
     (activeTarget?.contains(node) ? activeTarget : null)
   );
 }
@@ -318,6 +325,7 @@ export function TooltipLayer() {
   }, []);
 
   const detachTitle = useCallback((target: Element): string => {
+    if (!target.matches(HINT_TITLE_SELECTOR)) return "";
     const liveTitle = target.getAttribute("title");
     if (liveTitle === null) {
       return detachedTitlesRef.current.get(target)?.value ?? "";

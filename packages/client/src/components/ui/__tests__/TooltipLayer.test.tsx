@@ -486,6 +486,27 @@ describe("TooltipLayer", () => {
     expect(target.getAttribute("data-tooltip")).toBe("took 1.2s");
   });
 
+  it("leaves an iframe title as the frame name, not a hover hint", () => {
+    render(
+      <>
+        <TooltipLayer />
+        <iframe title="paper-canvas.html" srcDoc="<p>Canvas</p>" />
+      </>,
+    );
+    const frame = screen.getByTitle("paper-canvas.html");
+
+    fireEvent.pointerOver(frame, {
+      pointerType: "mouse",
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => vi.advanceTimersByTime(DEFAULT_TOOLTIP_DELAY_MS));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(frame.getAttribute("title")).toBe("paper-canvas.html");
+    expect(frame.hasAttribute("data-tooltip")).toBe(false);
+  });
+
   it("uses explicit data-tooltip text for custom tooltip targets", () => {
     render(
       <>

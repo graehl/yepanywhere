@@ -252,11 +252,12 @@ Scope: the `codex` provider (app-server transport). `codex-oss` runs a
 different transport and stays excluded. The user-visible contract is
 unchanged from [session-rewind](../topics/session-rewind.md): `/clear N`,
 `/clearloop`, the turn-menu Clear entries, and grouped rewound history.
-`/clear 0` still starts a new session. Two approvals gate the work.
-Enacting Codex compatibility edits needs user approval
-([provider development](../docs/development/providers.md)), and step 7
-needs approval of a capability gate
+`/clear 0` still starts a new session. **Approved (graehl, 2026-09-25):**
+this plan, including its Codex compatibility edits
+([provider development](../docs/development/providers.md)) and the new
+capability gate in step 7
 ([server capabilities](../topics/server-capabilities.md#minimum-compatibility-horizons)).
+The implementer need not ask again for either.
 
 **Shape: reuse Claude's lazy pending-rewind seam.** The Claude path records
 the rewind, arms a pending truncation in session metadata, and aborts the

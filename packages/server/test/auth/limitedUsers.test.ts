@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LimitedUsersService } from "../../src/auth/LimitedUsersService.js";
 import { decideLimitedRoute } from "../../src/auth/limitedUserPolicy.js";
 import { SessionAccessResolver } from "../../src/auth/sessionAccess.js";
+import { AUTHENTICATED_SRP_TRANSPORT } from "../../src/middleware/authenticated-transport.js";
 import { createLimitedUsersMiddleware } from "../../src/middleware/limited-users.js";
 import {
   actingUsername,
@@ -282,9 +283,8 @@ describe("limited-user middleware", () => {
     app.use(
       "/api/*",
       createLimitedUsersMiddleware({
-        limitedUsers: service,
+        getActiveGrants: (username) => service.getActiveGrants(username),
         sessionAccess: resolver,
-        isEnabled: () => true,
         getSuperuserIdentity: () => "owner",
         getCookieSessionUsername: async () => "alice",
         getCookieSecret: () => "secret",
@@ -379,18 +379,47 @@ describe("limited-user middleware", () => {
     expect(response.status).toBe(401);
   });
 
-  it("acts as the superuser when the acting cookie names nobody", async () => {
+  it("refuses a limited relay login that has no active grants", async () => {
+    // With the feature off no limited user has active grants.
     const app = new Hono();
     app.use(
       "/api/*",
       createLimitedUsersMiddleware({
-        limitedUsers: service,
+        getActiveGrants: () => null,
         sessionAccess: new SessionAccessResolver({
           getLiveSession: () => undefined,
           readCatalogRows: async () => [],
           getSessionMetadata: () => undefined,
         }),
-        isEnabled: () => true,
+        getSuperuserIdentity: () => "owner",
+        getCookieSessionUsername: async () => null,
+        getCookieSecret: () => "secret",
+      }),
+    );
+    app.get("/api/issues", (c) => c.json({ ok: true }));
+    const relayLogin = (username: string) => ({
+      [AUTHENTICATED_SRP_TRANSPORT]: { kind: "srp", username },
+    });
+
+    expect(
+      (await app.request("/api/issues", {}, relayLogin("alice"))).status,
+    ).toBe(401);
+    expect(
+      (await app.request("/api/issues", {}, relayLogin("owner"))).status,
+    ).toBe(200);
+  });
+
+  it("acts as the superuser when the acting cookie names nobody", async () => {
+    const app = new Hono();
+    app.use(
+      "/api/*",
+      createLimitedUsersMiddleware({
+        getActiveGrants: (username) => service.getActiveGrants(username),
+        sessionAccess: new SessionAccessResolver({
+          getLiveSession: () => undefined,
+          readCatalogRows: async () => [],
+          getSessionMetadata: () => undefined,
+        }),
         getSuperuserIdentity: () => "owner",
         getCookieSessionUsername: async () => null,
         getCookieSecret: () => "secret",
@@ -415,13 +444,12 @@ describe("limited-user middleware", () => {
     app.use(
       "/api/*",
       createLimitedUsersMiddleware({
-        limitedUsers: service,
+        getActiveGrants: (username) => service.getActiveGrants(username),
         sessionAccess: new SessionAccessResolver({
           getLiveSession: () => undefined,
           readCatalogRows: async () => [],
           getSessionMetadata: () => undefined,
         }),
-        isEnabled: () => true,
         getSuperuserIdentity: () => "owner",
         getCookieSessionUsername: async () => null,
         getCookieSecret: () => "secret",

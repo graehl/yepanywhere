@@ -149,7 +149,11 @@ makes.
 **Feature gate.** `limitedUsersEnabled` in server settings, default off
 ([[vanilla-defaults]]). Off means no principal other than the superuser and
 no limited-user login; turning it off while limited users exist keeps the
-records but refuses their logins. Settings → Users stays reachable either
+records but refuses their logins. That includes logins already signed in: a
+live limited cookie, relay, or websocket login answers 401 and its
+subscriptions are refused, never falling back to superuser authority. Their
+unexpired sessions act again if the feature is turned back on. Settings →
+Users stays reachable either
 way, because it is where the switch and the first user both live.
 
 ### v1 user record

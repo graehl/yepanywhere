@@ -37,6 +37,7 @@ describe("WebSocket limited-user login E2E", () => {
   let serverPort: number;
   let limitedCookie: string;
   let superuserCookie: string;
+  let serverSettingsService: ServerSettingsService;
 
   beforeAll(async () => {
     testDir = join(tmpdir(), `ws-limited-user-test-${randomUUID()}`);
@@ -62,7 +63,7 @@ describe("WebSocket limited-user login E2E", () => {
       joinStaleOffsetMinutes: 0,
     });
 
-    const serverSettingsService = new ServerSettingsService({ dataDir });
+    serverSettingsService = new ServerSettingsService({ dataDir });
     await serverSettingsService.initialize();
     await serverSettingsService.updateSettings({ limitedUsersEnabled: true });
 
@@ -221,6 +222,36 @@ describe("WebSocket limited-user login E2E", () => {
       expect((await tunnel(ws, "/api/users")).status).toBe(200);
     } finally {
       ws.close();
+    }
+  });
+
+  it("refuses a live limited login once the feature is turned off", async () => {
+    const ws = await connectWebSocket(limitedCookie);
+    await serverSettingsService.updateSettings({ limitedUsersEnabled: false });
+    try {
+      // Turning the feature off must lock bob out, not make him the superuser.
+      expect((await tunnel(ws, "/api/users")).status).toBe(401);
+      const subscriptionId = randomUUID();
+      const subscription = await awaitResponse(ws, subscriptionId, {
+        type: "subscribe",
+        subscriptionId,
+        channel: "activity",
+      });
+      expect(subscription.status).toBe(403);
+
+      const direct = await fetch(`http://localhost:${serverPort}/api/users`, {
+        headers: { Cookie: limitedCookie, "X-Yep-Anywhere": "true" },
+      });
+      expect(direct.status).toBe(401);
+      await expect(connectWebSocket(limitedCookie)).rejects.toThrow();
+
+      const owner = await fetch(`http://localhost:${serverPort}/api/users`, {
+        headers: { Cookie: superuserCookie, "X-Yep-Anywhere": "true" },
+      });
+      expect(owner.status).toBe(200);
+    } finally {
+      ws.close();
+      await serverSettingsService.updateSettings({ limitedUsersEnabled: true });
     }
   });
 });

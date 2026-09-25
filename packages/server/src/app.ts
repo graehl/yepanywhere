@@ -799,6 +799,11 @@ export function createApp(options: AppOptions): AppResult {
   const isLimitedUsersEnabled = (): boolean =>
     limitedUsersService !== undefined &&
     options.serverSettingsService?.getSetting("limitedUsersEnabled") === true;
+  // Turning the feature off keeps the records but lets no limited login act.
+  const getActiveLimitedGrants = (username: string) =>
+    isLimitedUsersEnabled()
+      ? (limitedUsersService?.getActiveGrants(username) ?? null)
+      : null;
   const sessionAccessResolver = new SessionAccessResolver({
     getLiveSession: (sessionId) => {
       const process = supervisor?.getProcessForSession(sessionId);
@@ -818,9 +823,8 @@ export function createApp(options: AppOptions): AppResult {
     app.use(
       "/api/*",
       createLimitedUsersMiddleware({
-        limitedUsers: limitedUsersService,
+        getActiveGrants: getActiveLimitedGrants,
         sessionAccess: sessionAccessResolver,
-        isEnabled: isLimitedUsersEnabled,
         getSuperuserIdentity: () =>
           options.remoteAccessService?.getUsername() ?? null,
         getCookieSessionUsername: async (c) =>
@@ -3279,9 +3283,9 @@ export function createApp(options: AppOptions): AppResult {
         }
       : undefined,
     isActivityEventVisible: (username, event) => {
-      if (!isLimitedUsersEnabled() || !username) return true;
+      if (!username) return true;
       if (username === options.remoteAccessService?.getUsername()) return true;
-      const grants = limitedUsersService?.getActiveGrants(username);
+      const grants = getActiveLimitedGrants(username);
       if (!grants) return false;
       return (
         typeof event.projectId !== "string" ||
@@ -3295,9 +3299,9 @@ export function createApp(options: AppOptions): AppResult {
       projectId,
     }) => {
       // The superuser (no limited identity on the socket) subscribes freely.
-      if (!isLimitedUsersEnabled() || !username) return true;
+      if (!username) return true;
       if (username === options.remoteAccessService?.getUsername()) return true;
-      const grants = limitedUsersService?.getActiveGrants(username);
+      const grants = getActiveLimitedGrants(username);
       if (!grants) return false;
       if (projectId) return levelFor(grants, projectId) !== "none";
       if (sessionId) {

@@ -22,7 +22,6 @@ import {
   SUPERUSER,
   verifyActingUser,
 } from "../auth/principal.js";
-import type { LimitedUsersService } from "../auth/LimitedUsersService.js";
 import type { SessionAccessResolver } from "../auth/sessionAccess.js";
 import {
   type FilteredListKind,
@@ -37,10 +36,14 @@ import {
 import { WS_INTERNAL_AUTHENTICATED } from "./internal-auth.js";
 
 export interface LimitedUsersMiddlewareOptions {
-  limitedUsers: LimitedUsersService;
+  /**
+   * Grants for a limited user who may act now: null when the feature is off
+   * or the user is unknown or disabled. With the feature off no login other
+   * than the superuser's resolves, so a live limited login is refused rather
+   * than read as the superuser.
+   */
+  getActiveGrants: (username: string) => LimitedUserGrants | null;
   sessionAccess: SessionAccessResolver;
-  /** Whether the feature is enabled in server settings. */
-  isEnabled: () => boolean;
   /** The superuser's relay/SRP identity, when remote access is configured. */
   getSuperuserIdentity: () => string | null;
   /** Username recorded on the direct cookie session, when there is one. */
@@ -82,12 +85,10 @@ export async function resolvePrincipal(
   options: LimitedUsersMiddlewareOptions,
   directLoginUsername: string | null,
 ): Promise<Principal> {
-  if (!options.isEnabled()) return SUPERUSER;
-
   const srp = getAuthenticatedSrpTransport(c.env);
   const superuserIdentity = options.getSuperuserIdentity();
   if (srp && srp.username !== superuserIdentity) {
-    const grants = options.limitedUsers.getActiveGrants(srp.username);
+    const grants = options.getActiveGrants(srp.username);
     if (!grants) return DENIED_PRINCIPAL;
     return limitedPrincipal(srp.username, grants, {
       switched: false,
@@ -97,7 +98,7 @@ export async function resolvePrincipal(
   }
 
   if (directLoginUsername) {
-    const grants = options.limitedUsers.getActiveGrants(directLoginUsername);
+    const grants = options.getActiveGrants(directLoginUsername);
     if (!grants) return DENIED_PRINCIPAL;
     return limitedPrincipal(directLoginUsername, grants, {
       switched: false,
@@ -112,7 +113,7 @@ export async function resolvePrincipal(
     options.getCookieSecret(),
   );
   if (acting) {
-    const grants = options.limitedUsers.getActiveGrants(acting);
+    const grants = options.getActiveGrants(acting);
     if (grants) {
       return limitedPrincipal(acting, grants, {
         switched: true,

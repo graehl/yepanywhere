@@ -196,6 +196,37 @@ responsive allocation, and the alternative session-list drawer design live in
 [`parked-file-viewer.md`](parked-file-viewer.md). Public-share viewers do not
 offer parking because they have no authenticated session composer.
 
+### PDFs in the file viewer
+
+By default the file viewer frames a PDF for the browser's built-in viewer:
+the raw file URL when the server origin is addressable, so the viewer reads
+the response directly, otherwise a `blob:` URL of the relayed bytes.
+Chromium refuses that viewer in some framings and when it is set to download
+PDFs rather than open them, and substitutes a "This content is blocked" page.
+`FileViewerEmbeddedMedia` treats a loaded frame that exposes no PDF document as
+refused and shows the binary card plus an **Open in new tab** link. A new
+tab has no framing ancestry, but a browser set to download PDFs downloads
+there too.
+
+**Draw PDFs with pdf.js** (Appearance, off by default) replaces the browser
+viewer with pages drawn on canvases by pdf.js. YA does not bundle pdf.js:
+`/api/pdfjs/<version>/` serves a pinned release that the server downloads on
+first demand, verifies against the npm integrity hash before extracting, and
+caches under `<data-dir>/pdfjs/<version>/` (`PdfjsAssetCache`;
+the trust decision is in
+[`active-content-security.md`](active-content-security.md)). The client
+imports it only when a PDF is shown, from the same origin, so the app's
+script policy is unchanged. Pages are laid out at their own aspect ratio
+when the document opens and each canvas is drawn as it nears the viewer's
+scroll container. If pdf.js fails to load or render, the browser viewer is
+tried next.
+
+Current pdf.js limits: it needs the same-origin server, so the relay client
+and public shares keep the browser viewer; pages are images, with no text
+selection, find, or links; there is no zoom control, which matters on phones
+where YA disables pinch-zoom; and `LocalFileModal` still frames its PDFs
+directly. These are tracked in `gaps/file-viewer-relay-pdf.md`.
+
 ### Resource actions and file presentation choice
 
 Project-file links and rendered local-file links share one client context-menu

@@ -130,6 +130,7 @@ import {
 } from "../../hooks/useTooltipAppearance";
 import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConversationActivityPreviews";
 import { useWorkflowTags } from "../../hooks/useWorkflowTags";
+import { usePdfjsRendererSetting } from "../../hooks/usePdfjsRendererSetting";
 import { useSessionRightPaneSetting } from "../../hooks/useSessionRightPaneSetting";
 import { usePanelSlideAnimations } from "../../hooks/usePanelSlideAnimations";
 import { useAcliCommentarySetting } from "../../hooks/useAcliCommentarySetting";
@@ -239,6 +240,8 @@ export function AppearanceSettings() {
   const { workflowTagsEnabled, setWorkflowTagsEnabled } = useWorkflowTags();
   const { sessionRightPaneEnabled, setSessionRightPaneEnabled } =
     useSessionRightPaneSetting();
+  const { pdfjsRendererEnabled, setPdfjsRendererEnabled } =
+    usePdfjsRendererSetting();
   const { panelSlideAnimations, setPanelSlideAnimations } =
     usePanelSlideAnimations();
   const { acliCommentaryEnabled, setAcliCommentaryEnabled } =
@@ -806,6 +809,23 @@ export function AppearanceSettings() {
                 setSessionRightPaneEnabled(event.target.checked)
               }
               aria-label={t("appearanceSessionRightPaneTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </SettingsItem>
+        <SettingsItem
+          label={t("appearancePdfjsRendererTitle")}
+          description={t("appearancePdfjsRendererDescription")}
+          keywords={["pdf", "pdf.js", "document", "viewer", "blocked"]}
+        >
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={pdfjsRendererEnabled}
+              onChange={(event) =>
+                setPdfjsRendererEnabled(event.target.checked)
+              }
+              aria-label={t("appearancePdfjsRendererTitle")}
             />
             <span className="toggle-slider" />
           </label>

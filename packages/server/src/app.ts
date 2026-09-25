@@ -69,6 +69,7 @@ import { SessionAccessResolver } from "./auth/sessionAccess.js";
 import type { SrpLimitedUserLookup } from "./routes/ws-srp-handlers.js";
 import { createLimitedUsersMiddleware } from "./middleware/limited-users.js";
 import { createUsersRoutes } from "./routes/users.js";
+import { createPdfjsRoutes } from "./routes/pdfjs.js";
 import { createProjectTemplateSourceRoutes } from "./routes/project-template-source.js";
 import { SESSION_COOKIE_NAME } from "./auth/routes.js";
 import { getCookie as getRequestCookie } from "hono/cookie";
@@ -276,6 +277,7 @@ import { HeartbeatCandidateRegistry } from "./services/HeartbeatCandidateRegistr
 import type { HostAwakeService } from "./services/host-awake/HostAwakeService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
+import { PdfjsAssetCache } from "./services/PdfjsAssetCache.js";
 import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import { initializeSessionHeartbeatDefaults } from "./services/sessionHeartbeatDefaults.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
@@ -847,6 +849,7 @@ export function createApp(options: AppOptions): AppResult {
   }
 
   app.route("/api", createProjectTemplateSourceRoutes(effectiveDataDir));
+  app.route("/api", createPdfjsRoutes(new PdfjsAssetCache(effectiveDataDir)));
   // Auth routes (always mounted if authService is provided)
   // This allows checking auth status and enabling/disabling from settings
   if (options.authService) {

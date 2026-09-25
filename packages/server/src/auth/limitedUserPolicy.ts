@@ -104,6 +104,8 @@ const PUBLIC_GET_PREFIXES: readonly string[] = [
   "/api/push/subscriptions",
   "/api/browser-profiles",
   "/api/client",
+  // Pinned third-party renderer code; no project content.
+  "/api/pdfjs",
 ];
 
 /** Writes that only touch the caller's own device or identity. */

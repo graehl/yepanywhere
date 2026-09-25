@@ -104,6 +104,19 @@ production CSP. Project files, uploaded files, provider output, plugin output,
 and agent-created files never become trusted merely because a YA route serves
 them.
 
+A third-party library fetched at runtime is a build input on the same terms
+as a lockfile dependency only when the source pins both its version and its
+content hash, and the server verifies that hash before writing any of it to
+disk. The opt-in pdf.js renderer (2026-09-25,
+[media rendering](media-rendering-and-routing.md#pdfs-in-the-file-viewer)) is
+the one such input: `PdfjsAssetCache` pins the `pdfjs-dist` tarball's
+registry integrity, extracts only its runtime assets, and serves them from
+`/api/pdfjs/<version>/`, so the client loads them under the unchanged
+same-origin script policy. Loading them from a CDN was rejected because it
+would need the app policy to admit a third-party script origin, or `blob:`
+scripts for hash-checked text, for every page. Bumping the version is a code
+change that must carry the new hash.
+
 ### Sanitized rich-text fragments
 
 Server-rendered Markdown, syntax highlighting, diffs, and declared rich-input

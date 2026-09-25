@@ -1672,9 +1672,8 @@ export const FileViewer = memo(function FileViewer({
 
     const embeddedMediaKind = getEmbeddedMediaKind(metadata.mimeType);
     if (embeddedMediaKind) {
-      // A blob document inherits this app's `object-src 'none'`, which makes
-      // Chromium block its PDF viewer, so a directly addressable PDF frames
-      // its own response instead.
+      // A directly addressable PDF is read from its own response as it
+      // arrives, rather than first copied whole into a blob.
       const mediaUrl =
         !source.fetchRawFileBlob ||
         (embeddedMediaKind === "pdf" && sameOriginUrls)
@@ -1687,6 +1686,7 @@ export const FileViewer = memo(function FileViewer({
           fileName={fileName}
           sampleText={t("fileViewerFontSample" as never)}
           unsupported={binaryCard}
+          pdfjsAvailable={sameOriginUrls}
         />
       ) : (
         <div className="file-viewer-loading">

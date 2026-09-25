@@ -1532,3 +1532,5 @@ export {
 } from "./linkify.js";
 
 export { asRecord, isRecord } from "./plain-record.js";
+
+export { PDFJS_VERSION } from "./pdfjs.js";

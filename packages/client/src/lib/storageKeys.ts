@@ -41,6 +41,7 @@ export const UI_KEYS = {
   contentMaxWidth: "yep-anywhere-content-max-width",
   sessionRightPane: "yep-anywhere-session-right-pane-enabled",
   sessionRightPaneWidth: "yep-anywhere-session-right-pane-width",
+  pdfjsRenderer: "yep-anywhere-pdfjs-renderer-enabled",
   commitReadWatermarks: "yep-anywhere-commit-read-watermarks",
   sourceControlCleanLanding: "yep-anywhere-source-control-clean-landing",
   sidebarWidth: "yep-anywhere-sidebar-width",

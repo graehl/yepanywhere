@@ -1,6 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { usePdfjsRendererSetting } from "../hooks/usePdfjsRendererSetting";
 import { useI18n } from "../i18n";
 import styles from "./FileViewerEmbeddedMedia.module.css";
+import { PdfjsDocumentView } from "./PdfjsDocumentView";
 
 /**
  * Non-image file kinds the browser can present natively inside the viewer.
@@ -47,6 +49,11 @@ interface FileViewerEmbeddedMediaProps {
   sampleText: string;
   /** Shown when the browser cannot decode this particular file. */
   unsupported: ReactNode;
+  /**
+   * Whether the YA server's origin is addressable, which the opt-in pdf.js
+   * renderer needs to load its modules.
+   */
+  pdfjsAvailable?: boolean;
 }
 
 export function FileViewerEmbeddedMedia({
@@ -55,10 +62,29 @@ export function FileViewerEmbeddedMedia({
   fileName,
   sampleText,
   unsupported,
+  pdfjsAvailable = false,
 }: FileViewerEmbeddedMediaProps) {
   const { t } = useI18n();
+  const { pdfjsRendererEnabled } = usePdfjsRendererSetting();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [pdfjsFailedUrl, setPdfjsFailedUrl] = useState<string | null>(null);
   const fail = useCallback(() => setFailedUrl(url), [url]);
+  // pdf.js falling through leaves the browser's own viewer to try next.
+  const failPdfjs = useCallback(() => setPdfjsFailedUrl(url), [url]);
+  if (
+    kind === "pdf" &&
+    pdfjsAvailable &&
+    pdfjsRendererEnabled &&
+    pdfjsFailedUrl !== url
+  )
+    return (
+      <PdfjsDocumentView
+        url={url}
+        fileName={fileName}
+        loading={t("fileViewerLoading" as never, { name: fileName })}
+        onError={failPdfjs}
+      />
+    );
   if (failedUrl === url) {
     if (kind !== "pdf") return <>{unsupported}</>;
     // A top-level tab has no framing ancestry, so the browser viewer that

@@ -1,0 +1,16 @@
+.document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+}
+
+.page {
+  display: block;
+  width: 100%;
+  max-width: 960px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+}

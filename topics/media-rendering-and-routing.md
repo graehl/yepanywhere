@@ -216,15 +216,25 @@ caches under `<data-dir>/pdfjs/<version>/` (`PdfjsAssetCache`;
 the trust decision is in
 [`active-content-security.md`](active-content-security.md)). The client
 imports it only when a PDF is shown, from the same origin, so the app's
-script policy is unchanged. Pages are laid out at their own aspect ratio
-when the document opens and each canvas is drawn as it nears the viewer's
-scroll container. If pdf.js fails to load or render, the browser viewer is
-tried next.
+script policy is unchanged. The view is its own two-axis scroll area in the
+same box as the frame it replaces. Pages are laid out at their own aspect
+ratio when the document opens; a canvas is drawn while its page is within a
+screen of view and released beyond that, so memory stays bounded on long
+documents, and no canvas exceeds 16 megapixels. If pdf.js fails to load or
+render, the browser viewer is tried next.
+
+YA's viewport disables page-level pinch zoom app-wide, and that default
+stays. The pdf.js view owns zoom instead (50–500%): a two-finger pinch,
+ctrl+wheel (how trackpads report a pinch; a mouse notch is one 1.25× step),
+or its −/percentage/+ buttons, where the percentage resets to fit-width.
+A gesture previews with a transform about its focal point and redraws the
+pages sharp at the new width when it settles, keeping the focal point in
+place. pdf.js has no reflow, so a two-column paper on a phone is read by
+zooming into a column.
 
 Current pdf.js limits: it needs the same-origin server, so the relay client
 and public shares keep the browser viewer; pages are images, with no text
-selection, find, or links; there is no zoom control, which matters on phones
-where YA disables pinch-zoom; and `LocalFileModal` still frames its PDFs
+selection, find, or links; and `LocalFileModal` still frames its PDFs
 directly. These are tracked in `gaps/file-viewer-relay-pdf.md`.
 
 ### Resource actions and file presentation choice

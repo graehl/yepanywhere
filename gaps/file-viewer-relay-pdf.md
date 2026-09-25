@@ -21,8 +21,6 @@ Remaining:
   them.
 - pdf.js pages are images: no text layer (selection, copy, viewer find) and
   no link annotations.
-- No zoom control. YA disables pinch-zoom, so a two-column paper drawn at
-  phone width is too small to read.
 - `LocalFileModal` frames non-project local PDFs from a blob with its own
   iframe and uses neither the refused-frame fallback nor pdf.js.
 

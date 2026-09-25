@@ -726,10 +726,6 @@ export function createApp(options: AppOptions): AppResult {
         effectiveDataDir,
       )
     : undefined;
-  if (computerControl) {
-    app.route("/api", createComputerControlRoutes(computerControl));
-    app.route("/api", createComputerControlReleaseRoutes(computerControl));
-  }
   const discoverySqlite = new DiscoverySqliteService({
     dataDir: effectiveDataDir,
     mode: options.sqliteMode ?? "auto",
@@ -852,6 +848,13 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
 
+  // Mount /api routers only after the security and auth middleware above:
+  // Hono runs only the middleware registered before a route, so an earlier
+  // mount answers without them (test/auth/api-auth-boundary.test.ts).
+  if (computerControl) {
+    app.route("/api", createComputerControlRoutes(computerControl));
+    app.route("/api", createComputerControlReleaseRoutes(computerControl));
+  }
   app.route("/api", createProjectTemplateSourceRoutes(effectiveDataDir));
   app.route("/api", createPdfjsRoutes(new PdfjsAssetCache(effectiveDataDir)));
   // Auth routes (always mounted if authService is provided)

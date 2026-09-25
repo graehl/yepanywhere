@@ -13,7 +13,10 @@ application-level user accounts, roles, project access-control lists, or an
 authenticated read-only/operator split. A valid local password session, desktop
 session, or Remote Access SRP session reaches the same operator-facing API.
 When local authentication is disabled, anyone who can reach an admitted server
-endpoint has that same authority without first presenting a credential.
+endpoint has that same authority without first presenting a credential. When it
+is enabled, every `/api` route except the `/api/auth` login and status routes
+refuses a request that carries no valid credential; no operator route answers
+ahead of the host, CORS, custom-header, and authentication checks.
 
 The practical trust boundary is therefore **can use normal authenticated YA,
 including creating or controlling an ordinary session**. That authority should

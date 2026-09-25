@@ -201,22 +201,32 @@ export function SessionViewerProvider({
         label,
       });
       restoreSessionViewer(viewerId);
+      // An opened artifact is an App the session recalls after this viewer
+      // closes, the same as a file viewer's play activation.
+      onAnnounceApp?.({
+        sourceUrl: url,
+        url,
+        label,
+        artifactToken: new URL(url).pathname.split("/")[2],
+      });
       return true;
     },
-    [inactive, sessionId, version?.artifactViewer, viewerId],
+    [inactive, onAnnounceApp, sessionId, version?.artifactViewer, viewerId],
   );
   return (
     <SessionViewerContext.Provider value={sessionId}>
       <SessionArtifactLinkContext.Provider value={openArtifact}>
         <SessionViewerCommentProvider onSendComment={onSendComment}>
+          {/* Viewers the host renders belong to the session: a play activation
+              inside one announces its App like any transcript content. */}
           <SessionAppLinkContext.Provider value={appLinks}>
             {children}
+            <SessionManagedViewerHost
+              sessionId={sessionId}
+              inactive={inactive}
+              rightPaneTarget={rightPaneTarget}
+            />
           </SessionAppLinkContext.Provider>
-          <SessionManagedViewerHost
-            sessionId={sessionId}
-            inactive={inactive}
-            rightPaneTarget={rightPaneTarget}
-          />
         </SessionViewerCommentProvider>
       </SessionArtifactLinkContext.Provider>
     </SessionViewerContext.Provider>

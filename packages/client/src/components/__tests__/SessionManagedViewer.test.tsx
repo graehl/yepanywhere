@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import {
@@ -9,11 +10,21 @@ import {
 } from "../../lib/sessionViewerController";
 import { sessionRightPaneSetting } from "../../lib/sessionViewerPlacement";
 import { MessageList } from "../MessageList";
+import { useSessionAppAnnouncer } from "../SessionAppLinks";
 import {
   SessionViewerProvider,
   SessionViewerTranscriptGate,
+  useSessionArtifactLink,
   useSessionViewerSessionId,
 } from "../SessionManagedViewer";
+
+const ARTIFACT_ORIGIN = "http://artifacts.localhost:3400";
+vi.mock("../../hooks/useVersion", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useVersion")>()),
+  useRetainedVersionInfo: () => ({
+    artifactViewer: { available: true, localOrigin: ARTIFACT_ORIGIN },
+  }),
+}));
 import {
   assistantMessage,
   installMessageListTestEnvironment,
@@ -263,5 +274,82 @@ describe("managed panel placement", () => {
       screen.getByRole("dialog", { name: "Edit" }).hasAttribute("hidden"),
     ).toBe(false);
     target.remove();
+  });
+});
+
+describe("session App announcements", () => {
+  afterEach(() => {
+    act(() => clearCurrentSessionViewer());
+  });
+
+  const grantUrl = `${ARTIFACT_ORIGIN}/a/tok3n/report.html#results`;
+
+  function PlayingViewer() {
+    const announce = useSessionAppAnnouncer();
+    useEffect(() => {
+      announce({ sourceUrl: grantUrl, url: grantUrl, label: "report.html" });
+    }, [announce]);
+    return <div data-testid="playing" />;
+  }
+
+  function ArtifactLinkProbe() {
+    const openArtifact = useSessionArtifactLink();
+    return (
+      <button type="button" onClick={() => openArtifact?.(grantUrl, "Report")}>
+        open artifact
+      </button>
+    );
+  }
+
+  it("lets a play activation inside a hosted viewer announce its App", () => {
+    const onAnnounceApp = vi.fn();
+    render(
+      <I18nProvider>
+        <SessionViewerProvider
+          sessionId="session-1"
+          onAnnounceApp={onAnnounceApp}
+        >
+          <span />
+        </SessionViewerProvider>
+      </I18nProvider>,
+    );
+    act(() => {
+      presentSessionViewer({
+        id: "panel-1",
+        kind: "panel",
+        sessionId: "session-1",
+        label: "report.html",
+        title: "report.html",
+        content: <PlayingViewer />,
+        onClose: () => {},
+      });
+    });
+
+    expect(screen.getByTestId("playing")).toBeTruthy();
+    expect(onAnnounceApp).toHaveBeenCalledWith(
+      expect.objectContaining({ url: grantUrl }),
+    );
+  });
+
+  it("announces an artifact link opened from session prose as an App", () => {
+    const onAnnounceApp = vi.fn();
+    render(
+      <I18nProvider>
+        <SessionViewerProvider
+          sessionId="session-1"
+          onAnnounceApp={onAnnounceApp}
+        >
+          <ArtifactLinkProbe />
+        </SessionViewerProvider>
+      </I18nProvider>,
+    );
+    act(() => screen.getByRole("button", { name: "open artifact" }).click());
+
+    expect(onAnnounceApp).toHaveBeenCalledWith({
+      sourceUrl: grantUrl,
+      url: grantUrl,
+      label: "Report",
+      artifactToken: "tok3n",
+    });
   });
 });

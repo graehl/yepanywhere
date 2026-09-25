@@ -76,11 +76,13 @@ export function useSessionRightPane(
   /**
    * A viewer's play activation is an app the session should remember: it
    * becomes the latest app so the App action recalls it after close, without
-   * the reader having to minimize instead.
+   * the reader having to minimize instead. The announcing viewer is already
+   * showing it, so the announcement must not also open it as the pane's app.
    */
   const announce = useCallback(
     (app: SessionVhostApp) => {
       const announcementId = `${PLAY_ANNOUNCEMENT_PREFIX}${app.url}`;
+      announced.current.add(`vhost:${key}:${announcementId}`);
       setState((previous) => {
         if (previous.key !== key) return previous;
         return {

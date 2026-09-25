@@ -301,6 +301,9 @@ remain in place. Close and browser Back destroy only the preview; minimize and
 restore retain the same iframe, including its form state and scroll position.
 Tapping the original link while parked restores that same preview. Replacing
 the originating rich-text row does not own or end the preview's lifetime.
+Opening the link also records the artifact as the session's latest App, as a
+file viewer's play activation does, so the App action recalls it after Close
+([session right pane](session-right-pane.md)).
 
 The empty viewer layer is already present in session layouts. It contains no
 iframe and performs no artifact requests, probes, polling, or grant creation

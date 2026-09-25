@@ -93,6 +93,11 @@ the running document from the App action without having minimized it first.
 Such a viewer-activated app keeps a `play:` announcement id in the saved
 latest-app entry, which is the one entry storage seeds back into a reopened
 session's app list, since transcript scanning cannot rediscover it.
+Opening an artifact link from session prose announces the same way
+(2026-09-25). File viewers the session hosts, in the pane or as a modal, sit
+inside the session's App-link context so their play activation reaches it. A
+viewer-activated announcement never auto-opens the pane: the announcing viewer
+is already showing that document.
 While the pane is expanded, that App action closes it completely without
 creating a bottom-bar entry. The separate minimize button still parks it.
 With the setting off it is a new-window link. V1 has one managed viewer:

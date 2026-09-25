@@ -148,6 +148,7 @@ describe("session right pane viewer-activated apps", () => {
   });
 
   it("makes a play activation the latest App and seeds it on return", () => {
+    localStorage.setItem(UI_KEYS.sessionRightPane, "true");
     const messages = [output("one")];
     const { result, rerender } = renderHook(
       ({ key, messages }) =>
@@ -164,6 +165,8 @@ describe("session right pane viewer-activated apps", () => {
     act(() => result.current.announce(grant));
     expect(result.current.apps.at(-1)?.url).toBe(grant.url);
     expect(result.current.apps).toHaveLength(2);
+    // The announcing viewer already shows it; the pane must not take it over.
+    expect(result.current.selected).toBeUndefined();
     // Announcing the same grant again does not duplicate it.
     act(() => result.current.announce(grant));
     expect(result.current.apps).toHaveLength(2);

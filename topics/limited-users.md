@@ -223,6 +223,13 @@ The same principal check gates websocket subscriptions: a limited user may
 subscribe to a session channel only for sessions they may read, and the
 global activity channel is filtered to their accessible projects.
 
+A `/api/ws` socket acts as the login that opened it, for its whole lifetime.
+An SRP socket acts as its proven identity; a directly opened socket acts as
+the cookie login of its upgrade request. Its tunneled requests and its
+subscriptions are both judged as that login, and a cookie header a client
+puts on a tunneled request changes nothing. A limited user's direct socket
+therefore gets exactly the 403/404 answers above, never superuser authority.
+
 ### Login, switching, and logout
 
 - **Relay.** `srp_hello.identity` selects the verifier: the remote-access

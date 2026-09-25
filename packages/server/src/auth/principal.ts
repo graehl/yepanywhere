@@ -40,6 +40,13 @@ export const SUPERUSER: SuperuserPrincipal = { kind: "superuser" };
 /** Hono context variable key carrying the resolved principal. */
 export const PRINCIPAL_VARIABLE = "yaPrincipal";
 
+/**
+ * Hono context variable key carrying the direct login's username: the name
+ * recorded on the request's cookie session, or null for a superuser login, an
+ * SRP tunnel, or no login. A websocket upgrade binds it to the connection.
+ */
+export const DIRECT_LOGIN_VARIABLE = "yaDirectLoginUsername";
+
 export function isLimited(principal: Principal): principal is LimitedPrincipal {
   return principal.kind === "limited";
 }

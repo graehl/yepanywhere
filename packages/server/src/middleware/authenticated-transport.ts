@@ -37,3 +37,29 @@ export function getAuthenticatedSrpTransport(
   )[AUTHENTICATED_SRP_TRANSPORT];
   return context?.kind === "srp" ? context : null;
 }
+
+/** The direct login a trusted-local websocket bound when it was upgraded. */
+export interface AuthenticatedDirectLoginContext {
+  kind: "direct-login";
+  /** Limited username on the upgrade's cookie session; null for the superuser. */
+  username: string | null;
+}
+
+/**
+ * Private request environment carrying a trusted-local websocket's direct
+ * login into its tunneled requests. The socket's own login decides who acts,
+ * never a cookie the client chose to put in a tunneled request's headers.
+ */
+export const AUTHENTICATED_DIRECT_LOGIN = Symbol("authenticated-direct-login");
+
+export function getAuthenticatedDirectLogin(
+  env: unknown,
+): AuthenticatedDirectLoginContext | null {
+  if (!env || typeof env !== "object") return null;
+  const context = (
+    env as {
+      [AUTHENTICATED_DIRECT_LOGIN]?: AuthenticatedDirectLoginContext;
+    }
+  )[AUTHENTICATED_DIRECT_LOGIN];
+  return context?.kind === "direct-login" ? context : null;
+}

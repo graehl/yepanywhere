@@ -15,6 +15,7 @@ import { getCookie } from "hono/cookie";
 import type { LimitedUserGrants } from "@yep-anywhere/shared";
 import {
   ACTING_USER_COOKIE,
+  DIRECT_LOGIN_VARIABLE,
   type LimitedPrincipal,
   type Principal,
   PRINCIPAL_VARIABLE,
@@ -29,7 +30,11 @@ import {
   levelFor,
   satisfies,
 } from "../auth/limitedUserPolicy.js";
-import { getAuthenticatedSrpTransport } from "./authenticated-transport.js";
+import {
+  getAuthenticatedDirectLogin,
+  getAuthenticatedSrpTransport,
+} from "./authenticated-transport.js";
+import { WS_INTERNAL_AUTHENTICATED } from "./internal-auth.js";
 
 export interface LimitedUsersMiddlewareOptions {
   limitedUsers: LimitedUsersService;
@@ -54,10 +59,28 @@ function limitedPrincipal(
   return { kind: "limited", username, grants, ...options };
 }
 
+/**
+ * The direct login's username for this request, or null for the superuser.
+ * An internal request never takes its login from its own headers: a
+ * trusted-local websocket carries the login it bound at upgrade, and a
+ * server-originated request has none.
+ */
+async function resolveDirectLoginUsername(
+  c: Parameters<MiddlewareHandler>[0],
+  options: LimitedUsersMiddlewareOptions,
+): Promise<string | null> {
+  if (getAuthenticatedSrpTransport(c.env)) return null;
+  const bound = getAuthenticatedDirectLogin(c.env);
+  if (bound) return bound.username;
+  if (c.env?.[WS_INTERNAL_AUTHENTICATED]) return null;
+  return options.getCookieSessionUsername(c);
+}
+
 /** Resolve the acting principal without enforcing anything. */
 export async function resolvePrincipal(
   c: Parameters<MiddlewareHandler>[0],
   options: LimitedUsersMiddlewareOptions,
+  directLoginUsername: string | null,
 ): Promise<Principal> {
   if (!options.isEnabled()) return SUPERUSER;
 
@@ -73,17 +96,14 @@ export async function resolvePrincipal(
     });
   }
 
-  if (!srp) {
-    const cookieUsername = await options.getCookieSessionUsername(c);
-    if (cookieUsername) {
-      const grants = options.limitedUsers.getActiveGrants(cookieUsername);
-      if (!grants) return DENIED_PRINCIPAL;
-      return limitedPrincipal(cookieUsername, grants, {
-        switched: false,
-        locked: true,
-        via: "direct",
-      });
-    }
+  if (directLoginUsername) {
+    const grants = options.limitedUsers.getActiveGrants(directLoginUsername);
+    if (!grants) return DENIED_PRINCIPAL;
+    return limitedPrincipal(directLoginUsername, grants, {
+      switched: false,
+      locked: true,
+      via: "direct",
+    });
   }
 
   // The login is the superuser; honor a switch into a limited user.
@@ -213,7 +233,9 @@ export function createLimitedUsersMiddleware(
   options: LimitedUsersMiddlewareOptions,
 ): MiddlewareHandler {
   return async (c, next) => {
-    const principal = await resolvePrincipal(c, options);
+    const directLoginUsername = await resolveDirectLoginUsername(c, options);
+    c.set(DIRECT_LOGIN_VARIABLE, directLoginUsername);
+    const principal = await resolvePrincipal(c, options, directLoginUsername);
     c.set(PRINCIPAL_VARIABLE, principal);
     if (principal.kind === "superuser") {
       await next();

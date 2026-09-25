@@ -53,7 +53,10 @@ import {
 import type { SrpServerSession } from "../crypto/index.js";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { getLogger } from "../logging/logger.js";
-import { AUTHENTICATED_SRP_TRANSPORT } from "../middleware/authenticated-transport.js";
+import {
+  AUTHENTICATED_DIRECT_LOGIN,
+  AUTHENTICATED_SRP_TRANSPORT,
+} from "../middleware/authenticated-transport.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type { ProjectGlossarySubscriptionManager } from "../projects/projectGlossarySubscriptionManager.js";
 import {
@@ -106,6 +109,7 @@ import {
 import {
   type WsTransportAuthState,
   hasEstablishedSrpTransport,
+  isTrustedWithoutSrpTransport,
   shouldMarkInternalWsAuthenticated,
   tryLockWsConnectionMode,
 } from "./ws-transport-auth.js";
@@ -170,6 +174,11 @@ export interface ConnectionState extends WsTransportAuthState {
   requiresEncryptedMessages: boolean;
   /** Username if authenticated */
   username: string | null;
+  /**
+   * Limited username on the cookie session that upgraded a trusted-local
+   * socket, bound once at upgrade; null for the superuser or an SRP socket.
+   */
+  directLoginUsername: string | null;
   /** Persistent session ID for resumption (set after successful auth) */
   sessionId: string | null;
   /** Transport nonce retained for the lifetime of an established SRP socket. */
@@ -400,6 +409,19 @@ export interface RelayHandlerDeps {
 }
 
 /**
+ * The identity whose grants govern what this socket may subscribe to: the
+ * SRP identity once its proof established the transport, else the direct
+ * login bound at upgrade. Null means the superuser. An `srp_hello` identity
+ * that is still awaiting proof counts for nothing.
+ */
+export function authenticatedConnectionIdentity(
+  connState: ConnectionState,
+): string | null {
+  if (hasEstablishedSrpTransport(connState)) return connState.username;
+  return connState.directLoginUsername;
+}
+
+/**
  * Create an initial connection state.
  */
 export function createConnectionState(options?: {
@@ -416,6 +438,7 @@ export function createConnectionState(options?: {
     connectionMode: "unselected",
     requiresEncryptedMessages: false,
     username: null,
+    directLoginUsername: null,
     sessionId: null,
     transportNonce: null,
     authenticationMethod: null,
@@ -839,6 +862,14 @@ export async function handleRequest(
           [WS_INTERNAL_AUTHENTICATED]: true,
           ...(srpTransport
             ? { [AUTHENTICATED_SRP_TRANSPORT]: srpTransport }
+            : {}),
+          ...(!srpTransport && isTrustedWithoutSrpTransport(connState)
+            ? {
+                [AUTHENTICATED_DIRECT_LOGIN]: {
+                  kind: "direct-login" as const,
+                  username: connState.directLoginUsername,
+                },
+              }
             : {}),
         }
       : {};
@@ -2279,7 +2310,7 @@ export async function handleMessage(
             projectId?: string;
           };
           const permitted = await deps.authorizeSubscription({
-            username: connState.username ?? null,
+            username: authenticatedConnectionIdentity(connState),
             channel: params.channel,
             sessionId: params.sessionId,
             projectId: params.projectId,
@@ -2316,7 +2347,7 @@ export async function handleMessage(
                   deps.isActivityEventVisible as NonNullable<
                     RelayHandlerDeps["isActivityEventVisible"]
                   >
-                )(connState.username ?? null, event)
+                )(authenticatedConnectionIdentity(connState), event)
             : undefined,
         );
       },

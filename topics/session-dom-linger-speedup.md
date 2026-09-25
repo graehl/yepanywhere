@@ -387,3 +387,19 @@ view does not opt into compaction and therefore remains subject to the 5,000-
 element admission cap. The smaller batch applies only to retained rehydration;
 ordinary initial progressive restoration keeps its 90-item batch so an
 off-tail remembered scroll anchor mounts promptly.
+
+## Layer DOM order is stable (2026-09-25)
+
+Session layers render in a fixed key order, never active-first. Reordering
+keyed siblings makes React move one layer's DOM node, and a moved element
+loses its scroll position. With active-first order, every A/B swap moved the
+outgoing layer, so a session left scrolled away from its tail was revealed at
+the top of its transcript, often followed by an automatic older-page load. A
+following session hid the loss because revealing it re-pins to the tail.
+`e2e/session-switch-scroll.spec.ts` guards this.
+
+Z-index classes decide which layer shows, so DOM order carries no meaning. Code
+that needs a per-session element such as the composer must therefore not take
+the document's first match, which may belong to the parked session.
+`querySessionRouteLayerElement` scopes the lookup to the caller's own route
+layer, or to the active layer for app-level callers.

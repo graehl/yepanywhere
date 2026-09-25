@@ -686,6 +686,52 @@ export default async function globalSetup() {
     `[E2E] Created page-key pagination fixture at ${pageKeyPaginationFile}`,
   );
 
+  // Two long multi-turn sessions in one project, so direct session switching
+  // exercises the parked-layer swap with a transcript longer than its
+  // retained tail.
+  const switchStartMs = Date.now() - 60 * 60 * 1000;
+  for (const label of ["a", "b"] as const) {
+    const switchSessionId = `switch-scroll-${label}`;
+    const switchMessages = Array.from({ length: 90 }, (_, turn) => {
+      const timestamp = (offsetMs: number) =>
+        new Date(switchStartMs + turn * 10_000 + offsetMs).toISOString();
+      return [
+        {
+          type: "user",
+          ...(turn === 0 ? { cwd: mockProjectPath } : {}),
+          message: {
+            role: "user",
+            content: `Switch ${label} request ${turn + 1}`,
+          },
+          timestamp: timestamp(0),
+          uuid: `switch-${label}-user-${turn + 1}`,
+          ...(turn > 0
+            ? { parentUuid: `switch-${label}-assistant-${turn}` }
+            : {}),
+        },
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: `Switch ${label} reply ${turn + 1}.\n\nSecond paragraph of reply ${turn + 1}.`,
+              },
+            ],
+          },
+          timestamp: timestamp(1_000),
+          uuid: `switch-${label}-assistant-${turn + 1}`,
+          parentUuid: `switch-${label}-user-${turn + 1}`,
+        },
+      ];
+    }).flat();
+    writeFileSync(
+      join(mockSessionDir, `${switchSessionId}.jsonl`),
+      switchMessages.map((message) => JSON.stringify(message)).join("\n"),
+    );
+  }
+
   // Create the file-browser fixture before the server starts so its initial
   // project snapshot sees it even when no installed provider activates a
   // filesystem watcher (as on a clean CI runner).

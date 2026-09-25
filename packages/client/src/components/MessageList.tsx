@@ -87,6 +87,7 @@ import {
   deriveVisibleSessionScrollCursor,
   getLatestSeenTurnRenderKey,
 } from "../lib/sessionScrollCursor";
+import { querySessionRouteLayerElement } from "../lib/sessionRouteLayer";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   isSessionViewerTranscriptFrozen,
@@ -4665,7 +4666,10 @@ export const MessageList = memo(function MessageList({
   const followButtonTarget =
     !isScrolledToBottom && typeof document !== "undefined"
       ? followButtonPortalTarget === undefined
-        ? document.querySelector<HTMLElement>(".session-input-inner")
+        ? querySessionRouteLayerElement<HTMLElement>(
+            ".session-input-inner",
+            containerRef.current,
+          )
         : followButtonPortalTarget
       : null;
   const followButtonLabel = newOutputBelowVisible

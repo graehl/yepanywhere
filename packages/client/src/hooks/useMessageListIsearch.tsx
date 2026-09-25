@@ -42,6 +42,7 @@ import {
   type SessionHistorySearchPageResult,
   type SessionHistorySearchWorkerResponse,
 } from "../lib/sessionHistorySearch";
+import { querySessionRouteLayerElement } from "../lib/sessionRouteLayer";
 import type { GetSessionResult } from "../lib/sourceRuntime";
 import type { RenderItem } from "@yep-anywhere/shared/transcript/items";
 import type {
@@ -1169,7 +1170,10 @@ export function useMessageListIsearch({
 
   const searchPanelTarget =
     userTurnSearch.active && typeof document !== "undefined"
-      ? document.querySelector<HTMLElement>(".session-input-inner")
+      ? querySessionRouteLayerElement<HTMLElement>(
+          ".session-input-inner",
+          containerRef.current,
+        )
       : null;
   const checkedTotal = Math.max(
     totalMessageCount,

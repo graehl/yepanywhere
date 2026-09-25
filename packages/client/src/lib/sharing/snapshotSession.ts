@@ -3,6 +3,8 @@
  * Grabs all stylesheets and the message list DOM, strips interactive elements.
  */
 
+import { querySessionRouteLayerElement } from "../sessionRouteLayer";
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -21,7 +23,7 @@ export function snapshotSession(title?: string): string {
   }
 
   // 2. Clone the session messages container
-  const messagesEl = document.querySelector("main.session-messages");
+  const messagesEl = querySessionRouteLayerElement("main.session-messages");
   if (!messagesEl) {
     throw new Error("Session messages not found");
   }

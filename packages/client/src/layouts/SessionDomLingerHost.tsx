@@ -329,13 +329,16 @@ export function SessionDomLingerHost({
       parkedSessionCandidate.projectId === currentSessionRoute.projectId)
       ? { ...parkedSessionCandidate, status: "parked" as const }
       : null;
-  const renderedSessionRoutes = currentSessionRoute
-    ? [currentSessionRoute, renderedParkedSessionRoute].filter(
-        (route): route is SessionDomLingerRoute => route !== null,
-      )
-    : renderedParkedSessionRoute
-      ? [renderedParkedSessionRoute]
-      : [];
+  // Layer order must not follow which session is active: swapping the order
+  // of keyed siblings makes React move one layer's DOM node, and a moved node
+  // loses its scroll position, so a parked reader returned to the top of the
+  // transcript. Z-index classes, not DOM order, decide which layer shows.
+  const renderedSessionRoutes = [
+    currentSessionRoute,
+    renderedParkedSessionRoute,
+  ]
+    .filter((route): route is SessionDomLingerRoute => route !== null)
+    .sort((left, right) => left.key.localeCompare(right.key));
 
   useLayoutEffect(() => {
     const pendingSwap = pendingSessionSwapRef.current;

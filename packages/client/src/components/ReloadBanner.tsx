@@ -5,6 +5,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { type ReactNode, useLayoutEffect, useRef } from "react";
 import { useI18n } from "../i18n";
+import { querySessionRouteLayerElement } from "../lib/sessionRouteLayer";
 import styles from "./ReloadBanner.module.css";
 
 const RELOAD_BANNER_CONTROL_GAP = 4;
@@ -57,7 +58,7 @@ export function ReloadBannerStack({
       let lift = 0;
       const composer =
         avoidSessionComposer && window.innerWidth > 600
-          ? document.querySelector<HTMLElement>(".session-input")
+          ? querySessionRouteLayerElement<HTMLElement>(".session-input")
           : null;
       if (composer) {
         const controls = composer.querySelectorAll<HTMLElement>(
@@ -125,7 +126,7 @@ export function ReloadBannerStack({
     window.addEventListener("resize", schedulePlacement);
 
     const composer = avoidSessionComposer
-      ? document.querySelector<HTMLElement>(".session-input")
+      ? querySessionRouteLayerElement<HTMLElement>(".session-input")
       : null;
     const fixedOccupant = document.querySelector<HTMLElement>(".fab-container");
     const resizeObserver =

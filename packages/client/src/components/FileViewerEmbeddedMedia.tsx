@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useI18n } from "../i18n";
 import styles from "./FileViewerEmbeddedMedia.module.css";
 
 /**
@@ -15,6 +16,21 @@ export function getEmbeddedMediaKind(
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("font/")) return "font";
   return null;
+}
+
+/**
+ * Whether a loaded PDF frame shows the browser's PDF viewer. The frame URL is
+ * same-origin (the raw file route or a blob), so a displayed PDF exposes its
+ * document. Chromium refuses its viewer in some framings — any sandboxed
+ * ancestor, for one — and substitutes a cross-origin error page, which reads
+ * as no document.
+ */
+export function framedPdfDisplayed(frame: HTMLIFrameElement): boolean {
+  try {
+    return frame.contentDocument?.contentType === "application/pdf";
+  } catch {
+    return false;
+  }
 }
 
 const FONT_SPECIMEN_GLYPHS = [
@@ -40,13 +56,37 @@ export function FileViewerEmbeddedMedia({
   sampleText,
   unsupported,
 }: FileViewerEmbeddedMediaProps) {
+  const { t } = useI18n();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const fail = useCallback(() => setFailedUrl(url), [url]);
-  if (failedUrl === url) return <>{unsupported}</>;
+  if (failedUrl === url) {
+    if (kind !== "pdf") return <>{unsupported}</>;
+    // A top-level tab has no framing ancestry, so the browser viewer that
+    // refused this frame still opens the same URL there.
+    return (
+      <>
+        {unsupported}
+        <p className={styles.openPdf}>
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            {t("fileViewerOpenNewTab" as never)}
+          </a>
+        </p>
+      </>
+    );
+  }
 
   switch (kind) {
     case "pdf":
-      return <iframe className={styles.pdf} src={url} title={fileName} />;
+      return (
+        <iframe
+          className={styles.pdf}
+          src={url}
+          title={fileName}
+          onLoad={(event) => {
+            if (!framedPdfDisplayed(event.currentTarget)) fail();
+          }}
+        />
+      );
     case "audio":
       return (
         <div className={styles.media}>

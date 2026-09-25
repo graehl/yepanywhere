@@ -10,6 +10,12 @@
   height: calc(100vh - 50px);
 }
 
+.openPdf {
+  margin: 0;
+  padding: 0 1rem 1rem;
+  text-align: center;
+}
+
 .media {
   display: flex;
   align-items: center;

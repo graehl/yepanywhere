@@ -682,8 +682,7 @@ export function MessageInput({
             (candidate) =>
               matchingSlashCommands.length === 0 ||
               invocationQuery === null ||
-              candidate.start !== invocationQuery.start ||
-              candidate.end !== invocationQuery.end,
+              candidate.start !== invocationQuery.start,
           )
           .map((candidate) => candidate.token),
       ),
@@ -2243,15 +2242,21 @@ export function MessageInput({
     (command: SlashCommand, completionPrefix?: string) => {
       const canonicalToken =
         completionPrefix ?? getCanonicalInvocationToken(command);
+      const activeQuery = getInvocationCompletionQuery(text, composerCursor);
+      // A root token typed in front of existing text takes that text as its
+      // argument, so selection inserts the command instead of running it
+      // bare and discarding the draft.
+      const textFollowsToken =
+        activeQuery !== null && text.slice(activeQuery.end).trim() !== "";
       if (
         completionPrefix === undefined &&
         command.invocation?.kind === "emulated" &&
+        !textFollowsToken &&
         onCustomCommand?.(command.name)
       ) {
         return;
       }
 
-      const activeQuery = getInvocationCompletionQuery(text, composerCursor);
       let editStart: number;
       let editEnd: number;
       let nextText: string;

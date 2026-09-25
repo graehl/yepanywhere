@@ -73,20 +73,27 @@ not be reinterpreted as confirmed skills.
 ### Keep the invocation editable
 
 Typed completion is available only for a root invocation draft: the text before
-the `/` or `$` is empty or whitespace, and the caret is at the end of the
-composer. The draft must also have no completed or still-uploading attachment.
+the `/` or `$` is empty or whitespace, and the caret sits after the sigil in
+that first token. The completion query is the text from the sigil to the caret,
+so text may follow the caret: pasting a body, moving to its start, and typing
+`/cl` completes the command in front of it. The draft must also have no
+completed or still-uploading attachment.
 Enter accepts a visible completion in that state. Tab expands multiple skill
 matches to their longest common canonical prefix without adding a space or
 choosing a match; a unique match is completed normally. Shift-Space chooses
 the first match regardless of the highlighted row. Ctrl-Space retains the
 microphone shortcut, and Shift-Tab retains backward keyboard navigation.
 Completion stays
-entirely inactive while editing inside a draft, after intervening text, when an
-attachment is present, or when text follows the caret, so those keys retain
-their normal composer behavior. Invocation recognition and provider
-translation still inspect exact tokens throughout the submitted text.
+entirely inactive after intervening text, with the caret outside the root
+token, or when an attachment is present, so those keys retain their normal
+composer behavior. Invocation recognition and provider translation still
+inspect exact tokens throughout the submitted text.
 
-Selecting a typed completion replaces that root invocation token. Selecting a
+Selecting a typed completion replaces the root token from its sigil to the
+caret, leaving any text after the caret in place and separated by a space.
+When text follows, a selected YA-emulated command is inserted rather than run,
+so the following text becomes its argument instead of being discarded.
+Selecting a
 skill from the launcher appends it when no completion token is active. Both use
 the provider's canonical spelling, add a trailing space, and leave focus in the
 composer. Selection does not submit, open a required form, or replace the
@@ -197,8 +204,9 @@ free-form default for ordinary skills.
 
 - Exact installed-skill names resolve from both `/name` and `$name`, in any
   whitespace-delimited invocation position, without duplicate launcher entries.
-- Typed completion appears only for a root invocation at the end of the draft;
-  mid-draft and post-text invocations never intercept Enter or Tab.
+- Typed completion appears only for a root invocation whose token ends at the
+  caret, including one typed in front of existing text; post-text invocations
+  and a caret outside the root token never intercept Enter or Tab.
 - A native slash command wins an exact leading slash-name collision.
 - Text outside recognized invocation spans round-trips byte-for-byte through
   recognition and provider translation.

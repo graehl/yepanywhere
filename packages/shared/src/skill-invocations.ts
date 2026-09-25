@@ -224,30 +224,25 @@ export function getInvocationCompletionQuery(
   cursor = text.length,
 ): InvocationCompletionQuery | null {
   const boundedCursor = Math.max(0, Math.min(cursor, text.length));
-  if (boundedCursor !== text.length) return null;
 
   let start = boundedCursor;
   while (start > 0 && !/\s/.test(text[start - 1] ?? "")) start -= 1;
+  if (start === boundedCursor) return null;
 
   if (text.slice(0, start).trim()) return null;
 
   const sigil = text[start];
   if (sigil !== "/" && sigil !== "$") return null;
 
-  let end = boundedCursor;
-  while (end < text.length && !/\s/.test(text[end] ?? "")) end += 1;
-  const wholeToken = text.slice(start + 1, end);
+  // The token being completed ends at the caret, so a root invocation typed
+  // in front of existing text (paste, then Home, then `/cl`) still completes
+  // and selection inserts before that text rather than consuming it.
   const query = text.slice(start + 1, boundedCursor);
-  if (
-    (wholeToken && !INVOCATION_NAME_RE.test(wholeToken)) ||
-    (query && !INVOCATION_NAME_RE.test(query))
-  ) {
-    return null;
-  }
+  if (query && !INVOCATION_NAME_RE.test(query)) return null;
 
   return {
     start,
-    end,
+    end: boundedCursor,
     sigil,
     query: query.toLowerCase(),
     leading: true,

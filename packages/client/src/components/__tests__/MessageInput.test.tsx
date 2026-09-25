@@ -3771,6 +3771,41 @@ describe("MessageInput", () => {
     expectSubmission(onSend, "before /dou after", "direct");
   });
 
+  it("completes a root slash command typed in front of existing text", async () => {
+    const onSend = vi.fn();
+    // Rewind commands consume a bare selection; text after the caret must
+    // become the argument instead.
+    const onCustomCommand = vi.fn(() => true);
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        onSend,
+        slashCommands: ["clear", "clearloop", "compact"].map(
+          createClientSlashCommand,
+        ),
+        onCustomCommand,
+      },
+    ) as HTMLTextAreaElement;
+
+    // Pasted body, then Home, then `/cl` typed before it.
+    fireEvent.change(textarea, {
+      target: {
+        value: "/clfix the build",
+        selectionStart: 3,
+        selectionEnd: 3,
+      },
+    });
+
+    expect(screen.getByRole("menuitem", { name: /\/clear\b/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /\/clearloop/ })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /\/compact/ })).toBeNull();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => expect(textarea.value).toBe("/clear fix the build"));
+    expect(onCustomCommand).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("hides slash suggestions once the command is completely typed", () => {
     const textarea = renderMessageInput(
       vi.fn(() => true),

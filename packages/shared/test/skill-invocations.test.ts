@@ -107,7 +107,7 @@ describe("skill invocation resolution", () => {
     ]);
   });
 
-  it("offers completion only for a root invocation at the draft end", () => {
+  it("offers completion only for a root invocation ending at the caret", () => {
     expect(getInvocationCompletionQuery("/dou")).toEqual({
       start: 0,
       end: 4,
@@ -123,7 +123,24 @@ describe("skill invocation resolution", () => {
       leading: true,
     });
     expect(getInvocationCompletionQuery("please /dou")).toBeNull();
-    expect(getInvocationCompletionQuery("/dou later", 4)).toBeNull();
+    // Typed in front of existing text: the token ends at the caret.
+    expect(getInvocationCompletionQuery("/dou later", 4)).toEqual({
+      start: 0,
+      end: 4,
+      sigil: "/",
+      query: "dou",
+      leading: true,
+    });
+    expect(getInvocationCompletionQuery("/doulater text", 4)).toEqual({
+      start: 0,
+      end: 4,
+      sigil: "/",
+      query: "dou",
+      leading: true,
+    });
+    expect(getInvocationCompletionQuery("/dou later", 0)).toBeNull();
+    expect(getInvocationCompletionQuery("  /dou", 2)).toBeNull();
+    expect(getInvocationCompletionQuery("please /dou later", 11)).toBeNull();
   });
 
   it("distinguishes unrecognized tokens from native and skill entries", () => {

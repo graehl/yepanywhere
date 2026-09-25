@@ -549,6 +549,65 @@ If source selection, authentication or draft sharing makes the wrapper a
 substantial project, ship the right-pane workflow first and leave this item
 explicitly deferred. Mere artifact possession is never submission authority.
 
+## Artifact-owned Submit transport (2026-09-25 discussion)
+
+User-directed addition; discussion only, not an implementation request.
+Contributing-model: 6-Astra.
+
+A paper-review artifact now collects source-anchored proposals, decisions and
+selected-text notes in the full rendered manuscript. Manual Copy feedback →
+paste into the session is sufficient for the current submission deadline.
+The missing convenience is an explicit **Submit** action inside that artifact,
+usable in play mode across iframe/host arrangements and, if feasible, a
+standalone tab. Ordinary text selection and copying must never send a turn.
+This transport can support an artifact's own review UI without waiting for
+YA's full annotation adapter or Plannotator integration.
+
+Two candidate transports remain open:
+
+- **Registered clipboard prefix.** YA associates a fresh, artifact-specific
+  prefix with one destination session. Artifact JavaScript writes that prefix
+  plus a structured payload when the user chooses Submit. A cooperating YA
+  client recognizes only an active registration, validates the envelope,
+  removes the transport prefix, and submits the payload to that session.
+  Copy feedback remains an ordinary copy action; only Submit writes the
+  submission envelope. Registration lifetime, clipboard observation and
+  acknowledgement are part of the missing facility, not assumed browser
+  capabilities. Prove permissions, focus and frame/tab behavior on supported
+  browser/native clients before selecting this route. Do not introduce
+  perpetual clipboard polling or ingest unrelated clipboard contents.
+- **Scoped submission URL.** Supply the artifact with a bearer capability
+  whose sole authority is to submit bounded feedback to one session. This
+  offers a direct request/acknowledgement path without using the clipboard.
+  Prove actual reachability, CSP/CORS, sandbox and direct/relay behavior;
+  neither a fetch call nor a URL alone establishes those properties. Keep
+  the capability separate from view grants and owner/wake credentials.
+
+Use the [principals-and-grants vocabulary](../../topics/principals-and-grants.md):
+the prefix or bearer identifies a bounded submission grant; the delivery
+route supplies no additional authority. An ordinary text prefix is only a
+delimiter, not proof of the author or of a user gesture. Registration must
+therefore explicitly authorize the cooperating artifact's submission channel.
+Bind the destination in YA, not in arbitrary payload text. Consider expiry,
+revocation, payload limits and an envelope with submission ID, artifact/review
+generation and feedback. Duplicate clipboard observations or request retries
+must not create duplicate turns. Preserve drafts through failed or uncertain
+sends, acknowledge accepted submissions, and leave unrelated composer text
+untouched. Do not leak capability material into the turn or committed artifact.
+
+This candidate deliberately extends the earlier “YA chrome owns Send” design:
+the artifact may request a send through its explicitly registered capability.
+It does not grant arbitrary session access or ambient YA authority. The
+current active-content contract remains unchanged until a later authorized
+implementation updates and verifies that boundary. Manual paste stays the
+fallback, and no roadmap priority changes with this discussion.
+
+A deciding trial should use the current paper-review artifact and verify:
+ordinary copy does nothing; explicit Submit reaches exactly the registered
+session once; copied/retried/stale envelopes do not resend; two open artifacts
+cannot cross-route; expiry and denied clipboard/network access retain the
+feedback; and the declared iframe and standalone-tab configurations work.
+
 ## Implementation sequence and acceptance
 
 1. **Prove the annotation adapter.** Isolated fixture with selectable text,

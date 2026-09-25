@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
+import { useModalLayer } from "./ui/Modal";
 import styles from "./ViewerFindField.module.css";
 
 // Wide enough for a short query plus its "12/345" count.
@@ -60,6 +61,13 @@ export function ViewerFindField({ find }: { find: ViewerFind }) {
   const room = useHeaderRoom(field);
   const composing = useRef(false);
   const hintId = useId();
+  // While a search is open, Escape closes it before it closes the viewer,
+  // as a browser's find bar does.
+  useModalLayer(
+    find.dismiss,
+    find.available && (find.active || Boolean(find.query)),
+    { lockScroll: false },
+  );
   if (!find.available) return null;
   const { counts } = find;
   const status = !counts

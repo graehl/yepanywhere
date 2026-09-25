@@ -165,9 +165,12 @@ test("finds within the file viewer after a click in its content", async ({
     const viewer = page.locator(".file-viewer");
     await expect(viewer.getByText("beta needle")).toBeVisible();
     await recordUiCapture(page, "file-viewer-find-idle-1200");
+    const findBox = page.getByRole("searchbox", { name: "Find in this view" });
+    // This embedded viewer stacks its actions under the path, leaving no
+    // room for an idle field; Ctrl+F shows it anyway.
+    await expect(findBox).toBeHidden();
     await viewer.getByText("beta needle").click();
     await page.keyboard.press("Control+f");
-    const findBox = page.getByRole("searchbox", { name: "Find in this view" });
     await expect(findBox).toBeFocused();
     // Every keystroke lands in the field promptly while matches repaint.
     let typed = "";
@@ -191,7 +194,9 @@ test("finds within the file viewer after a click in its content", async ({
     ).toBe("needle");
     await recordUiCapture(page, "file-viewer-find-1200");
     await findBox.press("Escape");
-    await expect(findBox).toHaveValue("");
+    // Without room, the dismissed field hides again and focus returns home.
+    await expect(findBox).toBeHidden();
+    await expect(viewer.locator(".file-viewer-body")).toBeFocused();
   } finally {
     writeFileSync(externalReadmePath, originalReadme);
   }

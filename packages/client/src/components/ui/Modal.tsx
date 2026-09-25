@@ -108,8 +108,16 @@ function latestModalOwner<T extends { id: number }>(
   return latest;
 }
 
-/** Own topmost Escape dismissal and one share of the document scroll lock. */
-export function useModalLayer(onClose: () => void, enabled = true): void {
+/**
+ * Own topmost Escape dismissal and one share of the document scroll lock.
+ * A control layered inside a viewer, such as its find field, can take the
+ * Escape slot without the scroll lock (`lockScroll: false`).
+ */
+export function useModalLayer(
+  onClose: () => void,
+  enabled = true,
+  { lockScroll = true }: { lockScroll?: boolean } = {},
+): void {
   const onCloseRef = useRef(onClose);
   const ownerIdRef = useRef<number | null>(null);
   onCloseRef.current = onClose;
@@ -131,11 +139,13 @@ export function useModalLayer(onClose: () => void, enabled = true): void {
     if (needsEscapeListener) {
       document.addEventListener("keydown", handleModalEscape, true);
     }
-    if (bodyScrollOwners === 0) {
-      bodyOverflowBeforeModal = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
+    if (lockScroll) {
+      if (bodyScrollOwners === 0) {
+        bodyOverflowBeforeModal = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+      }
+      bodyScrollOwners += 1;
     }
-    bodyScrollOwners += 1;
 
     return () => {
       const ownerIndex = modalLayerOwners.findIndex(
@@ -145,13 +155,14 @@ export function useModalLayer(onClose: () => void, enabled = true): void {
       if (modalLayerOwners.length === 0) {
         document.removeEventListener("keydown", handleModalEscape, true);
       }
+      if (!lockScroll) return;
       bodyScrollOwners -= 1;
       if (bodyScrollOwners === 0) {
         document.body.style.overflow = bodyOverflowBeforeModal ?? "";
         bodyOverflowBeforeModal = null;
       }
     };
-  }, [enabled]);
+  }, [enabled, lockScroll]);
 }
 
 /** Own the topmost Backspace dismissal slot while a viewer is visible. */

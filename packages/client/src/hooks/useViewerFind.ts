@@ -55,9 +55,12 @@ export function useViewerFind(source: ViewerFindSource | null): ViewerFind {
     if (text) setQueryState(text);
     setActive(true);
     focusRequest.current = true;
+    // Focus now when the field is already shown, so keys typed right after
+    // Ctrl+F land in it; an idle field hidden for lack of room is focused
+    // once it renders.
     const input = inputRef.current;
-    if (input) {
-      input.focus();
+    input?.focus();
+    if (input && input.ownerDocument.activeElement === input) {
       input.select();
       focusRequest.current = false;
     }

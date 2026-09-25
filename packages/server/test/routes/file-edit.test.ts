@@ -10,7 +10,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Hono } from "hono";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PRINCIPAL_VARIABLE,
+  type Principal,
+} from "../../src/auth/principal.js";
 import { createFileEditRoutes } from "../../src/routes/file-edit.js";
 import { createLocalResourcePathPolicy } from "../../src/routes/local-resource-policy.js";
 
@@ -198,6 +203,74 @@ describe("source editing routes", () => {
       matches: true,
     });
     expect((await post({ path: artifact, hook: "other" })).status).toBe(409);
+  });
+  it("refuses artifact rebuild to a limited principal before registering or running it", async () => {
+    const { ArtifactRebuildService } = await import(
+      "../../src/services/ArtifactRebuildService.js"
+    );
+    const rebuild = new ArtifactRebuildService(join(root, "state"));
+    const register = vi.spyOn(rebuild, "register");
+    const run = vi.spyOn(rebuild, "run");
+    const app = new Hono<{
+      Variables: Record<typeof PRINCIPAL_VARIABLE, Principal>;
+    }>();
+    app.use("*", async (c, next) => {
+      c.set(PRINCIPAL_VARIABLE, {
+        kind: "limited",
+        username: "bob",
+        switched: false,
+        locked: true,
+        via: "direct",
+        grants: {
+          newSessionProjects: [],
+          joinProjects: [],
+          viewProjects: [],
+          joinStaleOffsetMinutes: 0,
+          lock: {},
+        },
+      });
+      await next();
+    });
+    app.route(
+      "/",
+      createFileEditRoutes({
+        policy: createLocalResourcePathPolicy({
+          allowedPaths: [join(root, "project")],
+        }),
+        scanner: { getProject: async () => null },
+        resolveArtifactUrl: async () => file,
+        rebuild,
+      }),
+    );
+    const artifact = join(root, "project", "x.html");
+    const marker = join(root, "project", "escaped");
+    const regenerate = {
+      hook: "h",
+      registrationVersion: 1,
+      proposedRegistration: {
+        cwd: join(root, "project"),
+        argv: [
+          process.execPath,
+          "-e",
+          `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "")`,
+        ],
+        outputs: [artifact],
+        timeoutSeconds: 30,
+      },
+    };
+    await writeFile(
+      artifact,
+      `<!-- ya-artifact:v1 ${JSON.stringify({ regenerate })} --><p>x</p>`,
+    );
+    const response = await app.request("/file-edit/rebuild", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: artifact, hook: "h", register: true }),
+    });
+    expect(response.status).toBe(403);
+    expect(register).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    await expect(stat(marker)).rejects.toThrow();
   });
   it("does not apply source edit middleware to unrelated API routes", async () => {
     const app = create();

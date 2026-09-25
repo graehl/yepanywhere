@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { PRINCIPAL_VARIABLE, type Principal } from "../auth/principal.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
   type ArtifactRebuildService,
@@ -53,7 +54,9 @@ function revision(bytes: Uint8Array): string {
 
 /** Bounded UTF-8 source reads and conditional user saves; never a public route. */
 export function createFileEditRoutes(deps: FileEditDeps) {
-  const routes = new Hono();
+  const routes = new Hono<{
+    Variables: Record<typeof PRINCIPAL_VARIABLE, Principal>;
+  }>();
   const saving = new Set<string>();
   routes.use("/file-edit", bodyLimit({ maxSize: MAX_EDIT_BYTES * 6 + 16384 }));
   routes.use("/file-edit", async (c, next) => {
@@ -165,7 +168,12 @@ export function createFileEditRoutes(deps: FileEditDeps) {
   // Run the artifact's approved rebuild hook, then return the fresh preview so
   // the editor replaces HTML and mapping together. A registration mismatch
   // is reported, never silently re-approved; `register` is the explicit act.
+  // The hook runs as the host user outside any session sandbox, so only the
+  // superuser may approve or run it, whatever the route policy table says.
   routes.post("/file-edit/rebuild", async (c) => {
+    const principal = c.get(PRINCIPAL_VARIABLE) as Principal | undefined;
+    if (principal && principal.kind !== "superuser")
+      return c.json({ error: "Superuser required" }, 403);
     if (!deps.rebuild)
       return c.json({ error: "Artifact rebuild is unavailable" }, 409);
     let body: unknown;

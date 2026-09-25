@@ -164,7 +164,36 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
-Current source refresh, 2026-09-24 (0.156.1):
+Current compatibility audit, 2026-09-25 (0.157.0):
+
+- Installed Codex is `codex-cli 0.157.0`. The official `rust-v0.157.0` tag
+  peels to commit `00c972ed5d6ff6499317fd41b7f23605b8e6850d`. Both root version
+  markers and the reference checkout record `0.157.0`. `expectedVersion`
+  advances without any source change because the checked-in subset was
+  re-audited against this release's own generator. Advancing it also clears the
+  server's startup mismatch warning.
+- `pnpm codex:protocol:check` passes with no generated subset drift.
+- App-server protocol changes are additive and outside what YA consumes. They
+  add gateway OAuth methods (`account/gatewayOAuth/{read,login,cancel}`), an
+  `account/gatewayOAuth/changed` notification, and an opt-in
+  `explicitGatewayOauth` initialize capability. `ThreadItemEntry` gains nullable
+  `startedAtMs` and `completedAtMs`, and MCP resource reads gain `target`. Core
+  gains an `InvalidPrompt` error, but the v2 wire maps it to `other`. YA's
+  terminal-reason mapping therefore sees no new value.
+- Durable transcripts gain only optional fields. `SessionMeta` adds
+  `creator_user_id` and `creator_account_id`, which YA's non-strict
+  session-meta schema ignores. Compacted items add `resume_metadata`, which the
+  passthrough `compacted` payload schema keeps. No 0.156.x or 0.157.0 rollout
+  exists locally yet, so the persisted-JSONL census is still deferred.
+- The authenticated no-token `model/list` returns the same eight models as
+  0.156.1 in the same order, with Astra as default at medium effort. The bundled
+  catalog changes only `gpt-5.6-sol`'s priority, from 6 to 4, which leaves its
+  rank unchanged. Context windows are unchanged.
+
+Status: no-op audit, with no YA source change. Re-run the persisted-JSONL
+census once a 0.156.1 or newer rollout exists.
+
+Previous source refresh, 2026-09-24 (0.156.1):
 
 - Installed Codex is `codex-cli 0.156.1`. The official `rust-v0.156.1` tag
   peels to commit `b412ff32c417f855c2b2d1581b77058eed87c84b`. Root

@@ -4,15 +4,27 @@ import { useI18n } from "../i18n";
 import { useModalLayer } from "./ui/Modal";
 import styles from "./ViewerFindField.module.css";
 
-// Wide enough for a short query plus its "12/345" count.
-const FIELD_MIN_WIDTH_PX = 176;
+/**
+ * The row's flex items: a `display: contents` wrapper contributes its
+ * children, which occupy the row even though the wrapper measures zero.
+ */
+function rowItems(parent: Element): HTMLElement[] {
+  return [...parent.children].flatMap((child) =>
+    !(child instanceof HTMLElement)
+      ? []
+      : getComputedStyle(child).display === "contents"
+        ? rowItems(child)
+        : [child],
+  );
+}
 
 /**
  * Whether the field fits on the header's first row beside everything else.
  * Viewer headers wrap greedily (ViewerHeader.module.css), so an idle field
  * that does not fit is hidden rather than pushing the actions to another row.
- * In a modal the field sits inside the header's actions, so the row measured
- * is the modal header itself.
+ * Wrapping places each item at its flex basis, so the field needs its own
+ * basis free, not just its minimum width. In a modal the field sits inside
+ * the header's actions, so the row measured is the modal header itself.
  */
 function useHeaderRoom(field: HTMLElement | null): boolean {
   const [room, setRoom] = useState(false);
@@ -23,10 +35,16 @@ function useHeaderRoom(field: HTMLElement | null): boolean {
     const measure = () => {
       const style = getComputedStyle(row);
       const gap = Number.parseFloat(style.columnGap) || 0;
+      // Without a resolved width (no stylesheet applied) nothing can be
+      // shown to fit.
+      const needed =
+        Number.parseFloat(getComputedStyle(field).flexBasis) ||
+        Number.parseFloat(getComputedStyle(field).minWidth) ||
+        Number.POSITIVE_INFINITY;
       let used = 0;
       let items = 0;
-      for (const child of row.children) {
-        if (child === field || !(child instanceof HTMLElement)) continue;
+      for (const child of rowItems(row)) {
+        if (child === field) continue;
         const childStyle = getComputedStyle(child);
         if (childStyle.display === "none" || childStyle.position === "absolute")
           continue;
@@ -42,11 +60,11 @@ function useHeaderRoom(field: HTMLElement | null): boolean {
         row.clientWidth -
         (Number.parseFloat(style.paddingLeft) || 0) -
         (Number.parseFloat(style.paddingRight) || 0);
-      setRoom(width - used - gap * items >= FIELD_MIN_WIDTH_PX);
+      setRoom(width - used - gap * items >= needed);
     };
     const observer = new ResizeObserver(measure);
     observer.observe(row);
-    for (const child of row.children)
+    for (const child of rowItems(row))
       if (child !== field) observer.observe(child);
     measure();
     return () => observer.disconnect();

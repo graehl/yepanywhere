@@ -71,6 +71,11 @@
   align-items: baseline;
   flex-wrap: nowrap;
   gap: 0.375rem;
+  /* Sized to its content, not stretched across the info column: the header
+     measures this box to decide whether the actions fit beside it, and a
+     stretched box reports the space it was given rather than what it needs. */
+  width: fit-content;
+  max-width: 100%;
 }
 
 .quoteReplySurface:hover :global(.text-block-quote),

@@ -20,12 +20,11 @@ import {
 
 /** topics/limited-users.md § Delivery v1 — Authorization. */
 
+/** The query is dropped: the policy never reads it. */
 function decide(method: string, url: string) {
-  const parsed = new URL(url, "http://127.0.0.1");
   return decideLimitedRoute({
     method,
-    path: parsed.pathname,
-    query: parsed.searchParams,
+    path: new URL(url, "http://127.0.0.1").pathname,
   });
 }
 
@@ -103,6 +102,47 @@ describe("limited-user route policy", () => {
       filter: "sessions",
     });
     expect(decide("POST", "/api/sessions")).toEqual({ kind: "deny" });
+  });
+
+  it("takes no project grant from a query parameter the route ignores", () => {
+    // Each of these handlers ignores `projectId`; a granted id in the query
+    // must not open them.
+    for (const [method, url] of [
+      ["POST", "/api/processes/p1/abort?projectId=granted"],
+      ["POST", "/api/codex/updates/install?projectId=granted"],
+      ["PUT", "/api/speech/vocabulary?projectId=granted"],
+      ["GET", "/api/file-edit?projectId=granted&path=/elsewhere/x.ts"],
+      ["PUT", "/api/file-edit?projectId=granted"],
+      ["POST", "/api/file-edit/rebuild?projectId=granted"],
+    ] as const) {
+      expect(decide(method, url), `${method} ${url}`).toEqual({
+        kind: "deny",
+      });
+    }
+  });
+
+  it("scopes a queue operation by the project in its path", () => {
+    expect(
+      decide("POST", "/api/project-queue/other/promote-now?projectId=granted"),
+    ).toEqual({ kind: "project", projectId: "other", required: "new-session" });
+    expect(decide("GET", "/api/project-queue")).toEqual({
+      kind: "allow-filtered",
+      filter: "projects",
+    });
+    // Pausing or resuming dispatch is host-wide.
+    expect(
+      decide("POST", "/api/project-queue/pause?projectId=granted"),
+    ).toEqual({ kind: "deny" });
+    expect(
+      decide("POST", "/api/project-queue/resume?projectId=granted"),
+    ).toEqual({ kind: "deny" });
+  });
+
+  it("refuses an id segment that is not valid percent-encoding", () => {
+    expect(decide("GET", "/api/projects/%E0%A4%A/files")).toEqual({
+      kind: "deny",
+    });
+    expect(decide("GET", "/api/sessions/%E0%A4%A")).toEqual({ kind: "deny" });
   });
 });
 
@@ -351,6 +391,24 @@ describe("limited-user middleware", () => {
   it("refuses Issues & PRs at the operation, not only in the nav", async () => {
     const app = await buildApp();
     expect((await app.request("/api/issues")).status).toBe(403);
+  });
+
+  it("judges the path Hono routes, not its percent-encoded spelling", async () => {
+    const app = await buildApp();
+    // Hono decodes these onto the /api/issues and project-files handlers.
+    expect(
+      (await app.request("/api/%69ssues?projectId=view-project")).status,
+    ).toBe(403);
+    expect(
+      (
+        await app.request(
+          "/api/%70rojects/secret-project/files?projectId=view-project",
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (await app.request("/api/%70rojects/view-project/files")).status,
+    ).toBe(200);
   });
 
   it("allows a turn in a fresh joinable session and refuses a cold one", async () => {

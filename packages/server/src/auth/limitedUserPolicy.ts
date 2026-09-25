@@ -9,8 +9,14 @@
  * session outside the user's grants answers 404 rather than 403, because
  * whether a project exists is itself not the user's business.
  *
- * This module is pure: it decides from the method, the path, and the query,
- * and hands back what the caller must still resolve (a session's project).
+ * This module is pure: it decides from the method and the path, and hands
+ * back what the caller must still resolve (a session's project). The path
+ * must be the one the router matches handlers against (Hono's `c.req.path`,
+ * already percent-decoded), never the raw URL pathname: `/api/%69ssues`
+ * reaches the `/api/issues` handler, so the decision has to see it as that.
+ *
+ * A project grant comes only from the path. No route is opened by a
+ * `projectId` query parameter, because most handlers ignore one.
  */
 
 import type {
@@ -163,10 +169,17 @@ const JOIN_SESSION_ACTIONS = new Set([
 
 export interface LimitedRouteRequest {
   method: string;
-  /** Request pathname, without query. */
+  /** The routed path: percent-decoded as the router matches it, no query. */
   path: string;
-  /** Parsed query parameters. */
-  query: URLSearchParams;
+}
+
+/** One path segment as the router's param decoding reads it, or null. */
+function decodeSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
 }
 
 /** Decide what a limited principal's request needs, or that it is refused. */
@@ -218,7 +231,8 @@ export function decideLimitedRoute(
 
   const projectScoped = path.match(/^\/api\/projects\/([^/]+)(\/.*)?$/);
   if (projectScoped) {
-    const projectId = decodeURIComponent(projectScoped[1] as string);
+    const projectId = decodeSegment(projectScoped[1] as string);
+    if (projectId === null) return { kind: "deny" };
     const rest = projectScoped[2] ?? "";
     if (rest === "/sessions" || rest === "/sessions/create") {
       // Creating a session in this project. Checked before the session-scoped
@@ -229,7 +243,8 @@ export function decideLimitedRoute(
     }
     const sessionScoped = rest.match(/^\/sessions\/([^/]+)(\/(.*))?$/);
     if (sessionScoped) {
-      const sessionId = decodeURIComponent(sessionScoped[1] as string);
+      const sessionId = decodeSegment(sessionScoped[1] as string);
+      if (sessionId === null) return { kind: "deny" };
       const action = (sessionScoped[3] ?? "").split("/")[0] ?? "";
       if (isRead) {
         return { kind: "session", sessionId, required: "view" };
@@ -267,7 +282,8 @@ export function decideLimitedRoute(
 
   const sessionScoped = path.match(/^\/api\/sessions\/([^/]+)(\/(.*))?$/);
   if (sessionScoped) {
-    const sessionId = decodeURIComponent(sessionScoped[1] as string);
+    const sessionId = decodeSegment(sessionScoped[1] as string);
+    if (sessionId === null) return { kind: "deny" };
     const action = (sessionScoped[3] ?? "").split("/")[0] ?? "";
     if (isRead) return { kind: "session", sessionId, required: "view" };
     return {
@@ -294,29 +310,19 @@ export function decideLimitedRoute(
       ? { kind: "allow-filtered", filter: "sessions" }
       : { kind: "deny" };
   }
-  if (path.startsWith("/api/project-queue")) {
-    const projectId = request.query.get("projectId");
-    if (!projectId) {
-      return isRead
-        ? { kind: "allow-filtered", filter: "projects" }
-        : { kind: "deny" };
-    }
-    return {
-      kind: "project",
-      projectId,
-      required: isRead ? "view" : "new-session",
-    };
+  if (path === "/api/project-queue") {
+    return isRead
+      ? { kind: "allow-filtered", filter: "projects" }
+      : { kind: "deny" };
   }
-
-  // A query-scoped project route (git status, file completion, ...).
-  const queryProjectId = request.query.get("projectId");
-  if (queryProjectId) {
-    return {
-      kind: "project",
-      projectId: queryProjectId,
-      required: isRead ? "view" : "new-session",
-    };
+  const promoteNow = path.match(/^\/api\/project-queue\/([^/]+)\/promote-now$/);
+  if (promoteNow && method === "POST") {
+    const projectId = decodeSegment(promoteNow[1] as string);
+    if (projectId === null) return { kind: "deny" };
+    return { kind: "project", projectId, required: "new-session" };
   }
+  // Pausing and resuming dispatch are host-wide, and nothing else under
+  // /api/project-queue is listed.
 
   return { kind: "deny" };
 }

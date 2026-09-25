@@ -100,21 +100,12 @@ describe("decideProjectCreation", () => {
 
 describe("limited-user route policy for adding a project", () => {
   it("reaches the route, which is what holds them to their directory", () => {
-    const parsed = new URL("/api/projects", "http://127.0.0.1");
     expect(
-      decideLimitedRoute({
-        method: "POST",
-        path: parsed.pathname,
-        query: parsed.searchParams,
-      }),
+      decideLimitedRoute({ method: "POST", path: "/api/projects" }),
     ).toEqual({ kind: "allow" });
     // Anything else on the collection stays refused.
     expect(
-      decideLimitedRoute({
-        method: "DELETE",
-        path: parsed.pathname,
-        query: parsed.searchParams,
-      }),
+      decideLimitedRoute({ method: "DELETE", path: "/api/projects" }),
     ).toEqual({ kind: "deny" });
   });
 });

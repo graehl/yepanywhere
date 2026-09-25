@@ -247,11 +247,11 @@ export function createLimitedUsersMiddleware(
       return c.json({ error: "Session expired" }, 401);
     }
 
-    const url = new URL(c.req.url);
+    // The routed path, not `new URL(c.req.url).pathname`: Hono matches
+    // handlers against the percent-decoded path.
     const decision = decideLimitedRoute({
       method: c.req.method,
-      path: url.pathname,
-      query: url.searchParams,
+      path: c.req.path,
     });
 
     const isAccessible = (projectId: string) =>

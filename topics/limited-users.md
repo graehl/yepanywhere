@@ -202,6 +202,13 @@ a route added later is refused for limited users until it is listed. It is
 allowed gets 403, and a project or session outside the user's grants gets
 404 (existence is not disclosed).
 
+The decision is made on the path the router dispatches, after
+percent-decoding, so an encoded spelling such as `/api/%69ssues` is judged
+as the `/api/issues` route it reaches. A project grant comes only from a
+project or session id in that path: a `projectId` query parameter opens
+nothing, since most routes ignore one. An id segment that is not valid
+percent-encoding is refused.
+
 | operation | limited user |
 |---|---|
 | any API path not on the v1 allowlist | 403 |
@@ -211,6 +218,7 @@ allowed gets 403, and a project or session outside the user's grants gets
 | any session the user started | always at least readable, including after its project grant is removed |
 | Issues & PRs (`/api/issues*`) | 403, and the nav entry is hidden: it spends the host's ticket-system credentials |
 | Inbox, Projects, Source Control, All Sessions | served, with every project and session outside the user's grants removed from the response |
+| Project Queue actions | promote-now needs `newSessionProjects` on the project in its path; pausing or resuming dispatch 403 |
 | settings | `GET` of the client-facing settings document; every write 403 |
 | user administration | 403 except `GET /api/users/me` and `POST /api/users/logout` |
 | public shares, app links, devices, bang commands, absolute-path file reads, uploads outside a session, server admin, relay/remote-access config | 403 |

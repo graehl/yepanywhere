@@ -133,6 +133,16 @@ export function resolveShareReference(
   return parts.join("/");
 }
 
+/**
+ * A srcdoc document resolves URLs against the embedding play page, so a
+ * `#section` link would navigate the frame to `play.html` without its share
+ * grant instead of scrolling. Pages also create such links at runtime, which
+ * a static rewrite would miss, so fragment-only links are resolved at click
+ * time on the frame's own `about:srcdoc` location. It listens on the window,
+ * after every page handler, and yields to one that already took the click.
+ */
+export const KEEP_FRAGMENT_LINKS_IN_FRAME_SCRIPT = `window.addEventListener("click",function(e){if(e.defaultPrevented||!(e.target instanceof Element))return;var a=e.target.closest("a[href],area[href]");if(!a)return;var h=a.getAttribute("href").trim();if(h.charAt(0)!=="#")return;e.preventDefault();location.hash=h;});`;
+
 function toDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -149,6 +159,9 @@ export async function buildPlayableHtml(
 ): Promise<string> {
   const doc = new DOMParser().parseFromString(html, "text/html");
   for (const base of doc.querySelectorAll("base")) base.remove();
+  const keepFragments = doc.createElement("script");
+  keepFragments.textContent = KEEP_FRAGMENT_LINKS_IN_FRAME_SCRIPT;
+  doc.head.prepend(keepFragments);
   let inlined = 0;
   const cache = new Map<string, Promise<string | null>>();
   const inline = (path: string) => {

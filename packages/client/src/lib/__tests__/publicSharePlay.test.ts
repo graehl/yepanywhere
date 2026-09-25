@@ -3,6 +3,7 @@ import {
   buildPlayableHtml,
   buildPublicSharePlayUrl,
   isInlinableReference,
+  KEEP_FRAGMENT_LINKS_IN_FRAME_SCRIPT,
   parsePublicSharePlayUrl,
   publicSharePlayUrlFromFileShareUrl,
   resolveShareReference,
@@ -84,6 +85,9 @@ describe("public share play", () => {
     );
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html).not.toContain("<base");
+    expect(html).toContain(
+      `<head><script>${KEEP_FRAGMENT_LINKS_IN_FRAME_SCRIPT}</script>`,
+    );
     expect(html).toContain('href="data:text/css;base64,');
     expect(html).toContain('src="data:text/javascript;base64,');
     expect(html).toContain('src="https://cdn.example/lib.js"');

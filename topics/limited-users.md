@@ -221,7 +221,7 @@ percent-encoding is refused.
 | Project Queue actions | promote-now needs `newSessionProjects` on the project in its path; pausing or resuming dispatch 403 |
 | settings | `GET` of the client-facing settings document; every write 403 |
 | user administration | 403 except `GET /api/users/me` and `POST /api/users/logout` |
-| public shares, app links, devices, bang commands, absolute-path file reads, uploads outside a session, server admin, relay/remote-access config | 403 |
+| public shares, app links, devices, bang commands, absolute-path file reads, file editing and artifact rebuild (`/api/file-edit*`), uploads outside a session, server admin, relay/remote-access config | 403 |
 
 Session-to-project resolution for session-scoped paths uses the live process
 first and the session catalog second; a session that resolves to no project is

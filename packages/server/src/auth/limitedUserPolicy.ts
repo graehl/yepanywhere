@@ -55,8 +55,11 @@ export type FilteredListKind =
  * allowances so a project-scoped-looking path cannot sneak one in.
  *
  * Issues & PRs spend the host's ticket-system credentials; bang commands run
- * outside the provider sandbox; the rest are host administration, other
- * people's devices, or grant machinery.
+ * outside the provider sandbox; file editing reads and writes any absolute
+ * path in the host-wide local-file allow-set, which no project grant scopes,
+ * and its rebuild route runs a registered command outside any session
+ * sandbox; the rest are host administration, other people's devices, or grant
+ * machinery.
  */
 const DENIED_PREFIXES: readonly string[] = [
   "/api/issues",
@@ -77,6 +80,7 @@ const DENIED_PREFIXES: readonly string[] = [
   "/api/agents",
   "/api/local-file",
   "/api/local-image",
+  "/api/file-edit",
   "/api/artifacts",
   "/api/glossary-artifacts",
   "/api/debug",

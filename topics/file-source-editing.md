@@ -106,6 +106,12 @@ URL. It returns canonical path, UTF-8 content, SHA-256 revision, and `editable`.
 `preview=1` allows the larger HTML read. Artifact grants locate content; they
 never grant source-edit permission. All resolved files must pass the existing
 canonical local-file allow-set. Public shares expose no Edit action or write API.
+[Limited users](limited-users.md#authorization) are refused every
+`/api/file-edit` route with 403: the allow-set is host-wide, a `projectId`
+does not scope the absolute paths the route accepts, and the rebuild route runs
+a registered command outside any session sandbox. Opening the route to them
+would first need a check of each canonical path against their granted project
+roots.
 
 PUT `/api/file-edit` takes `{path, revision, content}`. It checks the current
 bytes against the revision and atomically replaces the file, preserving mode.

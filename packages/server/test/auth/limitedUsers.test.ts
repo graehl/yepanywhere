@@ -46,6 +46,18 @@ describe("limited-user route policy", () => {
     });
   });
 
+  it("refuses file editing and artifact rebuild on every method", () => {
+    for (const [method, url] of [
+      ["GET", "/api/file-edit?path=/elsewhere/x.ts"],
+      ["PUT", "/api/file-edit"],
+      ["POST", "/api/file-edit/rebuild"],
+    ] as const) {
+      expect(decide(method, url), `${method} ${url}`).toEqual({
+        kind: "deny",
+      });
+    }
+  });
+
   it("reads settings but never writes them", () => {
     expect(decide("GET", "/api/settings")).toEqual({ kind: "allow" });
     expect(decide("PATCH", "/api/settings")).toEqual({ kind: "deny" });

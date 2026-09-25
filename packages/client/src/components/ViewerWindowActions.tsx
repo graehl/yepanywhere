@@ -13,6 +13,7 @@ export function ViewerWindowActions({
   className,
   minimizeLabel,
   closeLabel,
+  reloadLabel,
   moveOut = true,
   onMoveOut = onClose,
   destructiveClose = false,
@@ -29,6 +30,8 @@ export function ViewerWindowActions({
   className?: string;
   minimizeLabel?: string;
   closeLabel?: string;
+  /** Names what a reload refetches when it is not a file on disk. */
+  reloadLabel?: string;
   moveOut?: boolean;
   onMoveOut?: () => void;
   destructiveClose?: boolean;
@@ -65,8 +68,8 @@ export function ViewerWindowActions({
       {onReload && (
         <button
           type="button"
-          aria-label={t("fileViewerReload" as never)}
-          title={t("fileViewerReload" as never)}
+          aria-label={reloadLabel ?? t("fileViewerReload" as never)}
+          title={reloadLabel ?? t("fileViewerReload" as never)}
           onClick={onReload}
         >
           <svg

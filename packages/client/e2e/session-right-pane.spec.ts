@@ -380,6 +380,8 @@ test("right pane discovers tool apps, resizes, parks and preserves typing", asyn
   await page.getByRole("button", { name: "App", exact: true }).click();
   await expect(pane).toBeVisible();
   await expect.poll(() => frameLoads).toBe(initialLoads + 1);
+  await pane.getByRole("button", { name: "Reload app" }).click();
+  await expect.poll(() => frameLoads).toBe(initialLoads + 2);
   const link = pane.getByRole("button", { name: "Copy viewer link" });
   for (const gesture of [
     { modifiers: ["Shift" as const] },

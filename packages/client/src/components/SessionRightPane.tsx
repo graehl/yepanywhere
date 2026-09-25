@@ -97,6 +97,8 @@ function SessionRightPaneContent({
   const visibleWidth = Math.min(width, maxWidth);
   const [dragging, setDragging] = useState(false);
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null);
+  // Remounting the frame refetches it; artifacts and apps serve per request.
+  const [reloadKey, setReloadKey] = useState(0);
   const url = pane.selected?.url;
   const viewerIdentity = url ?? pane.paneViewer?.id;
   useLayoutEffect(() => {
@@ -223,6 +225,12 @@ function SessionRightPaneContent({
                 url={pane.selected.url}
                 copyUrl={pane.copyUrl}
                 onMinimize={pane.hide}
+                onReload={() => setReloadKey((value) => value + 1)}
+                reloadLabel={
+                  pane.selected.artifactToken
+                    ? undefined
+                    : t("sessionRightPaneReloadApp")
+                }
                 onClose={pane.canKill ? () => void pane.kill() : undefined}
                 onMoveOut={pane.close}
                 destructiveClose={!pane.selected.artifactToken}
@@ -251,7 +259,7 @@ function SessionRightPaneContent({
             ) : (
               // biome-ignore lint/a11y/useIframeTitle: aria-label names the frame without a native tooltip over the app content.
               <iframe
-                key={`${pane.frameKey}:${url}`}
+                key={`${pane.frameKey}:${url}:${reloadKey}`}
                 src={url}
                 onLoad={pane.onFrameLoad}
                 title=""

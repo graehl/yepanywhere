@@ -502,6 +502,7 @@
   "sessionRightPaneLabel": "Session pane",
   "sessionRightPaneHide": "Minimize session pane",
   "sessionRightPaneClose": "Close session pane",
+  "sessionRightPaneReloadApp": "Reload app",
   "sessionRightPaneResize": "Resize session pane",
   "sessionRightPaneFrameBlocked": "This browser blocked the embedded view. Open it in a new window instead.",
   "appearanceWiderActivityPreviewsTitle": "Wider activity previews",

@@ -1,17 +1,23 @@
-# Fork is YA's only rewind, and a fork changes the provider cache key
+# Codex has no same-session rewind, and a Codex fork changes the cache key
 
-YA's only way to continue from an earlier point of a conversation is
-`forkSession` ([provider fork support](../topics/provider-fork-support.md)):
-a new provider session id carrying a copied or reference-backed prefix. On
-both wired providers the cache identity follows the session id, so the child's
+Status 2026-09-25: Claude same-session rewind (`/clear N`, `/clearloop`, the
+turn-menu Clear entries) shipped under
+[session-rewind](../topics/session-rewind.md). The open gap is Codex: there
+YA's only way to continue from an earlier point is still `forkSession`
+([provider fork support](../topics/provider-fork-support.md)), and the rewind
+surface is hidden. § [Plan: Codex same-session rewind](#plan-codex-same-session-rewind-through-threadrevert)
+below is the executable plan; delete this entry in the commit that lands it.
+
+A fork is a new provider session id carrying a copied or reference-backed
+prefix. On Codex the cache identity follows the thread id, so the child's
 first request is a cache-miss candidate even when the parent's prefix is warm.
 [Quick Answer forks](quick-answer-fork-cache-efficiency.md) measured that miss
 on Codex (94% uncached input across three forks; 85% on a native `/side`
 reproduction). YA has no control over which cache shard a new id lands on.
 
-Both providers expose an **in-place rewind** that keeps the session id, which
-YA's provider control surface does not offer as an operation. This entry
-records what each harness actually does, what YA already has, and the gap.
+Both providers expose an **in-place rewind** that keeps the session id. This
+entry records what each harness actually does, what YA already has, and the
+gap.
 
 ## Codex 0.154.0 (pinned `references/codex`)
 
@@ -23,19 +29,25 @@ records what each harness actually does, what YA already has, and the gap.
   child requests under a new key. The only override
   (`prompt_cache_key_override`) is internal to guardian review sessions; the
   app-server protocol exposes none.
-- **Esc-Esc backtrack forks in every released Codex.** The TUI's backtrack
-  "forks before the selected turn and restores its prompt in the new composer"
-  (`codex-rs/tui/src/app_backtrack.rs:1-14`), through `fork_thread_at` with
-  `before_turn_id` (`codex-rs/tui/src/app_server_session.rs:891-966`). The
-  installed 0.155.0 is unchanged (`git show rust-v0.155.0:` of both files).
-  So the released TUI's own rewind has exactly the fork cache exposure YA
-  has. Unreleased `main` (commit `7498521`, 2026-09-18) switches backtrack to
-  `thread/revert` in place: `app_backtrack.rs` reads "Revert the current
-  thread before the selected prompt", `event_dispatch.rs` calls
-  `revert_thread`, and `thread-store/src/local/thread_rollout_resolver.rs`
-  states "`thread/revert` keeps the thread ID stable while switching the
-  thread to a new rollout file". That is the direction to follow, and a
-  future Codex release will ship it as the TUI default.
+- **Esc-Esc backtrack reverts in place as of Codex 0.157.0.** Through 0.155.0
+  the TUI's backtrack forked before the selected turn (`fork_thread_at` with
+  `before_turn_id`), with exactly the fork cache exposure YA has. The
+  installed and pinned 0.157.0 (`references/codex` at tag `rust-v0.157.0`)
+  ships the in-place form: `codex-rs/tui/src/app_backtrack.rs:7-14` "reverts
+  before" the selected prompt and line 123 reads "Revert the current thread
+  before the selected prompt". `thread/revert` is a stable, non-experimental
+  app-server method there
+  (`codex-rs/app-server-protocol/src/protocol/common.rs:755`, notification
+  `thread/reverted` at line 1925), and
+  `codex-rs/thread-store/src/local/thread_rollout_resolver.rs:1-4` states it
+  "keeps the thread ID stable while switching the thread to a new rollout
+  file".
+- **Codex's own `/clear` is not a rewind.** It is `thread/start` with
+  `sessionStartSource: "clear"` (`codex-rs/tui/src/app/event_dispatch.rs:361`,
+  `InitialHistory::Cleared` at `app-server/.../thread_processor.rs:1494`),
+  described as "clear the terminal and start a new chat"
+  (`codex-rs/tui/src/slash_command.rs:102`): a new thread id. YA's `/clear N`
+  maps to `thread/revert`, not to that.
 - **The in-place primitives exist, and the TUI does not use them for
   backtrack.** `thread/rollback {threadId, numTurns}` drops the last N turns
   of a legacy-history thread and rejects paginated threads
@@ -104,7 +116,7 @@ present and already partly exercised:
 
 | Provider | In-place primitive | YA status |
 |---|---|---|
-| Codex paginated thread | `thread/revert {threadId, beforeTurnId}` | in the pinned 0.154.0 schema, absent from YA's generated protocol types; needs a protocol refresh |
+| Codex paginated thread | `thread/revert {threadId, beforeTurnId}` | in YA's generated protocol since 2026-09-19 (`codex-protocol/index.ts` exports `ThreadRevertParams`/`Response`/`RevertedNotification`); no caller yet |
 | Codex legacy thread | `thread/rollback {threadId, numTurns}` | removed in Codex 0.156.1; YA no longer calls it |
 | Claude | `resume` + `resumeSessionAt` (+ `resumeDropsTurn`) | used only for API-error tail recovery |
 
@@ -124,7 +136,7 @@ cost.
 The binding contract is now [topics/session-rewind.md](../topics/session-rewind.md);
 this section is the design history that fed it. Build and enable this for
 the Claude provider, where the truncating resume is already wired end to
-end. Codex follows once `thread/revert` is in the generated protocol.
+end. Codex follows; its plan is the next section.
 
 **Turn menu.** The existing per-turn fork menu
 (`packages/client/src/components/blocks/UserPromptBlock.tsx`, the
@@ -234,6 +246,158 @@ Constraints the implementation inherits:
   `parentUuid`, which `buildDag` already resolves to an active branch; Codex
   `thread/revert` rewrites durable history, which the reader re-reads.
 
+## Plan: Codex same-session rewind through `thread/revert`
+
+Scope: the `codex` provider (app-server transport). `codex-oss` runs a
+different transport and stays excluded. The user-visible contract is
+unchanged from [session-rewind](../topics/session-rewind.md): `/clear N`,
+`/clearloop`, the turn-menu Clear entries, and grouped rewound history.
+`/clear 0` still starts a new session. Two approvals gate the work.
+Enacting Codex compatibility edits needs user approval
+([provider development](../docs/development/providers.md)), and step 7
+needs approval of a capability gate
+([server capabilities](../topics/server-capabilities.md#minimum-compatibility-horizons)).
+
+**Shape: reuse Claude's lazy pending-rewind seam.** The Claude path records
+the rewind, arms a pending truncation in session metadata, and aborts the
+idle process (`rewindSessionToCut`, `packages/server/src/routes/sessions.ts`).
+The next activation applies the cut at the single launch seam
+(`resolveResumeTruncation`, `packages/server/src/supervisor/resume-truncation.ts`).
+Codex applies the same pending record differently: after `thread/resume` and
+before the first `turn/start`, send `thread/revert {threadId, beforeTurnId}`.
+This keeps every activation path covered: the resume route, Project Queue,
+heartbeat and wake, reactivation, and settings restarts. An eager variant
+would send the revert to the live idle `CodexAppServerClient` without an
+abort. It is a later latency optimization for `/clearloop`, not the first
+revision.
+
+Steps:
+
+1. **Cut to Codex turn id.** `resolveRewindCut` refuses any boundary that is
+   not a Claude message ("needs a Claude transcript boundary"). Accept the
+   Codex `kind: "turn"` boundary that `providerForkBoundaryForMessage`
+   already produces through `getCodexProviderForkTurnId`. The revert target
+   is the **first dropped** turn: for Clear-after-N, the turn after N (the
+   record's `droppedFromMessageId`); for Clear-replacing, the source turn.
+   Add an optional `revertBeforeTurnId` to `SessionPendingRewind` (shared)
+   beside the existing `cutMessageId`, which stays the YA display anchor.
+   A cut at the tail is already a no-op (`hasTail` false).
+2. **Refuse before arming** (409, nothing changed):
+   - a legacy thread whose rollout is not `history_mode: "paginated"`, since
+     `thread/revert` rejects those (`thread_processor.rs:2126-2130`) and YA's
+     lineage reader already reads the field (`codex-rollout-lineage.ts:157`);
+   - the existing checks: external writer, in-turn or waiting-input, and a
+     non-empty deferred queue.
+3. **Launch seam.** Extend `resolveResumeTruncation` to return
+   `{ revertBeforeTurnId, rewindRecordId }` for Codex. It is currently gated
+   on `isClaudeProviderName`. Keep one function so no activation path can
+   skip it.
+4. **Provider apply** (`packages/server/src/sdk/providers/codex.ts`, the
+   `thread/resume` paths near the two `"thread/resume"` call sites). Await
+   `thread/revert` before any `turn/start`. Then read what
+   `thread_revert_response` emits while it "shuts the runtime down and
+   rebuilds" (`references/codex`
+   `codex-rs/app-server/src/request_processors/thread_processor.rs:2111-2175`)
+   and make YA's client tolerate it: `thread/reverted`, and any
+   closed/status notification that the state machine could read as session
+   end. On success, call the Supervisor's existing `consumePendingRewind`.
+   On a deterministic refusal (method not found on an older Codex,
+   `ensure_direct_input_allowed`, not paginated), call
+   `discardRefusedRewind` and surface the error. Do not let the turn run
+   against the unreverted tail.
+5. **Fork with a pending rewind.** `Supervisor.forkSession` already bounds a
+   Claude copy by a pending rewind's cut (the comment near "A full copy of a
+   session whose rewind has not yet been applied"). The Codex equivalent
+   bounds `thread/fork` with `lastTurnId` set to the kept turn.
+6. **Reader: dropped rows after the revert is applied.**
+   - **Before apply**, the tail is still in the selected rollout, and the
+     rewind record groups it exactly as on Claude. Verify that the record
+     grouping is provider-agnostic.
+   - **After apply**, `isNewerCodexSessionFile` (`codex-reader.ts`) selects
+     the new physical rollout `rollout-<ts>-<threadId>_<rolloutId>.jsonl`.
+     Its `history_base` references the predecessor only up to
+     `end_ordinal_exclusive` (`codex-rollout-lineage.ts:173-201`; reader
+     support from `d893c12ce`, "Read reverted Codex rollout lineages").
+     The dropped rows remain in the predecessor file past that cutoff, but
+     lineage iteration no longer yields them.
+   - **Add:** for a lineage boundary that a YA rewind record created, read
+     the predecessor's entries from the cutoff to its end and emit them as
+     that record's rewound group.
+   - Tests use two-rollout fixtures like `d893c12ce`'s.
+7. **Enable and gate.** Add `codex` to the server's `isRewindProvider` and
+   the client's `REWIND_PROVIDERS` (`packages/client/src/lib/sessionRewind.ts`).
+   A hosted client can be newer than the server. Offered only on the
+   existing `session-rewind` capability, a server without Codex support
+   would show the commands and then 409, so a new capability (e.g.
+   `codex-session-rewind`) must gate the client.
+8. **Contracts.** Update the providers bullet in
+   [session-rewind](../topics/session-rewind.md) § Defaults and
+   compatibility, and [codex-sessions](../topics/codex-sessions.md) for the
+   reader change. Delete this gap entry in the commit that lands the plan.
+9. **Checks.**
+   - Unit tests: the cut-to-turn-id mapping, the Codex branch of
+     `resolveResumeTruncation`, the provider sending `thread/revert` before
+     `turn/start` (mocked app-server), refusal cleanup, and reader grouping
+     across two physical rollouts.
+   - Real-path smoke: one `/clear N` on a live Codex session in an isolated
+     instance. Confirm the next turn does not see the dropped content, and
+     that reload shows the collapsed group.
+10. **Cache confirmation: one or two real uses.** On a warm Codex thread
+    (last turn under five minutes ago), run `/clear N`, send a prompt, and
+    read the first request after the revert. `token_count` records carry
+    per-request `info.last_token_usage` with `input_tokens` and
+    `cached_input_tokens`:
+
+    ```bash
+    t=<thread-id>
+    new=$(ls -t ~/.codex/sessions/*/*/*/rollout-*"$t"_*.jsonl | head -1)
+    jq -c 'select(.payload.type=="token_count")
+      | .payload.info.last_token_usage
+      | {input_tokens, cached_input_tokens}' "$new" | head -3
+    ```
+
+    Compare against the first request of an ordinary next turn on the same
+    thread and against the fork baseline (94% uncached).
+    - Pass: the cached share is close to an ordinary continuation.
+    - Fail: the share is close to the fork baseline. The feature still
+      works, but the topic states the cost, and `/clearloop` on Codex pays
+      the full prefix every iteration.
+    - Record the numbers in the topic. They are the evidence this gap's
+      premise (same thread id, same cache key) has lacked.
+
+Risks:
+
+- **Prefix drift across the runtime rebuild.** The same key does not
+  guarantee the same bytes. If the rebuild re-renders base or developer
+  instructions or the environment context (date, cwd, AGENTS files), the
+  first request misses even under the same key. Step 10 detects this;
+  reading the rebuild code identifies the cause.
+- **Lineage depth under `/clearloop`.** Every applied revert writes a new
+  physical rollout. A 69-iteration loop (the size observed on Claude) could
+  produce a 69-segment chain. Codex may instead collapse repeated cuts
+  onto the earliest base that holds the prefix; this is unverified.
+  `resolveCodexRolloutLineage` walks every segment on each read, bounded
+  only by `maxSegments`. Measure the depth after three iterations before
+  enabling `/clearloop` on Codex. If it grows linearly, ship `/clear N` and
+  keep `/clearloop` Claude-only until the read cost is bounded.
+- **`/clearloop` latency.** The lazy seam costs an abort, an app-server
+  start, a resume, and a revert per iteration. The eager live-client
+  variant removes the restart.
+- **Older Codex or legacy threads.** Where `thread/revert` is absent, the
+  Codex method error has to become a clean refusal and a discarded record,
+  never a turn that runs against the dropped tail. Pre-paginated sessions
+  cannot rewind at all; their 409 should say so.
+- **Files are not reverted.** This matches Claude: a code-restoring rewind
+  remains the separate
+  [worktree checkpoint](sketches/fork-with-worktree-checkpoint.md) story.
+- **Secondary readers.** Catalog previews, search, and counts ignore rewind
+  records on Claude too
+  ([rewind-records-ignored-by-secondary-readers](rewind-records-ignored-by-secondary-readers.md));
+  Codex inherits that gap.
+
+Pi's in-place `/tree` (`navigateTree()`, [pi-provider](../topics/pi-provider.md))
+could back the same surface later. It is out of scope here.
+
 ## Prior art for repeating a prompt from the same parent
 
 `/clearloop N M: [prompt]` above is M sends of the same prompt from the same
@@ -260,3 +424,8 @@ fork cache misses recorded in the Quick Answer gap. Extended 2026-09-18 with
 the Claude fork cache measurements and the same-session rewind, `/clear N`,
 `/fork N`, grouped rewound history, and `/clearloop` design.
 Contributing-model: fable-5.1
+
+Updated 2026-09-25 while researching Codex `/clear`: Codex 0.157.0 facts
+(in-place Esc-Esc revert, native `/clear` starts a new thread), the stale
+protocol row, and the Codex rewind plan with risks and cache confirmation.
+Contributing-model: claude-opus-5-5

@@ -1388,7 +1388,9 @@ describe("FileViewer", () => {
     expect(
       container.querySelectorAll(".code-content [data-line]"),
     ).toHaveLength(10_000);
-  });
+    // Rendering the full 10,000-line cap in jsdom takes ~1s locally but has
+    // exceeded the 5s default on a loaded upstream CI runner.
+  }, 20_000);
 
   it("keeps raw image links and moves the viewer through its stable URL", async () => {
     const fileResponse: FileContentResponse = {

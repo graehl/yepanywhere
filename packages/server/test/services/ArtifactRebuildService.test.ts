@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ArtifactRebuildService,
   parseArtifactRebuildDescriptor,
+  type RebuildDescriptor,
 } from "../../src/services/ArtifactRebuildService.js";
 
 describe("artifact rebuild hooks", () => {
@@ -26,6 +27,14 @@ describe("artifact rebuild hooks", () => {
         proposedRegistration: { cwd: root, argv, outputs: [artifact] },
       },
     })} --><h1>Report${extra}</h1>`;
+  }
+
+  /** The approval a user gives after being shown this descriptor. */
+  function approval(shown: RebuildDescriptor) {
+    return {
+      registrationVersion: shown.registrationVersion,
+      ...shown.proposedRegistration!,
+    };
   }
 
   it("parses only a well-formed descriptor from a real comment", () => {
@@ -63,7 +72,18 @@ describe("artifact rebuild hooks", () => {
     });
     await expect(service.run(artifact, parsed)).rejects.toThrow(/approve/);
 
-    expect(await service.register(artifact, parsed)).toMatchObject({
+    // An approval of a different proposal registers nothing.
+    const other = parseArtifactRebuildDescriptor(
+      descriptor([process.execPath, script, artifact, "other"]),
+    )!;
+    expect(
+      await service.register(artifact, parsed, approval(other)),
+    ).toBeUndefined();
+    expect((await service.status(artifact, parsed)).registered).toBe(false);
+
+    expect(
+      await service.register(artifact, parsed, approval(parsed)),
+    ).toMatchObject({
       registered: true,
       matches: true,
     });
@@ -98,7 +118,7 @@ describe("artifact rebuild hooks", () => {
         "console.error('boom'); process.exit(3)",
       ]),
     )!;
-    await service.register(artifact, failing);
+    await service.register(artifact, failing, approval(failing));
     expect(await service.run(artifact, failing)).toMatchObject({
       ok: false,
       exitCode: 3,
@@ -116,7 +136,7 @@ describe("artifact rebuild hooks", () => {
         },
       })} -->`,
     )!;
-    await service.register(artifact, slow);
+    await service.register(artifact, slow, approval(slow));
     const result = await service.run(artifact, slow);
     expect(result.ok).toBe(false);
     expect(result.timedOut).toBe(true);

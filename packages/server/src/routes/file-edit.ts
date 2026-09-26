@@ -10,6 +10,7 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import {
   type ArtifactRebuildService,
   parseArtifactRebuildDescriptor,
+  rebuildApprovalSchema,
 } from "../services/ArtifactRebuildService.js";
 import { expandHomePath } from "../utils/expandHomePath.js";
 import { writeFileAtomically } from "../utils/writeFileAtomically.js";
@@ -31,8 +32,10 @@ const saveSchema = z.object({
 const rebuildSchema = z.object({
   path: z.string().min(1).max(8192),
   hook: z.string().min(1).max(128),
-  /** Approve the artifact's current proposal before running it. */
+  /** Approve the proposal in `approved` before running it. */
   register: z.boolean().optional(),
+  /** The proposal the user was shown; registration requires it to be current. */
+  approved: rebuildApprovalSchema.optional(),
 });
 
 export interface FileEditDeps {
@@ -167,7 +170,8 @@ export function createFileEditRoutes(deps: FileEditDeps) {
 
   // Run the artifact's approved rebuild hook, then return the fresh preview so
   // the editor replaces HTML and mapping together. A registration mismatch
-  // is reported, never silently re-approved; `register` is the explicit act.
+  // is reported, never silently re-approved; `register` is the explicit act,
+  // and it approves only the `approved` proposal the user was shown.
   // The hook runs as the host user outside any session sandbox, so only the
   // superuser may approve or run it, whatever the route policy table says.
   routes.post("/file-edit/rebuild", async (c) => {
@@ -194,9 +198,22 @@ export function createFileEditRoutes(deps: FileEditDeps) {
         { error: "This artifact declares no matching rebuild hook" },
         409,
       );
-    let status = parsed.data.register
-      ? await deps.rebuild.register(before.path, descriptor)
-      : await deps.rebuild.status(before.path, descriptor);
+    const { register, approved } = parsed.data;
+    const registered =
+      register && approved
+        ? await deps.rebuild.register(before.path, descriptor, approved)
+        : undefined;
+    if (register && !registered)
+      return c.json(
+        {
+          error:
+            "The artifact's proposed rebuild command is not the one you approved; review it again",
+          regenerate: await deps.rebuild.status(before.path, descriptor),
+        },
+        409,
+      );
+    let status =
+      registered ?? (await deps.rebuild.status(before.path, descriptor));
     if (!status.registered || !status.matches)
       return c.json(
         {

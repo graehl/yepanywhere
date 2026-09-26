@@ -122,7 +122,12 @@ it("asks for approval, sends it with the run, and swaps in the rebuilt preview",
     "/usr/bin/python3 /proj/scripts/build.py",
   );
   await screen.findByText(/Rebuilt\./);
-  expect(rebuildBody(0)).toEqual({ path: PATH, hook: "paper", register: true });
+  expect(rebuildBody(0)).toEqual({
+    path: PATH,
+    hook: "paper",
+    register: true,
+    approved: { registrationVersion: 1, ...proposal },
+  });
   expect(
     (screen.getByTitle("Preview") as HTMLIFrameElement).getAttribute("srcdoc"),
   ).toContain("After");
@@ -138,6 +143,48 @@ it("declines to run when approval is refused", async () => {
   );
   await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(1));
   expect(screen.queryByText(/Rebuilt\./)).toBeNull();
+});
+
+it("shows the changed command for approval after the server refuses a stale one", async () => {
+  const changed = { ...proposal, argv: ["/usr/bin/python3", "/proj/other.py"] };
+  let reads = 0;
+  state.fetch.mockImplementation(async (path: string) => {
+    if (path.startsWith("/file-edit?")) {
+      reads += 1;
+      return {
+        path: PATH,
+        content: html("Before"),
+        revision: "r1",
+        editable: true,
+        regenerate: {
+          ...status(),
+          proposedRegistration: reads === 1 ? proposal : changed,
+        },
+      };
+    }
+    if (path === "/file-edit/rebuild")
+      throw Object.assign(
+        new Error("API error: 409: not the one you approved"),
+        {
+          status: 409,
+        },
+      );
+    throw new Error(`unexpected ${path}`);
+  });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  mount();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Approve and rebuild…" }),
+  );
+  await screen.findByText(/not the one you approved/);
+  await waitFor(() => expect(reads).toBe(2));
+  fireEvent.click(screen.getByRole("button", { name: "Approve and rebuild…" }));
+  await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+  expect(confirm.mock.calls[1]?.[0]).toContain("/proj/other.py");
+  expect(rebuildBody(1).approved.argv).toEqual(changed.argv);
+  expect(
+    (screen.getByTitle("Preview") as HTMLIFrameElement).getAttribute("srcdoc"),
+  ).toContain("Before");
 });
 
 it("rebuilds automatically after a save only when opted in and approved", async () => {

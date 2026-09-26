@@ -374,7 +374,11 @@ export function SourceEditor({
   const rebuild = async (current: PreviewState) => {
     const status = current.regenerate;
     if (!status || building) return;
-    let register = false;
+    let approved:
+      | (NonNullable<RebuildStatus["proposedRegistration"]> & {
+          registrationVersion: number;
+        })
+      | undefined;
     if (!status.registered || !status.matches) {
       const proposal = status.proposedRegistration;
       if (!proposal) {
@@ -391,7 +395,10 @@ export function SourceEditor({
         )
       )
         return;
-      register = true;
+      approved = {
+        registrationVersion: status.registrationVersion,
+        ...proposal,
+      };
     }
     setBuilding(true);
     setError(null);
@@ -405,7 +412,8 @@ export function SourceEditor({
           body: JSON.stringify({
             path: current.path,
             hook: status.hook,
-            register,
+            register: approved !== undefined,
+            approved,
           }),
         },
       );
@@ -437,8 +445,26 @@ export function SourceEditor({
       setRebuilt(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
+      // A refused approval means the artifact now proposes a command other
+      // than the one shown; re-read it so the next approval shows the new one.
+      if (approved && (failure as { status?: unknown }).status === 409)
+        await refreshRebuildStatus(current.path);
     } finally {
       setBuilding(false);
+    }
+  };
+  const refreshRebuildStatus = async (path: string) => {
+    try {
+      const result = await runtime.transport.fetch<SourceSnapshot>(
+        `/file-edit?${new URLSearchParams({ path, preview: "1" })}`,
+      );
+      setPreview((existing) =>
+        existing?.path === path
+          ? { ...existing, regenerate: result.regenerate }
+          : existing,
+      );
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
     }
   };
 

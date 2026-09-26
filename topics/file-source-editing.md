@@ -154,9 +154,16 @@ proposal. Registrations live in app data
 artifact path and hook id, never inside the project. The editor shows
 **Rebuild** for an approved hook, or **Approve and rebuild…** otherwise, which
 displays the working directory and argument vector and, on confirmation, sends
-`register: true` with the run. `POST /api/file-edit/rebuild` refuses an
-unapproved or changed proposal with 409 and the current status; it never
-re-approves implicitly. Only the superuser may approve or run a hook: the route
+`register: true` with the run together with `approved`, the exact proposal and
+`registrationVersion` it displayed. The server registers only when `approved`
+equals the proposal it reads from the artifact at request time; a descriptor
+rewritten after the preview (by an agent, or by the builder itself) is refused
+with 409 and the current status, registers nothing, and runs nothing, and the
+editor re-reads the status so the next approval shows the new command. A
+`register: true` without `approved` is refused the same way. `POST
+/api/file-edit/rebuild` likewise refuses an unapproved or changed proposal with
+409 and the current status; it never re-approves implicitly. Only the
+superuser may approve or run a hook: the route
 itself answers 403 to any other principal before reading the artifact,
 independently of the limited-user route table, because the command runs as the
 host user outside any session sandbox. The run spawns the registered argv directly (no

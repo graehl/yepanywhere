@@ -193,6 +193,10 @@ describe("source editing routes", () => {
       path: artifact,
       hook: "report",
       register: true,
+      approved: {
+        registrationVersion: 1,
+        ...regenerate.proposedRegistration,
+      },
     });
     expect(approved.status).toBe(200);
     const result = await approved.json();
@@ -203,6 +207,77 @@ describe("source editing routes", () => {
       matches: true,
     });
     expect((await post({ path: artifact, hook: "other" })).status).toBe(409);
+  });
+  it("registers only the proposal the user approved, not one written after the preview", async () => {
+    const { ArtifactRebuildService } = await import(
+      "../../src/services/ArtifactRebuildService.js"
+    );
+    const rebuild = new ArtifactRebuildService(join(root, "state"));
+    const run = vi.spyOn(rebuild, "run");
+    const app = createFileEditRoutes({
+      policy: createLocalResourcePathPolicy({
+        allowedPaths: [join(root, "project")],
+      }),
+      scanner: { getProject: async () => null },
+      resolveArtifactUrl: async () => file,
+      rebuild,
+    });
+    const artifact = join(root, "project", "report.html");
+    const marker = join(root, "project", "swapped-command-ran");
+    const proposal = (argv: string[]) => ({
+      hook: "report",
+      registrationVersion: 1,
+      proposedRegistration: {
+        cwd: join(root, "project"),
+        argv,
+        outputs: [artifact],
+        timeoutSeconds: 30,
+      },
+    });
+    const shown = proposal([process.execPath, "-e", "0"]);
+    await writeFile(
+      artifact,
+      `<!-- ya-artifact:v1 ${JSON.stringify({ regenerate: shown })} --><p>x</p>`,
+    );
+    const preview = await (
+      await app.request(
+        `/file-edit?path=${encodeURIComponent(artifact)}&preview=1`,
+      )
+    ).json();
+    // The descriptor changes between the preview read and the approval.
+    const swapped = proposal([
+      process.execPath,
+      "-e",
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "")`,
+    ]);
+    await writeFile(
+      artifact,
+      `<!-- ya-artifact:v1 ${JSON.stringify({ regenerate: swapped })} --><p>x</p>`,
+    );
+    const post = (body: object) =>
+      app.request("/file-edit/rebuild", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const approval = {
+      registrationVersion: preview.regenerate.registrationVersion,
+      ...preview.regenerate.proposedRegistration,
+    };
+    for (const body of [
+      { path: artifact, hook: "report", register: true, approved: approval },
+      { path: artifact, hook: "report", register: true },
+    ]) {
+      const refused = await post(body);
+      expect(refused.status).toBe(409);
+      expect((await refused.json()).regenerate).toMatchObject({
+        registered: false,
+        proposedRegistration: { argv: swapped.proposedRegistration.argv },
+      });
+    }
+    expect(run).not.toHaveBeenCalled();
+    await expect(stat(marker)).rejects.toThrow();
+    expect((await rebuild.status(artifact, swapped)).registered).toBe(false);
   });
   it("refuses artifact rebuild to a limited principal before registering or running it", async () => {
     const { ArtifactRebuildService } = await import(

@@ -21,7 +21,11 @@ const registrationSchema = z.object({
   outputs: z.array(z.string().min(1).max(4096)).max(64).default([]),
   timeoutSeconds: z.number().int().min(1).max(3600).default(180),
 });
-export type RebuildRegistration = z.infer<typeof registrationSchema>;
+/** The exact proposal a user was shown and approved, versioned. */
+export const rebuildApprovalSchema = registrationSchema.extend({
+  registrationVersion: z.number().int().min(1),
+});
+export type RebuildApproval = z.infer<typeof rebuildApprovalSchema>;
 
 const descriptorSchema = z.object({
   hook: z
@@ -51,10 +55,7 @@ export interface RebuildResult {
   log: string;
 }
 
-type StoredRegistration = RebuildRegistration & {
-  registrationVersion: number;
-  approvedAt: string;
-};
+type StoredRegistration = RebuildApproval & { approvedAt: string };
 
 const LOG_LIMIT = 64 * 1024;
 const KILL_GRACE_MS = 5000;
@@ -80,7 +81,7 @@ export function parseArtifactRebuildDescriptor(
 }
 
 function sameRegistration(
-  stored: StoredRegistration,
+  stored: RebuildApproval,
   descriptor: RebuildDescriptor,
 ): boolean {
   const proposal = descriptor.proposedRegistration;
@@ -121,11 +122,8 @@ export class ArtifactRebuildService {
       const raw = JSON.parse(await readFile(this.file, "utf8")) as unknown;
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
         for (const [key, value] of Object.entries(raw)) {
-          const parsed = registrationSchema
-            .extend({
-              registrationVersion: z.number().int().min(1),
-              approvedAt: z.string(),
-            })
+          const parsed = rebuildApprovalSchema
+            .extend({ approvedAt: z.string() })
             .safeParse(value);
           if (parsed.success) map.set(key, parsed.data);
         }
@@ -163,11 +161,18 @@ export class ArtifactRebuildService {
     };
   }
 
-  /** Approve the descriptor's proposal as this artifact's registration. */
+  /**
+   * Record the user's approval as this artifact's registration, but only
+   * when the descriptor still proposes exactly what was approved. Returns
+   * undefined, registering nothing, when the proposal changed after the user
+   * saw it: an approval never transfers to a command the user was not shown.
+   */
   async register(
     artifactPath: string,
     descriptor: RebuildDescriptor,
-  ): Promise<RebuildStatus> {
+    approval: RebuildApproval,
+  ): Promise<RebuildStatus | undefined> {
+    if (!sameRegistration(approval, descriptor)) return undefined;
     if (!descriptor.proposedRegistration)
       throw new Error("This artifact proposes no rebuild command to register");
     const map = await this.load();

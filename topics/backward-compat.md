@@ -324,3 +324,12 @@ accepted and upgraded in place, so no installation rebuilds its indexes on
 upgrade. A downgrade to a build predating 5 does rebuild them: an older reader
 accepts only 3 and 4 and starts that scope fresh. Indexes are caches, so the
 cost is one cold parse per scope, not lost data.
+
+2026-09-25 `POST /api/file-edit/rebuild` approval — `register: true` now also
+requires `approved`, the proposal the editor displayed, and registers only when
+it equals the artifact's current descriptor. A client from before this change
+sends `register` alone and gets 409 instead of an approval, so it can still run
+an already-approved hook but cannot approve a new one until it updates. No
+fallback is kept: the old request approved whatever command was on disk when it
+arrived, which is the defect being closed. A new client against an older server
+still works, since the older schema ignores the extra field.

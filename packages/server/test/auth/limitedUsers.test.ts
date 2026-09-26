@@ -63,6 +63,36 @@ describe("limited-user route policy", () => {
     expect(decide("PATCH", "/api/settings")).toEqual({ kind: "deny" });
   });
 
+  it("refuses every settings subpath, which is host administration", () => {
+    for (const url of [
+      "/api/settings/browser-backup",
+      "/api/settings/remote-executors",
+      "/api/settings/cache-miss-billing/events",
+      "/api/settings/file-access",
+      "/api/settings/host-awake/status",
+    ]) {
+      expect(decide("GET", url), url).toEqual({ kind: "deny" });
+    }
+  });
+
+  it("reads recents filtered, never clears them, and lets a visit through", () => {
+    expect(decide("GET", "/api/recents?limit=5")).toEqual({
+      kind: "allow-filtered",
+      filter: "recents",
+    });
+    expect(decide("DELETE", "/api/recents")).toEqual({ kind: "deny" });
+    // The route records nothing for a limited user.
+    expect(decide("POST", "/api/recents/visit")).toEqual({ kind: "allow" });
+    expect(decide("GET", "/api/recents/visit")).toEqual({ kind: "deny" });
+  });
+
+  it("refuses the activity REST reads, which list every connected tab", () => {
+    expect(decide("GET", "/api/activity/connections")).toEqual({
+      kind: "deny",
+    });
+    expect(decide("GET", "/api/activity/status")).toEqual({ kind: "deny" });
+  });
+
   it("scopes a project path by method", () => {
     expect(decide("GET", "/api/projects/abc/files")).toEqual({
       kind: "project",

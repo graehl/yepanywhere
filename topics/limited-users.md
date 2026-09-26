@@ -219,7 +219,9 @@ percent-encoding is refused.
 | Issues & PRs (`/api/issues*`) | 403, and the nav entry is hidden: it spends the host's ticket-system credentials |
 | Inbox, Projects, Source Control, All Sessions | served, with every project and session outside the user's grants removed from the response |
 | Project Queue actions | promote-now needs `newSessionProjects` on the project in its path; pausing or resuming dispatch 403 |
-| settings | `GET` of the client-facing settings document; every write 403 |
+| settings | `GET /api/settings` only, answered with a projection holding the fields their client reads to render and default their own work; secrets and host inventory (webhook URL and token, remote executors, gateway and Ollama endpoints and start commands, file-access rules, the readiness command, global instructions) are withheld, and a field added later is withheld until listed. Every write and every settings subpath (browser-settings backup, remote executors, cache-billing events, file-access and host-awake status) 403 |
+| recents | the install's shared list, read filtered; clearing 403; `POST /api/recents/visit` answers `{recorded: false}` and records nothing |
+| activity REST (`/api/activity/*`) | 403: watcher status and every connected tab and browser profile are host inventory with no project to filter by |
 | user administration | 403 except `GET /api/users/me` and `POST /api/users/logout` |
 | public shares, app links, devices, bang commands, absolute-path file reads, file editing and artifact rebuild (`/api/file-edit*`), uploads outside a session, server admin, relay/remote-access config | 403 |
 

@@ -41,6 +41,7 @@ import {
   parseSpeechVoiceBackends,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import { PRINCIPAL_VARIABLE, type Principal } from "../auth/principal.js";
 import {
   type FileAccessSettings,
   getFileAccessInfo,
@@ -134,8 +135,50 @@ export interface SettingsRoutesDeps {
   hostAwakeService?: HostAwakeService;
 }
 
-export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
-  const app = new Hono();
+/**
+ * The settings fields a limited user's client reads to render the app and
+ * default their own work. Everything else — secrets such as the webhook token,
+ * host inventory such as remote executors, gateway and Ollama endpoints and
+ * start commands, file-access prefixes, the readiness command, and global
+ * instructions — stays with the superuser. An allowlist, so a field added
+ * later is withheld until someone lists it.
+ * Contract: topics/limited-users.md § Delivery v1 — Authorization.
+ */
+const LIMITED_USER_SETTINGS_FIELDS = [
+  "clientDefaults",
+  "newSessionDefaults",
+  "serviceWorkerEnabled",
+  "limitedUsersEnabled",
+  "publicSharesEnabled",
+  "workstreamsEnabled",
+  "sourceReviewSubmissionsEnabled",
+  "hostProcessObservabilityEnabled",
+  "hostIdentity",
+  "heartbeatTurnsAfterMinutes",
+  "heartbeatTurnText",
+  "longContextEffortWarning",
+  "deferredJoinWindowSeconds",
+  "composeAnchorsEnabled",
+  "turnTimestamps",
+  "projectQueueQuietSeconds",
+  "clearloopInactivitySeconds",
+] as const satisfies readonly (keyof ServerSettings)[];
+
+/** The settings document as a limited user may read it. */
+export function projectSettingsForLimitedUser(
+  settings: ServerSettings,
+): Partial<ServerSettings> {
+  const projected: Record<string, unknown> = {};
+  for (const field of LIMITED_USER_SETTINGS_FIELDS) {
+    if (settings[field] !== undefined) projected[field] = settings[field];
+  }
+  return projected as Partial<ServerSettings>;
+}
+
+export function createSettingsRoutes(deps: SettingsRoutesDeps) {
+  const app = new Hono<{
+    Variables: Record<typeof PRINCIPAL_VARIABLE, Principal>;
+  }>();
   let settingsUpdateTail: Promise<void> = Promise.resolve();
   const serializeSettingsUpdate = <T>(
     operation: () => Promise<T>,
@@ -168,10 +211,14 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
 
   /**
    * GET /api/settings
-   * Get all server settings
+   * Get all server settings; a limited user gets only their projection.
    */
   app.get("/", (c) => {
     const settings = serverSettingsService.getSettings();
+    const principal = c.get(PRINCIPAL_VARIABLE) as Principal | undefined;
+    if (principal && principal.kind !== "superuser") {
+      return c.json({ settings: projectSettingsForLimitedUser(settings) });
+    }
     return c.json({
       settings: {
         ...settings,

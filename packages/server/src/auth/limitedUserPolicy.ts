@@ -108,7 +108,6 @@ const PUBLIC_GET_PREFIXES: readonly string[] = [
   "/api/provider-host",
   "/api/auth/status",
   "/api/users/me",
-  "/api/settings",
   "/api/push/vapid-public-key",
   "/api/push/settings",
   "/api/push/subscriptions",
@@ -225,8 +224,12 @@ export function decideLimitedRoute(
       ? { kind: "allow" }
       : { kind: "deny" };
   }
-  if (path.startsWith("/api/settings")) {
-    // Read the settings document, never write it.
+  if (path === "/api/settings") {
+    // Read the settings document, never write it. The route answers a
+    // limited user with its projection, which withholds secrets and host
+    // inventory. Every settings subpath (browser backup, remote executors,
+    // cache-billing events, file-access and host-awake status) is host
+    // administration and falls to the default deny below.
     return isRead ? { kind: "allow" } : { kind: "deny" };
   }
   if (hasPrefix(path, PUBLIC_GET_PREFIXES)) {
@@ -301,19 +304,26 @@ export function decideLimitedRoute(
       ? { kind: "allow-filtered", filter: "inbox" }
       : { kind: "deny" };
   }
-  if (path.startsWith("/api/recents")) {
-    return { kind: "allow-filtered", filter: "recents" };
+  if (path === "/api/recents") {
+    // The recents list is the install's, shared with the superuser: reading
+    // it is filtered, clearing it is refused.
+    return isRead
+      ? { kind: "allow-filtered", filter: "recents" }
+      : { kind: "deny" };
+  }
+  if (path === "/api/recents/visit" && method === "POST") {
+    // Every session page posts its visit. The route records nothing for a
+    // limited user and says so, rather than every open drawing a 403.
+    return { kind: "allow" };
   }
   if (path === "/api/processes") {
     return isRead
       ? { kind: "allow-filtered", filter: "processes" }
       : { kind: "deny" };
   }
-  if (path.startsWith("/api/activity")) {
-    return isRead
-      ? { kind: "allow-filtered", filter: "sessions" }
-      : { kind: "deny" };
-  }
+  // `/api/activity/*` is not listed: its REST reads are watcher status and
+  // every connected tab and browser profile, host inventory that carries no
+  // project to filter by. The activity channel itself runs over /api/ws.
   if (path === "/api/project-queue") {
     return isRead
       ? { kind: "allow-filtered", filter: "projects" }

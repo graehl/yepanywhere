@@ -4,6 +4,12 @@ import {
   NEVER_IDLE_REAP_HOURS,
   parseGatewayServices,
 } from "@yep-anywhere/shared";
+import { Hono } from "hono";
+import {
+  PRINCIPAL_VARIABLE,
+  type Principal,
+  SUPERUSER,
+} from "../../src/auth/principal.js";
 import type { ProjectStoragePolicy } from "../../src/projects/projectStoragePolicy.js";
 import { createSettingsRoutes } from "../../src/routes/settings.js";
 import { reconcileGatewaySettings } from "../../src/services/gatewayServiceSettings.js";
@@ -3039,6 +3045,87 @@ describe("Settings Routes", () => {
       expect(response.status).toBe(400);
       const json = await response.json();
       expect(json.error).toBe("host must be a valid SSH host alias");
+    });
+  });
+
+  describe("GET / by principal", () => {
+    const limited: Principal = {
+      kind: "limited",
+      username: "alice",
+      grants: {
+        newSessionProjects: [],
+        joinProjects: [],
+        viewProjects: [],
+        joinStaleOffsetMinutes: 0,
+        lock: {},
+      },
+      switched: false,
+      locked: true,
+      via: "direct",
+    };
+
+    const readAs = async (principal: Principal) => {
+      const app = new Hono<{
+        Variables: Record<typeof PRINCIPAL_VARIABLE, Principal>;
+      }>();
+      app.use("*", async (c, next) => {
+        c.set(PRINCIPAL_VARIABLE, principal);
+        await next();
+      });
+      app.route(
+        "/",
+        createSettingsRoutes({
+          serverSettingsService: mockServerSettingsService,
+        }),
+      );
+      const response = await app.request("/");
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { settings: Record<string, unknown> })
+        .settings;
+    };
+
+    beforeEach(() => {
+      settings = {
+        ...settings,
+        lifecycleWebhookUrl: "https://hooks.example/yep",
+        lifecycleWebhookToken: "bearer-secret",
+        remoteExecutors: ["devbox"],
+        chromeOsHosts: ["chromeroot"],
+        claudeGatewayStartCommand: "copilot-api start",
+        globalInstructions: "private instructions",
+        heartbeatTurnText: "keep going",
+        clientDefaults: { steerNowDefault: true },
+      };
+    });
+
+    it("serves a limited user only the fields their client uses", async () => {
+      const read = await readAs(limited);
+      expect(read).toMatchObject({
+        heartbeatTurnText: "keep going",
+        clientDefaults: { steerNowDefault: true },
+        serviceWorkerEnabled: true,
+      });
+      for (const withheld of [
+        "lifecycleWebhookUrl",
+        "lifecycleWebhookToken",
+        "remoteExecutors",
+        "chromeOsHosts",
+        "claudeGatewayStartCommand",
+        "globalInstructions",
+        "gatewayServiceExportPaths",
+        "fileAccess",
+      ]) {
+        expect(read, withheld).not.toHaveProperty(withheld);
+      }
+    });
+
+    it("serves the superuser the whole document", async () => {
+      const read = await readAs(SUPERUSER);
+      expect(read).toMatchObject({
+        lifecycleWebhookToken: "bearer-secret",
+        remoteExecutors: ["devbox"],
+      });
+      expect(read).toHaveProperty("gatewayServiceExportPaths");
     });
   });
 });

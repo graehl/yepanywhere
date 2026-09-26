@@ -1,5 +1,11 @@
 import type { UrlProjectId } from "@yep-anywhere/shared";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
+import {
+  PRINCIPAL_VARIABLE,
+  type Principal,
+  SUPERUSER,
+} from "../../src/auth/principal.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import type { RecentsService } from "../../src/recents/index.js";
 import { createRecentsRoutes } from "../../src/routes/recents.js";
@@ -84,5 +90,54 @@ describe("Recents Routes", () => {
       "sess-1",
       "proj-1",
     );
+  });
+
+  it("records the superuser's visit but not a limited user's", async () => {
+    const recordVisit = vi.fn(async () => {});
+    const visitAs = async (principal: Principal) => {
+      const app = new Hono<{
+        Variables: Record<typeof PRINCIPAL_VARIABLE, Principal>;
+      }>();
+      app.use("*", async (c, next) => {
+        c.set(PRINCIPAL_VARIABLE, principal);
+        await next();
+      });
+      app.route(
+        "/",
+        createRecentsRoutes({
+          recentsService: { recordVisit } as unknown as RecentsService,
+          scanner: {} as ProjectScanner,
+          readerFactory: vi.fn(),
+        }),
+      );
+      const response = await app.request("/visit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "sess-1", projectId: "proj-1" }),
+      });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+
+    await expect(
+      visitAs({
+        kind: "limited",
+        username: "alice",
+        grants: {
+          newSessionProjects: [],
+          joinProjects: [],
+          viewProjects: ["proj-1"],
+          joinStaleOffsetMinutes: 0,
+          lock: {},
+        },
+        switched: false,
+        locked: true,
+        via: "direct",
+      }),
+    ).resolves.toEqual({ recorded: false });
+    expect(recordVisit).not.toHaveBeenCalled();
+
+    await expect(visitAs(SUPERUSER)).resolves.toEqual({ recorded: true });
+    expect(recordVisit).toHaveBeenCalledWith("sess-1", "proj-1");
   });
 });

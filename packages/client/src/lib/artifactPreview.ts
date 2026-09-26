@@ -1,13 +1,36 @@
 import type { ArtifactViewerStatus } from "@yep-anywhere/shared";
 
 /**
- * Sandbox for a frame on the isolated artifact origin. Mirrors the server's
- * `sandbox` CSP directive. Popups may escape so the artifact can hand a PDF,
- * or any document a sandboxed frame cannot display, to a top-level tab on
- * that same isolated origin; the popup never gains YA's origin.
+ * The URL a framed artifact may have opened in a new tab: a file of the same
+ * grant the frame was given, plain or as an explicit download. Anything else,
+ * including another grant or origin, is refused with `undefined`.
  */
-export const ARTIFACT_FRAME_SANDBOX =
-  "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads";
+export function artifactTabUrl(
+  requested: string,
+  grantUrl: string,
+): string | undefined {
+  let url: URL;
+  let grant: URL;
+  try {
+    url = new URL(requested);
+    grant = new URL(grantUrl);
+  } catch {
+    return;
+  }
+  const token = /^\/a\/[A-Za-z0-9_-]+\//.exec(grant.pathname)?.[0];
+  if (
+    !token ||
+    url.origin !== grant.origin ||
+    url.username ||
+    url.password ||
+    !url.pathname.startsWith(token) ||
+    url.pathname.length === token.length ||
+    !["", "?download=true"].includes(url.search)
+  )
+    return;
+  url.hash = "";
+  return url.href;
+}
 
 export function artifactAudience(hostname: string): "local" | "public" {
   return ["localhost", "127.0.0.1", "[::1]"].includes(hostname)

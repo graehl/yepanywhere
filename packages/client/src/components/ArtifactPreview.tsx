@@ -1,11 +1,12 @@
+import { ARTIFACT_SANDBOX } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ResourceContextMenu } from "./FileResourceActions";
 import { useSessionAppAnnouncer } from "./SessionAppLinks";
 import { ViewerModeToggle } from "./ViewerModeToggle";
 import { useArtifactGrant } from "../hooks/useArtifactGrant";
+import { useArtifactTabHandoff } from "../hooks/useArtifactTabHandoff";
 import { useI18n } from "../i18n";
-import { ARTIFACT_FRAME_SANDBOX } from "../lib/artifactPreview";
 import { writeClipboardTextLater } from "../lib/clipboard";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import type { ViewerFindSource } from "../lib/viewerFind";
@@ -54,6 +55,7 @@ export function ArtifactPreview(props: Props) {
   );
   const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
   const running = Boolean(grant);
+  useArtifactTabHandoff(running ? frame : null, grant?.url);
   const { onFindSource } = props;
   useEffect(() => {
     onFindSource?.(frame ? { kind: running ? "agent" : "frame", frame } : null);
@@ -147,7 +149,7 @@ export function ArtifactPreview(props: Props) {
           className={styles.frame}
           title={props.title}
           aria-label={props.title}
-          sandbox={ARTIFACT_FRAME_SANDBOX}
+          sandbox={ARTIFACT_SANDBOX}
           referrerPolicy="no-referrer"
           src={grant.url}
         />

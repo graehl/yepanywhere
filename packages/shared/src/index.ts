@@ -3,6 +3,12 @@ export type {
   ArtifactViewerConfig,
   ArtifactViewerStatus,
   ArtifactViewerGrant,
+  ArtifactTabRequest,
+} from "./artifact-viewer.js";
+export {
+  ARTIFACT_SANDBOX,
+  ARTIFACT_TAB_PROTOCOL,
+  isArtifactTabRequest,
 } from "./artifact-viewer.js";
 export type {
   RetainedSessionCollectionState,

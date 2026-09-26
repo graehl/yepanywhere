@@ -280,12 +280,19 @@ these constraints before it ships:
   `allow-same-origin`. A dedicated untrusted origin may later receive narrowly
   justified sandbox tokens for storage/workers; it never gains YA origin.
   The isolated artifact origin's frames and its response `sandbox` directive
-  carry `allow-popups allow-popups-to-escape-sandbox allow-downloads`
-  (2026-09-23): Chromium refuses its PDF viewer inside any sandboxed frame,
-  so a frame navigation to a PDF is answered with a hand-off page whose link
-  opens the same grant URL in a top-level tab, and downloads stay possible.
-  An escaped popup is a plain tab on the artifact origin, which the artifact
-  already fully controls; it is not a route to the YA origin.
+  share one token list, `ARTIFACT_SANDBOX` in `packages/shared`, and it grants
+  no popups, downloads, or top-level navigation. A popup allowed to escape the
+  sandbox would be same-origin with its opener frame, so it could reach
+  `opener.top`, the YA tab, and navigate it (reverse tabnabbing) even though
+  it never gains YA's origin.
+  Chromium refuses its PDF viewer inside any sandboxed frame, so a frame
+  navigation to a PDF is answered with a hand-off page. Its Open and Download
+  buttons post a `yep-artifact-tab/1` request to the parent; the viewer opens
+  the URL in a new tab with `noopener` only when the request comes from its
+  own frame and names a file of that frame's grant, plain or with
+  `?download=true`. The browser still requires the click in the frame that
+  sent it. The page also shows its own address for a parent that does not
+  answer.
 - **Brokered host communication.** `postMessage` is schema-validated,
   capability-scoped, and tied to the expected child window. With an opaque
   origin, `event.origin` is `"null"`, so the parent must verify `event.source`
@@ -528,7 +535,8 @@ classic scripts, modules/dynamic imports, JSON fetches, and linked HTML files.
 Root-relative paths address the artifact host itself and are not mapped to a
 grant. Directory indexes, history-router fallback, service workers, nested
 frames, popups, forms, downloads, native bridges, and device permissions are
-not supplied. External HTTP(S)/WebSocket services remain subject to the
+not supplied; a PDF reaches a new tab only through the viewer's hand-off
+described under *Sandboxed embedding*. External HTTP(S)/WebSocket services remain subject to the
 browser's ordinary network/CORS rules and the artifact author's setup.
 
 Both iframe sandbox and artifact response CSP allow scripts and same-origin

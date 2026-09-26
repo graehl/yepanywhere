@@ -1,3 +1,4 @@
+import { ARTIFACT_SANDBOX } from "@yep-anywhere/shared";
 import {
   type Ref,
   useEffect,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useArtifactTabHandoff } from "../hooks/useArtifactTabHandoff";
 import type { useSessionRightPane } from "../hooks/useSessionRightPane";
 import { useViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
@@ -122,6 +124,7 @@ function SessionRightPaneContent({
     ),
   );
   const url = pane.selected?.url;
+  useArtifactTabHandoff(artifactFrame, url);
   const viewerIdentity = url ?? pane.paneViewer?.id;
   useLayoutEffect(() => {
     if (!viewerIdentity) return;
@@ -290,7 +293,11 @@ function SessionRightPaneContent({
                 aria-label={pane.selected.label}
                 onPointerEnter={() => suppressTooltipsFor(0)}
                 referrerPolicy="no-referrer"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+                sandbox={
+                  pane.selected.artifactToken
+                    ? ARTIFACT_SANDBOX
+                    : "allow-scripts allow-same-origin allow-forms allow-downloads"
+                }
                 className={styles.frame}
               />
             )}

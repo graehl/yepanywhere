@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import { basename, dirname, extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { getRequestListener } from "@hono/node-server";
+import { ARTIFACT_SANDBOX, ARTIFACT_TAB_PROTOCOL } from "@yep-anywhere/shared";
 import { FRAME_FIND_AGENT_SCRIPT } from "@yep-anywhere/shared/find/frameFindAgent.generated";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -40,10 +41,14 @@ function escapeHtml(value: string): string {
   );
 }
 
-/** Stand-in served to a sandboxed frame that navigated to a PDF. */
-function pdfInFrameDocument(url: string, name: string): string {
-  const href = escapeHtml(url);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(name)}</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:24px;color:#222;background:#fafafa}p{margin:0 0 12px}a{color:#1a56c4}button{font:inherit;padding:4px 10px}</style></head><body><p><strong>${escapeHtml(name)}</strong> is a PDF. The embedded preview cannot display PDFs, so open it in its own tab.</p><p><a href="${href}" target="_blank" rel="noopener">Open PDF in a new tab</a> · <a href="${href}${url.includes("?") ? "&" : "?"}download=true">Download</a></p><p><button type="button" onclick="history.back()">Back</button></p></body></html>`;
+/**
+ * Stand-in served to a sandboxed frame that navigated to a PDF. The frame may
+ * not open popups or download, so its buttons ask the YA viewer to open this
+ * same URL in a new tab; the page's own address is the fallback.
+ */
+function pdfInFrameDocument(name: string): string {
+  const protocol = JSON.stringify(ARTIFACT_TAB_PROTOCOL);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(name)}</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:0;padding:24px;color:#222;background:#fafafa}p{margin:0 0 12px}.actions{display:flex;flex-wrap:wrap;gap:8px}button{font:inherit;padding:6px 12px}code{word-break:break-all;user-select:all}</style></head><body><p><strong>${escapeHtml(name)}</strong> is a PDF. The embedded preview cannot display PDFs, so open it in its own tab.</p><p class="actions"><button type="button" id="open">Open PDF in a new tab</button><button type="button" id="download">Download</button><button type="button" onclick="history.back()">Back</button></p><p>If nothing opens, copy this address into a new tab: <code id="address"></code></p><script>(function(){var url=new URL(location.href);url.hash="";url.search="";document.getElementById("address").textContent=url.href;function send(download){var target=new URL(url.href);if(download)target.searchParams.set("download","true");parent.postMessage({protocol:${protocol},type:"open",url:target.href},"*");}document.getElementById("open").onclick=function(){send(false);};document.getElementById("download").onclick=function(){send(true);};})();</script></body></html>`;
 }
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 /**
@@ -53,11 +58,6 @@ const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const FIND_AGENT_TAIL = Buffer.from(
   `\n<script data-yep-find-agent>${FRAME_FIND_AGENT_SCRIPT}</script>\n`,
 );
-// Popups may escape the sandbox so an artifact can hand a PDF, or any
-// document the sandboxed frame cannot show, to a real top-level tab on this
-// same isolated origin; the popup never gains YA's origin.
-export const ARTIFACT_SANDBOX =
-  "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads";
 const ARTIFACT_CSP = [
   `sandbox ${ARTIFACT_SANDBOX}`,
   "default-src 'self' data: blob: http: https:",
@@ -205,7 +205,7 @@ export class ArtifactServer {
         new URL(c.req.url).searchParams.get("download") !== "true"
       ) {
         await handle.close();
-        return c.html(pdfInFrameDocument(c.req.url, basename(canonical)));
+        return c.html(pdfInFrameDocument(basename(canonical)));
       }
       // Only a frame navigation gets the find agent: downloads, top-level
       // tabs, fetches and range reads still receive the original bytes.

@@ -139,18 +139,22 @@ it("serves an authorized HTML directory with executable bytes and revocable acce
   const html = await server.app.request(grant.url);
   expect(html.status).toBe(200);
   expect(html.headers.get("content-type")).toContain("text/html");
+  // No popup or download authority: an unsandboxed popup could navigate the
+  // YA tab that frames this document.
   expect(html.headers.get("content-security-policy")).toContain(
-    "sandbox allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads",
+    "sandbox allow-scripts allow-same-origin;",
   );
-  // A PDF navigated to inside the sandboxed frame gets a hand-off page;
-  // other fetch destinations and explicit downloads receive the bytes.
+  // A PDF navigated to inside the sandboxed frame gets a hand-off page that
+  // asks the viewer for a tab; other fetch destinations and explicit
+  // downloads receive the bytes.
   await writeFile(join(root, "paper.pdf"), "%PDF-1.4 stub");
   const framed = await server.app.request(new URL("paper.pdf", grant.url), {
     headers: { "Sec-Fetch-Dest": "iframe" },
   });
   expect(framed.headers.get("content-type")).toContain("text/html");
   const handoff = await framed.text();
-  expect(handoff).toContain('target="_blank"');
+  expect(handoff).toContain("yep-artifact-tab/1");
+  expect(handoff).not.toContain('target="_blank"');
   expect(handoff).toContain("paper.pdf");
   expect(handoff).not.toContain("%PDF");
   const topLevel = await server.app.request(new URL("paper.pdf", grant.url), {

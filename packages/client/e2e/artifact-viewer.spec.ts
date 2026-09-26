@@ -307,6 +307,56 @@ test("finds within a running artifact frame only, from its own Ctrl+F", async ({
   await recordUiCapture(page, "viewer-find-artifact-375");
 });
 
+test("hands a framed PDF to a new tab through the viewer, never a popup", async ({
+  page,
+}) => {
+  const htmlPath = join(directory, "bundle", "handoff.html");
+  await writeFile(
+    htmlPath,
+    `<!doctype html><title>Handoff</title><a href="paper.pdf">Paper</a>`,
+  );
+  await writeFile(join(directory, "bundle", "paper.pdf"), "%PDF-1.4 stub");
+  const grant = await instance.artifactServer.createGrant(htmlPath, "local");
+  await page.goto(
+    `${base}/file-view?mode=interactive&artifactUrl=${encodeURIComponent(grant.url)}`,
+  );
+  const element = page.locator('iframe[title="handoff.html"]');
+  await expect(element).toHaveAttribute(
+    "sandbox",
+    "allow-scripts allow-same-origin",
+  );
+  const frame = page.frameLocator('iframe[title="handoff.html"]');
+  await frame.getByRole("link", { name: "Paper" }).click();
+  const open = frame.getByRole("button", { name: "Open PDF in a new tab" });
+  await expect(open).toBeVisible();
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await recordUiCapture(page, "artifact-pdf-handoff-1000");
+  await page.setViewportSize({ width: 375, height: 812 });
+  await recordUiCapture(page, "artifact-pdf-handoff-375");
+  // The frame itself cannot open a window, so it holds no route to the
+  // YA tab through a popup's opener.
+  const child = page
+    .frames()
+    .find((f) => new URL(f.url()).hostname === "artifacts.localhost");
+  if (!child) throw new Error("Missing artifact frame");
+  expect(
+    await child.evaluate(() => window.open("paper.pdf", "_blank") === null),
+  ).toBe(true);
+  // Headless Chromium reports no URL for a PDF tab, so match its request.
+  const pdfUrl = new URL("paper.pdf", grant.url).href;
+  const opened = page.context().waitForEvent("page");
+  const requested = page
+    .context()
+    .waitForEvent("request", (request) => request.url() === pdfUrl);
+  await open.click();
+  const tab = await opened;
+  expect((await requested).frame().page()).toBe(tab);
+  // Playwright's opener() names the initiating page even for noopener, so
+  // ask the tab itself.
+  expect(await tab.evaluate(() => window.opener)).toBeNull();
+  await tab.close();
+});
+
 test("finds within the scriptless preview without giving it scripts", async ({
   page,
 }) => {

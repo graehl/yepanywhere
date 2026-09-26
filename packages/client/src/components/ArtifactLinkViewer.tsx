@@ -1,8 +1,9 @@
+import { ARTIFACT_SANDBOX } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useArtifactTabHandoff } from "../hooks/useArtifactTabHandoff";
 import { useViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
-import { ARTIFACT_FRAME_SANDBOX } from "../lib/artifactPreview";
 import type { SessionViewerControllerState } from "../lib/sessionViewerController";
 import {
   useModalBackGesture,
@@ -42,6 +43,7 @@ export function ArtifactLinkViewer({
       [frame],
     ),
   );
+  useArtifactTabHandoff(frame, controller.url);
   useModalBackGesture(
     controller.close,
     !hidden && !standalone,
@@ -113,7 +115,7 @@ export function ArtifactLinkViewer({
           className={styles.frame}
           title={controller.label}
           src={controller.url}
-          sandbox={ARTIFACT_FRAME_SANDBOX}
+          sandbox={ARTIFACT_SANDBOX}
           referrerPolicy="no-referrer"
         />
       )}

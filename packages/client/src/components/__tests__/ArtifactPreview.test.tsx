@@ -124,13 +124,59 @@ it("admits only after a successful probe and keeps the grant reusable", async ()
   );
   await screen.findByRole("button", { name: "Stop interactive preview" });
   expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe(
-    "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads",
+    "allow-scripts allow-same-origin",
   );
   expect(screen.getByTitle("Mockup").getAttribute("src")).toBe(
     `${origin}/a/token/index.html`,
   );
   unmount();
   expect(state.fetch).toHaveBeenCalledTimes(1);
+});
+
+it("opens only its own frame's same-grant tab requests, without an opener", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ artifactViewer: 1 }),
+    }),
+  );
+  const open = vi.fn();
+  vi.stubGlobal("open", open);
+  const origin =
+    window.location.hostname === "localhost"
+      ? "http://artifacts.localhost:3400"
+      : "https://artifacts.example.org";
+  state.fetch.mockResolvedValue({
+    id: "grant",
+    url: `${origin}/a/token/index.html`,
+    expiresAt: Date.now() + 1000,
+  });
+  mount();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Run full HTML/CSS/JavaScript preview (current view is sanitized)",
+    }),
+  );
+  await screen.findByRole("button", { name: "Stop interactive preview" });
+  const frame = screen.getByTitle("Mockup") as HTMLIFrameElement;
+  const request = (url: string, source: Window | null) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { protocol: "yep-artifact-tab/1", type: "open", url },
+        source,
+      }),
+    );
+  request(`${origin}/a/other/paper.pdf`, frame.contentWindow);
+  request(`${origin}/a/token/paper.pdf?next=1`, frame.contentWindow);
+  request(`${origin}/a/token/paper.pdf`, window);
+  expect(open).not.toHaveBeenCalled();
+  request(`${origin}/a/token/paper.pdf?download=true`, frame.contentWindow);
+  expect(open).toHaveBeenCalledWith(
+    `${origin}/a/token/paper.pdf?download=true`,
+    "_blank",
+    "noopener,noreferrer",
+  );
 });
 
 it("offers stop and a public artifact link from the running toggle's menu", async () => {

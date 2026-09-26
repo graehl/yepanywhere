@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   fetch: vi.fn(),
   version: {} as Record<string, unknown>,
   share: null as object | null,
+  shareStatus: null as { canCreate: boolean } | null,
+  getPublicFileShares: vi.fn(),
+  createPublicFileShare: vi.fn(),
 }));
 const runtime = { sourceKey: "localhost", transport: { fetch: state.fetch } };
 vi.mock("../../contexts/SourceRuntimeContext", () => ({
@@ -24,6 +27,18 @@ vi.mock("../../hooks/useVersion", () => ({
 vi.mock("../../contexts/PublicShareContext", () => ({
   usePublicShareContext: () => state.share,
 }));
+vi.mock("../../hooks/usePublicShareStatus", () => ({
+  usePublicShareStatus: () => ({ status: state.shareStatus }),
+}));
+vi.mock("../../api/client", () => ({
+  api: {
+    getPublicFileShares: state.getPublicFileShares,
+    createPublicFileShare: state.createPublicFileShare,
+  },
+}));
+
+const PROJECT_ID = "cHJvamVjdA";
+const SHARE_URL = `https://ya.example/remote/share/secret123/file?h=relayuser&projectId=${PROJECT_ID}&path=mockup%2Findex.html&standalone=1#v=2&target=file`;
 
 beforeEach(() => {
   state.version = {
@@ -38,23 +53,61 @@ beforeEach(() => {
     },
   };
   state.share = null;
+  state.shareStatus = { canCreate: true };
   state.fetch.mockReset();
+  state.getPublicFileShares.mockReset();
+  state.createPublicFileShare.mockReset();
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
-function mount() {
+function mount(projectId?: string) {
   return render(
     <I18nProvider>
       <ArtifactPreview
         html="<p>Static</p>"
-        path="/mockup/index.html"
+        path={projectId ? "mockup/index.html" : "/mockup/index.html"}
+        projectId={projectId}
         title="Mockup"
       />
     </I18nProvider>,
   );
+}
+
+async function runAndOpenMenu(projectId?: string) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ artifactViewer: 1 }),
+    }),
+  );
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
+  const origin =
+    window.location.hostname === "localhost"
+      ? "http://artifacts.localhost:3400"
+      : "https://artifacts.example.org";
+  state.fetch.mockResolvedValue({
+    id: "grant",
+    url: `${origin}/a/token/index.html`,
+    expiresAt: Date.now() + 1000,
+  });
+  mount(projectId);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Run full HTML/CSS/JavaScript preview (current view is sanitized)",
+    }),
+  );
+  const stop = await screen.findByRole("button", {
+    name: "Stop interactive preview",
+  });
+  fireEvent.contextMenu(stop, { clientX: 20, clientY: 20 });
+  return stop;
 }
 
 it("does not contact an artifact origin or request grants from an old server", () => {
@@ -179,49 +232,22 @@ it("opens only its own frame's same-grant tab requests, without an opener", asyn
   );
 });
 
-it("offers stop and a public artifact link from the running toggle's menu", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ artifactViewer: 1 }),
-    }),
-  );
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: vi.fn().mockResolvedValue(undefined) },
-  });
-  const local = "http://artifacts.localhost:3400";
-  const origin =
-    window.location.hostname === "localhost"
-      ? local
-      : "https://artifacts.example.org";
-  state.fetch.mockImplementation(async (_path: string, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body));
-    const grantOrigin =
-      body.audience === "public" ? "https://artifacts.example.org" : origin;
-    return {
-      id: `grant-${body.audience}`,
-      url: `${grantOrigin}/a/${body.audience}/index.html`,
-      expiresAt: Date.now() + 1000,
-    };
-  });
-  mount();
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: "Run full HTML/CSS/JavaScript preview (current view is sanitized)",
-    }),
-  );
-  const stop = await screen.findByRole("button", {
-    name: "Stop interactive preview",
-  });
-  fireEvent.contextMenu(stop, { clientX: 20, clientY: 20 });
+it("copies the file's public share as a play link, never a public artifact grant", async () => {
+  state.getPublicFileShares.mockResolvedValue({ items: [] });
+  state.createPublicFileShare.mockResolvedValue({ url: SHARE_URL });
+  const stop = await runAndOpenMenu(PROJECT_ID);
   fireEvent.click(screen.getByRole("menuitem", { name: "Copy public URL" }));
   await waitFor(() =>
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://artifacts.example.org/a/public/index.html",
+      `https://ya.example/remote/play.html?h=relayuser&projectId=${PROJECT_ID}&path=mockup%2Findex.html#share=secret123`,
     ),
   );
+  expect(state.createPublicFileShare).toHaveBeenCalledWith({
+    projectId: PROJECT_ID,
+    path: "mockup/index.html",
+  });
+  // The only artifact grant is the local one that runs the preview.
+  expect(state.fetch).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("menu")).toBeNull();
   fireEvent.contextMenu(stop, { clientX: 20, clientY: 20 });
   fireEvent.click(
@@ -233,6 +259,38 @@ it("offers stop and a public artifact link from the running toggle's menu", asyn
   expect(screen.getByTitle("Mockup").getAttribute("sandbox")).toBe(
     "allow-same-origin",
   );
+});
+
+it("reuses the file's existing public share for Copy public URL", async () => {
+  state.getPublicFileShares.mockResolvedValue({
+    items: [{ shareId: "s1", url: SHARE_URL }],
+  });
+  await runAndOpenMenu(PROJECT_ID);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Copy public URL" }));
+  await waitFor(() =>
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining("/remote/play.html?"),
+    ),
+  );
+  expect(state.getPublicFileShares).toHaveBeenCalledWith(
+    PROJECT_ID,
+    "mockup/index.html",
+  );
+  expect(state.createPublicFileShare).not.toHaveBeenCalled();
+});
+
+it("offers no Copy public URL without a project file or share creation", async () => {
+  await runAndOpenMenu();
+  expect(screen.getByRole("menuitem", { name: "Stop interactive preview" }));
+  expect(
+    screen.queryByRole("menuitem", { name: "Copy public URL" }),
+  ).toBeNull();
+  cleanup();
+  state.shareStatus = { canCreate: false };
+  await runAndOpenMenu(PROJECT_ID);
+  expect(
+    screen.queryByRole("menuitem", { name: "Copy public URL" }),
+  ).toBeNull();
 });
 
 it("never offers private grants in a public share", () => {

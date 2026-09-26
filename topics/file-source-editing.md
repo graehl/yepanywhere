@@ -39,10 +39,15 @@ HTML files also have a matching play toggle for interactive preview, beside
 Edit in the viewer header; its highlighted state means scripts are running on
 the isolated artifact origin. While running, right-click on that toggle opens
 a menu: open the grant in a new tab, **Copy public URL**, and **Stop
-interactive preview**. The public URL is a separate public-audience grant on
-the configured public artifact origin, minted on demand; it is not the local
-grant rewritten and not a File Viewer public share. The entry is absent when
-no public artifact origin is configured. Tooltips and accessible names
+interactive preview**. The public URL is the file's public file share in play
+form, the same link the File Viewer's share dialog copies while the preview
+runs: an existing live file share is reused, otherwise one is minted. It
+authorizes only that file and its directly referenced assets and is listed and
+revocable in the share dialog. The menu never mints a public-audience artifact
+grant, whose authority would cover the file's whole directory with no listing
+or revocation. The entry follows the file-share conditions in
+[relay-origin-and-share-gating](relay-origin-and-share-gating.md#public-file-views)
+and is absent when the viewer opened the file without a project. Tooltips and accessible names
 describe each action. Ordinary clicks toggle in place. Shift-click opens the requested mode
 in a new tab; middle-click and the browser's Open link in new tab use the same
 real link. These gestures leave the original pane and draft unchanged.

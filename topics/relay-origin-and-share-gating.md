@@ -263,8 +263,11 @@ no file-share management request. Under the same two conditions, the
 authenticated project-file link context menu offers **Copy public URL** beside
 **Copy viewer link**: it copies the file's existing live grant URL, or mints
 one first when none exists. It is a separate entry because the bearer link is
-read-only and never reaches Edit; it is not offered for external absolute-path
-links, which have no project-relative grant target. File links reuse the established public-share
+read-only and never reaches Edit. An absolute path is filed under the
+registered project that owns it, as the share routes do for File Viewer. The
+running interactive preview's toggle menu offers the same **Copy public URL**,
+copying that file share in play form, so every **Copy public URL** for a file
+names one bounded, revocable file grant. File links reuse the established public-share
 relay registration and secret-only `/public-api/shares/:secret/files` reads;
 they do not add a relay protocol or registration mode.
 

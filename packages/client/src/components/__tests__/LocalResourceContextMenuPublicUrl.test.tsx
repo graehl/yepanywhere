@@ -124,3 +124,40 @@ it("mints a public file share when none exists", async () => {
     path: FILE_PATH,
   });
 });
+
+it("offers Copy public URL for an absolute project-file path", async () => {
+  const absolutePath = "/home/user/other-project/report.html";
+  state.getPublicFileShares.mockResolvedValue({ items: [] });
+  state.createPublicFileShare.mockResolvedValue({
+    url: "https://ya.example/share/abs/files",
+  });
+  function AbsoluteHarness() {
+    const { handleContextMenu, contextMenuElement } = useLocalResourceClick();
+    return (
+      <div role="group" onContextMenu={handleContextMenu}>
+        <a
+          href={`http://localhost:3400/projects/${PROJECT_ID}/file?path=${encodeURIComponent(absolutePath)}`}
+        >
+          {absolutePath}
+        </a>
+        {contextMenuElement}
+      </div>
+    );
+  }
+  render(
+    <I18nProvider>
+      <AbsoluteHarness />
+    </I18nProvider>,
+  );
+  fireEvent.contextMenu(screen.getByText(absolutePath));
+  fireEvent.click(screen.getByText("Copy public URL"));
+  await vi.waitFor(() =>
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://ya.example/share/abs/files",
+    ),
+  );
+  expect(state.createPublicFileShare).toHaveBeenCalledWith({
+    projectId: PROJECT_ID,
+    path: absolutePath,
+  });
+});

@@ -21,12 +21,6 @@ export interface ArtifactGrantState {
   failed: boolean;
   /** The page's frame-src policy rejected the artifact origin. */
   frameBlocked: boolean;
-  /**
-   * Mint a public-audience grant for the same file and return its URL, or
-   * undefined when no public artifact origin is configured. A public link is
-   * a separate grant on the public origin, never the local URL rewritten.
-   */
-  createPublicUrl: (() => Promise<string>) | undefined;
 }
 
 /**
@@ -122,24 +116,5 @@ export function useArtifactGrant(
     };
   }, [attempt, origin, audience, path, projectId, runtime]);
 
-  const publicOrigin =
-    config && share === null && config.publicOrigin
-      ? artifactOrigin(config, "public", window.location.href)
-      : undefined;
-  const createPublicUrl = publicOrigin
-    ? async () => {
-        const admitted = await runtime.transport.fetch<ArtifactViewerGrant>(
-          "/artifacts",
-          {
-            method: "POST",
-            body: JSON.stringify({ path, projectId, audience: "public" }),
-          },
-        );
-        if (new URL(admitted.url).origin !== publicOrigin)
-          throw new Error("Unexpected artifact origin");
-        return admitted.url;
-      }
-    : undefined;
-
-  return { origin, grant, busy, failed, frameBlocked, createPublicUrl };
+  return { origin, grant, busy, failed, frameBlocked };
 }

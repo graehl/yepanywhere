@@ -1,4 +1,4 @@
-import { ARTIFACT_SANDBOX } from "@yep-anywhere/shared";
+import { ARTIFACT_SANDBOX, type UrlProjectId } from "@yep-anywhere/shared";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ResourceContextMenu } from "./FileResourceActions";
@@ -6,8 +6,11 @@ import { useSessionAppAnnouncer } from "./SessionAppLinks";
 import { ViewerModeToggle } from "./ViewerModeToggle";
 import { useArtifactGrant } from "../hooks/useArtifactGrant";
 import { useArtifactTabHandoff } from "../hooks/useArtifactTabHandoff";
+import { usePublicFileSharesCreatable } from "../hooks/usePublicFileSharesCreatable";
 import { useI18n } from "../i18n";
 import { writeClipboardTextLater } from "../lib/clipboard";
+import { reuseOrCreatePublicFileShareUrl } from "../lib/publicFileShareLink";
+import { publicSharePlayUrlFromFileShareUrl } from "../lib/publicSharePlay";
 import { createScriptlessHtmlPreviewDocument } from "../lib/scriptlessHtmlPreview";
 import type { ViewerFindSource } from "../lib/viewerFind";
 import styles from "./ArtifactPreview.module.css";
@@ -43,8 +46,11 @@ export function ArtifactPreview(props: Props) {
   const { t } = useI18n();
   const [attempt, setAttempt] = useState(props.autoStart ? 1 : 0);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const { origin, grant, busy, failed, frameBlocked, createPublicUrl } =
-    useArtifactGrant(props.path, props.projectId, attempt);
+  const { origin, grant, busy, failed, frameBlocked } = useArtifactGrant(
+    props.path,
+    props.projectId,
+    attempt,
+  );
   // A running preview is an App the session should be able to recall from
   // its App action after the viewer closes, minimized or not.
   const announceApp = useSessionAppAnnouncer();
@@ -103,22 +109,15 @@ export function ArtifactPreview(props: Props) {
       {failed && <span role="status">{t("artifactUnavailable")}</span>}
     </div>
   );
-  // Right-click on the running toggle: open the grant in a tab, copy a public
-  // artifact link (a separate public-origin grant, not a file share), or stop.
   const runningMenu = menu && grant && (
-    <ResourceContextMenu
+    <RunningPreviewMenu
       x={menu.x}
       y={menu.y}
-      canStartNewSession={false}
+      grantUrl={grant.url}
+      path={props.path}
+      projectId={props.projectId}
       onClose={() => setMenu(null)}
-      onOpen={() => window.open(grant.url, "_blank", "noopener,noreferrer")}
-      onCopyPublicUrl={
-        createPublicUrl
-          ? () => void writeClipboardTextLater(createPublicUrl())
-          : undefined
-      }
       onStop={() => setAttempt(0)}
-      stopLabel={t("artifactStop")}
     />
   );
   return (
@@ -165,5 +164,55 @@ export function ArtifactPreview(props: Props) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Right-click on the running toggle: open the grant in a tab, copy a public
+ * URL, or stop. The public URL is the file's public file share in play form,
+ * the same link the File Viewer's share dialog copies while the preview runs.
+ * It is never a public artifact grant, which would expose the file's whole
+ * directory with no way to list or revoke it.
+ */
+function RunningPreviewMenu({
+  x,
+  y,
+  grantUrl,
+  path,
+  projectId,
+  onClose,
+  onStop,
+}: {
+  x: number;
+  y: number;
+  grantUrl: string;
+  path: string;
+  projectId: string | undefined;
+  onClose: () => void;
+  onStop: () => void;
+}) {
+  const { t } = useI18n();
+  const canCreateFileShare = usePublicFileSharesCreatable();
+  return (
+    <ResourceContextMenu
+      x={x}
+      y={y}
+      canStartNewSession={false}
+      onClose={onClose}
+      onOpen={() => window.open(grantUrl, "_blank", "noopener,noreferrer")}
+      onCopyPublicUrl={
+        canCreateFileShare && projectId
+          ? () =>
+              void writeClipboardTextLater(
+                reuseOrCreatePublicFileShareUrl(
+                  projectId as UrlProjectId,
+                  path,
+                ).then((url) => publicSharePlayUrlFromFileShareUrl(url) ?? url),
+              )
+          : undefined
+      }
+      onStop={onStop}
+      stopLabel={t("artifactStop")}
+    />
   );
 }

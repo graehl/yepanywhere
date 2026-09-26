@@ -2,9 +2,7 @@ import {
   type LocalResourceAttributes,
   type LocalResourceMediaType,
   type LocalResourceRef,
-  PUBLIC_FILE_SHARES_CAPABILITY,
   parseLocalResourceLink,
-  serverHasCapability,
   type UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
@@ -23,12 +21,13 @@ import { usePublicShareContext } from "../contexts/PublicShareContext";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
-import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
+import { usePublicFileSharesCreatable } from "../hooks/usePublicFileSharesCreatable";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRetainedVersionInfo } from "../hooks/useVersion";
 import { useViewerFind } from "../hooks/useViewerFind";
 import { useI18n } from "../i18n";
 import { isArtifactLink } from "../lib/artifactPreview";
+import { reuseOrCreatePublicFileShareUrl } from "../lib/publicFileShareLink";
 import type { ViewerFindSource } from "../lib/viewerFind";
 import {
   writeClipboardRichTextLater,
@@ -1086,23 +1085,14 @@ function LocalResourceContextMenu({
   const publicShare = usePublicShareContext();
   const basePath = useRemoteBasePath();
   const startNewSessionFromFile = useStartNewSessionFromFileAction();
-  const runtime = useCurrentSourceRuntime();
-  const version = useRetainedVersionInfo(runtime.sourceKey);
-  const { status: shareStatus } = usePublicShareStatus();
+  const canCreateFileShare = usePublicFileSharesCreatable();
   const isMedia = contextMenu.resource.kind === "local-media";
   // A public-share counterpart to the private viewer link, kept as a separate
-  // entry because a bearer link is read-only and never reaches Edit. Reuses an
-  // existing live file grant when one exists; otherwise mints one, the same
-  // bearer the File Viewer's share button creates.
+  // entry because a bearer link is read-only and never reaches Edit. It is the
+  // same bearer the File Viewer's share button creates; the share routes file
+  // an absolute path under the registered project that owns it.
   const publicFileShareTarget =
-    publicShare === null &&
-    !isMedia &&
-    contextMenu.projectFileTarget &&
-    !isAbsoluteLikePath(contextMenu.projectFileTarget.filePath) &&
-    shareStatus?.canCreate === true &&
-    serverHasCapability(version, PUBLIC_FILE_SHARES_CAPABILITY)
-      ? contextMenu.projectFileTarget
-      : null;
+    canCreateFileShare && !isMedia ? contextMenu.projectFileTarget : null;
   const mediaCoordinates = isMedia
     ? getImagePathCoordinates({
         exposeAbsolutePath: publicShare === null,
@@ -1241,21 +1231,13 @@ function LocalResourceContextMenu({
       }
       onCopyPublicUrl={
         publicFileShareTarget
-          ? () => {
-              const projectId = publicFileShareTarget.projectId as UrlProjectId;
-              const path = publicFileShareTarget.filePath;
+          ? () =>
               void writeClipboardTextLater(
-                api
-                  .getPublicFileShares(projectId, path)
-                  .then(
-                    (existing) =>
-                      existing.items[0]?.url ??
-                      api
-                        .createPublicFileShare({ projectId, path })
-                        .then((created) => created.url),
-                  ),
-              );
-            }
+                reuseOrCreatePublicFileShareUrl(
+                  publicFileShareTarget.projectId as UrlProjectId,
+                  publicFileShareTarget.filePath,
+                ),
+              )
           : undefined
       }
       onCopyContents={

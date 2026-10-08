@@ -255,6 +255,20 @@ toggle there and the prose stays as written.
 Training data, evaluation and measured costs are in the
 [prose-math sketch](../gaps/sketches/unicode-prose-math.md).
 
+**Parameters and retraining.** The recognizer's trained parameters are
+`packages/server/src/augments/unicode-math-params.bin`, about 5 KB in the
+"UMB1" format documented at `loadUnicodeMathParams`, with int8 values. The
+server reads it on first use. Retraining is an optional step outside the
+normal build: `pnpm -s unicode-math:train` rebuilds the corpus and
+rewrites the file. Its sources are the local Claude and Codex session logs,
+plus arXiv papers from the pinned `scripts/unicode-math/papers.json`,
+fetched as HTML and cached. `--markdown` adds local paper extracts, and
+`--labels` adds hand-labelled rows, which hold private session text and are
+never committed. The step uses the server's own feature function and
+encoder, so a retrained file cannot disagree with the runtime. Results vary
+with the local session logs, so review recognition before committing a
+retrained file.
+
 ## File Content Viewer Contract
 
 When a renderer shows file contents outside an inline transcript block, it

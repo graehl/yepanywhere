@@ -1,0 +1,502 @@
+[
+  {
+    "key": "agarwal2024-on-policy",
+    "arxiv": "2306.13649"
+  },
+  {
+    "key": "agentconsistency2026",
+    "arxiv": "2605.28840"
+  },
+  {
+    "key": "agentforensics2026",
+    "arxiv": "2606.22698"
+  },
+  {
+    "key": "ainsworth2022-git-rebasin",
+    "arxiv": "2209.04836"
+  },
+  {
+    "key": "alain2016-probes",
+    "arxiv": "1610.01644"
+  },
+  {
+    "key": "anthropic2025-introspection",
+    "arxiv": "2601.01828"
+  },
+  {
+    "key": "arbiter2026",
+    "arxiv": "2603.08993"
+  },
+  {
+    "key": "arjmandi2026harnessormodel",
+    "arxiv": "2609.11987"
+  },
+  {
+    "key": "barbaste2026harnessengineering",
+    "arxiv": "2609.00006"
+  },
+  {
+    "key": "beliefdiv2026",
+    "arxiv": "2607.04528"
+  },
+  {
+    "key": "belrose2023-tuned-lens",
+    "arxiv": "2303.08112"
+  },
+  {
+    "key": "benes2024hystoc",
+    "arxiv": "2305.12579v1"
+  },
+  {
+    "key": "bensghaier2026harnessevolution",
+    "arxiv": "2607.03691"
+  },
+  {
+    "key": "beyer2022-patient-consistent",
+    "arxiv": "2106.05237"
+  },
+  {
+    "key": "cha2021-swad",
+    "arxiv": "2102.08604"
+  },
+  {
+    "key": "chang2020-error-decay",
+    "arxiv": "1911.07335"
+  },
+  {
+    "key": "chen2021-earlybert",
+    "arxiv": "2101.00063"
+  },
+  {
+    "key": "chen2024-selfie",
+    "arxiv": "2403.10949"
+  },
+  {
+    "key": "chen2026compressiongateway",
+    "arxiv": "2609.22114"
+  },
+  {
+    "key": "cloud2025-subliminal",
+    "arxiv": "2507.14805v1"
+  },
+  {
+    "key": "cunningham2023-sae",
+    "arxiv": "2309.08600"
+  },
+  {
+    "key": "curtsinger2015-coz",
+    "arxiv": "1608.03676"
+  },
+  {
+    "key": "dhakal2026baselines",
+    "arxiv": "2607.13085"
+  },
+  {
+    "key": "elhage2022-superposition",
+    "arxiv": "2209.10652"
+  },
+  {
+    "key": "engels2024-not-linear",
+    "arxiv": "2405.14860"
+  },
+  {
+    "key": "evobench2026",
+    "arxiv": "2608.09096"
+  },
+  {
+    "key": "fan2026harnessdesign",
+    "arxiv": "2609.20804"
+  },
+  {
+    "key": "farahbakhsh2026-characterizing-metastability",
+    "arxiv": "2606.00942"
+  },
+  {
+    "key": "farina2023-seqlabel-distillation",
+    "arxiv": "2302.05454"
+  },
+  {
+    "key": "friedman2023vendi",
+    "arxiv": "2210.02410"
+  },
+  {
+    "key": "fu2024ume",
+    "arxiv": "2412.17507v1"
+  },
+  {
+    "key": "ganesh2025-lstm-cnn-crf-repro",
+    "arxiv": "2510.10936"
+  },
+  {
+    "key": "garipov2018-mode-connectivity",
+    "arxiv": "1802.10026"
+  },
+  {
+    "key": "gepa2025",
+    "arxiv": "2507.19457"
+  },
+  {
+    "key": "ghorbani2023multi-embedding",
+    "arxiv": "2310.11004"
+  },
+  {
+    "key": "gloaguen2026agentsmd",
+    "arxiv": "2602.11988"
+  },
+  {
+    "key": "gsqd2026",
+    "arxiv": "2607.13683"
+  },
+  {
+    "key": "gu2025-omni-router",
+    "arxiv": "2507.05724"
+  },
+  {
+    "key": "guo2022-swa-revisited",
+    "arxiv": "2201.00519"
+  },
+  {
+    "key": "harnesscompass2026",
+    "arxiv": "2608.01918"
+  },
+  {
+    "key": "harnessfix2026",
+    "arxiv": "2606.06324"
+  },
+  {
+    "key": "he2025emilia",
+    "arxiv": "2501.15907"
+  },
+  {
+    "key": "hernandez2024-relation-jacobian",
+    "arxiv": "2308.09124"
+  },
+  {
+    "key": "hertz2024-style-aligned",
+    "arxiv": "2312.02133v2"
+  },
+  {
+    "key": "hewitt2019-control-tasks",
+    "arxiv": "1909.03368"
+  },
+  {
+    "key": "hinton2015-distilling-knowledge",
+    "arxiv": "1503.02531"
+  },
+  {
+    "key": "hu2026beyondmodel",
+    "arxiv": "2609.32459"
+  },
+  {
+    "key": "instructionbleed2026",
+    "arxiv": "2606.26356"
+  },
+  {
+    "key": "izmailov2018-swa",
+    "arxiv": "1803.05407"
+  },
+  {
+    "key": "kaddour2022-lawa",
+    "arxiv": "2209.14981"
+  },
+  {
+    "key": "kamo2025chime8",
+    "arxiv": "2502.09859v2"
+  },
+  {
+    "key": "kapoor2024agentsmatter",
+    "arxiv": "2407.01502"
+  },
+  {
+    "key": "kapoor2025hal",
+    "arxiv": "2510.11977"
+  },
+  {
+    "key": "kim2024accent-mining",
+    "arxiv": "2408.02582"
+  },
+  {
+    "key": "kim2026harnesspostraining",
+    "arxiv": "2606.25447"
+  },
+  {
+    "key": "kiryo2017-nonnegative-pu",
+    "arxiv": "1703.00593"
+  },
+  {
+    "key": "land2025-script",
+    "arxiv": "2505.24689"
+  },
+  {
+    "key": "li2021-dynamic-kd",
+    "arxiv": "2109.11295"
+  },
+  {
+    "key": "liang2021-super-tickets",
+    "arxiv": "2105.12002"
+  },
+  {
+    "key": "lindenbauer2025complexitytrap",
+    "arxiv": "2508.21433"
+  },
+  {
+    "key": "liu2026copilottraces",
+    "arxiv": "2608.00101"
+  },
+  {
+    "key": "long2025-reasoning-palette",
+    "arxiv": "2512.17206v1"
+  },
+  {
+    "key": "lumer2026promptcaching",
+    "arxiv": "2601.06007"
+  },
+  {
+    "key": "lynch2025-agentic-misalignment",
+    "arxiv": "2510.05179"
+  },
+  {
+    "key": "macdiarmid2025-reward-hacking",
+    "arxiv": "2511.18397"
+  },
+  {
+    "key": "marks2025-auditing-hidden",
+    "arxiv": "2503.10965"
+  },
+  {
+    "key": "matena2021-fisher-merging",
+    "arxiv": "2111.09832"
+  },
+  {
+    "key": "medennikov2025-streaming-sortformer",
+    "arxiv": "2507.18446"
+  },
+  {
+    "key": "merrill2026terminalbench",
+    "arxiv": "2601.11868"
+  },
+  {
+    "key": "metaharness2026",
+    "arxiv": "2603.28052"
+  },
+  {
+    "key": "mikolov2013-word2vec",
+    "arxiv": "1301.3781"
+  },
+  {
+    "key": "miranda2022-spacy-hash-embed",
+    "arxiv": "2212.09255"
+  },
+  {
+    "key": "mirzadeh2020-teacher-assistant",
+    "arxiv": "1902.03393"
+  },
+  {
+    "key": "misaki2026-string-seed",
+    "arxiv": "2510.21150v3"
+  },
+  {
+    "key": "modularrsi2026",
+    "arxiv": "2609.14857"
+  },
+  {
+    "key": "moralesbrotons2024-ema",
+    "arxiv": "2411.18704"
+  },
+  {
+    "key": "mu2024-hdmole",
+    "arxiv": "2409.19878"
+  },
+  {
+    "key": "nityasya2022-student-exam",
+    "arxiv": "2201.00558"
+  },
+  {
+    "key": "onerecipe2026",
+    "arxiv": "2608.10178"
+  },
+  {
+    "key": "pan2024-latentqa",
+    "arxiv": "2412.08686"
+  },
+  {
+    "key": "park2022-diarization-review",
+    "arxiv": "2101.09624"
+  },
+  {
+    "key": "park2023-linear-rep",
+    "arxiv": "2311.03658"
+  },
+  {
+    "key": "pattnayak2025-indic-tokenization",
+    "arxiv": "2504.16977"
+  },
+  {
+    "key": "pereyra2017-confidence-penalty",
+    "arxiv": "1701.06548"
+  },
+  {
+    "key": "pinter2021-xrayemb",
+    "arxiv": "2108.00391"
+  },
+  {
+    "key": "piriyakulkij2026subagentsskills",
+    "arxiv": "2609.09233"
+  },
+  {
+    "key": "promptexp2024",
+    "arxiv": "2410.13073"
+  },
+  {
+    "key": "rethinkhe2026",
+    "arxiv": "2607.12227"
+  },
+  {
+    "key": "rhsi2026",
+    "arxiv": "2607.15524"
+  },
+  {
+    "key": "rrsi2026",
+    "arxiv": "2609.24972"
+  },
+  {
+    "key": "rust2023-pixel",
+    "arxiv": "2207.06991"
+  },
+  {
+    "key": "sanyal2023-early-averaging",
+    "arxiv": "2306.03241"
+  },
+  {
+    "key": "sari2020-speaker-memory",
+    "arxiv": "2002.06165"
+  },
+  {
+    "key": "schmidt2023-crosslingual",
+    "arxiv": "2305.16834"
+  },
+  {
+    "key": "shi2026-domain-routed",
+    "arxiv": "2606.10454"
+  },
+  {
+    "key": "shi2026harbor",
+    "arxiv": "2609.04298"
+  },
+  {
+    "key": "skilltriage2026",
+    "arxiv": "2608.11888"
+  },
+  {
+    "key": "swayamdipta2020-cartography",
+    "arxiv": "2009.10795"
+  },
+  {
+    "key": "tay2022-charformer",
+    "arxiv": "2106.12672"
+  },
+  {
+    "key": "turner2023-actadd",
+    "arxiv": "2308.10248"
+  },
+  {
+    "key": "turpin2023-cot-unfaithful",
+    "arxiv": "2305.04388"
+  },
+  {
+    "key": "udandarao2025-active-curation",
+    "arxiv": "2411.18674"
+  },
+  {
+    "key": "updatebenefit2026",
+    "arxiv": "2605.30621"
+  },
+  {
+    "key": "vandereeckt2024-uocl",
+    "arxiv": "2406.12503"
+  },
+  {
+    "key": "vats2026scaffoldeffect",
+    "arxiv": "2607.22585"
+  },
+  {
+    "key": "wang2020-byte-level-subwords",
+    "arxiv": "1909.03341"
+  },
+  {
+    "key": "wang2021-ace",
+    "arxiv": "2010.05006"
+  },
+  {
+    "key": "wang2024-mambabyte",
+    "arxiv": "2401.13660"
+  },
+  {
+    "key": "weinberger2026tokenreduction",
+    "arxiv": "2607.12161"
+  },
+  {
+    "key": "wortsman2021-wiseft",
+    "arxiv": "2109.01903"
+  },
+  {
+    "key": "wortsman2022-model-soups",
+    "arxiv": "2203.05482"
+  },
+  {
+    "key": "xiros2026-knowledge-verbalization",
+    "arxiv": "2607.05013"
+  },
+  {
+    "key": "yang2024sweagent",
+    "arxiv": "2405.15793"
+  },
+  {
+    "key": "yao2026harnessbench",
+    "arxiv": "2605.27922"
+  },
+  {
+    "key": "ye2026-context-distillation",
+    "arxiv": "2602.12275v2"
+  },
+  {
+    "key": "you2021-speechmoe2",
+    "arxiv": "2111.11831"
+  },
+  {
+    "key": "zhang2015-char-cnn",
+    "arxiv": "1509.01626"
+  },
+  {
+    "key": "zhang2026-pre-verbalization-commitment",
+    "arxiv": "2605.06723"
+  },
+  {
+    "key": "zhang2026-verbalized-sampling",
+    "arxiv": "2510.01171v4"
+  },
+  {
+    "key": "zhang2026chart",
+    "arxiv": "2609.22247"
+  },
+  {
+    "key": "zhang2026stopcomparing",
+    "arxiv": "2605.23950"
+  },
+  {
+    "key": "zhao2024-saml",
+    "arxiv": "2406.19706"
+  },
+  {
+    "key": "zheng2026-proxy-compression",
+    "arxiv": "2602.04289"
+  },
+  {
+    "key": "zheng2026clawswebench",
+    "arxiv": "2606.12344"
+  },
+  {
+    "key": "zou2023-repe",
+    "arxiv": "2310.01405"
+  }
+]

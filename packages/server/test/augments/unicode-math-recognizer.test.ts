@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  encodeUnicodeMathParams,
   findUnicodeMath,
   loadUnicodeMathParams,
 } from "../../src/augments/unicode-math-recognizer.js";
@@ -19,6 +20,11 @@ describe("unicode math recognizer parameters", () => {
     expect(
       findUnicodeMath(params, text).map(([s, e]) => text.slice(s, e)),
     ).toEqual(["λ=.05"]);
+  });
+
+  it("re-encodes the shipped parameters byte for byte", () => {
+    const params = loadUnicodeMathParams(shipped);
+    expect(Buffer.from(encodeUnicodeMathParams(params))).toEqual(shipped);
   });
 
   it("rejects malformed parameter files", () => {

@@ -394,6 +394,16 @@ function-call forms like `max(A[i-1], B[j-1])`, so it was not adopted.
 Known gap: a formula can split around an unseeded token (`∫₁^∞ x⁻ˢ` and
 `= 1/(s−1)` around `dx`).
 
+**Retraining in the repo.** `pnpm -s unicode-math:train`
+(`scripts/unicode-math/`) ports the research pipeline. The shipped
+parameters came from the private research repo, and its paper corpus
+differs from this step's. The research used 230 local paper extracts
+produced by `~/agents` `related-work fetch`. The repo step fetches the
+125 of those with arXiv ids as arXiv HTML (inline TeX from `alttext`);
+`--markdown` adds local extracts back. Hand labels (`--labels`) are
+optional and private. A retrained file therefore differs from the
+shipped one even with the same sessions.
+
 ## Open questions
 
 - Whether to vendor `TeX.js` for the harness only (offline), or depend on

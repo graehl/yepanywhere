@@ -171,6 +171,46 @@ function classify(text: string): { cls: Uint8Array; cps: Uint32Array } {
   return { cls: out, cps };
 }
 
+/** Character class names; parameter tables are indexed by class. */
+export const UNICODE_MATH_CLASSES: readonly string[] = CLASSES;
+/** Number of character classes. */
+export const UNICODE_MATH_CLASS_COUNT = K;
+/** The class of a surrogate pair's trailing unit: no heat, no decay. */
+export const UNICODE_MATH_TAIL_CLASS = TAIL;
+
+export interface UnicodeMathFeatures {
+  /** Class per UTF-16 unit. */
+  cls: Uint8Array;
+  /** Code point per unit for override lookup (0 for ASCII and word runs). */
+  cps: Uint32Array;
+  /** Nearest non-tail class to the left (space at the text start). */
+  left: Uint8Array;
+  /** Nearest non-tail class to the right (space at the text end). */
+  right: Uint8Array;
+}
+
+/**
+ * The recognizer's per-character inputs. Training uses the same function,
+ * so a retrained model sees exactly the features the server computes.
+ */
+export function unicodeMathFeatures(text: string): UnicodeMathFeatures {
+  const { cls: classes, cps } = classify(text);
+  const n = classes.length;
+  const left = new Uint8Array(n);
+  const right = new Uint8Array(n);
+  let previous = SPACE;
+  for (let i = 0; i < n; i++) {
+    left[i] = previous;
+    if (classes[i] !== TAIL) previous = classes[i] ?? SPACE;
+  }
+  let following = SPACE;
+  for (let i = n - 1; i >= 0; i--) {
+    right[i] = following;
+    if (classes[i] !== TAIL) following = classes[i] ?? SPACE;
+  }
+  return { cls: classes, cps, left, right };
+}
+
 export interface UnicodeMathParams {
   heat: Float64Array;
   decay: Float64Array;
@@ -235,6 +275,59 @@ export function loadUnicodeMathParams(bytes: Uint8Array): UnicodeMathParams {
   return { heat, decay, overrides, left, right, theta };
 }
 
+/**
+ * Encode parameters as "UMB1" (see loadUnicodeMathParams), quantising
+ * every value to a multiple of 1/den. Sparse entries that quantise to zero
+ * are dropped; a value outside the int8 range is an error.
+ */
+export function encodeUnicodeMathParams(
+  params: UnicodeMathParams,
+  den = 2,
+): Uint8Array {
+  const out: number[] = [];
+  const q = (v: number) => {
+    const x = Math.round(v * den);
+    if (x < -128 || x > 127) {
+      throw new Error(`unicode math parameters: ${v} exceeds the int8 range`);
+    }
+    return x;
+  };
+  const i8 = (v: number) => out.push(q(v) & 0xff);
+  const varint = (v: number) => {
+    let rest = v;
+    do {
+      const low = rest % 128;
+      rest = Math.floor(rest / 128);
+      out.push(rest ? low | 0x80 : low);
+    } while (rest);
+  };
+  for (const c of "UMB1") out.push(c.charCodeAt(0));
+  out.push(K, den);
+  i8(params.theta);
+  for (const v of params.heat) i8(v);
+  for (const v of params.decay) i8(v);
+  const overrides = [...params.overrides]
+    .filter(([, [dh, du]]) => q(dh) || q(du))
+    .sort((a, b) => a[0] - b[0]);
+  varint(overrides.length);
+  for (const [cp, [dh, du]] of overrides) {
+    varint(cp);
+    i8(dh);
+    i8(du);
+  }
+  for (const pairs of [params.left, params.right]) {
+    const kept = [...pairs].filter(([, v]) => q(v)).sort((a, b) => a[0] - b[0]);
+    varint(kept.length);
+    let last = 0;
+    for (const [key, v] of kept) {
+      varint(key - last);
+      i8(v);
+      last = key;
+    }
+  }
+  return Uint8Array.from(out);
+}
+
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
 /** Per-character probability that the character belongs to math. */
@@ -242,17 +335,10 @@ export function mathScores(
   params: UnicodeMathParams,
   text: string,
 ): Float64Array {
-  const { cls: classes, cps } = classify(text);
+  const { cls: classes, cps, left, right } = unicodeMathFeatures(text);
   const n = classes.length;
   const h = new Float64Array(n);
   const d = new Float64Array(n);
-  const next = new Uint8Array(n);
-  let following = SPACE;
-  for (let i = n - 1; i >= 0; i--) {
-    next[i] = following;
-    if (classes[i] !== TAIL) following = classes[i] ?? SPACE;
-  }
-  let previous = SPACE;
   for (let i = 0; i < n; i++) {
     const k = classes[i] ?? SPACE;
     if (k === TAIL) {
@@ -261,8 +347,8 @@ export function mathScores(
     }
     let heat =
       (params.heat[k] ?? 0) +
-      (params.left.get(previous * K + k) ?? 0) +
-      (params.right.get(k * K + (next[i] ?? SPACE)) ?? 0);
+      (params.left.get((left[i] ?? SPACE) * K + k) ?? 0) +
+      (params.right.get(k * K + (right[i] ?? SPACE)) ?? 0);
     let decay = params.decay[k] ?? 0;
     const override = cps[i] ? params.overrides.get(cps[i] ?? 0) : undefined;
     if (override) {
@@ -271,7 +357,6 @@ export function mathScores(
     }
     h[i] = heat;
     d[i] = sigmoid(decay);
-    previous = k;
   }
   const p = new Float64Array(n);
   let f = 0;

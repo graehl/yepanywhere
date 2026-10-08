@@ -551,6 +551,8 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     let body: {
       path: string;
       create?: boolean;
+      /** False creates a missing folder without a repository. */
+      gitInit?: unknown;
       name?: unknown;
       codeName?: unknown;
     };
@@ -562,6 +564,9 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
 
     if (!body.path || typeof body.path !== "string") {
       return c.json({ error: "path is required" }, 400);
+    }
+    if (body.gitInit !== undefined && typeof body.gitInit !== "boolean") {
+      return c.json({ error: "gitInit must be a boolean" }, 400);
     }
 
     // The chosen name and code name are validated before anything is
@@ -647,6 +652,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     const directory = await ensureProjectDirectory(normalizedPath, {
       create: body.create === true,
       projectRoot: owner?.projectRoot,
+      initializeGit: body.gitInit !== false,
     });
     if (directory.kind === "error") {
       return c.json({ error: directory.error }, directory.status);

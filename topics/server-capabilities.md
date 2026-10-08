@@ -84,6 +84,14 @@ capability clients hide the setting and every view button and send no view
 request. No existing capability changes meaning; the maintainer's standing
 compatibility approval covers the gate. See [MCP Apps](mcp-apps.md#compatibility).
 
+`project-creation-git-choice` (permanent ID 121, version-implied from 0.9.4)
+owns the `gitInit` request field on `POST /api/projects`: `false` creates a
+missing folder without a repository. v0.9.0–v0.9.2 always initialize Git in a
+folder they create and ignore the field; without the capability New session
+shows Git initialization checked and disabled and sends no field. No existing
+capability changes meaning; the maintainer's standing compatibility approval
+covers the gate. See [project names](project-names.md).
+
 `context-usage-breakdown` (permanent ID 108, version-implied from 0.9.4) owns
 `GET /api/sessions/:sessionId/context-breakdown`. v0.9.0–v0.9.2 lack the
 route; without the capability the context-usage popover shows only its

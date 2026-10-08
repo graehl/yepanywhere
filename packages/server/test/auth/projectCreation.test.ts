@@ -221,6 +221,24 @@ describe("ensureProjectDirectory", () => {
     expect(files.trim()).toBe("");
   });
 
+  it("creates a plain folder when the caller declines Git", async () => {
+    const target = path.join(dir, "plain");
+    const outcome = await ensureProjectDirectory(target, {
+      create: true,
+      initializeGit: false,
+    });
+    expect(outcome).toEqual({ kind: "created" });
+    expect((await fs.stat(target)).isDirectory()).toBe(true);
+    await expect(fs.stat(path.join(target, ".git"))).rejects.toThrow();
+  });
+
+  it("creates only the last folder of the path", async () => {
+    const target = path.join(dir, "missing-parent", "leaf");
+    const outcome = await ensureProjectDirectory(target, { create: true });
+    expect(outcome).toMatchObject({ kind: "error", status: 404 });
+    await expect(fs.stat(path.dirname(target))).rejects.toThrow();
+  });
+
   it("commits even where the host configures no git identity", async () => {
     // The suite runs with a temporary HOME, so this is that machine: git
     // refuses to commit without a committer, and a fresh host is exactly

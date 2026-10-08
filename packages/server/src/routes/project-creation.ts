@@ -183,12 +183,13 @@ export type ProjectDirectoryOutcome =
 /**
  * Make a project directory that does not exist yet: create it, `git init`,
  * and leave one empty commit so the project has a root revision to diff
- * against from its very first change. An existing directory is left exactly
- * as it is — YA never runs `git init` over somebody's tree.
+ * against from its very first change, unless the caller declines Git. An
+ * existing directory is left exactly as it is — YA never runs `git init` over
+ * somebody's tree.
  */
 export async function ensureProjectDirectory(
   projectPath: string,
-  options: { create: boolean; projectRoot?: string },
+  options: { create: boolean; projectRoot?: string; initializeGit?: boolean },
 ): Promise<ProjectDirectoryOutcome> {
   let stats: Awaited<ReturnType<typeof fs.stat>> | null = null;
   try {
@@ -272,6 +273,7 @@ export async function ensureProjectDirectory(
     };
   }
 
+  if (options.initializeGit === false) return { kind: "created" };
   try {
     await initializeProjectGit(projectPath);
   } catch (error) {

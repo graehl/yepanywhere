@@ -536,6 +536,27 @@ export const SERVER_CAPABILITIES = {
         "Servers through 0.9.2 have no view route or proxy, so a hosted client must not offer views there.",
     },
   },
+  projectCreationGitChoice: {
+    id: CAPABILITY_ID_ALLOCATIONS.projectCreationGitChoice.id,
+    name: "project-creation-git-choice",
+    kind: "permanent",
+    area: "settings",
+    introducedIn: "0.9.4",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Server honors gitInit: false when adding a project creates its folder, leaving the new folder without a repository.",
+    clientFallback:
+      "Show Git initialization as always on for a new folder and send no gitInit field.",
+    serverContract: {
+      routes: ["POST /api/projects"],
+      requestFields: ["gitInit"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Servers through 0.9.2 always initialize Git in a folder they create and ignore the field, so a hosted client must not offer the choice there.",
+    },
+  },
   projectFileViewCommand: {
     id: CAPABILITY_ID_ALLOCATIONS.projectFileViewCommand.id,
     name: "project-file-view-command",

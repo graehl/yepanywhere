@@ -744,6 +744,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "mcp-app-views",
     introducedIn: "0.9.4",
   },
+  projectCreationGitChoice: {
+    id: 121,
+    direction: "server",
+    name: "project-creation-git-choice",
+    introducedIn: "0.9.4",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

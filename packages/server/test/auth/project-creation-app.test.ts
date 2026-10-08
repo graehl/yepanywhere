@@ -78,7 +78,7 @@ describe("a limited user's project creation through the app", () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  function addProject(path: string) {
+  function addProject(path: string, extra: Record<string, unknown> = {}) {
     return instance.app.request("/api/projects", {
       method: "POST",
       headers: {
@@ -86,7 +86,7 @@ describe("a limited user's project creation through the app", () => {
         "X-Yep-Anywhere": "true",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ path, create: true }),
+      body: JSON.stringify({ path, create: true, ...extra }),
     });
   }
 
@@ -141,6 +141,17 @@ describe("a limited user's project creation through the app", () => {
       projectMetadataService.getMetadata(toUrlProjectId(projectPath))
         ?.ownerUsername,
     ).toBe("archer");
+  });
+
+  it("creates a folder without a repository when Git is declined", async () => {
+    const projectPath = join(root, "sketches");
+    const response = await addProject(projectPath, { gitInit: false });
+    expect(response.status, await response.text()).toBe(200);
+    expect((await stat(projectPath)).isDirectory()).toBe(true);
+    await expect(stat(join(projectPath, ".git"))).rejects.toThrow();
+    expect(
+      (await addProject(join(root, "odd"), { gitInit: "no" })).status,
+    ).toBe(400);
   });
 
   it("rejects missing descendants beneath an escaping symlink before mkdir", async () => {

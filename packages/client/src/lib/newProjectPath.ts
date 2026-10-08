@@ -123,6 +123,11 @@ export interface SettledPathEntry {
   name?: string;
 }
 
+/** The name a project started at `entry` gets: its description, else its folder. */
+export function projectNameForEntry(entry: SettledPathEntry): string {
+  return entry.name ?? lastPathComponent(entry.path);
+}
+
 /**
  * What a finished path-box entry means. An anchored path stands as typed; a
  * description is a project name whose path is derived; any other relative

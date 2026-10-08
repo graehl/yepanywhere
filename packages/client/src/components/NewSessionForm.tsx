@@ -166,6 +166,7 @@ import {
 import {
   isAnchoredPath,
   newProjectBaseFor,
+  projectNameForEntry,
   settlePathEntry,
 } from "../lib/newProjectPath";
 import { getRecapModeDescription } from "../lib/recapModes";
@@ -1546,8 +1547,11 @@ export function NewSessionForm({
           versionInfo,
           SERVER_CAPABILITIES.limitedUserNoProjectSessions.name,
         )));
+  // A typed path that matches no project starts one there, so the summary
+  // names that project rather than the selection the path replaced.
   const projectSummaryTitle =
-    currentProjectSelection?.name ??
+    (customProjectTarget && projectNameForEntry(customProjectTarget)) ||
+    currentProjectSelection?.name ||
     (projectPending ? t("newSessionLoading") : t("newSessionProjectDetached"));
   const projectSummaryMeta = hasCustomProjectPath
     ? normalizedProjectInput

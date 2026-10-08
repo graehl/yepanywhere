@@ -44,7 +44,11 @@ Status: **implemented (2026-09-20).**
   - The new session project field settles an entry that matches no listed
     project the same way (a description names the project). Its typed-path
     row shows the settled path, labelled as a new project folder when the
-    entry was not itself a path. Starting the session adds that project,
+    entry was not itself a path. The chooser's summary names the project
+    that entry will start (the description, else the settled path's last
+    folder), not the selection the entry replaced: a selected `draft`
+    overtyped with `~/math` previews `math`, the name the session lands
+    in. Starting the session adds that project,
     creating the directory if it does not exist, and a notice says whether
     the folder was created or already existed. An absolute or `~` path
     that does not exist is still refused there, as before.

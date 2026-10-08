@@ -3492,6 +3492,25 @@ describe("NewSessionForm", () => {
     expect(screen.getByText("/Users/kgraehl/code/yepanywhere")).toBeDefined();
   });
 
+  it("names the project a typed path will start, not the replaced selection", () => {
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    const title = () =>
+      container.querySelector(".new-session-project-summary-title")
+        ?.textContent;
+    expect(title()).toBe("Alpha");
+    fireEvent.change(
+      screen.getByPlaceholderText("newSessionProjectPathPlaceholder"),
+      { target: { value: "~/math" } },
+    );
+    expect(title()).toBe("math");
+  });
+
   it("uses visit recency and shows more than four project shortcuts", () => {
     const manyProjects = [
       ...chooserProjects,

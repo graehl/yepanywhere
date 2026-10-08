@@ -3488,8 +3488,94 @@ describe("NewSessionForm", () => {
     expect(
       container.querySelector("#new-session-project-panel"),
     ).not.toBeNull();
-    expect(screen.getByText("newSessionProjectUseTypedPath")).toBeDefined();
-    expect(screen.getByText("/Users/kgraehl/code/yepanywhere")).toBeDefined();
+    // The unmatched path is offered as a new project, the search box serving
+    // as its path field.
+    const newProject = screen.getByRole("region", {
+      name: "templateNewProject",
+    });
+    expect(within(newProject).getByText("newProjectFromSearch")).toBeDefined();
+    expect(
+      within(newProject).queryByLabelText("newProjectEntryLabel"),
+    ).toBeNull();
+    expect(
+      (
+        within(newProject).getByRole("radio", {
+          name: /newProjectEmptyFolder/,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+  });
+
+  it("opens New project from its button and starts an empty folder", async () => {
+    versionState.version = { capabilities: ["project-creation-git-choice"] };
+    mockAddProject.mockResolvedValue({
+      project: {
+        id: "project-math",
+        name: "math",
+        path: "/home/u/math",
+        sessionCount: 0,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+      },
+      created: true,
+    });
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "templateNewProject" }));
+    const newProject = screen.getByRole("region", {
+      name: "templateNewProject",
+    });
+    const entry = within(newProject).getByLabelText(
+      "newProjectEntryLabel",
+    ) as HTMLInputElement;
+    await waitFor(() => expect(document.activeElement).toBe(entry));
+    fireEvent.change(entry, { target: { value: "~/math" } });
+    expect(
+      container.querySelector(".new-session-project-summary-title")
+        ?.textContent,
+    ).toBe("math");
+    fireEvent.click(
+      within(newProject).getByRole("checkbox", { name: "newProjectGitInit" }),
+    );
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionCreateAndStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockAddProject).toHaveBeenCalledWith("~/math", {
+        create: true,
+        gitInit: false,
+      });
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-math",
+        "hello",
+        expect.any(Object),
+        undefined,
+        expect.any(Number),
+        undefined,
+      );
+    });
+    expect(localStorage.getItem("yep-anywhere-new-project-git-init")).toBe(
+      "false",
+    );
+  });
+
+  it("keeps Git on for servers that always initialize it", () => {
+    render(<NewSessionForm projects={[...chooserProjects]} />);
+    fireEvent.click(screen.getByRole("button", { name: "templateNewProject" }));
+    const git = screen.getByRole("checkbox", {
+      name: "newProjectGitInit",
+    }) as HTMLInputElement;
+    expect(git.checked).toBe(true);
+    expect(git.disabled).toBe(true);
   });
 
   it("names the project a typed path will start, not the replaced selection", () => {
@@ -3837,11 +3923,14 @@ describe("NewSessionForm", () => {
       target: { value: "hello" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "newSessionStartAction" }),
+      screen.getByRole("button", { name: "newSessionCreateAndStartAction" }),
     );
 
     await waitFor(() => {
-      expect(mockAddProject).toHaveBeenCalledWith("/tmp/added-project");
+      // An unmatched path is a new project: one folder, made if missing.
+      expect(mockAddProject).toHaveBeenCalledWith("/tmp/added-project", {
+        create: true,
+      });
       expect(mockStartSession).toHaveBeenCalledWith(
         "project-added",
         "hello",
@@ -3875,7 +3964,7 @@ describe("NewSessionForm", () => {
       target: { value: "hello" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: "newSessionStartAction" }),
+      screen.getByRole("button", { name: "newSessionCreateAndStartAction" }),
     );
 
     await waitFor(() => {

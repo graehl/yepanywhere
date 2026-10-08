@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
   projectTemplatesApi,
   type ProjectTemplateChoice,
@@ -27,6 +27,58 @@ import { useVersion } from "../hooks/useVersion";
 import { useToastContext } from "../contexts/ToastContext";
 import { TemplateCreationProgress } from "./TemplateCreationProgress";
 
+/** One radio in a project's starting-point palette. */
+export interface ProjectStartChoice {
+  key: string;
+  title: string;
+  description?: string;
+  icon?: string;
+}
+
+/** The radio palette of project starting points, templates or otherwise. */
+export function ProjectStartPalette({
+  name,
+  legend,
+  choices,
+  selected,
+  onSelect,
+  disabled,
+  children,
+}: {
+  name: string;
+  legend: string;
+  choices: readonly ProjectStartChoice[];
+  selected: string | undefined;
+  onSelect: (key: string) => void;
+  disabled?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <fieldset className={styles.palette} disabled={disabled}>
+      <legend>{legend}</legend>
+      {choices.map((item) => (
+        <label className={styles.choice} key={item.key}>
+          <input
+            type="radio"
+            name={name}
+            checked={selected === item.key}
+            onChange={() => onSelect(item.key)}
+          />
+          {item.icon && <img className={styles.icon} src={item.icon} alt="" />}
+          <span>
+            <strong>{item.title}</strong>
+            {item.description && <small>{item.description}</small>}
+          </span>
+        </label>
+      ))}
+      {children}
+    </fieldset>
+  );
+}
+
+export const templateChoiceKey = (item: ProjectTemplateChoice) =>
+  `${item.sourceId}/${item.id}`;
+
 interface Props {
   templates: ProjectTemplateChoice[];
   projects: readonly Project[];
@@ -39,6 +91,13 @@ interface Props {
   emptyMessage?: string;
   stagedAttachments?: TemplateCreationRequest["stagedAttachments"];
   onStarted: (projectId: string, sessionId: string) => void;
+  /**
+   * The template, name and path chosen by an enclosing form, which then owns
+   * the palette and name fields; this form keeps only creation and progress.
+   */
+  chosen?: { template: ProjectTemplateChoice; name: string; path: string };
+  /** A creation resumed after reload, so the enclosing form can show it. */
+  onRecovered?: (request: TemplateCreationRequest) => void;
 }
 
 /** The same template radio palette and creation operation in both project entry points. */
@@ -54,6 +113,8 @@ export function TemplateProjectForm({
   emptyMessage,
   stagedAttachments,
   onStarted,
+  chosen,
+  onRecovered,
 }: Props) {
   const { t } = useI18n();
   const { showToast } = useToastContext();
@@ -94,10 +155,13 @@ export function TemplateProjectForm({
   const completed = useRef(false);
   const recovered = useRef(false);
   const selected =
-    templates.find((item) => `${item.sourceId}/${item.id}` === selection) ??
+    chosen?.template ??
+    templates.find((item) => templateChoiceKey(item) === selection) ??
     (selection === null ? templates[0] : undefined);
+  const effectiveName = chosen?.name ?? name;
   const path =
     request.current?.path ??
+    chosen?.path ??
     pathForProjectName(name, limited ? pathBase : parent, projects, false);
   const effectiveIntent = intent ?? description;
   const running =
@@ -115,7 +179,7 @@ export function TemplateProjectForm({
         setLocalAttachments((items) => [...items, ref]);
         if (historyScope)
           void rememberComposerUpload(historyScope, file, {
-            projectName: name,
+            projectName: effectiveName,
           }).catch((cause) =>
             showToast(
               t("composerHistorySaveError", { error: String(cause) }),
@@ -147,6 +211,7 @@ export function TemplateProjectForm({
     setNameEdited(true);
     setDescription(retained.intent);
     setSelection(`${retained.sourceId}/${retained.templateId}`);
+    onRecovered?.(retained);
     setPending(true);
     void projectTemplatesApi
       .create(retained)
@@ -155,7 +220,7 @@ export function TemplateProjectForm({
         setError(caught instanceof Error ? caught.message : String(caught));
       })
       .finally(() => setPending(false));
-  }, [storageKey, resolved]);
+  }, [storageKey, resolved, onRecovered]);
 
   useEffect(() => {
     if (!nameEdited && !request.current) setName(initialName);
@@ -207,7 +272,7 @@ export function TemplateProjectForm({
       pending ||
       disabledReason ||
       !selected ||
-      !name.trim() ||
+      !effectiveName.trim() ||
       !effectiveIntent.trim() ||
       !path
     )
@@ -217,7 +282,7 @@ export function TemplateProjectForm({
       sourceId: selected.sourceId,
       templateId: selected.id,
       path,
-      name,
+      name: effectiveName,
       intent: effectiveIntent,
       session: sessionSettings,
       ...(stagedAttachments || localAttachments.length
@@ -259,33 +324,33 @@ export function TemplateProjectForm({
   };
 
   return (
-    <section className={styles.form} aria-label={t("templateNewProject")}>
-      <fieldset className={styles.palette} disabled={locked}>
-        <legend>{t("templateChoose")}</legend>
-        {templates.map((item) => (
-          <label className={styles.choice} key={`${item.sourceId}/${item.id}`}>
-            <input
-              type="radio"
-              name={`${id}-template`}
-              checked={selected === item}
-              onChange={() => setSelection(`${item.sourceId}/${item.id}`)}
-            />
-            {item.icon && (
-              <img className={styles.icon} src={item.icon} alt="" />
-            )}
-            <span>
-              <strong>{item.title}</strong>
-              <small>{item.description}</small>
-            </span>
-          </label>
-        ))}
-        {templates.length === 0 && (
-          <p role="status">
-            {emptyMessage ??
-              t(limited ? "templateNoneForUser" : "templateNoReady")}
-          </p>
-        )}
-      </fieldset>
+    <section
+      className={styles.form}
+      // A chosen template belongs to the enclosing form's New project region.
+      aria-label={chosen ? undefined : t("templateNewProject")}
+    >
+      {!chosen && (
+        <ProjectStartPalette
+          name={`${id}-template`}
+          legend={t("templateChoose")}
+          disabled={locked}
+          choices={templates.map((item) => ({
+            key: templateChoiceKey(item),
+            title: item.title,
+            description: item.description,
+            icon: item.icon,
+          }))}
+          selected={selected && templateChoiceKey(selected)}
+          onSelect={setSelection}
+        >
+          {templates.length === 0 && (
+            <p role="status">
+              {emptyMessage ??
+                t(limited ? "templateNoneForUser" : "templateNoReady")}
+            </p>
+          )}
+        </ProjectStartPalette>
+      )}
       {selected?.preview && (
         <img
           className={styles.preview}
@@ -293,18 +358,20 @@ export function TemplateProjectForm({
           alt={selected.title}
         />
       )}
-      <label className={styles.field}>
-        {t("projectsAddNameLabel")}
-        <input
-          value={name}
-          onChange={(e) => {
-            setNameEdited(true);
-            setName(e.target.value);
-          }}
-          disabled={locked}
-          placeholder={t("templateNameExample")}
-        />
-      </label>
+      {!chosen && (
+        <label className={styles.field}>
+          {t("projectsAddNameLabel")}
+          <input
+            value={name}
+            onChange={(e) => {
+              setNameEdited(true);
+              setName(e.target.value);
+            }}
+            disabled={locked}
+            placeholder={t("templateNameExample")}
+          />
+        </label>
+      )}
       {intent === undefined && (
         <div>
           <ComposerRecents
@@ -408,7 +475,7 @@ export function TemplateProjectForm({
           </PromptHistoryRail>
         </div>
       )}
-      {!limited && (
+      {!limited && !chosen && (
         <label className={styles.field}>
           {t("templateParent")}
           <input
@@ -418,7 +485,7 @@ export function TemplateProjectForm({
           />
         </label>
       )}
-      {path && <small className={styles.path}>{path}</small>}
+      {path && !chosen && <small className={styles.path}>{path}</small>}
       <button
         type="button"
         className={styles.action}
@@ -430,7 +497,7 @@ export function TemplateProjectForm({
           !!disabledReason ||
           operation !== null ||
           !selected ||
-          !name.trim() ||
+          !effectiveName.trim() ||
           !effectiveIntent.trim() ||
           !path
         }

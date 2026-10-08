@@ -232,7 +232,6 @@
   "newSessionProjectPathLabel": "Projektordner",
   "newSessionProjectPathPlaceholder": "Pfad eingeben oder vorhandene Projekte durchsuchen",
   "newSessionProjectPathHint": "Wähle einen recenten Ordner, suche nach Namen oder füge einen Pfad wie ~/code/project ein.",
-  "newSessionProjectUseTypedPath": "Diesen Pfad verwenden",
   "newSessionProjectNoMatches": "Kein gespeichertes Projekt passt. Du kannst trotzdem mit dem eingegebenen Pfad starten.",
   "newSessionDefaultsDescription": "Speichere den aktuellen Anbieter, das Modell und den Berechtigungsmodus als Standard.",
   "newSessionDefaultsAction": "Als Standard setzen",

@@ -341,14 +341,19 @@ proposal fixture lives in `packages/client/mockups/project-templates/` and
 reuses the real existing-directory form and settings section component.
 
 The 2026-09-28 placement revision lives in
-`packages/client/mockups/project-template-placement/`. New session may use a
-compact project-menu trigger: typing a new project name offers creation, and a
-quick New project action expands the name and template palette in place. Keep
-the entered prompt, project name, provider and model when expanding, collapsing
-or switching templates. Creation must not navigate away and require returning
-to the session form. One Create & prepare action creates the project and its
-preparation session; it must not create a second empty session. The new fixture
-illustrates placement only; production integration remains pending.
+`packages/client/mockups/project-template-placement/`. In New session, the New
+project panel (owned by [project names](project-names.md)) leads its palette
+with **Empty folder**, selected by default, followed by the ready templates;
+an unmatched path typed into the project search opens the same panel. The
+panel owns the name and palette; choosing a template shows only that
+template's Create & prepare action and progress, which use the panel's name
+and settled path and the composer prompt as the intent. Keep the entered
+prompt, project name, provider and model when expanding, collapsing or
+switching choices. Creation must not navigate away and require returning to
+the session form. One Create & prepare action creates the project and its
+preparation session; it must not create a second empty session. The
+2026-10-08 proposal for this panel is
+`packages/client/mockups/new-project-flow/`.
 
 [Template artwork](../gaps/sketches/project-template-artwork.md) sketches
 source-provided thumbnails and compact icons beyond the existing preview image

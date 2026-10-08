@@ -12,7 +12,12 @@ import { DRAFT_STORAGE_EVENT } from "../lib/draftSyncStorage";
 import { MachineControlSessionSelection } from "./MachineControlSessionSelection";
 import { useComposerVoiceRef } from "../hooks/useComposerVoiceRef";
 import type { ProjectAppTarget } from "../api/projectApp";
-import { TemplateProjectForm } from "./TemplateProjectForm";
+import {
+  ProjectStartPalette,
+  TemplateProjectForm,
+  templateChoiceKey,
+} from "./TemplateProjectForm";
+import type { TemplateCreationRequest } from "../api/projectTemplatesClient";
 import { ComposerRecents } from "./ComposerRecents";
 import { AudioMemoPanel } from "./AudioMemoPanel";
 import { PromptHistoryRail } from "./PromptHistoryRail";
@@ -416,6 +421,9 @@ function NewSessionOptionSection({
   );
 }
 
+/** The New project palette choice that starts from a plain folder. */
+const EMPTY_FOLDER_CHOICE = "empty-folder";
+
 export function NewSessionForm({
   projectApp,
   onVoiceControl,
@@ -439,17 +447,34 @@ export function NewSessionForm({
 }: NewSessionFormProps) {
   const { t } = useI18n();
   const sessionDefaultCopy = getSessionDefaultControlCopy(t);
-  const [creatingTemplateProject, setCreatingTemplateProject] = useState(false);
+  // New project starts a folder YA has not seen, from the explicit panel or
+  // from an unmatched path typed into the project search
+  // (topics/project-names.md § New project).
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectEntry, setNewProjectEntry] = useState("");
+  const [newProjectChoice, setNewProjectChoice] =
+    useState<string>(EMPTY_FOLDER_CHOICE);
+  const [newProjectGitInit, setNewProjectGitInit] = useState(
+    () => localStorage.getItem(UI_KEYS.newProjectGitInit) !== "false",
+  );
   const {
     choices: templateChoices,
     error: templateError,
     emptyMessageKey,
-  } = useProjectTemplateChoices(creatingTemplateProject);
+  } = useProjectTemplateChoices(newProjectOpen);
   const [templateProjectBusy, setTemplateProjectBusy] = useState(false);
   const handleTemplateBusyChange = useCallback((busy: boolean) => {
     setTemplateProjectBusy(busy);
-    if (busy) setCreatingTemplateProject(true);
+    if (busy) setNewProjectOpen(true);
   }, []);
+  const handleTemplateRecovered = useCallback(
+    (request: TemplateCreationRequest) => {
+      setNewProjectOpen(true);
+      setNewProjectEntry(request.path);
+      setNewProjectChoice(`${request.sourceId}/${request.templateId}`);
+    },
+    [],
+  );
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const { relayTransport, relayedServerSpeechAvailable } =
@@ -1485,18 +1510,45 @@ export function NewSessionForm({
   // A typed name or relative path names a folder under the base, created on
   // start if missing (topics/project-names.md § Paths from names).
   const newProjectBase = newProjectBaseFor(principal);
-  const customProjectTarget = useMemo(
+  // The New project panel replaces the selection with a project to start: it
+  // is open from its button, or shown for a typed path that matches nothing,
+  // in which case the search box is its path field.
+  const newProjectPanelShown =
+    !launch && !fixedProject && (newProjectOpen || hasCustomProjectPath);
+  const newProjectTypedEntry = newProjectOpen
+    ? newProjectEntry
+    : activeProjectSearchQuery;
+  const newProjectTarget = useMemo(
     () =>
-      hasCustomProjectPath
-        ? settlePathEntry(activeProjectSearchQuery, newProjectBase, projects)
+      newProjectPanelShown && newProjectTypedEntry.trim()
+        ? settlePathEntry(newProjectTypedEntry, newProjectBase, projects)
         : null,
-    [activeProjectSearchQuery, hasCustomProjectPath, newProjectBase, projects],
+    [newProjectPanelShown, newProjectTypedEntry, newProjectBase, projects],
   );
-  const customProjectIsNewFolder =
-    hasCustomProjectPath && !isAnchoredPath(activeProjectSearchQuery);
+  const newProjectTemplates = templateChoices?.enabled
+    ? templateChoices.templates
+    : [];
+  const newProjectTemplate = newProjectPanelShown
+    ? newProjectTemplates.find(
+        (template) => templateChoiceKey(template) === newProjectChoice,
+      )
+    : undefined;
+  // A template project is made by its own Create & prepare action, so the
+  // ordinary start waits while one is chosen.
+  const creatingTemplateProject = newProjectTemplate !== undefined;
+  const newProjectSubmission =
+    newProjectPanelShown && !newProjectTemplate && newProjectTarget?.path
+      ? newProjectTarget
+      : null;
+  const projectCreationGitChoice = serverHasCapability(
+    versionInfo,
+    SERVER_CAPABILITIES.projectCreationGitChoice.name,
+  );
+  const newProjectInitializesGit =
+    !projectCreationGitChoice || newProjectGitInit;
   const currentProjectSelection = exactProjectMatch ?? selectedProject ?? null;
   const projectQueueTargetProjectId =
-    !hasCustomProjectPath && normalizedProjectInput && currentProjectSelection
+    !newProjectPanelShown && normalizedProjectInput && currentProjectSelection
       ? currentProjectSelection.id
       : null;
   const fileCompletion = useProjectFileCompletion({
@@ -1533,10 +1585,10 @@ export function NewSessionForm({
   // and starting waits for the project.
   const projectPending =
     Boolean(projectId) &&
-    !hasCustomProjectPath &&
+    !newProjectPanelShown &&
     currentProjectSelection === null;
   const isDetachedProject =
-    !hasCustomProjectPath &&
+    !newProjectPanelShown &&
     currentProjectSelection === null &&
     !projectPending;
   const canCreateDetached =
@@ -1547,22 +1599,25 @@ export function NewSessionForm({
           versionInfo,
           SERVER_CAPABILITIES.limitedUserNoProjectSessions.name,
         )));
-  // A typed path that matches no project starts one there, so the summary
-  // names that project rather than the selection the path replaced.
-  const projectSummaryTitle =
-    (customProjectTarget && projectNameForEntry(customProjectTarget)) ||
-    currentProjectSelection?.name ||
-    (projectPending ? t("newSessionLoading") : t("newSessionProjectDetached"));
-  const projectSummaryMeta = hasCustomProjectPath
-    ? normalizedProjectInput
+  // A project about to be started is what the summary names, not the
+  // selection the New project panel or a typed path replaced.
+  const projectSummaryTitle = newProjectPanelShown
+    ? (newProjectTarget && projectNameForEntry(newProjectTarget)) ||
+      t("templateNewProject")
+    : currentProjectSelection?.name ||
+      (projectPending
+        ? t("newSessionLoading")
+        : t("newSessionProjectDetached"));
+  const projectSummaryMeta = newProjectPanelShown
+    ? (newProjectTarget?.path ?? "")
     : (currentProjectSelection?.path ??
       (projectPending ? "" : t("newSessionProjectDetachedHint")));
   const displayedProjectSummaryMeta =
-    hasCustomProjectPath || currentProjectSelection
+    newProjectPanelShown || currentProjectSelection
       ? shortenPath(projectSummaryMeta)
       : projectSummaryMeta;
   const workstreamSelectionProjectId =
-    !hasCustomProjectPath && normalizedProjectInput && currentProjectSelection
+    !newProjectPanelShown && normalizedProjectInput && currentProjectSelection
       ? currentProjectSelection.id
       : null;
   const workstreamSelectionEnabled = settings?.workstreamsEnabled === true;
@@ -1643,6 +1698,7 @@ export function NewSessionForm({
       setProjectInput(project.path);
       lastSyncedProjectIdRef.current = project.id;
       onProjectChange?.(project.id);
+      setNewProjectOpen(false);
       setIsProjectChooserExpanded(false);
     },
     [onProjectChange],
@@ -1652,8 +1708,40 @@ export function NewSessionForm({
     setProjectInput("");
     lastSyncedProjectIdRef.current = null;
     onProjectChange?.(null);
+    setNewProjectOpen(false);
     setIsProjectChooserExpanded(false);
   }, [onProjectChange]);
+
+  const newProjectEntryRef = useRef<HTMLInputElement>(null);
+  // The button opens the panel to be typed into; a creation restored after a
+  // reload opens it without taking focus from the composer.
+  const focusNewProjectEntryRef = useRef(false);
+  useEffect(() => {
+    if (!newProjectOpen || !focusNewProjectEntryRef.current) return;
+    focusNewProjectEntryRef.current = false;
+    newProjectEntryRef.current?.focus();
+  }, [newProjectOpen]);
+  // Opening carries an unmatched typed path into the panel's own field and
+  // returns the search box to the selection it was replacing. Closing keeps
+  // the entry and choice for reopening.
+  const toggleNewProject = useCallback(() => {
+    if (newProjectOpen) {
+      setNewProjectOpen(false);
+      return;
+    }
+    if (hasCustomProjectPath) {
+      setNewProjectEntry(activeProjectSearchQuery);
+      setProjectInput(selectedProject?.path ?? "");
+    }
+    setIsProjectChooserExpanded(false);
+    focusNewProjectEntryRef.current = true;
+    setNewProjectOpen(true);
+  }, [
+    activeProjectSearchQuery,
+    hasCustomProjectPath,
+    newProjectOpen,
+    selectedProject?.path,
+  ]);
 
   const projectPanelRows = useMemo(() => {
     if (!isProjectChooserExpanded) return null;
@@ -1676,26 +1764,6 @@ export function NewSessionForm({
         ]
       : [];
 
-    if (hasCustomProjectPath) {
-      rows.push(
-        <button
-          key="custom"
-          type="button"
-          className="new-session-project-option new-session-project-option-custom"
-          onClick={() => setIsProjectChooserExpanded(false)}
-        >
-          <span className="new-session-project-option-name">
-            {customProjectIsNewFolder
-              ? t("newSessionProjectNewFolder")
-              : t("newSessionProjectUseTypedPath")}
-          </span>
-          <span className="new-session-project-option-path">
-            {customProjectTarget?.path ?? activeProjectSearchQuery}
-          </span>
-        </button>,
-      );
-    }
-
     if (projectsLoading) {
       rows.push(
         <div key="loading" className="new-session-project-empty">
@@ -1705,12 +1773,14 @@ export function NewSessionForm({
       return rows;
     }
 
+    // An unmatched typed path is offered as a new project below the list.
     if (projectSuggestions.length === 0) {
-      rows.push(
-        <div key="no-matches" className="new-session-project-empty">
-          {t("newSessionProjectNoMatches")}
-        </div>,
-      );
+      if (!hasCustomProjectPath)
+        rows.push(
+          <div key="no-matches" className="new-session-project-empty">
+            {t("newSessionProjectNoMatches")}
+          </div>,
+        );
       return rows;
     }
 
@@ -1740,11 +1810,8 @@ export function NewSessionForm({
     handleDetachedProject,
     handleProjectOptionSelect,
     hasCustomProjectPath,
-    customProjectIsNewFolder,
-    customProjectTarget,
     isDetachedProject,
     isProjectChooserExpanded,
-    activeProjectSearchQuery,
     projectSuggestions,
     projectsLoading,
     t,
@@ -2437,6 +2504,31 @@ export function NewSessionForm({
 
   const resolveProjectIdForSubmission = useCallback(
     async (trimmedProjectInput: string): Promise<string | null> => {
+      // New project creates exactly one folder (the server refuses a
+      // missing parent), with Git unless declined, and adds an existing
+      // folder as it is.
+      if (newProjectSubmission) {
+        const added = await api.addProject(newProjectSubmission.path, {
+          create: true,
+          name: newProjectSubmission.name,
+          ...(projectCreationGitChoice ? { gitInit: newProjectGitInit } : {}),
+        });
+        const createdId = added.project.id ?? null;
+        if (!createdId) return null;
+        const path = added.project.path ?? newProjectSubmission.path;
+        showToast(
+          added.created
+            ? t("newSessionProjectFolderCreated", { path })
+            : t("newSessionProjectFolderExisting", { path }),
+          "info",
+        );
+        setNewProjectOpen(false);
+        setNewProjectEntry("");
+        setProjectInput(path);
+        lastSyncedProjectIdRef.current = createdId;
+        onProjectChange?.(createdId);
+        return createdId;
+      }
       let resolvedProjectId =
         trimmedProjectInput &&
         currentProjectSelection?.path === trimmedProjectInput
@@ -2478,7 +2570,10 @@ export function NewSessionForm({
     [
       currentProjectSelection,
       newProjectBase,
+      newProjectGitInit,
+      newProjectSubmission,
       onProjectChange,
+      projectCreationGitChoice,
       projects,
       showToast,
       t,
@@ -4089,10 +4184,20 @@ export function NewSessionForm({
               }
               className="send-button new-session-submit-button"
               aria-label={describePrefixedDelivery(
-                launch?.startLabel ?? t("newSessionStartAction"),
+                launch?.startLabel ??
+                  t(
+                    newProjectSubmission
+                      ? "newSessionCreateAndStartAction"
+                      : "newSessionStartAction",
+                  ),
               )}
               title={describePrefixedTooltip(
-                launch?.startLabel ?? t("newSessionStartAction"),
+                launch?.startLabel ??
+                  t(
+                    newProjectSubmission
+                      ? "newSessionCreateAndStartAction"
+                      : "newSessionStartAction",
+                  ),
               )}
             >
               {isStarting ? (
@@ -4158,96 +4263,100 @@ export function NewSessionForm({
       ref={projectChooserRef}
       className={`new-session-project-chooser ${isProjectChooserExpanded ? "expanded" : ""}`}
     >
-      <div className="new-session-project-controls">
-        <button
-          type="button"
-          className="new-session-project-summary"
-          onClick={() => setIsProjectChooserExpanded((prev) => !prev)}
-          aria-expanded={isProjectChooserExpanded}
-          aria-controls="new-session-project-panel"
-        >
-          <span className="new-session-project-summary-body">
-            <span className="new-session-project-summary-title">
-              {projectSummaryTitle}
-            </span>
-            <span
-              className="new-session-project-summary-path"
-              title={projectSummaryMeta}
-            >
-              {isDetachedProject ? (
-                <>
-                  <span className="new-session-project-summary-path-long">
-                    {t("newSessionProjectDetachedHint")}
-                  </span>
-                  <span className="new-session-project-summary-path-short">
-                    {t("newSessionProjectDetachedHintShort")}
-                  </span>
-                </>
-              ) : (
-                displayedProjectSummaryMeta
-              )}
-            </span>
-          </span>
-          <svg
-            className="new-session-project-summary-chevron"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-
-        <label className="new-session-project-inline-field">
-          <span className="new-session-project-inline-label">
-            {t("newSessionProjectPathLabel")}
-          </span>
-          <input
-            ref={projectInputRef}
-            type="text"
-            value={projectInput}
-            onChange={(e) => {
-              setProjectInput(e.target.value);
-              if (!isProjectChooserExpanded) {
-                setIsProjectChooserExpanded(true);
-              }
-            }}
-            onFocus={() => setIsProjectChooserExpanded(true)}
-            onKeyDown={handleProjectInputKeyDown}
-            placeholder={t("newSessionProjectPathPlaceholder")}
-            disabled={isStarting}
-            className="new-session-project-input"
-            spellCheck={false}
-            list="new-session-project-options"
-          />
-        </label>
-        <datalist id="new-session-project-options">
-          {projectSuggestionOptions}
-        </datalist>
-      </div>
-
-      {templateChoices?.enabled && !launch && (
-        <div className={templateStyles.expansion}>
+      {/* The suggestion list drops below the search, not below New project. */}
+      <div className={styles.projectSearchAnchor}>
+        <div className="new-session-project-controls">
           <button
             type="button"
-            aria-expanded={creatingTemplateProject}
-            className={templateStyles.secondary}
-            disabled={templateProjectBusy}
-            onClick={() => setCreatingTemplateProject((value) => !value)}
+            className="new-session-project-summary"
+            onClick={() => setIsProjectChooserExpanded((prev) => !prev)}
+            aria-expanded={isProjectChooserExpanded}
+            aria-controls="new-session-project-panel"
           >
-            {t("templateNewProject")}
+            <span className="new-session-project-summary-body">
+              <span className="new-session-project-summary-title">
+                {projectSummaryTitle}
+              </span>
+              <span
+                className="new-session-project-summary-path"
+                title={projectSummaryMeta}
+              >
+                {isDetachedProject ? (
+                  <>
+                    <span className="new-session-project-summary-path-long">
+                      {t("newSessionProjectDetachedHint")}
+                    </span>
+                    <span className="new-session-project-summary-path-short">
+                      {t("newSessionProjectDetachedHintShort")}
+                    </span>
+                  </>
+                ) : (
+                  displayedProjectSummaryMeta
+                )}
+              </span>
+            </span>
+            <svg
+              className="new-session-project-summary-chevron"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </button>
+
+          <label className="new-session-project-inline-field">
+            <span className="new-session-project-inline-label">
+              {t("newSessionProjectPathLabel")}
+            </span>
+            <input
+              ref={projectInputRef}
+              type="text"
+              // The open New project panel replaces the selection, so the
+              // search starts empty; typing here returns to searching.
+              value={newProjectOpen ? "" : projectInput}
+              onChange={(e) => {
+                setNewProjectOpen(false);
+                setProjectInput(e.target.value);
+                if (!isProjectChooserExpanded) {
+                  setIsProjectChooserExpanded(true);
+                }
+              }}
+              onFocus={() => setIsProjectChooserExpanded(true)}
+              onKeyDown={handleProjectInputKeyDown}
+              placeholder={t("newSessionProjectPathPlaceholder")}
+              disabled={isStarting}
+              className="new-session-project-input"
+              spellCheck={false}
+              list="new-session-project-options"
+            />
+          </label>
+          <datalist id="new-session-project-options">
+            {projectSuggestionOptions}
+          </datalist>
         </div>
-      )}
-      {isProjectChooserExpanded &&
-        projectPanelRows &&
-        !creatingTemplateProject && (
+
+        {!launch && !fixedProject && (
+          <div className={templateStyles.expansion}>
+            <button
+              type="button"
+              aria-expanded={newProjectOpen}
+              aria-controls="new-session-new-project"
+              className={templateStyles.secondary}
+              disabled={templateProjectBusy || isStarting}
+              onClick={toggleNewProject}
+            >
+              {t("templateNewProject")}
+            </button>
+          </div>
+        )}
+        {isProjectChooserExpanded && projectPanelRows && !newProjectOpen && (
           <div
             id="new-session-project-panel"
             className="new-session-project-panel"
@@ -4261,6 +4370,91 @@ export function NewSessionForm({
             </div>
           </div>
         )}
+      </div>
+      {newProjectPanelShown && (
+        <section
+          id="new-session-new-project"
+          className={styles.newProject}
+          aria-label={t("templateNewProject")}
+        >
+          {newProjectOpen ? (
+            <label className={styles.newProjectField}>
+              <span>{t("newProjectEntryLabel")}</span>
+              <input
+                type="text"
+                value={newProjectEntry}
+                onChange={(event) => setNewProjectEntry(event.target.value)}
+                placeholder={t("newProjectEntryPlaceholder")}
+                disabled={isStarting || templateProjectBusy}
+                spellCheck={false}
+                ref={newProjectEntryRef}
+              />
+            </label>
+          ) : null}
+          <p className={styles.newProjectTarget}>
+            {newProjectTarget?.path
+              ? t(
+                  newProjectOpen ? "newProjectCreates" : "newProjectFromSearch",
+                  {
+                    path: shortenPath(newProjectTarget.path),
+                  },
+                )
+              : t("newProjectNeedsName")}
+          </p>
+          <ProjectStartPalette
+            name="new-session-project-start"
+            legend={t("newProjectStartFrom")}
+            disabled={isStarting || templateProjectBusy}
+            choices={[
+              {
+                key: EMPTY_FOLDER_CHOICE,
+                title: t("newProjectEmptyFolder"),
+                description: t("newProjectEmptyFolderHint"),
+              },
+              ...newProjectTemplates.map((template) => ({
+                key: templateChoiceKey(template),
+                title: template.title,
+                description: template.description,
+                icon: template.icon,
+              })),
+            ]}
+            selected={
+              newProjectTemplate
+                ? templateChoiceKey(newProjectTemplate)
+                : EMPTY_FOLDER_CHOICE
+            }
+            onSelect={setNewProjectChoice}
+          />
+          {!newProjectTemplate && (
+            <>
+              <label className={styles.newProjectGit}>
+                <input
+                  type="checkbox"
+                  checked={newProjectInitializesGit}
+                  disabled={!projectCreationGitChoice || isStarting}
+                  onChange={(event) => {
+                    setNewProjectGitInit(event.target.checked);
+                    localStorage.setItem(
+                      UI_KEYS.newProjectGitInit,
+                      String(event.target.checked),
+                    );
+                  }}
+                />
+                {t("newProjectGitInit")}
+              </label>
+              {newProjectTarget?.path && (
+                <p className={styles.newProjectPlan}>
+                  {t(
+                    newProjectInitializesGit
+                      ? "newProjectPlanGit"
+                      : "newProjectPlan",
+                  )}
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      )}
     </div>
   );
   const workstreamChooser =
@@ -5023,7 +5217,7 @@ export function NewSessionForm({
         {templateChoices?.enabled && !launch && !fixedProject && (
           <div
             className={styles.templateProjectSlot}
-            hidden={!creatingTemplateProject}
+            hidden={!creatingTemplateProject && !templateProjectBusy}
           >
             <TemplateProjectForm
               key={clientSummarySourceKey}
@@ -5031,11 +5225,16 @@ export function NewSessionForm({
               emptyMessage={templateError ?? t(emptyMessageKey)}
               projects={projects}
               pathBase={newProjectBase}
-              initialName={
-                projects.some((project) => project.path === projectInput)
-                  ? ""
-                  : projectInput
+              chosen={
+                newProjectTemplate && {
+                  template: newProjectTemplate,
+                  name: newProjectTarget
+                    ? projectNameForEntry(newProjectTarget)
+                    : "",
+                  path: newProjectTarget?.path ?? "",
+                }
               }
+              onRecovered={handleTemplateRecovered}
               intent={message}
               onBusyChange={handleTemplateBusyChange}
               stagedAttachments={

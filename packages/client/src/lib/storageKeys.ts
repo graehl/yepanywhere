@@ -107,6 +107,7 @@ export const UI_KEYS = {
   settingsSearchMatchValues: "yep-anywhere-settings-search-match-values",
   newSessionAdvancedOptionsExpanded:
     "yep-anywhere-new-session-advanced-options-expanded",
+  newProjectGitInit: "yep-anywhere-new-project-git-init",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",
   sessionDomLinger: "yep-anywhere-session-dom-linger-enabled",

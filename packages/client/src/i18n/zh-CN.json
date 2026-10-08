@@ -484,7 +484,6 @@
   "newSessionProjectPathLabel": "项目目录",
   "newSessionProjectPathPlaceholder": "输入路径或搜索已有项目",
   "newSessionProjectPathHint": "可以选择最近目录、按名称搜索，或粘贴像 ~/code/project 这样的路径。",
-  "newSessionProjectUseTypedPath": "使用这个路径",
   "newSessionProjectNoMatches": "没有匹配的已保存项目。你仍然可以直接使用输入的路径开始。",
   "newSessionWorkstreamLabel": "工作流",
   "newSessionWorkstreamMain": "主检出目录",

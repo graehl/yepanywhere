@@ -232,7 +232,6 @@
   "newSessionProjectPathLabel": "プロジェクトフォルダー",
   "newSessionProjectPathPlaceholder": "パスを入力するか既存プロジェクトを検索",
   "newSessionProjectPathHint": "最近のフォルダーを選ぶか、名前で検索するか、~/code/project のようなパスを貼り付けてください。",
-  "newSessionProjectUseTypedPath": "このパスを使う",
   "newSessionProjectNoMatches": "保存済みプロジェクトに一致しません。入力したパスでそのまま開始できます。",
   "newSessionDefaultsDescription": "現在のプロバイダー、モデル、権限モードをデフォルトとして保存します。",
   "newSessionDefaultsAction": "デフォルトに設定",

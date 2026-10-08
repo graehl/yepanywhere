@@ -41,17 +41,30 @@ Status: **implemented (2026-09-20).**
     name as above. Any other relative entry, such as `story1` or
     `code/story1`, lands under the base. Emptying the path field returns
     it to following the name.
-  - The new session project field settles an entry that matches no listed
-    project the same way (a description names the project). Its typed-path
-    row shows the settled path, labelled as a new project folder when the
-    entry was not itself a path. The chooser's summary names the project
-    that entry will start (the description, else the settled path's last
-    folder), not the selection the entry replaced: a selected `draft`
-    overtyped with `~/math` previews `math`, the name the session lands
-    in. Starting the session adds that project,
-    creating the directory if it does not exist, and a notice says whether
-    the folder was created or already existed. An absolute or `~` path
-    that does not exist is still refused there, as before.
+  - **New project** in New session is the one entry point for a folder YA
+    has not seen. Its button opens a panel with a single name-or-path
+    field, settled as above, and a starting-point palette whose first
+    choice, **Empty folder**, is selected by default; ready templates
+    follow it (see [project templates](project-templates.md#creation-and-preparation)).
+    An entry in the project search that matches no listed project opens
+    the same panel for that entry, the search box serving as its path
+    field; there is no separate typed-path row. Opening the panel from its
+    button carries such an entry into its field. Closing and reopening it
+    keeps the entry and choice; choosing a listed project or No project
+    closes it.
+  - The chooser's summary names the project the panel will start (the
+    description, else the settled path's last folder), not the selection
+    it replaced: a selected `draft` overtyped with `~/math` previews
+    `math`, the name the session lands in.
+  - With Empty folder, starting the session creates exactly one folder,
+    initializes Git in it unless **Initialize Git repository** is cleared,
+    adds the project, and starts there; a notice says whether the folder
+    was created or already existed. A missing parent is refused rather
+    than created (a limited user's own project root is still made on first
+    use). An existing folder is added as it is, never initialized. The
+    Git choice is remembered in the browser. Servers without
+    `project-creation-git-choice` always initialize Git; there the box is
+    checked and disabled and no choice is sent.
 - A name that still equals the path's last component is no override. Only a
   differing name is stored; renaming the directory later therefore changes
   the name of a project that was never explicitly named.

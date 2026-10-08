@@ -607,17 +607,25 @@ export const api = {
    */
   addProject: (
     path: string,
-    options?: { create?: boolean; name?: string; codeName?: string },
+    options?: {
+      create?: boolean;
+      gitInit?: boolean;
+      name?: string;
+      codeName?: string;
+    },
   ) =>
     fetchJSON<{ project: Project; created?: boolean }>("/projects", {
       method: "POST",
       // `create` is the caller's confirmed answer to a path that does not
       // exist yet; without it the server refuses a missing directory.
+      // `gitInit: false` makes that folder without a repository; gated by
+      // `project-creation-git-choice`.
       // `name` and `codeName` are the user's choices when they differ from
       // what the server would derive; gated by `project-names`.
       body: JSON.stringify({
         path,
         ...(options?.create ? { create: true } : {}),
+        ...(options?.gitInit !== undefined ? { gitInit: options.gitInit } : {}),
         ...(options?.name ? { name: options.name } : {}),
         ...(options?.codeName ? { codeName: options.codeName } : {}),
       }),

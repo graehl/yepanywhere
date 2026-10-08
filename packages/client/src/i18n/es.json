@@ -232,7 +232,6 @@
   "newSessionProjectPathLabel": "Carpeta del proyecto",
   "newSessionProjectPathPlaceholder": "Escribe una ruta o busca proyectos existentes",
   "newSessionProjectPathHint": "Elige una carpeta reciente, busca por nombre o pega una ruta como ~/code/project.",
-  "newSessionProjectUseTypedPath": "Usar esta ruta",
   "newSessionProjectNoMatches": "Ningún proyecto guardado coincide. Aun así puedes iniciar con la ruta escrita.",
   "newSessionDefaultsDescription": "Guarda el proveedor, el modelo y el modo de permisos actuales como valores predeterminados.",
   "newSessionDefaultsAction": "Usar por defecto",

@@ -124,3 +124,41 @@ it("shows progress immediately before the creation request returns", async () =>
   expect(screen.getByText("Waiting for setup output…")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Hide setup log" })).toBeTruthy();
 });
+
+it("creates the template, name and path an enclosing form chose", async () => {
+  const requests: TemplateCreationRequest[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init: RequestInit) => {
+      const request = JSON.parse(String(init.body)) as TemplateCreationRequest;
+      requests.push(request);
+      return Response.json({ request, phase: "setup", log: "" });
+    }),
+  );
+  render(
+    <I18nProvider>
+      <ToastProvider>
+        <TemplateProjectForm
+          templates={templates}
+          projects={[]}
+          pathBase="/projects"
+          intent="Sketch plants"
+          chosen={{ template: templates[0]!, name: "math", path: "~/math" }}
+          onStarted={onStarted}
+        />
+      </ToastProvider>
+    </I18nProvider>,
+  );
+  // The enclosing form owns the palette and the name.
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Create & prepare" }));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(requests[0]).toMatchObject({
+    sourceId: "local",
+    templateId: "app",
+    name: "math",
+    path: "~/math",
+    intent: "Sketch plants",
+  });
+});

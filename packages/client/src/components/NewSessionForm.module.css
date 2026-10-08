@@ -147,6 +147,57 @@
   display: none;
 }
 
+.projectSearchAnchor {
+  position: relative;
+}
+.newProject {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+.newProjectField {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+.newProjectField input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-family: var(--font-mono);
+}
+.newProjectTarget {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.newProjectGit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.newProjectPlan {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-color);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 @media (width < 900px) {
   .optionLayout.optionLayout {
     grid-template-areas:

@@ -95,25 +95,34 @@ test("template palette preserves sequential input and inline state at desktop an
       name: "New project",
       exact: true,
     });
-    await expect(inline.getByRole("radio")).toHaveCount(3);
-    const inlineBounds = await inline.locator("..").boundingBox();
+    // Empty folder leads the same palette as the templates.
+    await expect(inline.getByRole("radio")).toHaveCount(4);
+    await expect(
+      inline.getByRole("radio", { name: /Empty folder/ }),
+    ).toBeChecked();
+    await inline
+      .getByRole("textbox", { name: "Name or path", exact: true })
+      .fill("My story");
+    await inline.getByRole("radio", { name: /Web page/ }).check();
+    const prepare = page.getByRole("button", {
+      name: "Create & prepare",
+      exact: true,
+    });
+    const slotBounds = await prepare.locator("xpath=../..").boundingBox();
     const layoutBounds = await page
       .locator(".new-session-top-layout")
       .boundingBox();
-    expect(inlineBounds!.width).toBeGreaterThan(layoutBounds!.width * 0.9);
-    await inline
-      .getByRole("textbox", { name: "Name", exact: true })
-      .fill("My story");
-    await inline.getByRole("radio", { name: /Web page/ }).check();
+    expect(slotBounds!.width).toBeGreaterThan(layoutBounds!.width * 0.9);
     await page
       .getByRole("button", { name: "New project", exact: true })
       .click();
     await expect(inline).toBeHidden();
+    await expect(prepare).toBeHidden();
     await page
       .getByRole("button", { name: "New project", exact: true })
       .click();
     await expect(
-      inline.getByRole("textbox", { name: "Name", exact: true }),
+      inline.getByRole("textbox", { name: "Name or path", exact: true }),
     ).toHaveValue("My story");
     await expect(inline.getByRole("radio", { name: /Web page/ })).toBeChecked();
     await page

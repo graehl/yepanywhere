@@ -778,6 +778,8 @@
   "appearanceWiderActivityPreviewsDescription": "In Conversation view, move thinking to the right to make room for longer activity previews.",
   "appearanceGlossaryHintsTitle": "Glossary hints",
   "appearanceGlossaryHintsDescription": "Show definitions for project glossary terms in rendered Markdown.",
+  "appearanceUnicodeMathTitle": "Typeset plain-text math",
+  "appearanceUnicodeMathDescription": "Typeset math written without $ delimiters, such as ζ(s) = Σ_{n≥1} 1/n^s. Detection is automatic and favors leaving text unchanged.",
   "appearanceOutputPreviewLabel": "Output preview",
   "appearanceOutputSpecimenLabel": "Specimen",
   "appearanceOutputTypographyReset": "Reset typography",

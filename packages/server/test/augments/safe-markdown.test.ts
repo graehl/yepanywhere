@@ -368,6 +368,44 @@ describe("renderSafeMarkdown — Unicode scripts", () => {
   });
 });
 
+describe("renderSafeMarkdown — undelimited Unicode math", () => {
+  const regions = (html: string) =>
+    [
+      ...html.matchAll(
+        /<span class="ya-umath__text">(.*?)<\/span><span class="ya-umath__tex">/g,
+      ),
+    ].map((m) => m[1]?.replace(/<[^>]+>/g, ""));
+
+  it("pairs recognised math with a hidden KaTeX rendering", () => {
+    const html = renderSafeMarkdown("Promote the λ=.05 checkpoint.");
+    expect(regions(html)).toEqual(["λ=.05"]);
+    expect(html).toContain('<span class="ya-umath__tex"><span class="katex">');
+  });
+
+  it("keeps the script redraw inside the authored text", () => {
+    const html = renderSafeMarkdown(
+      "ζ(s) = Σ_{n≥1} 1/nˢ = 1 + 1/2ˢ + 1/3ˢ + …",
+    );
+    expect(regions(html)).toEqual([
+      "ζ(s) = Σ_{n≥1} 1/nˢ = 1 + 1/2ˢ + 1/3ˢ + …",
+    ]);
+    expect(html).toContain('data-ya-script="s"');
+    // Σ with limits is typeset as a summation operator, not a letter.
+    expect(html).toContain("op-symbol");
+  });
+
+  it("leaves prose arrows, numeric typography and code alone", () => {
+    for (const markdown of [
+      "The pipeline goes TeX → UnicodeMath → MathML.",
+      "Runs cost 4–6× more and recall rose ±2 points.",
+      "Set `next_token = argmax(logits)` before decoding.",
+      "The B′ mixture finished.",
+    ]) {
+      expect(renderSafeMarkdown(markdown)).not.toContain("ya-umath");
+    }
+  });
+});
+
 describe("renderSafeMarkdown — embedded HTML", () => {
   it("keeps grouped table spans", () => {
     const html = renderSafeMarkdown(`

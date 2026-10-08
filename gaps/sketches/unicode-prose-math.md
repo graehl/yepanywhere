@@ -358,6 +358,39 @@ made twice the rule's false regions (128 against 64 per 1k runs). Those
 numbers are superseded, and the test split has now been seen. A clean
 final number for the current model needs freshly labelled real runs.
 
+## Landed as an opt-in (2026-10-08)
+
+The recognizer ships in the server Markdown renderer behind Appearance →
+**Typeset plain-text math**, default off; the contract is in
+[rich-text-rendering](../../topics/rich-text-rendering.md) § Typeset
+plain-text math. The shipped parameters were retrained on all data,
+including both natural splits. Recognition and KaTeX rendering run on the
+server for every client; the setting only reveals the hidden KaTeX half.
+
+Measured costs (diagnostic: shared host at load 11–15 on 16 cores,
+interleaved legs, three rounds):
+
+| measurement | before | with recognizer |
+|---|---|---|
+| server render, 2,000 random messages | 131–139 ms | 216–255 ms |
+| server render, 353 messages with real math | 80–92 ms | 166–203 ms |
+| HTML, random messages | 856 KB | 865 KB |
+| HTML, math messages | 644 KB | 998 KB |
+| browser insert + layout, 500 random messages | 37–39 ms | 29–30 ms (order noise) |
+| browser insert + layout, 353 math messages, setting off | 94–95 ms | 102–134 ms |
+| same, setting on | | 121–155 ms |
+| toggling the setting, 445 regions mounted | | 13–22 ms |
+
+The server pays about 0.04 ms per ordinary message. Messages with math
+carry the hidden KaTeX DOM even with the setting off, about 10% more
+insert time on a math-heavy transcript. A cheap per-token prefilter (skip
+text without non-ASCII or operator characters) would skip 60% of runs. But
+it loses 55 of the regions found across all session prose, mostly
+function-call forms like `max(A[i-1], B[j-1])`, so it was not adopted.
+
+Known gap: a formula can split around an unseeded token (`∫₁^∞ x⁻ˢ` and
+`= 1/(s−1)` around `dx`).
+
 ## Open questions
 
 - Whether to vendor `TeX.js` for the harness only (offline), or depend on

@@ -45,6 +45,7 @@ export const UI_KEYS = {
   sessionRightPaneWidth: "yep-anywhere-session-right-pane-width",
   searchConcurrency: "yep-anywhere-search-concurrency",
   pdfjsRenderer: "yep-anywhere-pdfjs-renderer-enabled",
+  unicodeProseMath: "yep-anywhere-unicode-prose-math",
   transcriptMarginNavigation: "yep-anywhere-transcript-margin-navigation",
   composerPromptRail: "yep-anywhere-composer-prompt-rail",
   commitReadWatermarks: "yep-anywhere-commit-read-watermarks",

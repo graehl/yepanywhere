@@ -750,6 +750,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "project-creation-git-choice",
     introducedIn: "0.9.4",
   },
+  unicodeProseMath: {
+    id: 122,
+    direction: "server",
+    name: "unicode-prose-math",
+    introducedIn: "0.9.4",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

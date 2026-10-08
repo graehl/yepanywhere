@@ -446,3 +446,5 @@
 - source-transport-lifecycle-conformance - One sleep, wake and reconnect suite for every source transport, including the native bridge.
 
 - relay-artifact-frame - Scripted HTML artifacts over the encrypted relay through a same-site service-worker content origin.
+
+- unicode-prose-math - Legible Unicode scripts and opt-in typesetting of math written without $ delimiters.

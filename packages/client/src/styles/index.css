@@ -7746,25 +7746,15 @@ a.sidebar-nav-item {
   color: var(--text-muted);
 }
 
-.experimental-features-settings {
-  flex-direction: column;
-  align-items: stretch;
+/* Server-marked prose math: authored text by default, the hidden KaTeX
+   rendering when the "Typeset plain-text math" setting is on. */
+.ya-umath__tex,
+:root[data-unicode-math="on"] .ya-umath__text {
+  display: none;
 }
 
-.experimental-feature-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: 100%;
-}
-
-.experimental-feature-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) 0 0;
-  border-top: 1px solid var(--border-color);
+:root[data-unicode-math="on"] .ya-umath__tex {
+  display: inline;
 }
 
 .session-toolbar-preview {

@@ -1,6 +1,7 @@
 import { statSync } from "node:fs";
 import { isAbsolute, normalize, posix, win32 } from "node:path";
 import { katex as markdownItKatex } from "@mdit/plugin-katex";
+import katex from "katex";
 import {
   type LocalResourceMediaType,
   linkifyToHtml,
@@ -19,6 +20,12 @@ import MarkdownIt, {
 import sanitizeHtml from "sanitize-html";
 import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
 import { renderUnicodeScripts } from "./unicode-math.js";
+import { UNICODE_MATH_PARAMS } from "./unicode-math-params.js";
+import {
+  findUnicodeMath,
+  loadUnicodeMathParams,
+  unicodeMathToKatexSource,
+} from "./unicode-math-recognizer.js";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const ALLOWED_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
@@ -1279,6 +1286,57 @@ function storeKatexPlaceholder(html: string, _displayMode: boolean): string {
   return `<span class="yepkatex-placeholder yepkatex-id-${id}"></span>`;
 }
 
+const unicodeMathParams = loadUnicodeMathParams(UNICODE_MATH_PARAMS);
+
+/**
+ * KaTeX HTML for a recognised region, or null when KaTeX rejects it or has
+ * no metrics for one of its glyphs (it reports those only through
+ * console.warn, so the warning is captured for this synchronous call).
+ */
+function typesetUnicodeMath(region: string): string | null {
+  const warn = console.warn;
+  let missingGlyph = false;
+  console.warn = () => {
+    missingGlyph = true;
+  };
+  try {
+    const html = katex.renderToString(unicodeMathToKatexSource(region), {
+      output: "html",
+      throwOnError: true,
+      strict: false,
+      trust: false,
+      maxExpand: 1000,
+    });
+    return missingGlyph ? null : html;
+  } catch {
+    return null;
+  } finally {
+    console.warn = warn;
+  }
+}
+
+/**
+ * One prose text run as HTML. Undelimited math the recognizer finds is
+ * emitted twice: the authored text (with the Unicode script redraw) shown
+ * by default, and a KaTeX rendering hidden until the client's Unicode math
+ * setting reveals it. A region KaTeX rejects stays plain text.
+ */
+function renderProseText(text: string): string {
+  const regions = findUnicodeMath(unicodeMathParams, text);
+  if (!regions.length) return renderUnicodeScripts(text);
+  let html = "";
+  let last = 0;
+  for (const [start, end] of regions) {
+    const typeset = typesetUnicodeMath(text.slice(start, end));
+    if (typeset === null) continue;
+    const region = text.slice(start, end);
+    html += renderUnicodeScripts(text.slice(last, start));
+    html += `<span class="ya-umath"><span class="ya-umath__text">${renderUnicodeScripts(region)}</span><span class="ya-umath__tex">${storeKatexPlaceholder(typeset, false)}</span></span>`;
+    last = end;
+  }
+  return html + renderUnicodeScripts(text.slice(last));
+}
+
 function renderLinkOpen(
   tokens: Token[],
   index: number,
@@ -1664,7 +1722,7 @@ markdownRenderer.core.ruler.after(
   renderTaskListItems,
 );
 markdownRenderer.renderer.rules.text = (tokens, index) =>
-  renderUnicodeScripts(tokens[index]?.content ?? "");
+  renderProseText(tokens[index]?.content ?? "");
 markdownRenderer.renderer.rules.link_open = renderLinkOpen;
 markdownRenderer.renderer.rules.link_close = renderLinkClose;
 markdownRenderer.renderer.rules.code_inline = renderCodeInline;

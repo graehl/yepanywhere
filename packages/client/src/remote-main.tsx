@@ -36,6 +36,7 @@ import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
+import { initializeUnicodeProseMath } from "./lib/unicodeProseMath";
 import { I18nProvider } from "./i18n";
 import {
   getInitialRemoteRouteModuleKeys,
@@ -337,6 +338,7 @@ initializeOutputAppearance();
 initializeTabSize();
 initializeContentMaxWidth();
 initializeTooltipAppearance();
+initializeUnicodeProseMath();
 
 // Register SW at startup so PWA install is available without visiting settings
 void import("./lib/registerServiceWorker").then(

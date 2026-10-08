@@ -222,9 +222,38 @@ prose font. The authored glyphs remain in the DOM at zero size, so copy,
 selection and source mapping see exactly what was written. Code spans and
 blocks are untouched, and line height does not change.
 
-This is a per-character table, not a parser: TeX-like notation in prose such
-as `Σ_{n≥1}` or `∫₁^∞` stays literal. A structural Unicode-math converter is
-a [sketch](../gaps/sketches/unicode-prose-math.md), not current behavior.
+The redraw is a per-character table and applies whether or not the
+plain-text math setting below is on.
+
+## Typeset plain-text math (opt-in)
+
+Appearance → **Typeset plain-text math** (default off) typesets math that
+prose writes without `$` delimiters: `ζ(s) = Σ_{n≥1} 1/nˢ`, `λ=.05`,
+`∫₁^∞ x⁻ˢ dx`. The setting appears only when the server advertises
+`unicode-prose-math`. Older servers mark nothing, so the client hides the
+toggle there and the prose stays as written.
+
+- **Detection** runs in the server's Markdown text rule on every prose text
+  token. It never runs on code spans, code blocks or delimited math. A
+  trained recognizer (`packages/server/src/augments/unicode-math-recognizer.ts`)
+  picks regions of whitespace-separated tokens. It is tuned for precision,
+  since a miss leaves legible Unicode while a false region garbles prose. It
+  does not mark arrows between words, numeric typography (`4–6×`, `±2`,
+  `60→110`), a lone symbol (`B′`, `λ`), identifiers, or Greek words.
+- **Markup:** each region becomes a `ya-umath` span holding the authored
+  text (with the script redraw) and a KaTeX rendering. A region KaTeX
+  rejects, or contains a glyph KaTeX cannot measure, stays plain text.
+- **Display:** the KaTeX half is hidden unless the root carries
+  `data-unicode-math="on"`, which the setting sets. Toggling changes only
+  that attribute; no message is re-rendered. The hidden half takes no
+  layout and is excluded from selection. With the setting off, ordinary
+  copy yields exactly the authored text; with it on, it yields KaTeX's
+  visible text, which drops spaces.
+- **Cost:** the recognizer runs on the server for every client, whatever
+  the setting. Rendered HTML grows only for messages with regions.
+
+Training data, evaluation and measured costs are in the
+[prose-math sketch](../gaps/sketches/unicode-prose-math.md).
 
 ## File Content Viewer Contract
 

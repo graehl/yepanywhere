@@ -23,6 +23,7 @@ import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
+import { initializeUnicodeProseMath } from "./lib/unicodeProseMath";
 import { I18nProvider, useI18n } from "./i18n";
 import { installModifierChordTracking } from "./lib/modifierChords";
 import "./styles/index.css";
@@ -263,6 +264,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
   initializeTabSize();
   initializeContentMaxWidth();
   initializeTooltipAppearance();
+  initializeUnicodeProseMath();
 
   // Register SW at startup so PWA install is available without visiting settings
   void import("./lib/registerServiceWorker").then(

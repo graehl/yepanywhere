@@ -557,6 +557,23 @@ export const SERVER_CAPABILITIES = {
         "Servers through 0.9.2 always initialize Git in a folder they create and ignore the field, so a hosted client must not offer the choice there.",
     },
   },
+  unicodeProseMath: {
+    id: CAPABILITY_ID_ALLOCATIONS.unicodeProseMath.id,
+    name: "unicode-prose-math",
+    kind: "permanent",
+    area: "rendering",
+    introducedIn: "0.9.4",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Rendered Markdown marks undelimited math in prose with a hidden KaTeX alternative that the client can reveal.",
+    clientFallback:
+      "Hide the Unicode math Appearance setting; prose math stays as written.",
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Servers through 0.9.2 emit no math markers, so the setting would have no effect there.",
+    },
+  },
   projectFileViewCommand: {
     id: CAPABILITY_ID_ALLOCATIONS.projectFileViewCommand.id,
     name: "project-file-view-command",

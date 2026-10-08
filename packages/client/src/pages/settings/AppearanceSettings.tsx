@@ -1,5 +1,6 @@
 import {
   GLOSSARY_TOOLTIPS_CAPABILITY,
+  SERVER_CAPABILITIES,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -133,6 +134,7 @@ import {
 import { useWiderConversationActivityPreviews } from "../../hooks/useWiderConversationActivityPreviews";
 import { useWorkflowTags } from "../../hooks/useWorkflowTags";
 import { usePdfjsRendererSetting } from "../../hooks/usePdfjsRendererSetting";
+import { useUnicodeProseMathSetting } from "../../hooks/useUnicodeProseMathSetting";
 import { useTranscriptMarginNavigation } from "../../hooks/useTranscriptMarginNavigation";
 import { useComposerPromptRail } from "../../hooks/useComposerPromptRail";
 import { useSessionRightPaneSetting } from "../../hooks/useSessionRightPaneSetting";
@@ -262,6 +264,12 @@ export function AppearanceSettings() {
   const glossaryHintsSupported = serverHasCapability(
     versionInfo,
     GLOSSARY_TOOLTIPS_CAPABILITY,
+  );
+  const { unicodeProseMathEnabled, setUnicodeProseMathEnabled } =
+    useUnicodeProseMathSetting();
+  const unicodeProseMathSupported = serverHasCapability(
+    versionInfo,
+    SERVER_CAPABILITIES.unicodeProseMath.name,
   );
   const { hoverCardMaxHeightPx, setHoverCardMaxHeightPx } =
     useHoverCardAppearance();
@@ -1054,6 +1062,24 @@ export function AppearanceSettings() {
             </div>
           )}
         </SettingsItem>
+        {unicodeProseMathSupported && (
+          <SettingsItem
+            label={t("appearanceUnicodeMathTitle")}
+            description={t("appearanceUnicodeMathDescription")}
+          >
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={unicodeProseMathEnabled}
+                onChange={(event) =>
+                  setUnicodeProseMathEnabled(event.target.checked)
+                }
+                aria-label={t("appearanceUnicodeMathTitle")}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </SettingsItem>
+        )}
         {glossaryHintsSupported && (
           <SettingsItem
             label={t("appearanceGlossaryHintsTitle")}

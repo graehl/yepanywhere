@@ -940,7 +940,11 @@ describe("local-first snapshot synchronization", () => {
     expect(draftSyncPending("local")).toEqual([]);
     input.blur();
     setItem.mockRestore();
+    // The typing tab saves its own text; this tab takes over only once that
+    // tab has gone quiet without saving.
     await c.sync(c.register(key)!);
+    expect(s.get().payload.fields.text).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(s.get().payload.fields.text).toBe("codex updated.");
   });
   it("never mistakes a sibling tab's save of this draft for another device", async () => {
@@ -966,10 +970,14 @@ describe("local-first snapshot synchronization", () => {
     await typing.sync(mine);
     deliver(sibling, metadataKey(key));
     type("about ha");
-    // The sibling saves the shared text; its acknowledgement reaches this
-    // tab's storage before this tab has handled the sibling's event.
+    // The sibling leaves saving the shared text to the tab typing it, so the
+    // two never race each other's merges.
+    const writes = () =>
+      s.fetch.mock.calls.filter(([path]) => path === "/drafts/write").length;
+    const before = writes();
     await sibling.sync(theirs);
-    expect(s.get().payload.fields.text).toBe("about ha");
+    expect(writes()).toBe(before);
+    expect(s.get().payload.fields.text).toBe("about h");
     type("about hav");
     await typing.sync(mine);
     expect(mine.remote).toBeUndefined();
@@ -1044,6 +1052,52 @@ describe("local-first snapshot synchronization", () => {
     expect(theirs.saved.raw).toBeNull();
     expect(theirs.remote).toBeUndefined();
     expect(s.get().payload).toEqual(EMPTY_DRAFT);
+  });
+  it("never writes server text over a focused sibling's newer typing", async () => {
+    const s = server(),
+      background = client(s);
+    localStorage.setItem(key, raw("about h"));
+    background.edit(key, raw("about h"));
+    const e = background.register(key)!;
+    await background.sync(e);
+    // The focused sibling typed on and saved; this busy background tab has
+    // not yet received the sibling's latest keystrokes.
+    localStorage.setItem("draft-sync-foreground", "sibling-tab");
+    s.remote("about ha");
+    localStorage.setItem(key, raw("about hav"));
+    await background.sync(e);
+    expect(localStorage.getItem(key)).toBe(raw("about hav"));
+    expect(e.remote?.snapshot.payload.fields.text).toBe("about ha");
+  });
+  it("fills an empty focused composer with a draft begun in another window", async () => {
+    const s = server(),
+      c = client(s);
+    const input = document.createElement("textarea");
+    input.dataset.draftKey = key;
+    document.body.append(input);
+    input.focus();
+    const e = c.register(key)!;
+    s.remote("begun elsewhere");
+    await c.sync(e);
+    expect(e.saved.raw).toBe(raw("begun elsewhere"));
+    expect(e.remote).toBeUndefined();
+  });
+  it("brings an unfocused window's composer up to date with another window", async () => {
+    const s = server(),
+      c = client(s);
+    c.edit(key, raw("begun here"));
+    const e = c.register(key)!;
+    await c.sync(e);
+    // The caret stays in this composer while another window has the focus.
+    const input = document.createElement("textarea");
+    input.dataset.draftKey = key;
+    document.body.append(input);
+    input.focus();
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    s.remote("begun here, continued elsewhere");
+    await c.sync(e);
+    expect(e.saved.raw).toBe(raw("begun here, continued elsewhere"));
+    expect(e.remote).toBeUndefined();
   });
   it("retries a failed browser write when the notice's retry is chosen", async () => {
     const s = server(),

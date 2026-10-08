@@ -53,7 +53,20 @@ interface Entry {
   submissionTask?: Promise<void>;
   waitForSync?: Promise<void>;
   confirmations?: number;
+  /** When a sibling tab last wrote this draft's text. */
+  siblingEditAt?: number;
 }
+/**
+ * A sibling tab that typed into a draft this recently is the one saving it;
+ * this tab only mirrors that text, and syncs it itself once the sibling has
+ * gone quiet without saving (for example, it closed).
+ */
+const SIBLING_EDIT_MS = 15_000;
+const FOREGROUND_KEY = "draft-sync-foreground";
+const TAB_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`;
 const owners = new Map<string, string>();
 const clients = new Map<string, DraftSyncClient>();
 let currentSource = "local";
@@ -357,7 +370,55 @@ export const draftStorage = {
     if (a && draftAddress(key)) clients.get(a.source)?.edit(key, null);
   },
 };
+/**
+ * The tab holding the window focus claims it in the storage its siblings
+ * share, so a background tab can tell that someone may be typing there.
+ */
+function claimForeground(): void {
+  try {
+    localStorage.setItem(FOREGROUND_KEY, TAB_ID);
+  } catch {
+    /* Without storage there are no siblings to protect. */
+  }
+}
+function releaseForeground(): void {
+  try {
+    if (localStorage.getItem(FOREGROUND_KEY) === TAB_ID)
+      localStorage.removeItem(FOREGROUND_KEY);
+  } catch {
+    /* Without storage there are no siblings to protect. */
+  }
+}
+let foregroundClaimInstalled = false;
+function installForegroundClaim(): void {
+  if (foregroundClaimInstalled) return;
+  foregroundClaimInstalled = true;
+  if (document.hasFocus()) claimForeground();
+  window.addEventListener("focus", claimForeground);
+  window.addEventListener("blur", releaseForeground);
+  window.addEventListener("pagehide", releaseForeground);
+}
+function uninstallForegroundClaim(): void {
+  if (!foregroundClaimInstalled) return;
+  foregroundClaimInstalled = false;
+  window.removeEventListener("focus", claimForeground);
+  window.removeEventListener("blur", releaseForeground);
+  window.removeEventListener("pagehide", releaseForeground);
+  releaseForeground();
+}
+/** True while another tab sharing this origin's storage holds the focus. */
+function siblingForeground(): boolean {
+  if (document.hasFocus()) return false;
+  try {
+    const tab = localStorage.getItem(FOREGROUND_KEY);
+    return !!tab && tab !== TAB_ID;
+  } catch {
+    return false;
+  }
+}
+/** A composer in a window without focus is not being typed in. */
 function editing(key: string): boolean {
+  if (!document.hasFocus()) return false;
   const el = document.activeElement;
   const editorKey = el
     ?.closest("[data-draft-key]")
@@ -378,6 +439,23 @@ export interface PendingDraft {
   local: DraftPayload;
   remote?: DraftSnapshot;
   submitted?: DraftPayload;
+}
+
+/**
+ * Server text replaces this tab's text only where nobody can be typing over
+ * it. A composer being edited keeps its text unless it is still empty and
+ * untouched since the last save, which is a window picking up a draft begun
+ * elsewhere. A background tab never writes server text into the storage a
+ * focused sibling types into: that write lands in the sibling's composer and
+ * drops whatever was typed after the text it was merged from.
+ */
+function holdsRemote(e: Entry, local: DraftPayload): boolean {
+  if (siblingForeground()) return true;
+  if (!editing(e.key)) return false;
+  return (
+    draftHasContent(local) ||
+    !draftPayloadEqual(local, e.saved.base?.payload ?? EMPTY_DRAFT)
+  );
 }
 
 /** A one-sided update held for focus is ordinary handoff, not a conflict. */
@@ -579,6 +657,8 @@ export class DraftSyncClient {
     if (!e) return;
     e.saved.raw = raw;
     if (e.error === "local") e.error = undefined;
+    // Typing here makes this tab the one that saves the draft.
+    e.siblingEditAt = undefined;
     // The text itself is already in browser storage. Rewriting this tab's
     // sync metadata on every keystroke would also overwrite a newer base a
     // sibling tab stored after saving the same draft.
@@ -656,6 +736,15 @@ export class DraftSyncClient {
       e.submissionTask
     )
       return;
+    // Two tabs saving one shared draft race each other's merges; leave it to
+    // the tab being typed in.
+    const siblingActive =
+      SIBLING_EDIT_MS - (Date.now() - (e.siblingEditAt ?? -Infinity));
+    if (siblingActive > 0) {
+      e.firstDirty = 0;
+      this.schedule(e, siblingActive);
+      return;
+    }
     e.running = true;
     const saved = e.saved;
     let finishSync!: () => void;
@@ -768,7 +857,7 @@ export class DraftSyncClient {
       );
       if (!draftPayloadEqual(local, merged)) {
         e.remote = read;
-        if (editing(e.key) || conflicting(e)) {
+        if (holdsRemote(e, local) || conflicting(e)) {
           status();
           return;
         }
@@ -1313,9 +1402,10 @@ export class DraftSyncClient {
         e.saved.raw = event.newValue;
         // The sibling's stored value supersedes a write this tab failed to store.
         if (e.error === "local") e.error = undefined;
+        e.siblingEditAt = Date.now();
         this.reconcilePresence(e, previousRaw);
         notify(e.key);
-        this.schedule(e, 3000);
+        this.schedule(e, SIBLING_EDIT_MS);
         status();
         return;
       }
@@ -1349,6 +1439,7 @@ export class DraftSyncClient {
   start(): void {
     this.started = true;
     clients.set(this.source, this);
+    installForegroundClaim();
     try {
       const keys = new Set(draftStorage.keys());
       const metaPrefix = `draft-sync-v1:${encodeURIComponent(this.source)}:${encodeURIComponent(this.owner)}:`;
@@ -1421,4 +1512,5 @@ export const draftPayloadToStorage = encode;
 // one, with its own base and no storage events between them.
 import.meta.hot?.dispose(() => {
   for (const client of [...clients.values()]) client.stop();
+  uninstallForegroundClaim();
 });

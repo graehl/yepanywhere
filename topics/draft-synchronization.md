@@ -90,7 +90,13 @@ union new IDs and respect removal of a base attachment.
 A remote change never replaces a focused input, its selection, or IME input.
 One-sided remote updates, including a cleared draft after another device sends,
 wait quietly while their editor is focused and apply after focus leaves. They
-are not conflicts and do not produce a notice. A composer identifies its draft
+are not conflicts and do not produce a notice. An input counts as focused only
+while its window has focus: a window left with its caret in a composer still
+takes another window's continuation, so returning to it shows the current
+draft. An empty composer with no edits since its last save is filled even while
+focused; that is a window opened to continue a draft begun elsewhere, and
+holding it left the composer empty and turned the next keystroke into a
+conflict. A composer identifies its draft
 so focus in another composer does not pause this slot; unmarked text editors
 retain the conservative focus protection. Deferred snapshots continue refreshing
 on server changes, reconnect and foregrounding, rather than freezing the first
@@ -104,6 +110,18 @@ Merging it against a tab's older base and storing the result re-entered every si
 storage handler, appending the whole draft again on each keystroke until storage
 filled and the browser stalled (observed 2026-09-30). Metadata that an earlier
 build stored as a pending sibling merge is discarded on load.
+
+One tab saves a shared draft: the one being typed in. A tab that receives a
+sibling's keystrokes for a draft leaves its saves to that sibling until fifteen
+seconds after the last one, then takes over, so a sibling closed before saving
+still reaches the server. The tab holding window focus records that claim in
+shared storage, and a background tab never writes server text into shared
+storage while a sibling holds it; it keeps the update pending instead. Such a
+write lands in the focused tab's composer through its storage event, replacing
+the text with one merged from an older copy, dropping keys typed since and moving
+the caret to the end (reported 2026-10-08 while typing in New session; the
+server's receipts showed two clients saving the new-session slot within a
+second of each other).
 
 The tabs also share one acknowledged base, which never moves back: a tab
 reconciles against the newest base any sibling stored (by server sequence), a

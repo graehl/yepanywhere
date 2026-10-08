@@ -92,13 +92,13 @@
 </style>
 </head>
 <body>
-<nav class="states" role="tablist" aria-label="States">
-  <button role="tab" data-s="a">1 · Pick existing</button>
-  <button role="tab" data-s="b">2 · New project (empty folder)</button>
-  <button role="tab" data-s="c">3 · New project from template</button>
-  <button role="tab" data-s="d">4 · Typed an unused path</button>
-  <button role="tab" data-s="e">5 · Problems</button>
-</nav>
+<div class="states" role="tablist" aria-label="States">
+  <button type="button" role="tab" data-s="a">1 · Pick existing</button>
+  <button type="button" role="tab" data-s="b">2 · New project (empty folder)</button>
+  <button type="button" role="tab" data-s="c">3 · New project from template</button>
+  <button type="button" role="tab" data-s="d">4 · Typed an unused path</button>
+  <button type="button" role="tab" data-s="e">5 · Problems</button>
+</div>
 <main class="page">
   <section aria-label="New session">
     <h1>New session</h1>
@@ -108,14 +108,13 @@
       <div class="text" id="prompt">explain the riemann zeta fn. standard calculus/linalg/number theory/topology undergrad background</div>
       <div class="actions">
         <span class="meta">Claude · Opus · High</span>
-        <button class="btn primary" id="go">Start</button>
+        <button type="button" class="btn primary" id="go">Start</button>
       </div>
     </div>
   </section>
   <aside class="note" id="note"></aside>
 </main>
 <script>
-const projects = { draft: "~/draft", ya: "~/ya", agents: "~/agents" };
 const S = {
   a: {
     title: `draft`, path: "~/draft", input: "~/draft", np: false, go: "Start",

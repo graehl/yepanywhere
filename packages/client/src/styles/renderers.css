@@ -312,6 +312,27 @@
   color: var(--error-color);
 }
 
+/* Unicode script runs (ˢ, ₁) drawn from server-supplied plain text; the
+   authored glyphs stay at zero size so copy keeps them. */
+.ya-uscript__source {
+  font-size: 0;
+}
+
+.ya-uscript::before {
+  content: attr(data-ya-script);
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+}
+
+.ya-uscript--sup::before {
+  top: -0.5em;
+}
+
+.ya-uscript--sub::before {
+  top: 0.3em;
+}
+
 /* ==========================================================================
    File Path Display - dirname prefix dimmed, filename normal
    ========================================================================== */
@@ -1510,25 +1531,6 @@ details[open] .collapsible__icon {
 
 .bash-preview-row:last-child {
   border-bottom: none;
-}
-
-.bash-preview-label {
-  flex-shrink: 0;
-  width: 2.5rem;
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.bash-preview-command {
-  flex: 1;
-  min-width: 0;
-  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .bash-preview-output-row {
@@ -4741,7 +4743,6 @@ pre.code-highlighter-plain code {
 .thinking-code-block,
 .tool-fallback,
 .fallback-content,
-.bash-preview-command,
 .bash-preview-output pre,
 .bash-modal-code,
 .diff-view,
@@ -4762,7 +4763,6 @@ pre.code-highlighter-plain {
 .code-block,
 .tool-fallback,
 .fallback-content,
-.bash-preview-command,
 .bash-preview-output pre,
 .bash-modal-code,
 .file-content-with-lines,

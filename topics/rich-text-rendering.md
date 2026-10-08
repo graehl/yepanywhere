@@ -210,6 +210,22 @@ paper's MathML inside raw HTML tables, where TeX delimiters are not rendered.
 It is limited to layout elements with layout attributes. `annotation` holds
 only text; `annotation-xml` is escaped because it can carry arbitrary markup.
 
+## Unicode script characters
+
+Prose often writes math without TeX, using Unicode superscript and subscript
+characters (`1/nˢ`, `x⁻ˢ`, `∫₁`). The bundled prose fonts are Latin subsets,
+so those glyphs fall back to other fonts and the modifier letters render
+nearly illegibly small. The server Markdown renderer
+(`packages/server/src/augments/unicode-math.ts`) wraps each run and supplies
+its plain characters for CSS to draw as an ordinary 0.75em script in the
+prose font. The authored glyphs remain in the DOM at zero size, so copy,
+selection and source mapping see exactly what was written. Code spans and
+blocks are untouched, and line height does not change.
+
+This is a per-character table, not a parser: TeX-like notation in prose such
+as `Σ_{n≥1}` or `∫₁^∞` stays literal. A structural Unicode-math converter is
+a [sketch](../gaps/sketches/unicode-prose-math.md), not current behavior.
+
 ## File Content Viewer Contract
 
 When a renderer shows file contents outside an inline transcript block, it

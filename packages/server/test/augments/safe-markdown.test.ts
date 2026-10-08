@@ -350,6 +350,24 @@ x \\] + y
   });
 });
 
+describe("renderSafeMarkdown — Unicode scripts", () => {
+  it("redraws script runs while keeping the authored glyphs", () => {
+    const html = renderSafeMarkdown("compare ∫₁^∞ x⁻ˢ dx");
+    expect(html).toContain(
+      '<span class="ya-uscript ya-uscript--sub" data-ya-script="1"><span class="ya-uscript__source">₁</span></span>',
+    );
+    expect(html).toContain(
+      '<span class="ya-uscript ya-uscript--sup" data-ya-script="−s"><span class="ya-uscript__source">⁻ˢ</span></span>',
+    );
+  });
+
+  it("leaves code and plain text untouched", () => {
+    expect(renderSafeMarkdown("`nˢ` and it's <b>")).toBe(
+      "<p><code>nˢ</code> and it's &lt;b&gt;</p>",
+    );
+  });
+});
+
 describe("renderSafeMarkdown — embedded HTML", () => {
   it("keeps grouped table spans", () => {
     const html = renderSafeMarkdown(`

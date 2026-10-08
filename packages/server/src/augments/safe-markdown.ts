@@ -18,6 +18,7 @@ import MarkdownIt, {
 } from "markdown-it";
 import sanitizeHtml from "sanitize-html";
 import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
+import { renderUnicodeScripts } from "./unicode-math.js";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const ALLOWED_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
@@ -1095,7 +1096,13 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     ],
     input: ["type", "checked", "disabled"],
     ol: ["start"],
-    span: ["class", "data-media-path", "data-media-type", "data-expanded"],
+    span: [
+      "class",
+      "data-media-path",
+      "data-media-type",
+      "data-expanded",
+      "data-ya-script",
+    ],
     td: ["align", "colspan", "rowspan"],
     th: ["align", "colspan", "rowspan"],
     ...Object.fromEntries(
@@ -1656,6 +1663,8 @@ markdownRenderer.core.ruler.after(
   "ya_task_list_items",
   renderTaskListItems,
 );
+markdownRenderer.renderer.rules.text = (tokens, index) =>
+  renderUnicodeScripts(tokens[index]?.content ?? "");
 markdownRenderer.renderer.rules.link_open = renderLinkOpen;
 markdownRenderer.renderer.rules.link_close = renderLinkClose;
 markdownRenderer.renderer.rules.code_inline = renderCodeInline;

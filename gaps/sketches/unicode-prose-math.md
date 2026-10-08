@@ -251,6 +251,65 @@ labelled data exists.
   math literal. Tune the threshold for high precision; the option stays off
   by default.
 
+## Prototype recognizer (2026-10-08)
+
+Built outside this repository in `/local/graehl/umath-research` (local git;
+its `README.md` has the pipeline, protocol and reproduction steps). The
+corpora are derived from private session logs and are not committed.
+
+**Data.** 112k unique assistant text blocks from Claude and Codex logs
+plus 230 paper extracts. Real undelimited Unicode math is rare in the
+sessions: about 500 of 305k runs carry a structural indicator, while
+prose uses of `→`, `×` and `~` number in the thousands. Positives are
+therefore synthesised. Each KaTeX-valid TeX span (about 6,500 runs, mostly
+papers) goes TeX → KaTeX MathML → UnicodeMathML `MathMLtoUnicodeMath`,
+then through a seeded agent-dialect informaliser, and is spliced back into
+its prose with exact labels. Typographic TeX (`$5,898$`, a lone `$\pm$`)
+is ignored and single-letter variables are soft. Negatives are ordinary
+prose, prose with hot characters, and fenced-code lines; operator runs
+inside negatives are ignored rather than labelled. The KaTeX MathML route
+beat UnicodeMathML's own `TeX2UnicodeMath`, which leaves build-up
+internals (`⍁1&n^s〗`) and unknown commands in its output. The 619 real
+hot runs were hand-labelled for evaluation (276 dev, 343 test, split by
+document). Session files that contribute labelled runs were excluded
+from training.
+
+**Model.** The heat field above, with per-class heat and decay (54
+classes from a character classifier with letter-run, script-marker and
+Unicode-property rules), sparse per-code-point overrides, and sparse
+left/right neighbour-class pair heat. It is trained by weighted logistic
+loss per character, with an exact gradient through both recurrences.
+Decoding snaps to whitespace tokens with two thresholds (seed 0.9,
+extent 0.3). It then trims edge punctuation and edge arrows, and drops
+regions with nothing to typeset. The pair term carries nearly all of
+the gain over the hand-seeded field; without it the learned field is no
+better than the cheap token rule. Token snapping raised real-text recall
+from 0.74 to 0.82 on dev.
+
+**Size.** Quantised to step 0.5 after L1: 99 overrides and about 2,200
+pairs. The runtime is 4.2 KB minified and the parameters 16.3 KB, 8.4 KB
+gzipped together. Roughly 2 M characters per second in Node (diagnostic).
+Stronger L1 halves the size but costs about 0.07 recall.
+
+**Test, run once** (paired bootstrap against the token rule after
+UTN #28 § 5, 10,000 resamples):
+
+| test set | metric | learned | token rule | p |
+|---|---|---|---|---|
+| synthetic, N=7235 runs | char F1 | 0.913 | 0.586 | <0.0001 |
+| synthetic | math-span recall | 0.792 | 0.487 | <0.0001 |
+| synthetic | false regions per 1k runs | 5.5 | 3.9 | 0.09 |
+| real hot runs, N=343 | char F1 | 0.810 | 0.723 | 0.0006 |
+| real hot runs | math-span recall | 0.782 | 0.657 | 0.003 |
+| real hot runs | false regions per 1k runs | 128 | 64 | 0.008 |
+
+**Remaining false positives** on real text are mostly unfenced code
+assignments (`next_token = argmax_or_sample(…)`), primed run names (`B′`,
+`C′`), paths, and redaction markers. The real-text false-region rate is
+a stress figure, since that set holds only runs with hot characters, but
+it is still twice the token rule's. The default-off opt-in needs a
+higher-precision operating point or a code-line filter before it ships.
+
 ## Open questions
 
 - Whether to vendor `TeX.js` for the harness only (offline), or depend on

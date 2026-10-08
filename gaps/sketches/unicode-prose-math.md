@@ -258,57 +258,105 @@ its `README.md` has the pipeline, protocol and reproduction steps). The
 corpora are derived from private session logs and are not committed.
 
 **Data.** 112k unique assistant text blocks from Claude and Codex logs
-plus 230 paper extracts. Real undelimited Unicode math is rare in the
-sessions: about 500 of 305k runs carry a structural indicator, while
-prose uses of `→`, `×` and `~` number in the thousands. Positives are
-therefore synthesised. Each KaTeX-valid TeX span (about 6,500 runs, mostly
-papers) goes TeX → KaTeX MathML → UnicodeMathML `MathMLtoUnicodeMath`,
-then through a seeded agent-dialect informaliser, and is spliced back into
-its prose with exact labels. Typographic TeX (`$5,898$`, a lone `$\pm$`)
-is ignored and single-letter variables are soft. Negatives are ordinary
-prose, prose with hot characters, and fenced-code lines; operator runs
-inside negatives are ignored rather than labelled. The KaTeX MathML route
-beat UnicodeMathML's own `TeX2UnicodeMath`, which leaves build-up
-internals (`⍁1&n^s〗`) and unknown commands in its output. The 619 real
-hot runs were hand-labelled for evaluation (276 dev, 343 test, split by
-document). Session files that contribute labelled runs were excluded
-from training.
+plus 230 paper extracts, segmented with the renderer's own parser
+(markdown-it with the server's KaTeX plugin options). Each run is the text
+of one inline token; inline code, raw HTML and images split it; fenced
+and indented code are separate code runs. An earlier line-based
+segmenter missed fences indented inside list items. Most "unfenced code"
+false positives were those lines, which the renderer never shows as
+prose.
+
+Real undelimited Unicode math is rare in the sessions: about 500 of
+305k runs carry a structural indicator, while prose uses of `→`, `×` and
+`~` number in the thousands. Positives are therefore synthesised. Each
+KaTeX-valid TeX span (about 20,000 inline spans, mostly papers) goes
+TeX → KaTeX MathML → UnicodeMathML `MathMLtoUnicodeMath`, then through a
+seeded agent-dialect informaliser. It is spliced back into its prose
+with exact labels. Typographic TeX (`$5,898$`, a lone `$\pm$`) is ignored
+and single-letter variables are soft. Negatives are ordinary prose,
+prose with hot characters, and code lines; operator runs inside
+negatives are ignored rather than labelled. The KaTeX MathML route beat
+UnicodeMathML's own `TeX2UnicodeMath`, which leaves build-up internals
+(`⍁1&n^s〗`) and unknown commands in its output.
+
+The 619 real hot runs were hand-labelled. The 585 that the renderer
+shows as prose form the real evaluation set (263 dev, 322 test, split by
+message). Session files that contribute labelled runs are excluded from
+training.
+
+**Both predictors use the same token boundaries.** Regions are maximal
+runs of whitespace-separated tokens, and both share the same edge
+refinement. That refinement trims sentence punctuation and edge arrows.
+It also drops regions with nothing to typeset: numbers with units,
+signs, ranges or arrows between them (`4–6×`, `60→110→1,833`), and a lone
+symbol (`B′`, `λ`). The two differ only in how a token is judged:
+
+- **Token rule** (after UTN #28 § 5): a token is strong if it contains an
+  unambiguous math character or script syntax. It is weak if it is short
+  (a single letter, a number, an operator, a function name, or any word
+  of at most two letters). A region is a run of strong or weak tokens
+  with at least one strong token. Each token is judged alone, by fixed
+  patterns.
+- **Learned field**: a token's score is the highest character score
+  inside it. Each character score comes from the heat field, which
+  pools evidence from its neighbours on both sides with learned decay.
+  A region needs one token scoring at least `high` (the seed), and
+  extends over neighbours scoring at least `low`.
+
+On real dev runs, the differences look like this (⟪…⟫ marks a region):
+
+| text | gold | learned | rule |
+|---|---|---|---|
+| `Δ_benefit is a maximum` | `⟪Δ_benefit⟫` | `⟪Δ_benefit⟫` | `⟪Δ_benefit is⟫` |
+| `with ε = 1e-8. Adam` | `⟪ε = 1e-8⟫` | `⟪ε = 1e-8⟫` | `⟪ε =⟫` |
+| `VERIFIED bib; ≈6T NOT STATED` | none | none | `⟪≈6T⟫` |
+| `(±5%, or your 10%)` | none | none | `⟪(±5%, or⟫` |
+| `paired Δ (p).` | none | none | `⟪Δ (p)⟫` |
+| `gives m +.533 (p=.012);` | `⟪p=.012⟫` | `⟪+.533 (p=.012)⟫` | none |
+| `O (overfitting) = S(E) − S(E_neutral).` | `⟪= S(E) − S(E_neutral)⟫` | `⟪O (overfitting) = S(E) − S(E_neutral)⟫` | `⟪= S(E) − S(E_neutral). E_neutral⟫` |
+| `update is 0.1·v_R + 0.1·v_Call + …` | the sum | none | `⟪is 0.1·v_R + … so R⟫` |
+
+The rule's characteristic error is gluing short prose words (`is`, `or`)
+and lone typographic tokens into regions, because each token is judged
+out of context. The learned field's errors are boundary overreach into a
+parenthetical, and misses where its evidence stays below the seed
+threshold.
 
 **Model.** The heat field above, with per-class heat and decay (54
-classes from a character classifier with letter-run, script-marker and
-Unicode-property rules), sparse per-code-point overrides, and sparse
-left/right neighbour-class pair heat. It is trained by weighted logistic
-loss per character, with an exact gradient through both recurrences.
-Decoding snaps to whitespace tokens with two thresholds (seed 0.9,
-extent 0.3). It then trims edge punctuation and edge arrows, and drops
-regions with nothing to typeset. The pair term carries nearly all of
-the gain over the hand-seeded field; without it the learned field is no
-better than the cheap token rule. Token snapping raised real-text recall
-from 0.74 to 0.82 on dev.
+classes from a character classifier). The classifier has letter-run
+rules (identifiers, function names), script-marker rules (`_`/`^` count
+only after a short operand that starts a word) and Unicode-property
+rules (three or more Greek letters form a word). It adds sparse
+per-code-point overrides and sparse left/right neighbour-class pair
+heat. Training minimises weighted logistic loss per character, with an
+exact gradient through both recurrences. The pair term carries nearly
+all of the gain over the hand-seeded field; without it the learned field
+is no better than the token rule.
 
-**Size.** Quantised to step 0.5 after L1: 99 overrides and about 2,200
-pairs. The runtime is 4.2 KB minified and the parameters 16.3 KB, 8.4 KB
-gzipped together. Roughly 2 M characters per second in Node (diagnostic).
-Stronger L1 halves the size but costs about 0.07 recall.
+**Size.** Quantised to step 0.5 after L1: about 100 overrides and 2,000
+pairs. Parameters are 15.0 KB, 5.5 KB gzipped; the runtime is about 4 KB
+minified. Roughly 2 M characters per second in Node (diagnostic).
 
-**Test, run once** (paired bootstrap against the token rule after
-UTN #28 § 5, 10,000 resamples):
+**Dev results, precision first** (a miss leaves legible Unicode; a false
+region garbles prose). Operating point seed 0.98, extent 0.5, chosen on
+dev:
 
-| test set | metric | learned | token rule | p |
+| dev set | predictor | region precision | math-span recall | runs fully right |
 |---|---|---|---|---|
-| synthetic, N=7235 runs | char F1 | 0.913 | 0.586 | <0.0001 |
-| synthetic | math-span recall | 0.792 | 0.487 | <0.0001 |
-| synthetic | false regions per 1k runs | 5.5 | 3.9 | 0.09 |
-| real hot runs, N=343 | char F1 | 0.810 | 0.723 | 0.0006 |
-| real hot runs | math-span recall | 0.782 | 0.657 | 0.003 |
-| real hot runs | false regions per 1k runs | 128 | 64 | 0.008 |
+| real hot runs, N=263 | learned | 0.993 (1 false of 144) | 0.776 | 0.863 |
+| real hot runs | token rule | 0.959 (7 false of 169) | 0.776 | 0.852 |
+| synthetic, N=7139 | learned | 0.994 (5 false of 894) | 0.634 | 0.968 |
+| synthetic | token rule | 0.974 (26 false of 988) | 0.524 | 0.954 |
 
-**Remaining false positives** on real text are mostly unfenced code
-assignments (`next_token = argmax_or_sample(…)`), primed run names (`B′`,
-`C′`), paths, and redaction markers. The real-text false-region rate is
-a stress figure, since that set holds only runs with hot characters, but
-it is still twice the token rule's. The default-off opt-in needs a
-higher-precision operating point or a code-line filter before it ships.
+A looser point (seed 0.9, extent 0.5) gives real-run precision 0.971 at
+recall 0.841. The 0.98 seed is the precision-first choice.
+
+**Test status.** An earlier iteration (line-based segmenter, seed 0.9)
+ran the test sets once. On real hot runs it scored char F1 0.810 against
+0.723, and span recall 0.782 against 0.657, both significant. But it
+made twice the rule's false regions (128 against 64 per 1k runs). Those
+numbers are superseded, and the test split has now been seen. A clean
+final number for the current model needs freshly labelled real runs.
 
 ## Open questions
 

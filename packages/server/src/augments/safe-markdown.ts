@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, normalize, posix, win32 } from "node:path";
 import { katex as markdownItKatex } from "@mdit/plugin-katex";
 import katex from "katex";
@@ -20,10 +20,10 @@ import MarkdownIt, {
 import sanitizeHtml from "sanitize-html";
 import type { ProjectPathIndex } from "../projects/projectPathIndex.js";
 import { renderUnicodeScripts } from "./unicode-math.js";
-import { UNICODE_MATH_PARAMS } from "./unicode-math-params.js";
 import {
   findUnicodeMath,
   loadUnicodeMathParams,
+  type UnicodeMathParams,
   unicodeMathToKatexSource,
 } from "./unicode-math-recognizer.js";
 
@@ -1286,7 +1286,16 @@ function storeKatexPlaceholder(html: string, _displayMode: boolean): string {
   return `<span class="yepkatex-placeholder yepkatex-id-${id}"></span>`;
 }
 
-const unicodeMathParams = loadUnicodeMathParams(UNICODE_MATH_PARAMS);
+// Trained recognizer parameters (binary "UMB1", about 5 KB), copied into
+// dist by scripts/copy-server-assets.mjs. Read on first use, like the
+// other server assets, so importing this module does no file I/O.
+let unicodeMathParams: UnicodeMathParams | undefined;
+function unicodeMathParamsOnce(): UnicodeMathParams {
+  unicodeMathParams ??= loadUnicodeMathParams(
+    readFileSync(new URL("./unicode-math-params.bin", import.meta.url)),
+  );
+  return unicodeMathParams;
+}
 
 /**
  * KaTeX HTML for a recognised region, or null when KaTeX rejects it or has
@@ -1322,7 +1331,7 @@ function typesetUnicodeMath(region: string): string | null {
  * setting reveals it. A region KaTeX rejects stays plain text.
  */
 function renderProseText(text: string): string {
-  const regions = findUnicodeMath(unicodeMathParams, text);
+  const regions = findUnicodeMath(unicodeMathParamsOnce(), text);
   if (!regions.length) return renderUnicodeScripts(text);
   let html = "";
   let last = 0;

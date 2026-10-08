@@ -334,8 +334,11 @@ all of the gain over the hand-seeded field; without it the learned field
 is no better than the token rule.
 
 **Size.** Quantised to step 0.5 after L1: about 100 overrides and 2,000
-pairs. Parameters are 15.0 KB, 5.5 KB gzipped; the runtime is about 4 KB
-minified. Roughly 2 M characters per second in Node (diagnostic).
+pairs. Parameters ship as a 4.9 KB binary
+(`packages/server/src/augments/unicode-math-params.bin`, format "UMB1":
+int8 values, varint code points and sorted pair-key deltas; 2.6 KB
+gzipped). The runtime is about 4 KB minified. Roughly 2 M characters per
+second in Node (diagnostic).
 
 **Dev results, precision first** (a miss leaves legible Unicode; a false
 region garbles prose). Operating point seed 0.98, extent 0.5, chosen on

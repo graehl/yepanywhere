@@ -171,17 +171,6 @@ function classify(text: string): { cls: Uint8Array; cps: Uint32Array } {
   return { cls: out, cps };
 }
 
-/** Compact parameter file as written by the trainer. */
-export interface UnicodeMathParamsJson {
-  step: number;
-  theta: number;
-  heat: string;
-  decay: string;
-  over: string;
-  left: string;
-  right: string;
-}
-
 export interface UnicodeMathParams {
   heat: Float64Array;
   decay: Float64Array;
@@ -191,43 +180,59 @@ export interface UnicodeMathParams {
   theta: number;
 }
 
-export function loadUnicodeMathParams(
-  json: UnicodeMathParamsJson,
-): UnicodeMathParams {
-  const { step } = json;
-  const nums = (s: string) =>
-    Float64Array.from(s.split(" "), (x) => Number(x) * step);
-  const pairs = (s: string) => {
+/**
+ * Decode the binary "UMB1" parameters written by the trainer. Values are
+ * quantised integers scaled by 1/den; all multi-byte integers are unsigned
+ * LEB128 varints:
+ *
+ *   "UMB1" | u8 K | u8 den | i8 θ | i8 heat[K] | i8 decay[K]
+ *   varint nOverrides, then per entry: varint codePoint, i8 dHeat, i8 dDecay
+ *   left pairs, then right pairs: varint n, then per entry (keys ascending,
+ *   key = leftClass·K + rightClass): varint keyDelta, i8 heat
+ */
+export function loadUnicodeMathParams(bytes: Uint8Array): UnicodeMathParams {
+  let at = 0;
+  const fail = (what: string): never => {
+    throw new Error(`unicode math parameters: ${what} at byte ${at}`);
+  };
+  const u8 = () => (at < bytes.length ? (bytes[at++] ?? 0) : fail("truncated"));
+  const i8 = () => {
+    const v = u8();
+    return v > 127 ? v - 256 : v;
+  };
+  const varint = () => {
+    let value = 0;
+    for (let scale = 1; ; scale *= 128) {
+      const b = u8();
+      value += (b & 0x7f) * scale;
+      if (b < 0x80) return value;
+      if (scale > 2 ** 28) fail("varint too long");
+    }
+  };
+  if (String.fromCharCode(u8(), u8(), u8(), u8()) !== "UMB1") fail("bad magic");
+  if (u8() !== K) fail("class table mismatch");
+  const step = 1 / u8();
+  const theta = i8() * step;
+  const heat = Float64Array.from({ length: K }, () => i8() * step);
+  const decay = Float64Array.from({ length: K }, () => i8() * step);
+  const overrides = new Map<number, readonly [number, number]>();
+  for (let n = varint(); n > 0; n--) {
+    const cp = varint();
+    overrides.set(cp, [i8() * step, i8() * step]);
+  }
+  const pairs = () => {
     const map = new Map<number, number>();
-    for (const entry of s ? s.split(" ") : []) {
-      const [ab = "", v = "0"] = entry.split(":");
-      const [a = 0, b = 0] = ab.split(".").map((x) => Number.parseInt(x, 36));
-      map.set(a * K + b, Number(v) * step);
+    let key = 0;
+    for (let n = varint(); n > 0; n--) {
+      key += varint();
+      map.set(key, i8() * step);
     }
     return map;
   };
-  const overrides = new Map<number, readonly [number, number]>();
-  for (const entry of json.over ? json.over.split(" ") : []) {
-    const cp = entry.codePointAt(0) ?? 0;
-    const [dh = 0, du = 0] = entry
-      .slice(cp > 0xffff ? 2 : 1)
-      .split(",")
-      .map((x) => Number(x) * step);
-    overrides.set(cp, [dh, du]);
-  }
-  const heat = nums(json.heat);
-  const decay = nums(json.decay);
-  if (heat.length !== K || decay.length !== K) {
-    throw new Error("unicode math parameters: class table mismatch");
-  }
-  return {
-    heat,
-    decay,
-    overrides,
-    left: pairs(json.left),
-    right: pairs(json.right),
-    theta: json.theta * step,
-  };
+  const left = pairs();
+  const right = pairs();
+  if (at !== bytes.length) fail("trailing data");
+  return { heat, decay, overrides, left, right, theta };
 }
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>New project from New session — proposal</title>
+<style>
+  /* Values copied from packages/client/src/styles/index.css (dark theme). */
+  :root {
+    --bg: #121212; --bg-surface: #181818; --bg-secondary: #1f1f1f;
+    --bg-tertiary: #252525; --bg-hover: #2a2d2e; --bg-input: #2a2a2a;
+    --text-primary: #cccccc; --text-secondary: #b8b8b8; --text-muted: #9d9d9d;
+    --text-dimmed: #666666; --border-color: #3c3c3c; --border-subtle: #333333;
+    --border-input: #444444; --accent: #3b82f6; --ok: #4ade80; --warn: #fbbf24;
+    --radius-md: 6px; --radius-lg: 8px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text-primary);
+    font: 13px/1.45 var(--font-sans); }
+  .states { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-surface); overflow-x: auto; position: sticky; top: 0; z-index: 2; }
+  .states button { flex: none; background: none; border: 1px solid transparent; color: var(--text-muted);
+    padding: 4px 10px; border-radius: 999px; font: inherit; cursor: pointer; }
+  .states button[aria-selected="true"] { color: var(--text-primary); border-color: var(--border-color);
+    background: var(--bg-tertiary); }
+  .page { display: grid; grid-template-columns: minmax(0, 620px) minmax(0, 1fr); gap: 28px;
+    max-width: 1180px; margin: 0 auto; padding: 16px 20px 40px; }
+  .note { color: var(--text-secondary); font-size: 13px; }
+  .note h2 { font-size: 15px; margin: 4px 0 8px; color: var(--text-primary); }
+  .note ul { padding-left: 18px; margin: 6px 0; }
+  .note li { margin: 4px 0; }
+  .note code, .mono { font-family: var(--font-mono); font-size: 12px; }
+  h1 { font-size: 16px; margin: 0 0 12px; font-weight: 600; }
+
+  /* Project chooser, as in today's New session */
+  .chooser { border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+    background: var(--bg-surface); }
+  .summary { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  .summary .body { flex: 1; min-width: 0; }
+  .summary .title { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .summary .path { color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); }
+  .pill { font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 999px;
+    border: 1px solid #2f6f45; color: var(--ok); background: #12261a; }
+  .chev { color: var(--text-muted); }
+  .row { display: flex; gap: 8px; padding: 0 12px 12px; }
+  .input { flex: 1; min-width: 0; background: var(--bg-input); border: 1px solid var(--border-input);
+    border-radius: var(--radius-md); padding: 8px 10px; color: var(--text-primary);
+    font: 13px var(--font-mono); }
+  .input.focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .btn { background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-primary);
+    border-radius: var(--radius-md); padding: 8px 12px; font: inherit; white-space: nowrap; min-height: 36px; }
+  .btn.on { border-color: var(--accent); color: #dbeafe; background: #16233b; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0b1220; font-weight: 600; }
+
+  .np { border-top: 1px solid var(--border-subtle); padding: 12px; display: grid; gap: 12px; }
+  .np label.f { display: grid; gap: 4px; }
+  .np .lab { font-size: 12px; color: var(--text-muted); }
+  .derived { font-size: 12px; color: var(--text-muted); }
+  .derived .mono { color: var(--text-secondary); }
+  .derived.warn { color: var(--warn); }
+  .palette { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .tile { border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 8px;
+    background: var(--bg-secondary); display: grid; gap: 4px; align-content: start; min-height: 74px; }
+  .tile .name { font-weight: 600; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .tile .desc { font-size: 11px; color: var(--text-muted); }
+  .tile.sel { border-color: var(--accent); background: #16233b; }
+  .radio { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--text-muted); flex: none; }
+  .tile.sel .radio { border-color: var(--accent); background: radial-gradient(var(--accent) 45%, transparent 50%); }
+  .check { display: flex; gap: 8px; align-items: center; color: var(--text-secondary); }
+  .box { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid var(--text-muted); display: inline-grid;
+    place-items: center; font-size: 10px; flex: none; }
+  .box.on { background: var(--accent); border-color: var(--accent); color: #0b1220; }
+  .plan { font-size: 12px; color: var(--text-muted); border-left: 2px solid var(--border-color); padding-left: 8px; }
+  .plan .mono { color: var(--text-secondary); }
+
+  .composer { margin-top: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+    background: var(--bg-surface); padding: 10px 12px; }
+  .composer .text { min-height: 64px; color: var(--text-primary); white-space: pre-wrap; }
+  .composer .caption { font-size: 11px; color: var(--text-dimmed); margin-bottom: 4px; }
+  .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; }
+  .meta { color: var(--text-muted); font-size: 12px; }
+  .strike { text-decoration: line-through; color: var(--text-dimmed); }
+
+  @media (max-width: 760px) {
+    .page { grid-template-columns: 1fr; padding: 12px; gap: 16px; }
+    .palette { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .note { order: 2; }
+    .summary .title { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<nav class="states" role="tablist" aria-label="States">
+  <button role="tab" data-s="a">1 · Pick existing</button>
+  <button role="tab" data-s="b">2 · New project (empty folder)</button>
+  <button role="tab" data-s="c">3 · New project from template</button>
+  <button role="tab" data-s="d">4 · Typed an unused path</button>
+  <button role="tab" data-s="e">5 · Problems</button>
+</nav>
+<main class="page">
+  <section aria-label="New session">
+    <h1>New session</h1>
+    <div class="chooser" id="chooser"></div>
+    <div class="composer">
+      <div class="caption">Prompt</div>
+      <div class="text" id="prompt">explain the riemann zeta fn. standard calculus/linalg/number theory/topology undergrad background</div>
+      <div class="actions">
+        <span class="meta">Claude · Opus · High</span>
+        <button class="btn primary" id="go">Start</button>
+      </div>
+    </div>
+  </section>
+  <aside class="note" id="note"></aside>
+</main>
+<script>
+const projects = { draft: "~/draft", ya: "~/ya", agents: "~/agents" };
+const S = {
+  a: {
+    title: `draft`, path: "~/draft", input: "~/draft", np: false, go: "Start",
+    note: `<h2>Unchanged: choose an existing project</h2>
+      <ul><li>The path box still searches projects and recent folders.</li>
+      <li><b>New project</b> is the one obvious entry point for a folder that YA has never seen.</li>
+      <li>Today's two half-paths are gone: choosing <i>No project</i> first, or overtyping the selected project's path (which showed <span class="mono">draft&nbsp;~/math</span>).</li></ul>`,
+  },
+  b: {
+    title: `math <span class="pill">new</span>`, path: "~/math", input: "", np: true, tpl: "empty",
+    name: "math", go: "Create &amp; start",
+    note: `<h2>New project, no template</h2>
+      <ul><li>One field: a name or a path. <span class="mono">math</span> → <span class="mono">~/math</span> under the account's base folder; an anchored path (<span class="mono">~/x/y</span>, <span class="mono">/srv/z</span>) stands as typed.</li>
+      <li><b>Empty folder</b> is the first palette tile and the default unless the user last chose a template. It is a peer of the templates, not a separate mode.</li>
+      <li><b>Initialize Git</b> shows only for Empty folder (templates always init Git). Its last setting is remembered.</li>
+      <li>The plan line states exactly what Start does: one <span class="mono">mkdir</span> (never <span class="mono">-p</span>), optional <span class="mono">git init</span>, register, start the session with this prompt.</li>
+      <li>The summary already names the new project, so the preview matches what you get.</li></ul>`,
+  },
+  c: {
+    title: `math <span class="pill">new</span>`, path: "~/math", input: "", np: true, tpl: "canvas",
+    name: "math", go: "Create &amp; prepare",
+    note: `<h2>Same panel, a template chosen</h2>
+      <ul><li>The prompt doubles as the template's intent; nothing is retyped.</li>
+      <li>The button changes to <b>Create &amp; prepare</b>; that action follows the existing template contract (setup, Git, preparation session).</li>
+      <li>Git is not optional here, so its checkbox disappears.</li>
+      <li>With templates disabled or none ready, the palette shrinks to Empty folder, and the panel is just name + Git.</li></ul>`,
+  },
+  d: {
+    title: `math <span class="pill">new</span>`, path: "~/math", input: "~/math", focusInput: true, np: true,
+    tpl: "empty", name: "~/math", fromPath: true, go: "Create &amp; start",
+    note: `<h2>Typing an unused path opens the same panel</h2>
+      <ul><li>A path in the search box that matches no project opens New project for that path. The search box is the path field; there is no second box repeating it, and the separate “Use typed path” row goes away.</li>
+      <li>The summary switches to the project that will be created, not the one the path replaced.</li>
+      <li>An existing folder that is not yet a project reads <i>Add existing folder</i>: no <span class="mono">mkdir</span>, and Git init only if it has no repository.</li></ul>`,
+  },
+  e: {
+    title: `notes <span class="pill">new</span>`, path: "~/work/notes", input: "", np: true, tpl: "empty",
+    name: "~/work/notes", problem: true, go: "Create &amp; start", goDisabled: true,
+    note: `<h2>Problems are stated before Start</h2>
+      <ul><li>Only one new folder is created. A missing parent is reported, with the one-click fix offered rather than silently using <span class="mono">mkdir -p</span>.</li>
+      <li>A non-empty existing folder is offered as <i>Add existing folder</i> instead of failing at start.</li>
+      <li>Start stays disabled until the plan is valid.</li></ul>`,
+  },
+};
+const tiles = [
+  ["empty", "Empty folder", "mkdir + optional git init"],
+  ["canvas", "App canvas", "Interactive app starter"],
+  ["web", "Web page", "Static site + tooling"],
+  ["story", "Storybook", "Component workbench"],
+];
+function render(k) {
+  const s = S[k];
+  for (const b of document.querySelectorAll(".states button"))
+    b.setAttribute("aria-selected", String(b.dataset.s === k));
+  const np = s.np ? `
+    <div class="np">
+      ${s.fromPath ? "" : `<label class="f"><span class="lab">Name or path</span>
+        <input class="input focus" value="${s.name}" aria-label="New project name or path"></label>`}
+      ${s.fromPath
+        ? `<div class="derived">No project at <span class="mono">${s.path}</span> yet. Start one there:</div>`
+        : s.problem
+        ? `<div class="derived warn">⚠ <span class="mono">~/work</span> does not exist. YA creates one folder only.
+             <button class="btn" style="padding:2px 8px;min-height:0;margin-left:6px">Create ~/work too</button></div>`
+        : `<div class="derived">Creates <span class="mono">${s.path}</span></div>`}
+      <div class="palette" role="radiogroup" aria-label="Start from">
+        ${tiles.map(([id, n, d]) => `<div class="tile${s.tpl === id ? " sel" : ""}" role="radio" aria-checked="${s.tpl === id}">
+          <span class="name"><span class="radio"></span>${n}</span><span class="desc">${d}</span></div>`).join("")}
+      </div>
+      ${s.tpl === "empty"
+        ? `<div class="check"><span class="box on"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 5.2 4 7.5 8.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></span>Initialize Git repository</div>
+           <div class="plan">On Start: <span class="mono">mkdir ${s.path}</span> · <span class="mono">git init</span> · add project · start session</div>`
+        : `<div class="plan">On Create &amp; prepare: copy template · setup · <span class="mono">git init</span> · add project · preparation session with your prompt as intent</div>`}
+    </div>` : "";
+  document.getElementById("chooser").innerHTML = `
+    <div class="summary"><div class="body"><div class="title">${s.title}</div>
+      <div class="path">${s.path}</div></div><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="${s.np ? "6 15 12 9 18 15" : "6 9 12 15 18 9"}"/></svg></div>
+    <div class="row">
+      <input class="input${s.focusInput ? " focus" : ""}" value="${s.input}" placeholder="Search projects or paste a path" aria-label="Project path">
+      <button class="btn${s.np ? " on" : ""}" aria-expanded="${s.np}">+ New project</button>
+    </div>${np}`;
+  const go = document.getElementById("go");
+  go.innerHTML = s.go;
+  go.disabled = !!s.goDisabled;
+  go.style.opacity = s.goDisabled ? "0.45" : "1";
+  document.getElementById("note").innerHTML = s.note;
+}
+for (const b of document.querySelectorAll(".states button"))
+  b.addEventListener("click", () => render(b.dataset.s));
+render(location.hash.slice(1) in S ? location.hash.slice(1) : "b");
+document.body.dataset.ready = "1";
+</script>
+</body>
+</html>

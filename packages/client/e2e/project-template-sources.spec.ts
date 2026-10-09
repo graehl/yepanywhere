@@ -178,9 +178,13 @@ for (const release of ["0.8.0", "0.8.1"])
     await expect(
       page.locator('[data-provider-host-degraded="true"]'),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "New project", exact: true }),
-    ).toHaveCount(0);
+    // New project also creates a plain folder on older servers. Only the
+    // template choices and requests require the template capability.
+    await page
+      .getByRole("button", { name: "New project", exact: true })
+      .click();
+    await expect(page.getByText("Empty folder", { exact: true })).toBeVisible();
+    await expect(page.getByText("Storybook", { exact: true })).toHaveCount(0);
     expect(requests).toBe(0);
   });
 

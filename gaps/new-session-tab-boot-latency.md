@@ -100,6 +100,18 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Browser CPU profiling (2026-10-09) identifies two startup costs worth separating:
+removing the focused preboot field forces pending layout (14–65 ms in the
+observed profiles), while eager Zod construction takes 10–27 ms of sampled
+self time. Deferring overlay removal until after the real field takes focus
+only moves the layout cost into that focus callback. Six alternating cold
+loads showed no reliable improvement: current controls 291/343/326 ms versus
+deferred removal 311/268/360 ms. Keep the existing typing handoff. Next inspect
+which schema initializers enter the initial bundle through shared exports;
+do not assume all validation can be delayed. These profiles ran with load
+17–20 on 16 cores and are diagnostic, not acceptance evidence. Full catalog
+labels still arrived at 526–583 ms in this pair. Contributing-model: 6-astra.
+
 Initial project selection no longer waits for a router update (2026-10-09).
 Two slow returning-tab traces already had route facts by 164/211 ms, but the
 form remained unselected until URL normalization committed. New Session now

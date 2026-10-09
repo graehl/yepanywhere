@@ -394,6 +394,21 @@ describe("renderSafeMarkdown — undelimited Unicode math", () => {
     expect(html).toContain("op-symbol");
   });
 
+  it("leaves oversized inferred regions intact while typesetting adjacent math", () => {
+    const longRegion = "x+y+".repeat(600);
+    const html = renderSafeMarkdown(`${longRegion}\n\nPromote λ=.05.`);
+    expect(html).toContain(`<p>${longRegion}</p>`);
+    expect(regions(html)).toEqual(["λ=.05"]);
+  });
+
+  it("skips inference for large prose tokens without losing text or explicit math", () => {
+    const generatedText = "Ab9/xy+Z0".repeat(2_000);
+    const html = renderSafeMarkdown(`${generatedText}\n\n$x^2$\n\nλ=.05`);
+    expect(html).toContain(`<p>${generatedText}</p>`);
+    expect(regions(html)).toEqual(["λ=.05"]);
+    expect(html.match(/class="katex"/g)).toHaveLength(2);
+  });
+
   it("leaves prose arrows, numeric typography and code alone", () => {
     for (const markdown of [
       "The pipeline goes TeX → UnicodeMath → MathML.",

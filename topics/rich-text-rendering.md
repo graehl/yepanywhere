@@ -250,7 +250,13 @@ toggle there and the prose stays as written.
   copy yields exactly the authored text; with it on, it yields KaTeX's
   visible text, which drops spaces.
 - **Cost:** the recognizer runs on the server for every client, whatever
-  the setting. Rendered HTML grows only for messages with regions.
+  the setting. Inference is limited to prose text tokens of at most 16,384
+  UTF-16 units, and inferred regions longer than 2,048 units are not passed
+  to KaTeX. Larger input remains complete authored text with the Unicode
+  script redraw; explicit delimited math uses its normal path. These bounds
+  keep optional inference from allocating arrays for multi-megabyte tokens
+  or sending them through KaTeX's quadratic glyph combining. Rendered HTML
+  grows only for accepted regions.
 
 Training data, evaluation and measured costs are in the
 [prose-math sketch](../gaps/sketches/unicode-prose-math.md).

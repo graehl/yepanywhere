@@ -1297,12 +1297,18 @@ function unicodeMathParamsOnce(): UnicodeMathParams {
   return unicodeMathParams;
 }
 
+// Inference is optional decoration; neither its arrays nor KaTeX's potentially
+// quadratic glyph combining may scale to arbitrary generated text blocks.
+const MAX_INFERRED_MATH_TEXT_UNITS = 16_384;
+const MAX_INFERRED_MATH_REGION_UNITS = 2_048;
+
 /**
  * KaTeX HTML for a recognised region, or null when KaTeX rejects it or has
  * no metrics for one of its glyphs (it reports those only through
  * console.warn, so the warning is captured for this synchronous call).
  */
 function typesetUnicodeMath(region: string): string | null {
+  if (region.length > MAX_INFERRED_MATH_REGION_UNITS) return null;
   const warn = console.warn;
   let missingGlyph = false;
   console.warn = () => {
@@ -1331,6 +1337,9 @@ function typesetUnicodeMath(region: string): string | null {
  * setting reveals it. A region KaTeX rejects stays plain text.
  */
 function renderProseText(text: string): string {
+  if (text.length > MAX_INFERRED_MATH_TEXT_UNITS) {
+    return renderUnicodeScripts(text);
+  }
   const regions = findUnicodeMath(unicodeMathParamsOnce(), text);
   if (!regions.length) return renderUnicodeScripts(text);
   let html = "";

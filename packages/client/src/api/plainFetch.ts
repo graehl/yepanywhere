@@ -146,6 +146,15 @@ export async function fetchPlainJSON<T>(
     signal: requestDeadlineSignal(requestInit?.signal),
   });
 
+  return readPlainJSONResponse<T>(path, response, options);
+}
+
+/** Apply the same refusal and login semantics to a bundled route response. */
+export async function readPlainJSONResponse<T>(
+  path: string,
+  response: Response,
+  options: PlainFetchOptions = {},
+): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
       signalLoginRequired(path, options.onLoginRequired);

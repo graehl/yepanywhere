@@ -3,6 +3,7 @@
  */
 
 import {
+  NEW_SESSION_BOOTSTRAP,
   CODEX_REASONING_SUMMARIES,
   limitedUserInstructionsError,
   type LimitedUserInstructions,
@@ -43,7 +44,7 @@ import {
   parseInstructionRestorationSettings,
   parseSpeechVoiceBackends,
 } from "@yep-anywhere/shared";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { InstructionPackets } from "../sdk/providers/instruction-packets.js";
 import { PRINCIPAL_VARIABLE, type Principal } from "../auth/principal.js";
 import {
@@ -95,6 +96,7 @@ import {
 
 export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
+  newSessionBootstrap?: (context: Context) => Response | Promise<Response>;
   /** Shared resolver and transition owner for project-scoped YA storage. */
   projectStoragePolicy?: ProjectStoragePolicy;
   /** Server-stored per-session cache-billing evidence log. */
@@ -218,6 +220,12 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps) {
    * Get all server settings; a limited user gets only their projection.
    */
   app.get("/", (c) => {
+    if (
+      deps.newSessionBootstrap &&
+      c.req.query("bootstrap") === NEW_SESSION_BOOTSTRAP &&
+      c.req.header("Accept")?.includes("text/event-stream")
+    )
+      return deps.newSessionBootstrap(c);
     const settings = serverSettingsService.getSettings();
     const principal = c.get(PRINCIPAL_VARIABLE) as Principal | undefined;
     if (principal && principal.kind !== "superuser") {

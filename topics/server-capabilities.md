@@ -930,6 +930,24 @@ an explicit user refresh always asks for rows, since that is a fidelity request
 rather than a freshness one. Bounded deltas, and the cross-tab/IndexedDB
 persistence in the same plan step, are not built.
 
+### New Session bundle negotiation
+
+The 2026-10-09 core release review checked v0.8.0, v0.8.1, v0.9.0,
+v0.9.1 and v0.9.2. Their existing `GET /api/settings` handlers ignore
+the `bootstrap` parameter and return ordinary JSON. Standing compatibility
+approval applies to negotiation with `bootstrap=new-session-v1` and
+`Accept: text/event-stream`. Only the negotiated event-stream response selects
+the new protocol; ordinary JSON supplies settings and selects existing-route
+fallbacks for the other parts. No new endpoint or version request is needed
+before negotiation, and no existing capability meaning is broadened.
+
+The five-part finite stream and its failure, authorization and publication
+contracts are defined in
+[session catalog observation](session-catalog-observation.md#retained-project-discovery-owner).
+An invalid or interrupted event stream fails its missing parts instead of
+silently replaying the bundle as legacy requests. The initial integration is
+the local New Session entrypoint; hosted clients retain their existing path.
+
 ### Retained collection gate
 
 `retained-projects` (permanent ID 124, version-implied from 0.9.4) owns

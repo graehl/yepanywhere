@@ -183,8 +183,30 @@ only settings and version. Project and recent query owners are independent of
 mounted hooks; project acquisition overlaps loading its destination store, and
 publication still passes through the query controller's generation check.
 Mounted consumers join those reads and own later event-driven revalidation.
-These remain separate HTTP reads; a prepared server route bundle is not yet
-implemented.
+New Session negotiates a finite route bundle through
+`GET /api/settings?bootstrap=new-session-v1` with `Accept: text/event-stream`.
+The server starts settings, retained projects, retained recent visits and
+version together; the selected provider follows settings, unless the URL
+explicitly requests a provider. Each completed part is sent independently as
+a `bootstrap` event containing `part`, HTTP `status` and JSON `body`. A slow
+version or provider check cannot hold ready project rows. The stream closes
+after all five parts settle; interruption fails missing parts without erasing
+accepted ones. It has no polling or heartbeat loop.
+
+The bundle dispatches only fixed canonical routes under the request's original
+authentication context. Existing services own preparation, caching, visibility
+and refresh; the bundle creates neither a second catalog nor an authorization
+projection. Settings retain their limited-user projection, and projects and
+visits retain their grant filtering. Client publication still uses each query
+owner's source and generation fence. Explicit provider refresh uses its normal
+named endpoint.
+
+Older servers ignore the negotiation and return ordinary settings JSON; the
+client accepts it and obtains the other parts through existing endpoints. See
+[bundle negotiation](server-capabilities.md#new-session-bundle-negotiation).
+The local entrypoint uses the bundle. Hosted/relay startup and Settings still
+use their existing independent acquisitions; extending the route contract to
+those paths remains open.
 
 New Session uses its current collection row as the selected project's server
 record. It does not request selected-project detail while discovery is pending

@@ -109,6 +109,26 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+New Session now has an explicit five-part server bundle (2026-10-10), consumed
+by the local entrypoint before React loads. Canonical authenticated routes
+supply settings, retained projects, visits, version and the selected provider;
+ready parts arrive independently. Ordinary settings JSON selects the
+older-server fallback. Held-part browser checks preserve sequential typing
+and layout stability, and cookie/relay-principal route checks preserve project
+grants and private-settings filtering. All eleven focused startup browser
+cases pass. Contributing-model: 6-astra.
+
+With a saved recent-project visit, real native Claude/Codex stores and live
+authenticated Claude models, three fresh-server/fresh-browser samples show
+that actual recent project and the full controls at 1,622/1,048/1,039 ms.
+Six returning tabs took 191–226 ms. Settings in fresh browser contexts after
+those New Session loads took 847/852/857 ms. Load was 3.39 on sixteen cores,
+with about 99 GB available RAM: these are diagnostic samples, not a controlled
+speedup or proof under the earlier heavy contention. All owned test processes
+were removed. Hosted/relay bundle integration, request-time project enrichment
+and the remaining broader browser failures still need review; the goal stays
+open. Contributing-model: 6-astra.
+
 Current audit (2026-10-09): selected-project New Session and Settings cases met
 the revised three-second target, but newly measured default-project cold tabs
 do not consistently meet it. File-event project discovery is now incremental

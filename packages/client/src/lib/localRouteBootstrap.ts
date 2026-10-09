@@ -19,6 +19,7 @@ import {
   type ServerSettingsResponse,
 } from "./serverSettingsQuery";
 import { VERSION_QUERY_KEY, applyVersionSnapshot } from "./versionQuery";
+import { createNewSessionBootstrap } from "./newSessionBootstrap";
 
 /** Start route data before loading React; mounted consumers join these reads. */
 export function primeLocalRoute(
@@ -26,52 +27,71 @@ export function primeLocalRoute(
   preferredProvider: string | null,
 ) {
   const sourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
+  const preferred = ALL_PROVIDERS.find((name) => name === preferredProvider);
+  const bundle =
+    route === "new-session" ? createNewSessionBootstrap(preferred) : undefined;
+  const readSettings = () =>
+    fetchPlainJSON<ServerSettingsResponse>("/settings");
+  const readVersion = () => fetchPlainJSON<VersionInfo>("/version");
   const reads = [
     ensureClientQuery({
       sourceKey,
       key: SERVER_SETTINGS_QUERY_KEY,
-      fetcher: () => fetchPlainJSON<ServerSettingsResponse>("/settings"),
+      fetcher: () =>
+        bundle ? bundle.read("settings", readSettings) : readSettings(),
       applySnapshot: applySettingsQuerySnapshot,
     }).then(() => {
       if (route !== "new-session") return;
       const settings = getServerSettingsSnapshot(sourceKey).settings;
       if (!settings) return;
       const provider =
-        ALL_PROVIDERS.find((name) => name === preferredProvider) ??
-        settings.newSessionDefaults?.provider ??
-        DEFAULT_PROVIDER;
+        preferred ?? settings.newSessionDefaults?.provider ?? DEFAULT_PROVIDER;
       return acquireProviderRow(
         sourceKey,
         provider,
-        ({ refresh }) =>
-          fetchPlainJSON<{ provider: ProviderInfo }>(
-            `/providers/${provider}${refresh ? "?refresh=1" : ""}`,
-          ),
+        async ({ refresh }) => {
+          const readProvider = () =>
+            fetchPlainJSON<{ provider: ProviderInfo }>(
+              `/providers/${provider}${refresh ? "?refresh=1" : ""}`,
+            );
+          if (!bundle || refresh) return readProvider();
+          const result = await bundle.read("provider", readProvider);
+          // Settings may have changed after the server chose this bundle's row.
+          return result.provider.name === provider ? result : readProvider();
+        },
         false,
       );
     }),
     ensureClientQuery({
       sourceKey,
       key: VERSION_QUERY_KEY,
-      fetcher: () => fetchPlainJSON<VersionInfo>("/version"),
+      fetcher: () =>
+        bundle ? bundle.read("version", readVersion) : readVersion(),
       applySnapshot: applyVersionSnapshot,
     }),
   ];
   if (route === "new-session") {
     reads.push(
       ensureClientQuery(
-        createProjectsQuery(sourceKey, (summaryMode) =>
-          fetchPlainJSON<ProjectsResponse>(
-            summaryMode ? "/projects?summaryMode=retained" : "/projects",
-          ),
-        ),
+        createProjectsQuery(sourceKey, (summaryMode) => {
+          const readProjects = () =>
+            fetchPlainJSON<ProjectsResponse>(
+              summaryMode ? "/projects?summaryMode=retained" : "/projects",
+            );
+          return bundle
+            ? bundle.read("projects", readProjects)
+            : readProjects();
+        }),
       ),
       ensureClientQuery(
         createRecentsQuery(sourceKey, {
-          getRecents: (limit, summaryMode) =>
-            fetchPlainJSON<RecentSessionsResponse>(
-              `/recents?limit=${limit}${summaryMode ? "&summaryMode=retained" : ""}`,
-            ),
+          getRecents: (limit, summaryMode) => {
+            const readRecents = () =>
+              fetchPlainJSON<RecentSessionsResponse>(
+                `/recents?limit=${limit}${summaryMode ? "&summaryMode=retained" : ""}`,
+              );
+            return bundle ? bundle.read("recents", readRecents) : readRecents();
+          },
         }),
       ),
     );

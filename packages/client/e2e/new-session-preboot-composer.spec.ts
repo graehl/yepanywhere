@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { Page, Route } from "@playwright/test";
 import { e2ePaths, expect, test } from "./fixtures.js";
 import { recordUiCapture } from "./support/ui-capture.js";
+import { holdNewSessionBootstrap } from "./support/bootstrap.js";
 
 // These cases own no seeded session draft.
 test.use({ draftSessionIds: [] });
@@ -186,20 +187,25 @@ test("New Session route data arrives before the UI runtime executes", async ({
     if (releasing) return route.continue();
     held.push(route);
   });
-  const responses = [
-    "/api/settings",
-    "/api/version",
-    "/api/providers/claude",
-    "/api/projects",
-    "/api/recents",
-  ].map((path) =>
-    page.waitForResponse(
-      (response) => new URL(response.url()).pathname === path && response.ok(),
-    ),
+  const response = page.waitForResponse(
+    (response) =>
+      response.url().includes("bootstrap=new-session-v1") && response.ok(),
   );
   try {
     await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });
-    await Promise.all(responses);
+    const bundle = await response;
+    expect(bundle.headers()["content-type"]).toContain("text/event-stream");
+    const parts = (await bundle.text())
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)).part);
+    expect(parts.sort()).toEqual([
+      "projects",
+      "provider",
+      "recents",
+      "settings",
+      "version",
+    ]);
     expect(held.length).toBeGreaterThan(0);
     await expect(page.locator(".new-session-form textarea")).toHaveCount(0);
   } finally {
@@ -288,23 +294,19 @@ test("route data arrives before the New Session module executes", async ({
     if (releasing) return route.continue();
     held.push(route);
   });
-  const responses = [
-    "/api/settings",
-    "/api/projects",
-    "/api/recents",
-    "/api/version",
-    "/api/providers/claude",
-  ].map((path) =>
-    page.waitForResponse(
-      (response) => new URL(response.url()).pathname === path && response.ok(),
-    ),
+  const response = page.waitForResponse(
+    (response) =>
+      response.url().includes("bootstrap=new-session-v1") && response.ok(),
   );
   try {
     await page.goto(`${baseURL}/new-session?projectId=${projectId}`, {
       waitUntil: "commit",
     });
-    const [, projectsResponse] = await Promise.all(responses);
-    const { projects } = await projectsResponse!.json();
+    const frames = (await (await response).text())
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)));
+    const { projects } = frames.find((frame) => frame.part === "projects").body;
     expect(projects).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ path: expectedProjectPath }),
@@ -353,6 +355,15 @@ for (const viewport of [
     baseURL,
   }) => {
     await page.setViewportSize(viewport);
+    const bundledParts = new Map([
+      ["/api/settings", "settings"],
+      ["/api/projects", "projects"],
+      ["/api/recents", "recents"],
+      ["/api/providers/claude", "provider"],
+    ]);
+    const bundle = await holdNewSessionBootstrap(page, [
+      ...bundledParts.values(),
+    ]);
     const releases = new Map<string, () => void>();
     for (const path of [
       "/api/settings",
@@ -363,6 +374,7 @@ for (const viewport of [
       "/api/providers",
     ]) {
       const gate = new Promise<void>((resolve) => releases.set(path, resolve));
+      if (bundledParts.has(path)) continue;
       await page.route(
         (url) => url.pathname === path,
         async (route) => {
@@ -396,10 +408,14 @@ for (const viewport of [
       for (const path of releases.keys()) {
         // Unrelated provider discovery stays held throughout first render.
         if (path === "/api/providers") continue;
-        const response = page.waitForResponse(
-          (result) => new URL(result.url()).pathname === path,
-        );
+        const part = bundledParts.get(path);
+        const response = part
+          ? bundle.wait(part)
+          : page.waitForResponse(
+              (result) => new URL(result.url()).pathname === path,
+            );
         releases.get(path)!();
+        if (part) await bundle.release(part);
         for (const character of "abc") {
           await page.keyboard.type(character);
           draft += character;
@@ -436,6 +452,7 @@ for (const viewport of [
       await recordUiCapture(page, `stable-startup-controls-${viewport.width}`);
     } finally {
       for (const release of releases.values()) release();
+      await bundle.release();
     }
   });
 }
@@ -502,6 +519,11 @@ test("a sibling tab shows projects while version and catalog requests are held",
     release = resolve;
   });
   const sibling = await context.newPage();
+  const bundle = await holdNewSessionBootstrap(sibling, [
+    "projects",
+    "recents",
+    "version",
+  ]);
   const attempts: string[] = [];
   sibling.on("request", (req) => {
     if (req.method() === "POST" && /sessions|project-queue/.test(req.url()))
@@ -579,6 +601,7 @@ test("a sibling tab shows projects while version and catalog requests are held",
       );
     }
     release();
+    await bundle.release();
     await expect(
       sibling.getByText("Refreshing project…", { exact: false }),
     ).toHaveCount(0);
@@ -589,6 +612,7 @@ test("a sibling tab shows projects while version and catalog requests are held",
     expect(attempts).toEqual([]);
   } finally {
     release();
+    await bundle.release();
     await sibling.close();
   }
 });
@@ -618,6 +642,10 @@ test("a sibling tab shows saved model and effort before settings or catalogs arr
     release = resolve;
   });
   const sibling = await context.newPage();
+  const bundle = await holdNewSessionBootstrap(sibling, [
+    "settings",
+    "provider",
+  ]);
   try {
     await context.route(/\/api\/providers(?:\?.*)?$/, async (route) => {
       await gate;
@@ -674,6 +702,7 @@ test("a sibling tab shows saved model and effort before settings or catalogs arr
     }
   } finally {
     release();
+    await bundle.release();
     await sibling.close();
     const restored = await request.put(`${baseURL}/api/settings`, {
       headers,

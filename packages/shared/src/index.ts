@@ -9,6 +9,7 @@ export type {
   ArtifactTabRequest,
 } from "./artifact-viewer.js";
 export * from "./vhost-oauth.js";
+export * from "./new-session-bootstrap.js";
 export {
   ARTIFACT_SANDBOX,
   ARTIFACT_TAB_PROTOCOL,

@@ -227,12 +227,13 @@ function hydrateProviderSnapshot(sourceKey: ClientSummarySourceKey): void {
 function writeProviderSnapshot(
   sourceKey: ClientSummarySourceKey,
   providers: ProviderInfo[],
+  storageKey = `${PROVIDER_SNAPSHOT_PREFIX}${sourceKey}`,
 ): void {
   const storage = snapshotStorage();
   if (!storage || providers.length === 0) return;
   try {
     storage.setItem(
-      `${PROVIDER_SNAPSHOT_PREFIX}${sourceKey}`,
+      storageKey,
       JSON.stringify({
         version: PROVIDER_SNAPSHOT_VERSION,
         savedAt: Date.now(),
@@ -281,6 +282,24 @@ async function loadProviders(
       };
       providerCaches.set(sourceKey, entry);
       writeProviderSnapshot(sourceKey, providers);
+      for (const providerName of ALL_PROVIDERS) {
+        const key = providerRowKey(sourceKey, providerName);
+        if (
+          (providerRowCaches.get(key)?.requestSequence ?? 0) > requestSequence
+        ) {
+          continue;
+        }
+        // The complete response supersedes older persisted named displays,
+        // including providers that have since been disabled or removed.
+        providerRowDisplays.set(key, null);
+        try {
+          snapshotStorage()?.removeItem(
+            providerRowStorageKey(sourceKey, providerName),
+          );
+        } catch {
+          // Unavailable storage cannot prevent publication of current rows.
+        }
+      }
       notifyProviderCatalogListeners(sourceKey, entry);
       notifyProviderRowListeners(sourceKey, providers, requestSequence);
       return providers;
@@ -477,6 +496,56 @@ interface ProviderRowRequest {
 
 const providerRowCaches = new Map<string, ProviderRowCacheEntry>();
 const providerRowRequests = new Map<string, ProviderRowRequest>();
+const providerRowDisplays = new Map<string, ProviderInfo | null>();
+
+function providerRowStorageKey(
+  sourceKey: ClientSummarySourceKey,
+  providerName: ProviderName,
+): string {
+  return `ya:provider-row:${JSON.stringify([sourceKey, providerName])}`;
+}
+
+/** Display only: never insert persisted rows into the current probe cache. */
+function readProviderRowDisplay(
+  sourceKey: ClientSummarySourceKey,
+  providerName: ProviderName,
+): ProviderInfo | null {
+  const key = providerRowKey(sourceKey, providerName);
+  if (!providerRowDisplays.has(key)) {
+    providerRowDisplays.set(key, null);
+    try {
+      const storage = snapshotStorage();
+      const storageKey = providerRowStorageKey(sourceKey, providerName);
+      const raw = storage?.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<ProviderSnapshot>;
+        if (
+          parsed.version === PROVIDER_SNAPSHOT_VERSION &&
+          typeof parsed.savedAt === "number" &&
+          Number.isFinite(parsed.savedAt) &&
+          Date.now() - parsed.savedAt <= PROVIDER_SNAPSHOT_TTL_MS &&
+          Array.isArray(parsed.providers) &&
+          parsed.providers.length === 1 &&
+          parsed.providers[0]?.name === providerName
+        ) {
+          providerRowDisplays.set(key, snapshotProvider(parsed.providers[0]));
+        } else {
+          storage?.removeItem(storageKey);
+        }
+      }
+    } catch {
+      // Malformed or unavailable storage leaves normal acquisition intact.
+    }
+  }
+  hydrateProviderSnapshot(sourceKey);
+  return (
+    providerRowDisplays.get(key) ??
+    providerCaches
+      .get(sourceKey)
+      ?.providers.find((row) => row.name === providerName) ??
+    null
+  );
+}
 
 function providerRowKey(
   sourceKey: ClientSummarySourceKey,
@@ -571,6 +640,12 @@ async function loadProviderRow(
         }
         if (providerRowRequests.get(key) === request) {
           providerRowCaches.set(key, entry);
+          providerRowDisplays.set(key, row);
+          writeProviderSnapshot(
+            sourceKey,
+            [row],
+            providerRowStorageKey(sourceKey, providerName),
+          );
         }
         return entry;
       },
@@ -604,10 +679,13 @@ function getInitialProviderRowState(
   providerName: ProviderName | null,
   forceRefreshOnMount: boolean,
 ): ProviderRowHookState {
-  const row = providerName
+  const currentRow = providerName
     ? readCachedProviderRow(sourceKey, providerName)
     : null;
-  const fresh = row !== null && !forceRefreshOnMount;
+  const row =
+    currentRow ??
+    (providerName ? readProviderRowDisplay(sourceKey, providerName) : null);
+  const fresh = currentRow !== null && !forceRefreshOnMount;
   return {
     sourceKey,
     providerName,

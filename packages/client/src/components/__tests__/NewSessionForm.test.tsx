@@ -173,6 +173,7 @@ const {
       }>;
     }>,
     loading: false,
+    stale: false,
   },
   providerDescriptorsState: {
     providers: undefined as
@@ -872,6 +873,7 @@ describe("NewSessionForm", () => {
       },
     ];
     providersState.loading = false;
+    providersState.stale = false;
     providerRowState.fresh = true;
     providerRowState.refreshing = false;
     providerRowState.error = null;
@@ -1988,6 +1990,35 @@ describe("NewSessionForm", () => {
       screen.getByRole("button", { name: "newSessionStartAction" }),
     ).toHaveProperty("disabled", true);
     providersState.providers = [claude];
+    rerender(<NewSessionForm {...props} />);
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", false);
+  });
+
+  it("keeps a persisted provider display from authorizing a launch", () => {
+    providersState.stale = true;
+    providersState.loading = true;
+    providerRowState.fresh = false;
+    providerRowState.refreshing = true;
+    serverSettingsState.settings = {
+      newSessionDefaults: { provider: "claude", model: "opus" },
+    };
+    serverSettingsState.isLoading = false;
+    const props = {
+      projectId: "project-1",
+      selectedProject: chooserProjects[0],
+      projects: [...chooserProjects],
+    };
+    const { rerender } = render(<NewSessionForm {...props} />);
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "wait for current runtime status" },
+    });
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", true);
+    providerRowState.fresh = true;
+    providerRowState.refreshing = false;
     rerender(<NewSessionForm {...props} />);
     expect(
       screen.getByRole("button", { name: "newSessionStartAction" }),

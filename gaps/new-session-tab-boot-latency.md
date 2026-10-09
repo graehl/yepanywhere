@@ -100,6 +100,22 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Accepted named provider rows now persist before the complete aggregate returns
+(2026-10-09). A sibling browser regression holds settings, aggregate and named
+responses and still displays the real project/Claude/Sonnet/High controls with
+sequential typing preserved. Previously it had to wait for the aggregate
+snapshot. Retained rows remain display-only, and current installation status
+gates explicit launch. Source isolation, expiry and response ordering are
+covered. Contributing-model: 6-astra.
+
+Three seven-tab diagnostic runs with aggregate browser snapshots suppressed
+compared named-row display reads enabled/disabled on alternating returning tabs.
+Enabled full UI ranged 323–665 ms; disabled 323–526 ms, with cold samples
+799/639/626 ms. Load rose from about 30 to 33 on 16 cores. This demonstrates
+no consistent overall speedup or 500 ms acceptance; the held-response
+regression establishes the removed dependency. Cold and concurrent readiness
+remain open.
+
 The sidebar question control no longer imports the inline question renderer
 (2026-10-09). Splitting the modules removes KaTeX, FileViewer and LocalMediaModal
 from the initial New Session graph. Its unminified module total is about 3.62 MB

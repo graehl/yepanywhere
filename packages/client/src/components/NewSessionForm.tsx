@@ -1360,6 +1360,11 @@ export function NewSessionForm({
     accountModels,
     routerAliases,
   );
+  const selectedProviderRuntime = selectedProviderQuery.fresh
+    ? selectedProviderQuery.row
+    : !providersStale
+      ? aggregateProviderInfo
+      : undefined;
   const hasSelectedProviderModel = routerSelection
     ? !!(
         routerEnabled &&
@@ -1369,7 +1374,7 @@ export function NewSessionForm({
         (selectedRouterPool?.policy !== "manual" ||
           compatibleMembers.some((a) => a.id === routerAccountId))
       )
-    : (!selectedProvider || selectedProviderInfo?.installed === true) &&
+    : (!selectedProvider || selectedProviderRuntime?.installed === true) &&
       selectedProviderCatalogCurrent &&
       hasRequiredProviderModel(
         selectedProvider,

@@ -181,6 +181,15 @@ source consumer: a later aggregate settings reload supersedes an older named
 cache entry, while a late older aggregate cannot displace newer named facts or
 reintroduce an old error.
 
+Accepted named rows also persist independently, using the same seven-day
+allowlist and source boundary. A sibling tab can restore the selected model
+and capabilities while the complete catalog is still waiting on unrelated
+providers. A named snapshot never becomes a partial provider collection or a
+current probe result. Newer accepted aggregate responses retire older named
+snapshots; late older aggregates preserve newer named displays. Current named
+or aggregate runtime status is required to authorize an explicit launch;
+persisted installation status alone does not enable Start or Project Queue.
+
 Display validity and launch authority are separate. A stale selected row may
 remain visible while a named probe is pending or failed. Claude Gateway starts
 a forced named probe after the selection becomes current; Start and Project

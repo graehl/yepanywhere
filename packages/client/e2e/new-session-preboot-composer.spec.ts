@@ -382,7 +382,7 @@ test("a sibling tab shows projects while version and catalog requests are held",
   }
 });
 
-test("a sibling tab shows saved model and effort before settings arrive", async ({
+test("a sibling tab shows saved model and effort before settings or catalogs arrive", async ({
   page,
   context,
   request,
@@ -408,14 +408,25 @@ test("a sibling tab shows saved model and effort before settings arrive", async 
   });
   const sibling = await context.newPage();
   try {
+    await context.route(/\/api\/providers(?:\?.*)?$/, async (route) => {
+      await gate;
+      await route.continue();
+    });
     await page.goto(`${baseURL}/new-session`);
     await expect(
       page.locator(".new-session-model-field button").first(),
     ).toContainText("Sonnet");
     await page.waitForFunction(
-      () => localStorage.getItem("ya:providers:local") !== null,
+      () => localStorage.getItem('ya:provider-row:["local","claude"]') !== null,
     );
+    expect(
+      await page.evaluate(() => localStorage.getItem("ya:providers:local")),
+    ).toBeNull();
     await sibling.route("**/api/settings", async (route) => {
+      await gate;
+      await route.continue();
+    });
+    await sibling.route(/\/api\/providers\/claude(?:\?.*)?$/, async (route) => {
       await gate;
       await route.continue();
     });
@@ -428,6 +439,9 @@ test("a sibling tab shows saved model and effort before settings arrive", async 
         '.new-session-helper-section button[aria-label*="Thinking"]',
       ),
     ).toContainText("High");
+    await expect(
+      sibling.locator(".new-session-provider-section button"),
+    ).toContainText("Claude");
     const composer = sibling.locator("textarea.new-session-form-textarea");
     const originalDraft = await composer.inputValue();
     await composer.press("ControlOrMeta+End");

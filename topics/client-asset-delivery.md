@@ -85,6 +85,12 @@ consumers join the same retained query, including when it already completed.
 Capability-dependent requests still require the returned current-source facts;
 early acquisition neither invents support nor delays mounting on its response.
 
+The question badge and menu used by navigation are separate from the inline
+question-message renderer. Showing the sidebar must not load KaTeX, Markdown
+renderers or file viewers through that badge. Session messages still acquire
+their rich rendering code with the session route. A built-client browser check
+requires New Session to mount without requesting the KaTeX chunk.
+
 ## Shared package initialization
 
 The shared package declares its library modules free of import-time effects

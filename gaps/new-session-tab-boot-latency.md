@@ -100,6 +100,19 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+The sidebar question control no longer imports the inline question renderer
+(2026-10-09). Splitting the modules removes KaTeX, FileViewer and LocalMediaModal
+from the initial New Session graph. Its unminified module total is about 3.62 MB
+versus 4.86 MB in the retained earlier graph; those graphs also span the small
+intervening bootstrap changes, so this is a size comparison, not exact timing
+attribution. A browser regression previously fetched KaTeX and now mounts
+without it. Alternating previous/current builds gave full UI
+680/808/512 versus 404/672/624 ms, with form times 269/394/245 versus
+186/348/362 ms. Host load was 16–18 on 16 cores: results remain diagnostic,
+with no consistent 500 ms acceptance. Question-menu navigation, inline replies,
+drafts and ordinary delivery pass their browser regressions. Contributing-model:
+6-astra.
+
 Local selected-provider acquisition can now complete while the page module is
 held (2026-10-09). Current settings select the named read, with an explicit URL
 provider taking precedence; mounted consumers share it. The browser regression

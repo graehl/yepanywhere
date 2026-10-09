@@ -16,7 +16,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { CSSProperties, MouseEvent, RefObject, TouchEvent } from "react";
 import { useAsyncQuestions } from "../contexts/AsyncQuestionsContext";
-import { AsyncQuestionsButton } from "./AsyncQuestions";
+import { AsyncQuestionsButton } from "./AsyncQuestionsButton";
 import {
   type Dispatch,
   type SetStateAction,

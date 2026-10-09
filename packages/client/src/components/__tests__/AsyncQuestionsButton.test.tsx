@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AsyncQuestionsButton,
   type AsyncQuestionsMenuState,
-} from "../AsyncQuestions";
+} from "../AsyncQuestionsButton";
 import { I18nProvider } from "../../i18n";
 
 /** A question past the count stage but short of the retired stage. */

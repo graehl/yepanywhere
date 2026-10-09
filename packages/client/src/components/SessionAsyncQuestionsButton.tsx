@@ -24,7 +24,7 @@ import type { SessionCollectionRecord } from "../lib/clientSummaryCollections";
 import {
   AsyncQuestionsButton,
   type AsyncQuestionsMenuState,
-} from "./AsyncQuestions";
+} from "./AsyncQuestionsButton";
 
 const setMenuOpen = () => {};
 

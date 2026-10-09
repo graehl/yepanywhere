@@ -157,6 +157,12 @@ test("route data arrives before the New Session module executes", async ({
   page,
   baseURL,
 }) => {
+  const mathRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/\/assets\/katex-[^/]+\.js$/.test(new URL(request.url()).pathname)) {
+      mathRequests.push(request.url());
+    }
+  });
   await page.addInitScript(() => {
     const observer = new MutationObserver(() => {
       const input = document.querySelector<HTMLInputElement>(
@@ -198,6 +204,7 @@ test("route data arrives before the New Session module executes", async ({
     await Promise.all(held.map((route) => route.continue()));
   }
   await expect(page.locator(".new-session-form textarea")).toBeVisible();
+  expect(mathRequests).toEqual([]);
   expect(
     await page.evaluate(
       () =>

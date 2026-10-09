@@ -23,7 +23,9 @@ const basename = import.meta.env.BASE_URL.replace(/\/$/, "");
 const initialPath = window.location.pathname.slice(basename.length);
 const wrongDevPort =
   import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__);
-if (!wrongDevPort && /^\/new-session\/?$/.test(initialPath)) {
+const initialNewSession = /^\/new-session\/?$/.test(initialPath);
+const initialSettings = /^\/settings(?:\/|$)/.test(initialPath);
+if (!wrongDevPort && (initialNewSession || initialSettings)) {
   void Promise.allSettled([
     ensureClientQuery({
       sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -31,6 +33,7 @@ if (!wrongDevPort && /^\/new-session\/?$/.test(initialPath)) {
       fetcher: () => fetchPlainJSON<ServerSettingsResponse>("/settings"),
       applySnapshot: applySettingsQuerySnapshot,
     }).then(() => {
+      if (!initialNewSession) return;
       const settings = getServerSettingsSnapshot(
         LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
       ).settings;

@@ -229,11 +229,23 @@ check overstated model readiness time, but its project-last cold failures
 remain valid. These contended-host samples establish the measured cases, not
 a universal upper bound.
 
-Settings remains open: three new browser contexts on warm native-data servers
+Settings baseline: three new browser contexts on warm native-data servers
 showed populated Settings at 931–1,433 ms. Three fresh native-data servers
-gave 3,206/1,619/1,467 ms, reproducing a miss of the revised target. No Settings
-implementation change has been made; attribute that delay before choosing its
-fix. All probe processes were removed. Contributing-model: 6-astra.
+gave 3,206/1,619/1,467 ms, reproducing a miss of the revised target.
+Resource traces showed settings/version requests starting at 375–462 ms, with
+Appearance code requested only after settings resolved. The lightweight local
+entry now starts these same retained queries for Settings URLs before React,
+without starting a provider probe. Principal and capability checks still use
+the returned server facts.
+
+A browser regression fails before this change and passes afterward while the
+React runtime is held. All eleven startup browser cases and the cold native
+probe pass. Settings/version requests start at 29–107 ms; populated cold
+Settings takes 2,549/479/570 ms on three fresh servers. These shared-host
+measurements remove the demonstrated serial dependency and meet the revised
+target in the measured cases; they do not establish a universal latency bound.
+Desktop and phone captures were inspected. All probe processes were removed.
+Contributing-model: 6-astra.
 
 Earlier acquisition investigation (2026-10-09), before the pure owners above:
 the five

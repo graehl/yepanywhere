@@ -85,8 +85,10 @@ consumers join the same retained query, including when it already completed.
 Capability-dependent requests still require the returned current-source facts;
 early acquisition neither invents support nor delays mounting on its response.
 
-The local entry starts settings and version HTTP reads before loading the React
-runtime, then acquires the selected provider as soon as current settings resolve.
+For New Session and Settings URLs, the local entry starts settings and version
+HTTP reads before loading the React runtime. Only New Session then acquires the
+selected provider as soon as current settings resolve; opening Settings does
+not start a provider probe through this entry.
 Their state owners are independent of React and the remote transport
 implementation; mounted hooks consume the same accepted snapshots and query
 identities. Desktop authentication still uses the canonical plain HTTP helper.

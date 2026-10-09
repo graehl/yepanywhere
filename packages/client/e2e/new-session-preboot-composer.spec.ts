@@ -215,6 +215,42 @@ test("settings, version and selected provider arrive before the UI runtime execu
   }
 });
 
+test("Settings acquires settings and version before the UI runtime executes", async ({
+  page,
+  baseURL,
+}) => {
+  const held: Route[] = [];
+  let releasing = false;
+  await page.route("**/assets/react-runtime-*.js", (route) => {
+    if (releasing) return route.continue();
+    held.push(route);
+  });
+  const providerRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/providers")) {
+      providerRequests.push(request.url());
+    }
+  });
+  const responses = ["/api/settings", "/api/version"].map((path) =>
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === path && response.ok(),
+      { timeout: 5000 },
+    ),
+  );
+  try {
+    await page.goto(`${baseURL}/settings`, { waitUntil: "commit" });
+    await Promise.all(responses);
+    expect(held.length).toBeGreaterThan(0);
+    expect(providerRequests).toEqual([]);
+  } finally {
+    releasing = true;
+    await Promise.all(held.map((route) => route.continue()));
+  }
+  await expect(
+    page.locator(".settings-content-panel [data-settings-item]").first(),
+  ).toBeVisible();
+});
+
 test("route data arrives before the New Session module executes", async ({
   page,
   baseURL,

@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActingPrincipal } from "@yep-anywhere/shared";
-import { api } from "../api/client";
+import { useClientSummarySourceKey } from "../lib/clientSummarySourceKey";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { useServerSettings } from "./useServerSettings";
 
 /**
  * Who this client is acting as: the superuser, or one limited user.
  *
  * Contract: topics/limited-users.md § Delivery v1. The server is the
- * authority; this hook only decides what to show. A server without the
- * feature answers 403/404, which reads here as "superuser, feature off" —
- * the pre-limited-users behavior.
+ * authority; this hook only decides what to show. Settings must confirm that
+ * the feature is off before the superuser placeholder is a resolved identity.
  */
 const SUPERUSER_PRINCIPAL: ActingPrincipal = {
   superuser: true,
@@ -41,36 +41,51 @@ export interface ActingPrincipalState {
  * not answer an identity request on every page load.
  */
 export function useActingPrincipal(): ActingPrincipalState {
+  const sourceKey = useClientSummarySourceKey();
   const { settings, isLoading: settingsLoading } = useServerSettings();
   const enabled = settings?.limitedUsersEnabled === true;
-  const [principal, setPrincipal] =
-    useState<ActingPrincipal>(SUPERUSER_PRINCIPAL);
-  const [loading, setLoading] = useState(false);
-  const [answered, setAnswered] = useState(false);
+  const generation = useRef(0);
+  const [state, setState] = useState<{
+    sourceKey: string;
+    enabled: boolean;
+    principal: ActingPrincipal | null;
+    loading: boolean;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
+    const requestGeneration = ++generation.current;
     if (!enabled) {
-      setPrincipal(SUPERUSER_PRINCIPAL);
+      setState(null);
       return;
     }
-    setLoading(true);
+    const transport =
+      getSourceRuntimeRegistry().getOrCreateSourceRuntime(sourceKey).transport;
+    setState({ sourceKey, enabled, principal: null, loading: true });
     try {
-      setPrincipal(await api.getActingPrincipal());
+      const principal = await transport.fetch<ActingPrincipal>("/users/me");
+      if (generation.current === requestGeneration)
+        setState({ sourceKey, enabled, principal, loading: false });
     } catch {
-      setPrincipal(SUPERUSER_PRINCIPAL);
-    } finally {
-      setAnswered(true);
-      setLoading(false);
+      if (generation.current === requestGeneration)
+        setState({ sourceKey, enabled, principal: null, loading: false });
     }
-  }, [enabled]);
+  }, [enabled, sourceKey]);
 
   useEffect(() => {
     void refresh();
+    return () => {
+      generation.current += 1;
+    };
   }, [refresh]);
 
-  // With the feature off there is no principal but the superuser, so the
-  // placeholder is already the answer and nothing needs to wait.
-  const resolved = settingsLoading ? false : !enabled || answered;
+  const current =
+    state?.sourceKey === sourceKey && state.enabled === enabled ? state : null;
+  const principal = current?.principal ?? SUPERUSER_PRINCIPAL;
+  const loading = enabled && (current?.loading ?? true);
+  const resolved =
+    settings !== null &&
+    !settingsLoading &&
+    (!enabled || current?.principal != null);
 
   return { principal, loading, resolved, refresh };
 }

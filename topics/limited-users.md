@@ -589,6 +589,13 @@ reload banner stays, since reloading their own page is theirs to do. Hiding is
 cosmetic; the middleware above is the enforcement, and it refuses the restart,
 safe-restart, and Codex update routes.
 
+Client identity remains unresolved until the current server's settings confirm
+that limited users are disabled, or its `/users/me` response identifies the
+acting principal. Failed identity requests never confirm the superuser
+placeholder. Switching servers immediately invalidates the displayed identity;
+responses from a previous server or superseded refresh cannot restore it.
+The placeholder is not a confirmed account for selecting browser snapshots.
+
 ### Browser defaults for limited users
 
 User direction, 2026-09-28. The superuser sets browser-local preferences

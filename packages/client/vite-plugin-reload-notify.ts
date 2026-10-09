@@ -55,9 +55,10 @@ export function reloadNotify(options: ReloadNotifyOptions = {}): Plugin {
     load(id) {
       if (!enabled || id !== resolvedGuardId) return;
       // The guard has two possible answers and they are not the same event.
-      // "The source generation moved" means this page is running against a
-      // build that no longer exists, and reloading is the only correct
-      // response. "I could not ask" means the dev server is restarting or
+      // "The source generation moved" means a new import cannot safely join
+      // this page's loaded graph. Reject that import with a manual-refresh
+      // instruction; source edits must never navigate an existing tab.
+      // "I could not ask" means the dev server is restarting or
       // busy, which says nothing about the source at all. Throwing on the
       // second one failed the whole route through Suspense and showed the
       // fatal client error screen, so a dev-server restart looked like a code
@@ -89,17 +90,18 @@ async function checkGeneration() {
   let lastError;
   for (let attempt = 0; attempt < ASK_ATTEMPTS; attempt++) {
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, ASK_RETRY_MS));
+    let current;
     try {
-      const current = await askGeneration();
-      warnedUnreachable = false;
-      if (current !== generation) {
-        window.location.reload();
-        await new Promise(() => {});
-      }
-      return;
+      current = await askGeneration();
     } catch (error) {
       lastError = error;
+      continue;
     }
+    warnedUnreachable = false;
+    if (current !== generation) {
+      throw new Error("Frontend source changed. Reload this tab when ready to load the updated page.");
+    }
+    return;
   }
   if (!warnedUnreachable) {
     warnedUnreachable = true;

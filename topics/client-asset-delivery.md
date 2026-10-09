@@ -131,20 +131,23 @@ Notifications use `VITE_API_PORT` when explicitly set, otherwise the launch's
 
 Manual mode preserves the current page only while it can use its loaded code.
 Before acquiring a dynamic module, the browser checks the Vite source
-generation. If source has changed, it reloads the current URL before executing
-the import, preserving query/hash and browser-stored drafts, including the
-pre-boot new-session composer's text
-([early typing handoff](early-typing-handoff.md#pre-boot-composer)). Only a
+generation. If source has changed, the import rejects with an instruction to
+reload the tab when ready. It must not navigate or reload the document:
+background imports cannot opt every open tab into a frontend update. A route
+that needs changed code offers the existing error boundary's manual Reload
+Page action; already loaded code continues until the user chooses to refresh.
+Only a
 change to a file in Vite's served module graph moves the generation; a file no
 page has loaded (a test, scratch output, a doc under the client root) cannot
 leave a page stale, and treating it as a change made every booting tab reload
 and restart its load while peers wrote unrelated files. The generation is
 checked again after acquisition (including failed imports), so a concurrent
 edit cannot return a stale module to the caller. An unchanged generation does
-not reload; a fresh document adopts the new generation. Check failures remain
-explicit errors rather than silently importing unchecked code.
+not reload; a manually refreshed document adopts the new generation. An
+unreachable generation endpoint retries before allowing the import with an
+explicit warning; unavailability alone does not prove a version mismatch.
 
-This is a development-only browser recovery, not a server restart or a
+This is a development-only import guard, not a server restart or a
 minimum-server-version requirement. It neither interrupts provider sessions
 nor adds requests to production/hosted clients. The runtime upgrade notice
 remains advisory for older servers. The chosen boundary is module acquisition

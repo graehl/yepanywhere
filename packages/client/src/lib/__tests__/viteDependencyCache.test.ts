@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { reloadNotify } from "../../../vite-plugin-reload-notify";
 
 describe("Vite dependency cache isolation", () => {
-  it("keeps a lazy page coherent after source changes in manual mode", async () => {
+  it("requires an explicit reload before importing changed source in manual mode", async () => {
     // Vite canonicalizes module IDs. Keep manually emitted watcher paths in
     // the same namespace on hosts where tmpdir() traverses a symlink (macOS).
     const directory = await realpath(
@@ -81,8 +81,20 @@ if (location.pathname === '/page') document.querySelector('button').click();`,
       ).toBe("1");
       await page.locator("button").click();
       await expect
-        .poll(() => page.locator("output").textContent(), { timeout: 5000 })
-        .toBe("new");
+        .poll(() => page.locator("output").textContent())
+        .not.toBe("old");
+      expect(
+        await page.evaluate(() => sessionStorage.getItem("documents")),
+      ).toBe("1");
+      expect(await page.locator("output").textContent()).toBe(
+        "Frontend source changed. Reload this tab when ready to load the updated page.",
+      );
+      expect(await page.evaluate(() => localStorage.getItem("draft"))).toBe(
+        "unsent message",
+      );
+      // Only the user's refresh admits a new document and a coherent graph.
+      await page.reload();
+      await expect.poll(() => page.locator("output").textContent()).toBe("new");
       expect(
         new URL(page.url()).pathname +
           new URL(page.url()).search +

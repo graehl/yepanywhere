@@ -142,14 +142,22 @@ to one but showed no browser improvement (5,800/3,515/3,071 ms); that experiment
 was removed. Host load was 25–28 on sixteen cores, and all process sweeps were
 clean. Contributing-model: 6-astra.
 
-Acceptance distinction under clarification: on a fresh profile with no saved
-or URL project, the real enabled project input is already present while the
-inventory is loading. The default-project probe above times its eventual
-nonempty automatic selection. The maintainer explicitly permits empty controls
-while data is pending; confirm whether automatic selection itself is subject
-to the three-second bound. Saved and requested project selections retain their
-existing timing requirement. Do not silently relabel the measurements or
-claim completion before resolving this distinction. Contributing-model: 6-astra.
+Maintainer clarification (2026-10-09): at least the most recently used projects
+must be populated within three seconds; an empty enabled selector alone is
+insufficient. The server should prepare cached state at startup. Server and
+client should have an explicit contract for each route's initial data bundle,
+rather than discovering those needs through independently mounted UI queries.
+This is part of the current goal. Contributing-model: 6-astra.
+
+Server creation now begins retained snapshot restoration and discovery before
+the first client request. Full-app regressions verify both fresh acquisition
+without an HTTP request and restoration of saved rows while reconciliation is
+blocked. All five quick checks pass. Native default-project cold tabs measured
+3,612/1,159/1,902 ms and returning tabs217–249 ms; the first sample still fails
+the target. Load was6.66 on sixteen cores, lower than the prior runs, so these
+numbers are not a controlled speedup estimate. Startup preparation is landed;
+the explicit route bundle and recent-project acceptance remain unfinished.
+Contributing-model: 6-astra.
 
 Native-data concurrent acceptance at 6c4ad0710 (2026-10-09): three fresh
 isolated servers each received three simultaneous new tabs, with authenticated

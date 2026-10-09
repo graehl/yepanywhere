@@ -153,8 +153,10 @@ membership takes precedence over registrations, so a deleted registered
 directory cannot reappear from metadata. Newly registered directories join on
 the next refresh without adding request-time filesystem probes.
 
-The first retained read schedules one finite refresh after 300 ms. Subsequent
-invalidation coalesces into that refresh and one trailing pass when needed.
+Server creation starts retained snapshot restoration and one finite discovery
+refresh before any client request. A saved snapshot can serve readers while
+that reconciliation is pending. Subsequent invalidation coalesces into a
+300 ms refresh and one trailing pass when needed.
 Accepted complete reads and retained reads share the scanner's snapshot and
 persistence owner. Failed refreshes preserve it, expose the error and impose a
 five-second admission backoff. A later read or event can retry; there is no

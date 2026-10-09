@@ -1182,6 +1182,10 @@ export function createApp(options: AppOptions): AppResult {
     eventBus: options.eventBus,
     cacheTtlMs: options.projectScanCacheTtlMs,
   });
+  // Restore retained rows and start bounded discovery while the server starts,
+  // so the first route bootstrap consumes prepared state instead of owning it.
+  // The scanner retains refresh failures and drains this work during disposal.
+  void scanner.refreshRetainedProjects();
   knownProjectsForGrants = () => {
     const known = new Map<string, string>();
     for (const project of scanner.cachedProjects())

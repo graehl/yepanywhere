@@ -26,6 +26,7 @@ export function useNewSessionProjectSnapshot({
   const { principal, resolved } = useActingPrincipal();
   const [storageRevision, setStorageRevision] = useState(0);
   const key = newSessionProjectSnapshotKey(sourceKey, principal.username);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Storage events invalidate the external snapshot without changing its source or principal.
   const snapshot = useMemo(
     () =>
       resolved ? readNewSessionProjectSnapshot(sourceKey, principal) : null,

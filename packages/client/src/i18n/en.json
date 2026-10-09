@@ -1183,6 +1183,7 @@
   "inboxBadgeQuestion": "Question",
   "newSessionTitle": "New Session",
   "newSessionLoading": "Loading...",
+  "newSessionProjectRefreshing": "Refreshing project…",
   "newSessionErrorPrefix": "Error:",
   "projectSelectorFallback": "Project",
   "projectSelectorChangeProject": "Change project",

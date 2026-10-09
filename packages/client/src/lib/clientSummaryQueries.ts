@@ -100,7 +100,7 @@ export function selectProjectCollectionRecord(
 }
 
 export function selectProjectCollectionRecords(
-  state: ClientSummaryState,
+  state: Pick<ClientSummaryState, "projects">,
 ): ProjectCollectionRecord[] {
   const queryState = state.projects.queries.get(ALL_PROJECTS_QUERY_KEY);
   if (!queryState) {

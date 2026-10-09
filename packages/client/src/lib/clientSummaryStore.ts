@@ -651,8 +651,13 @@ export function useProjectCollectionRecord(
 }
 
 export function useProjectCollectionRecords(): ProjectCollectionRecord[] {
-  const state = useClientSummaryState();
-  return useMemo(() => selectProjectCollectionRecords(state), [state]);
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  const projects = useStore(store, (state) => state.projects);
+  return useMemo(
+    () => selectProjectCollectionRecords({ projects }),
+    [projects],
+  );
 }
 
 export function useProjectCollectionCatalog() {

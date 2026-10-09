@@ -12,6 +12,13 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BROWSER_LOCAL_KEYS, UI_KEYS } from "../../lib/storageKeys";
 import { NewSessionPage } from "../NewSessionPage";
+import type { ActingPrincipal } from "@yep-anywhere/shared";
+import { writeNewSessionProjectSnapshot } from "../../lib/newSessionProjectSnapshot";
+
+const identity = vi.hoisted(() => ({
+  principal: { username: null } as ActingPrincipal,
+  resolved: false,
+}));
 
 const { projectFetch, projectsState, recentSessionsState, versionState } =
   vi.hoisted(() => ({
@@ -113,6 +120,10 @@ vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({ version: versionState }),
 }));
 
+vi.mock("../../hooks/useActingPrincipal", () => ({
+  useActingPrincipal: () => identity,
+}));
+
 vi.mock("../../hooks/useProjects", () => ({
   useProjects: () => projectsState,
   useProject: (projectId: string | undefined) => {
@@ -209,6 +220,7 @@ describe("NewSessionPage", () => {
     window.localStorage.clear();
     versionState.capabilities = [];
     projectFetch.settled = false;
+    identity.resolved = false;
     projectsState.loading = false;
     projectsState.complete = true;
     recentSessionsState.recentSessions = [];
@@ -341,6 +353,31 @@ describe("NewSessionPage", () => {
     );
     expect(screen.getByTestId("form-project-name").textContent).toBe("none");
     expect(screen.queryByText("newSessionLoading")).toBeNull();
+  });
+
+  it("does not hide a server rejection behind a cached project", () => {
+    identity.resolved = true;
+    const cached = {
+      ...projectsState.projects[0]!,
+      id: "project-late",
+      name: "Cached project",
+    };
+    writeNewSessionProjectSnapshot("local", identity.principal, [cached], []);
+    const view = () => (
+      <MemoryRouter initialEntries={["/new-session?projectId=project-late"]}>
+        <NewSessionPage />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view());
+    expect(screen.getByTestId("form-project-name").textContent).toBe(
+      "Cached project",
+    );
+    projectFetch.settled = true;
+    rerender(view());
+    expect(screen.queryByTestId("form-project-id")).toBeNull();
+    expect(screen.getByText(/newSessionErrorPrefix/).textContent).toContain(
+      "not found",
+    );
   });
 
   it("reports a selected project that failed to load", () => {

@@ -24,6 +24,7 @@ import {
   setRecentProjectId,
 } from "../hooks/useRecentProject";
 import { useRecentSessions } from "../hooks/useRecentSessions";
+import { useNewSessionProjectSnapshot } from "../hooks/useNewSessionProjectSnapshot";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { useToastContext } from "../contexts/ToastContext";
@@ -83,12 +84,14 @@ export function NewSessionPage() {
   });
 
   const {
-    projects,
+    projects: liveProjects,
     loading: projectsLoading,
     complete: projectsComplete,
+    error: projectsError,
   } = useProjects({
     bootstrapTier: "route",
   });
+  const projectCollectionConfirmed = projectsComplete && !projectsError;
   const { version } = useVersion();
   const supportsProjectCodeNames = serverHasCapability(
     version,
@@ -112,15 +115,31 @@ export function NewSessionPage() {
       {t("projectAppLabel")}
     </Link>
   ) : undefined;
-  const { recentProjectIds, isLoadingVisits: recentSessionsLoading } =
-    useRecentSessions({
-      limit: RECENT_PROJECT_SESSION_LIMIT,
-    });
+  const {
+    recentProjectIds: liveRecentProjectIds,
+    isLoadingVisits: recentSessionsLoading,
+  } = useRecentSessions({
+    limit: RECENT_PROJECT_SESSION_LIMIT,
+  });
   const { project, loading: projectLoading, error } = useProject(projectId);
+  const { projects, cachedProjects, recentProjectIds, unconfirmedProjectIds } =
+    useNewSessionProjectSnapshot({
+      projects: liveProjects,
+      complete: projectCollectionConfirmed,
+      recentProjectIds: liveRecentProjectIds,
+      visitsLoading: recentSessionsLoading,
+      projectId,
+    });
+  const confirmedSelectedProject =
+    liveProjects.find((candidate) => candidate.id === projectId) ?? project;
   const selectedProject =
+    confirmedSelectedProject ??
     (projectId
       ? projects.find((candidate) => candidate.id === projectId)
-      : null) ?? project;
+      : null) ??
+    (projectLoading
+      ? cachedProjects.find((candidate) => candidate.id === projectId)
+      : null);
 
   // Update browser tab title (must be called unconditionally before any early returns)
   useDocumentTitle(
@@ -130,17 +149,12 @@ export function NewSessionPage() {
   );
 
   useEffect(() => {
-    if (!projectId || !selectedProject) return;
+    if (!projectId || !confirmedSelectedProject) return;
     setRecentProjectId(projectId);
-  }, [projectId, selectedProject]);
+  }, [projectId, confirmedSelectedProject]);
 
   useEffect(() => {
-    if (
-      projectId ||
-      requestedDetached ||
-      projectsLoading ||
-      projects.length === 0
-    ) {
+    if (projectId || requestedDetached || projects.length === 0) {
       return;
     }
 
@@ -149,14 +163,18 @@ export function NewSessionPage() {
       storedRecentProjectId &&
         projects.some((project) => project.id === storedRecentProjectId),
     );
-    if (recentSessionsLoading && !hasValidStoredRecentProject) {
+    if (
+      recentSessionsLoading &&
+      !hasValidStoredRecentProject &&
+      recentProjectIds.length === 0
+    ) {
       return;
     }
 
     const preferredProjectId = resolvePreferredProjectId(
       projects,
       recentProjectIds[0],
-      projectsComplete,
+      projectCollectionConfirmed,
     );
     if (!preferredProjectId) {
       return;
@@ -169,8 +187,7 @@ export function NewSessionPage() {
   }, [
     projectId,
     projects,
-    projectsLoading,
-    projectsComplete,
+    projectCollectionConfirmed,
     recentProjectIds,
     recentSessionsLoading,
     requestedDetached,
@@ -194,7 +211,8 @@ export function NewSessionPage() {
 
   // The composer does not wait for the selected project's record: a tab opened
   // here is for typing, and the form holds the start until the project arrives.
-  const renderError = !selectedProject && !projectLoading ? error : null;
+  const renderError =
+    !confirmedSelectedProject && !projectLoading ? error : null;
 
   if (renderError) {
     return (
@@ -232,7 +250,10 @@ export function NewSessionPage() {
             selectedProject={selectedProject}
             projects={projects}
             recentProjectIds={recentProjectIds}
-            projectsLoading={projectsLoading}
+            projectsLoading={projectsLoading && projects.length === 0}
+            unconfirmedProjectIds={unconfirmedProjectIds.filter(
+              (id) => id !== confirmedSelectedProject?.id,
+            )}
             onProjectChange={handleProjectChange}
             preferredProvider={preferredProvider as ProviderName | undefined}
             preferredModel={preferredModel}

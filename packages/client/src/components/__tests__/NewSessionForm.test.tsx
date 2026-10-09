@@ -1644,6 +1644,48 @@ describe("NewSessionForm", () => {
     ]);
   });
 
+  it("shows a cached project but blocks Start and Queue until confirmed", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: { provider: "claude", permissionMode: "default" },
+    };
+    serverSettingsState.isLoading = false;
+    versionState.version = { capabilities: [PROJECT_QUEUE_CAPABILITY] };
+    const view = (unconfirmedProjectIds: string[]) => (
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+        unconfirmedProjectIds={unconfirmedProjectIds}
+      />
+    );
+    const { rerender } = render(view(["project-1"]));
+    fireEvent.click(screen.getByRole("button", { name: "Claude" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Opus 4.8" })[0]!);
+    const composer = screen.getByPlaceholderText("newSessionPlaceholder");
+    fireEvent.change(composer, { target: { value: "hello" } });
+    expect(
+      screen.getByPlaceholderText("newSessionProjectPathPlaceholder"),
+    ).toHaveProperty("value", chooserProjects[0]?.path);
+    expect(screen.getByText(/newSessionProjectRefreshing/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", true);
+    fireEvent.keyDown(composer, { key: "Enter" });
+    fireEvent.keyDown(composer, { key: "Enter", ctrlKey: true });
+    expect(mockStartSession).not.toHaveBeenCalled();
+    expect(mockCreateProjectQueueItem).not.toHaveBeenCalled();
+    rerender(view([]));
+    expect(screen.queryByText(/newSessionProjectRefreshing/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+    await waitFor(() => expect(mockStartSession).toHaveBeenCalledTimes(1));
+    expect(mockStartSession.mock.calls[0]?.slice(0, 2)).toEqual([
+      "project-1",
+      "hello",
+    ]);
+  });
+
   it("keeps the normal model and thinking selection when using a compatible pool", async () => {
     versionState.version = { capabilities: ["agent-auth-router"] };
     modelSettingsState.thinkingMode = "on";

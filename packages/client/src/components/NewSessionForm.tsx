@@ -340,6 +340,8 @@ export interface NewSessionFormProps {
   projects?: Project[];
   recentProjectIds?: string[];
   projectsLoading?: boolean;
+  /** Display snapshots may be shown, but cannot authorize Start or Queue. */
+  unconfirmedProjectIds?: readonly string[];
   onProjectChange?: (projectId: string | null) => void;
   /** Whether to focus the textarea on mount (default: true) */
   autoFocus?: boolean;
@@ -432,6 +434,7 @@ export function NewSessionForm({
   projects = [],
   recentProjectIds = [],
   projectsLoading = false,
+  unconfirmedProjectIds = [],
   onProjectChange,
   autoFocus = true,
   rows = 6,
@@ -1551,8 +1554,14 @@ export function NewSessionForm({
   const newProjectInitializesGit =
     !projectCreationGitChoice || newProjectGitInit;
   const currentProjectSelection = exactProjectMatch ?? selectedProject ?? null;
+  const projectSnapshotPending =
+    currentProjectSelection !== null &&
+    unconfirmedProjectIds.includes(currentProjectSelection.id);
   const projectQueueTargetProjectId =
-    !newProjectPanelShown && normalizedProjectInput && currentProjectSelection
+    !projectSnapshotPending &&
+    !newProjectPanelShown &&
+    normalizedProjectInput &&
+    currentProjectSelection
       ? currentProjectSelection.id
       : null;
   const fileCompletion = useProjectFileCompletion({
@@ -1588,9 +1597,9 @@ export function NewSessionForm({
   // ready to start. The composer does not wait for it: typing starts at once,
   // and starting waits for the project.
   const projectPending =
-    Boolean(projectId) &&
     !newProjectPanelShown &&
-    currentProjectSelection === null;
+    (projectSnapshotPending ||
+      (Boolean(projectId) && currentProjectSelection === null));
   const isDetachedProject =
     !newProjectPanelShown &&
     currentProjectSelection === null &&
@@ -3246,6 +3255,7 @@ export function NewSessionForm({
       !canQueueAttachments ||
       isStarting ||
       displayDefaultsPending ||
+      projectPending ||
       !hasSelectedProviderModel
     ) {
       return;
@@ -3830,6 +3840,7 @@ export function NewSessionForm({
   useAttachmentNavigationGuard(attachmentNavigationGuardActive);
   const canQueueProjectSession = Boolean(
     allowProjectQueue &&
+      !projectPending &&
       !displayDefaultsPending &&
       !(machineControlSelected && machineControlEligible) &&
       showProjectQueueAction &&
@@ -4374,6 +4385,12 @@ export function NewSessionForm({
             {projectSuggestionOptions}
           </datalist>
         </div>
+
+        {projectPending && projectSnapshotPending && (
+          <p className="new-session-project-empty" role="status">
+            {t("newSessionProjectRefreshing")}
+          </p>
+        )}
 
         {!launch && !fixedProject && (
           <div className={templateStyles.expansion}>

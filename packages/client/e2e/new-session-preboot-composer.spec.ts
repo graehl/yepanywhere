@@ -203,6 +203,113 @@ test("refresh preserves saved sidebar modes on New Session", async ({
   );
 });
 
+test("a sibling tab shows projects while version and catalog requests are held", async ({
+  page,
+  context,
+  request,
+  baseURL,
+}) => {
+  const projects = await (await request.get(`${baseURL}/api/projects`)).json();
+  const project = projects.projects.find((row: { path: string }) =>
+    row.path.endsWith("/mockproject"),
+  );
+  expect(project).toBeTruthy();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const sibling = await context.newPage();
+  const attempts: string[] = [];
+  sibling.on("request", (req) => {
+    if (req.method() === "POST" && /sessions|project-queue/.test(req.url()))
+      attempts.push(req.url());
+  });
+  try {
+    // The existing tab need not have visited New Session: the shared sidebar
+    // keeps its accepted project display rows available to sibling tabs.
+    await page.goto(`${baseURL}/projects`);
+    await page.waitForFunction(
+      () =>
+        localStorage.getItem('ya:new-session-projects:["local",null]') !== null,
+    );
+    await sibling.route(
+      /\/api\/(?:projects|recents|version)(?:[/?]|$)/,
+      async (route) => {
+        await gate;
+        await route.continue();
+      },
+    );
+    await sibling.addInitScript(() => {
+      const samples: number[] = [];
+      let keyAt = 0;
+      document.addEventListener(
+        "keydown",
+        () => {
+          keyAt = performance.now();
+        },
+        true,
+      );
+      document.addEventListener(
+        "input",
+        () => {
+          samples.push(performance.now() - keyAt);
+        },
+        true,
+      );
+      Object.assign(window, { projectSnapshotTypingSamples: samples });
+    });
+    await sibling.goto(
+      `${baseURL}/new-session?projectId=${encodeURIComponent(project.id)}`,
+      { waitUntil: "commit" },
+    );
+    await expect(sibling.locator(".new-session-project-input")).toHaveValue(
+      project.path,
+    );
+    await expect(
+      sibling.getByText("Refreshing project…", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      sibling.locator(".new-session-model-field button").first(),
+    ).toBeVisible();
+    const composer = sibling.locator("textarea.new-session-form-textarea");
+    await composer.fill("");
+    await composer.pressSequentially("project snapshot typing", { delay: 10 });
+    await expect(composer).toHaveValue("project snapshot typing");
+    await composer.press("Enter");
+    await composer.press("ControlOrMeta+Enter");
+    expect(attempts).toEqual([]);
+    const samples = await sibling.evaluate(() =>
+      (
+        window as unknown as { projectSnapshotTypingSamples: number[] }
+      ).projectSnapshotTypingSamples.slice(1),
+    );
+    expect(samples.length).toBeGreaterThan(10);
+    expect(Math.max(...samples)).toBeLessThan(100);
+    for (const viewport of [
+      { width: 1000, height: 600 },
+      { width: 375, height: 812 },
+    ]) {
+      await sibling.setViewportSize(viewport);
+      await recordUiCapture(
+        sibling,
+        `new-session-project-snapshot-${viewport.width}`,
+      );
+    }
+    release();
+    await expect(
+      sibling.getByText("Refreshing project…", { exact: false }),
+    ).toHaveCount(0);
+    await expect(sibling.locator(".new-session-project-input")).toHaveValue(
+      project.path,
+    );
+    await expect(composer).toHaveValue("project snapshot typing");
+    expect(attempts).toEqual([]);
+  } finally {
+    release();
+    await sibling.close();
+  }
+});
+
 test("a sibling tab shows saved model and effort before settings arrive", async ({
   page,
   context,

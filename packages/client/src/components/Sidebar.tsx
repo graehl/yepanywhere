@@ -63,6 +63,8 @@ import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { useActingPrincipal } from "../hooks/useActingPrincipal";
+import { useClientSummarySourceKey } from "../lib/clientSummarySourceKey";
+import { writeNewSessionProjectSnapshot } from "../lib/newSessionProjectSnapshot";
 import { CompactResumeButton } from "./CompactResumeButton";
 import { SessionListItem } from "./SessionListItem";
 import type { SessionNavigationIntent } from "./SessionListItem";
@@ -410,7 +412,9 @@ export function Sidebar({
   // Limited users (topics/limited-users.md § Delivery v1): the acting
   // principal decides which nav entries are worth showing. Hiding is
   // cosmetic; the server refuses the same operations either way.
-  const { principal: actingPrincipal } = useActingPrincipal();
+  const { principal: actingPrincipal, resolved: principalResolved } =
+    useActingPrincipal();
+  const sourceKey = useClientSummarySourceKey();
   const isLimitedUser = actingPrincipal.username !== null;
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareStatus } = usePublicShareStatus({
@@ -480,13 +484,35 @@ export function Sidebar({
 
   // Global inbox count. Title badge updates are owned by the app shell.
   const { needsAttention: inboxCount } = useInboxCounts();
-  const { projects, complete: projectsComplete } = useProjects();
+  const {
+    projects,
+    complete: projectsComplete,
+    error: projectsError,
+  } = useProjects();
   const sourceControlProjectId = useMemo(
     () =>
       getProjectIdFromLocation(location.pathname, location.search) ??
       resolvePreferredProjectId(projects, undefined, projectsComplete),
     [location.pathname, location.search, projects, projectsComplete],
   );
+  useEffect(() => {
+    if (!principalResolved || !projectsComplete || projectsError) return;
+    writeNewSessionProjectSnapshot(
+      sourceKey,
+      actingPrincipal,
+      projects,
+      undefined,
+      sourceControlProjectId,
+    );
+  }, [
+    sourceKey,
+    actingPrincipal,
+    principalResolved,
+    projects,
+    projectsComplete,
+    projectsError,
+    sourceControlProjectId,
+  ]);
   const sourceControlPath = sourceControlProjectId
     ? `/git-status?projectId=${encodeURIComponent(sourceControlProjectId)}`
     : "/git-status";

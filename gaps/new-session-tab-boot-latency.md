@@ -100,6 +100,28 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Returning tabs now restore a bounded account-scoped project display snapshot
+(2026-10-09). Open sidebars maintain complete project rows; New Session retains
+recent-project ordering. Current identity and grants gate reads, and cached
+rows cannot enable Start or Queue. A real sibling-tab test holds version,
+projects and recents while the selected project remains visible and sequential
+typing stays under 100 ms per key. See
+[project display snapshots](../topics/session-catalog-observation.md#new-session-project-display-snapshot).
+An isolated seven-load check measured returning full UI at 332/269/345 ms with
+the project snapshot and 528/325/453 ms with its reads disabled; the cold load
+was 483 ms. Host load was 13.5–14.3 on 16 cores, with other compute jobs active.
+This is diagnostic evidence, not 500 ms acceptance. Cold bootstrap, remaining
+server enrichment/discovery, authenticated-provider coverage and broader
+verification remain open. Contributing-model: 6-astra.
+
+A repeat after wiring the sidebar writer measured warm full UI at 385/317/264
+ms with snapshots and 391/736/315 ms without; its cold load was 1166 ms. Auth,
+onboarding and settings each spanned about 540 ms, followed by a 242 ms named
+Claude request; selected-project detail took 33 ms. Load average was 11.2 on
+16 cores with concurrent compute work. These timings do not distinguish browser
+connection queueing from server processing. They reinforce that returning-tab
+display is improved while cold startup remains unresolved.
+
 Version acquisition no longer serializes independent build, bridge, sandbox
 and update work (2026-10-09). Held-promise route tests require independent
 probes to start together and the response to await their results. Ten isolated

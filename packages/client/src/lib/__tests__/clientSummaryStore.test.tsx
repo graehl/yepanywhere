@@ -63,6 +63,7 @@ import {
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
+  reportProjectsCollectionSnapshot,
   reportProviderRuntimeStatusSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
@@ -78,6 +79,7 @@ import {
   useInboxCountsByProject,
   useInboxResponseSnapshot,
   useProjectQueuedSessionIds,
+  useProjectCollectionRecords,
   useProviderRuntimeStatusForSession,
   useRecentSessionRecords,
   useSessionCollectionRecord,
@@ -235,6 +237,42 @@ describe("clientSummaryStore", () => {
 
     second.unmount();
     expect(mockActivityBus.listenerCount()).toBe(0);
+  });
+
+  it("keeps project subscribers stable across unrelated session activity", () => {
+    const renders = vi.fn();
+    const projects = renderHook(() => {
+      renders();
+      return useProjectCollectionRecords();
+    });
+    act(() =>
+      reportProjectsCollectionSnapshot(SOURCE_KEY, {
+        projects: [
+          {
+            id: PROJECT_ID,
+            name: "Alpha",
+            path: "/alpha",
+            sessionCount: 1,
+            activeOwnedCount: 0,
+            activeExternalCount: 0,
+            lastActivity: null,
+          },
+        ],
+      }),
+    );
+    const before = projects.result.current;
+    renders.mockClear();
+    act(() =>
+      reportProviderRuntimeStatusSnapshot(SOURCE_KEY, {
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        providerRuntimeStatus: RUNTIME_STATUS,
+      }),
+    );
+    expect(projects.result.current).toBe(before);
+    expect(renders).not.toHaveBeenCalled();
+    act(() => reportProjectsCollectionSnapshot(SOURCE_KEY, { projects: [] }));
+    expect(projects.result.current).toEqual([]);
   });
 
   it("stores provider runtime snapshots and clears from activity events", () => {

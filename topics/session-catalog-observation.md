@@ -170,7 +170,8 @@ index, avoiding an indirect foreground scan through the session tracker.
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail still uses complete discovery, and refresh
 still enumerates the provider stores rather than applying targeted updates.
-Browser persistence and the full New Session latency target remain open.
+The full New Session latency target remains open; the display-only browser
+snapshot below removes collection acquisition from returning-tab display.
 
 **Design decision:** retain inside the existing project scanner rather than
 constructing another project inventory from session rows. Registered empty
@@ -522,6 +523,37 @@ unbounded catalog in this layer. Enforce byte/age eviction and revalidate any
 restored snapshot against the server epoch/generation. Cross-tab coordination
 does not remove server-side single-flight: different browsers/devices and lease
 failover can still request the same work concurrently.
+
+### New Session project display snapshot
+
+New Session restores project names, paths, code names and ownership labels
+from a schema-versioned `localStorage` snapshot, with recent project IDs for
+ordering. The key includes the source and confirmed acting username (null for
+the superuser). Identity must first resolve through the current server's
+settings or `/users/me`; a remembered draft owner is not sufficient. Limited
+users' restored rows are filtered through their current project and directory
+grants. No transcript, caption body, live count or launch permission is cached.
+
+The snapshot holds at most 256 projects and 256 KiB of UTF-16 storage, expires
+after 24 hours, and prioritizes the selected project and recent project IDs
+when bounding rows. Oversize
+and expired entries are removed. Storage failure falls back to server reads.
+The shared sidebar maintains accepted complete project rows in open tabs;
+New Session also records accepted recent-project ordering. A storage event
+refreshes another tab's display overlay, without starting another request.
+Project-list consumers subscribe to project state alone, so unrelated session
+activity cannot retrigger project rendering and persistence.
+
+Restored rows remain outside the live summary store: they do not satisfy query
+coverage, freshness or completeness. Partial collections preserve undiscovered
+display choices; a complete collection replaces them, including an empty
+collection. A selected cached row can remain visible while its detail request
+is pending, but cannot hide a later server rejection. The form labels a cached
+selection “Refreshing project…” and permits typing while withholding Start
+and Queue until a current collection or detail response confirms the row.
+Server authorization remains authoritative.
+These client-only display semantics also work with older complete-list APIs;
+they introduce no route or capability requirement.
 
 An explicit `session-metadata-changed` project transition and a full session
 snapshot are authoritative for a known row's working-project membership.

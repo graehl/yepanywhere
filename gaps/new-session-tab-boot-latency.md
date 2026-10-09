@@ -100,6 +100,23 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Claude native-executable selection no longer asks Node to inspect network
+interfaces or perform reverse DNS while determining libc (2026-10-09). The
+report option is scoped to the synchronous read and restored on success or
+failure. In three isolated server processes, ordinary reports took 29/25/58 ms
+and subsequent network-excluded reports took 18/14/17 ms. Fixed ordering and
+host contention make these diagnostic measurements. The complete cold UI
+still took 552/630/831 ms after the change; this does not satisfy 500 ms.
+Contributing-model: 6-astra.
+
+Cold startup also probes unselected providers, with synchronous subprocess
+launches delaying admission of otherwise fast requests. Deferring the full
+catalog until the selected Claude response removed that admission delay but
+did not establish an overall gain: alternating full-UI samples were
+457/583/845 ms normally and 612/702/545 ms with deferral. Both arms used early
+bootstrap reads on a contended host. Simple deferral remains unshipped;
+provider acquisition and the serial bootstrap dependencies remain open.
+
 Returning tabs now restore a bounded account-scoped project display snapshot
 (2026-10-09). Open sidebars maintain complete project rows; New Session retains
 recent-project ordering. Current identity and grants gate reads, and cached

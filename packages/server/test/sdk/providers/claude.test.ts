@@ -776,6 +776,51 @@ describe("Claude provider slash commands", () => {
 });
 
 describe("Claude SDK executable resolution", () => {
+  it.runIf(process.platform === "linux").each([false, true])(
+    "does not inspect networking to choose libc and restores excludeNetwork=%s",
+    (excludeNetwork) => {
+      const report = process.report as typeof process.report & {
+        excludeNetwork: boolean;
+      };
+      const previous = report.excludeNetwork;
+      report.excludeNetwork = excludeNetwork;
+      const getReport = vi.spyOn(report, "getReport").mockImplementation(() => {
+        expect(report.excludeNetwork).toBe(true);
+        return { header: { glibcVersionRuntime: "2.28" } };
+      });
+      try {
+        expect(resolveClaudeSdkNativeExecutable()).toBeTruthy();
+        expect(getReport).toHaveBeenCalledOnce();
+        expect(report.excludeNetwork).toBe(excludeNetwork);
+      } finally {
+        getReport.mockRestore();
+        report.excludeNetwork = previous;
+      }
+    },
+  );
+
+  it.runIf(process.platform === "linux")(
+    "restores report settings when libc detection fails",
+    () => {
+      const report = process.report as typeof process.report & {
+        excludeNetwork: boolean;
+      };
+      const previous = report.excludeNetwork;
+      report.excludeNetwork = false;
+      const failure = new Error("report unavailable");
+      const getReport = vi.spyOn(report, "getReport").mockImplementation(() => {
+        throw failure;
+      });
+      try {
+        expect(() => resolveClaudeSdkNativeExecutable()).toThrow(failure);
+        expect(report.excludeNetwork).toBe(false);
+      } finally {
+        getReport.mockRestore();
+        report.excludeNetwork = previous;
+      }
+    },
+  );
+
   it("prefers the glibc native package on glibc Linux hosts", () => {
     const executable = resolveClaudeSdkNativeExecutable();
 

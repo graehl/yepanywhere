@@ -432,10 +432,21 @@ function hasGlibcRuntime(): boolean {
   if (typeof process.report?.getReport !== "function") {
     return false;
   }
-  const report = process.report.getReport() as {
-    header?: { glibcVersionRuntime?: string };
+  // Node supports this since 22.0; the workspace's report type omits it.
+  const processReport = process.report as typeof process.report & {
+    excludeNetwork: boolean;
   };
-  return Boolean(report.header?.glibcVersionRuntime);
+  const excludeNetwork = processReport.excludeNetwork;
+  try {
+    // Libc selection must not wait for interface inspection or reverse DNS.
+    processReport.excludeNetwork = true;
+    const report = processReport.getReport() as {
+      header?: { glibcVersionRuntime?: string };
+    };
+    return Boolean(report.header?.glibcVersionRuntime);
+  } finally {
+    processReport.excludeNetwork = excludeNetwork;
+  }
 }
 
 function getClaudeSdkNativePackageNames(): string[] {

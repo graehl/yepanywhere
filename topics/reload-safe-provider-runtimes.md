@@ -837,6 +837,16 @@ refresh after further reloads. Build directories belong to the wrapper under
 `node_modules/.cache/ya-client/`; replaced directories and normal-shutdown
 builds are removed. Separate wrappers never write the same directory.
 
+For a local built `/new-session` document, HTML parsing starts module preloads
+for the app shell, navigation layout and New Session page plus their static
+imports. The build derives hashed URLs from its emitted chunk graph; dynamic
+imports stay lazy and other routes do not acquire this graph. The configured
+base path applies to both route matching and asset URLs. The inline preload
+script is included in the production CSP hash pass. Preloading only fetches
+code: normal imports, authentication and query owners still govern execution
+and data. Development HMR and the hosted entry keep their existing loading
+paths.
+
 **Design decision:** use the existing production build and static server rather
 than optimizing the development module waterfall or adding local HTTP/2/TLS.
 This trades client HMR for fewer requests and browser caching, without changing

@@ -100,6 +100,18 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Built local New Session now preloads its route's static chunk graph during
+HTML parsing (2026-10-09), before the main module can discover it. Other routes
+and deferred dynamic imports keep their existing loading behavior. In six
+alternating healthy cold loads of one build, removing the preload script gave
+full controls at 716/481/659 ms; keeping it gave 459/636/336 ms. Median form
+appearance moved from 463 to 283 ms. Route chunk acquisition began at
+104–159 ms without preloads and 27–64 ms with them. The paired probe intercepted
+HTML in both arms, and host load was 17–20 on 16 cores: diagnostic evidence,
+not a 500 ms guarantee. Catalog-enriched labels still took 599/686/478 ms in
+the preloaded arm. See the [built-client contract](../topics/reload-safe-provider-runtimes.md#built-client-for-everyday-source-checkout-use).
+Contributing-model: 6-astra.
+
 Measurement qualification (2026-10-09): the long temporary path used by earlier
 scratch browser runs left the provider host degraded. Their timings remain
 diagnostic and cannot establish acceptance in a healthy runtime. A shorter

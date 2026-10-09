@@ -66,6 +66,10 @@ test("keys typed before the app loads reach the new-session composer", async ({
   const preboot = page.locator("#yep-preboot-composer textarea");
   await expect(preboot).toBeFocused();
   await expect(preboot).toHaveValue("Saved prompt: ");
+  // Route chunks must be discovered from HTML while all modules are held.
+  await expect(
+    page.locator('link[rel="modulepreload"][href*="/NewSessionPage-"]'),
+  ).toHaveCount(1);
   await page.keyboard.type("typed before boot", { delay: 10 });
   // Enter sends in the app; it must not become a newline in the meantime.
   await page.keyboard.press("Enter");

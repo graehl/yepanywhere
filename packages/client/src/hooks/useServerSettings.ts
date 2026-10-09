@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ServerSettings } from "../api/client";
+import type { NewSessionDefaults } from "@yep-anywhere/shared";
+import {
+  readNewSessionDisplayDefaults,
+  writeNewSessionDisplayDefaults,
+} from "../lib/newSessionDisplayDefaults";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { createClientQueryKey } from "../lib/clientQueryController";
 import {
@@ -14,6 +19,7 @@ import { useRetainedClientQuery } from "./useRetainedClientQuery";
 
 interface UseServerSettingsResult {
   settings: ServerSettings | null;
+  displayDefaults: NewSessionDefaults | undefined;
   isLoading: boolean;
   error: string | null;
   /** Resolves with the settings the server accepted, once they are applied. */
@@ -27,6 +33,7 @@ interface UseServerSettingsResult {
 
 interface ServerSettingsSnapshot {
   settings: ServerSettings | null;
+  displayDefaults?: NewSessionDefaults;
   observedAt?: number;
 }
 
@@ -62,10 +69,15 @@ function subscribeServerSettingsSnapshots(listener: () => void): () => void {
 function getServerSettingsSnapshot(
   sourceKey: ClientSummarySourceKey,
 ): ServerSettingsSnapshot {
-  return (
-    serverSettingsSnapshotsBySource.get(sourceKey) ??
-    EMPTY_SERVER_SETTINGS_SNAPSHOT
-  );
+  let snapshot = serverSettingsSnapshotsBySource.get(sourceKey);
+  if (!snapshot) {
+    snapshot = {
+      settings: null,
+      displayDefaults: readNewSessionDisplayDefaults(sourceKey),
+    };
+    serverSettingsSnapshotsBySource.set(sourceKey, snapshot);
+  }
+  return snapshot;
 }
 
 function acceptServerSettingsSnapshot(
@@ -82,6 +94,7 @@ function acceptServerSettingsSnapshot(
     settings,
     observedAt,
   });
+  writeNewSessionDisplayDefaults(sourceKey, settings.newSessionDefaults);
   emitServerSettingsSnapshotChange();
 }
 
@@ -226,6 +239,7 @@ export function useServerSettings(): UseServerSettingsResult {
 
   return {
     settings: snapshot.settings,
+    displayDefaults: snapshot.displayDefaults,
     isLoading: loading,
     error: mutationError ?? (queryError ? queryError.message : null),
     updateSettings,

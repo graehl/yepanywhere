@@ -1289,6 +1289,8 @@
   "newSessionProviderAuthenticationPending": "{provider} can be launched, but authentication is not confirmed. Starting a session will use the provider's normal authentication behavior.",
   "newSessionModelTitle": "Model",
   "newSessionModelPlaceholder": "Select model",
+  "newSessionDefaultsUnavailable": "Saved choices are shown. Reload current settings before starting a session.",
+  "newSessionDefaultsRetry": "Reload settings",
   "newSessionGatewayCatalogLoading": "Checking the configured gateway for models…",
   "newSessionGatewayCatalogUnavailable": "No models are available from the configured gateway. Check that it is running, then retry.",
   "newSessionGatewayCatalogRetry": "Retry",

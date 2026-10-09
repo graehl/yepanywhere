@@ -1155,9 +1155,13 @@ export function NewSessionForm({
   );
   const {
     settings,
+    displayDefaults,
     isLoading: settingsLoading,
+    error: settingsError,
+    refetch: refetchSettings,
     updateSetting: updateServerSetting,
   } = useServerSettings();
+  const displayDefaultsPending = displayDefaults !== undefined;
   const newSessionDefaultsRef = useRef(settings?.newSessionDefaults);
   useEffect(() => {
     newSessionDefaultsRef.current = settings?.newSessionDefaults;
@@ -1855,7 +1859,7 @@ export function NewSessionForm({
       );
       const isSelectable = (name: ProviderName) =>
         !catalogKnown || launchableProviderNames.has(name);
-      const savedDefaults = settings?.newSessionDefaults;
+      const savedDefaults = settings?.newSessionDefaults ?? displayDefaults;
       // An explicit caller preference (e.g. "clear" from an existing session)
       // outranks saved new-session defaults.
       const requestedProviderName =
@@ -1953,6 +1957,7 @@ export function NewSessionForm({
     [
       applyLaunchLock,
       settings,
+      displayDefaults,
       supportsSessionSandboxing,
       getLegacyProviderDefaultSeed,
       preferredProvider,
@@ -1963,15 +1968,22 @@ export function NewSessionForm({
     ],
   );
 
-  // Seed provider/model/mode from saved defaults as soon as settings resolve.
+  // Saved display defaults can seed controls while current settings load.
   // Waiting for the provider catalog here would hand an unselected provider's
   // discovery cost to the saved one; see topics/session-defaults.md.
   useEffect(() => {
-    if (hasSeededDefaultsRef.current || settingsLoading) return;
-    hasSeededDefaultsRef.current = true;
+    if (hasSeededDefaultsRef.current || (settingsLoading && !displayDefaults))
+      return;
+    hasSeededDefaultsRef.current = !settingsLoading && !displayDefaultsPending;
     if (hasUserCustomizedDefaultsRef.current) return;
     applyInitialDefaults(providers);
-  }, [applyInitialDefaults, providers, settingsLoading]);
+  }, [
+    applyInitialDefaults,
+    providers,
+    settingsLoading,
+    displayDefaults,
+    displayDefaultsPending,
+  ]);
 
   // Reconcile that seed once the probed catalog and version capabilities land.
   useEffect(() => {
@@ -2451,7 +2463,12 @@ export function NewSessionForm({
   // once the user has actually customized something — and stays silent to
   // avoid a toast on every click.
   useEffect(() => {
-    if (!hasUserCustomizedDefaultsRef.current || !selectedProvider) return;
+    if (
+      !hasUserCustomizedDefaultsRef.current ||
+      !selectedProvider ||
+      displayDefaultsPending
+    )
+      return;
     const {
       helperSideModel: _legacyHelperSideModel,
       sandboxLevel: _savedSandboxLevel,
@@ -2498,6 +2515,7 @@ export function NewSessionForm({
   }, [
     getLegacyProviderDefaultSeed,
     helperSideModel,
+    displayDefaultsPending,
     mode,
     recapAfterSeconds,
     sandboxLevel,
@@ -2742,6 +2760,7 @@ export function NewSessionForm({
         creatingTemplateProject ||
         templateProjectBusy ||
         isStarting ||
+        displayDefaultsPending ||
         !hasSelectedProviderModel ||
         projectPending
       ) {
@@ -3161,6 +3180,7 @@ export function NewSessionForm({
       helperSideModel,
       hasSelectedProviderModel,
       canCreateDetached,
+      displayDefaultsPending,
       isStarting,
       launch,
       launchLock,
@@ -3225,6 +3245,7 @@ export function NewSessionForm({
       !trimmedMessage ||
       !canQueueAttachments ||
       isStarting ||
+      displayDefaultsPending ||
       !hasSelectedProviderModel
     ) {
       return;
@@ -3788,6 +3809,7 @@ export function NewSessionForm({
     interimTranscript;
   const canStart = Boolean(
     (hasContent || composerMuted) &&
+      !displayDefaultsPending &&
       hasSelectedProviderModel &&
       !projectPending &&
       (!isDetachedProject || canCreateDetached),
@@ -3808,6 +3830,7 @@ export function NewSessionForm({
   useAttachmentNavigationGuard(attachmentNavigationGuardActive);
   const canQueueProjectSession = Boolean(
     allowProjectQueue &&
+      !displayDefaultsPending &&
       !(machineControlSelected && machineControlEligible) &&
       showProjectQueueAction &&
       (message.trim() || speechPending !== null || interimTranscript) &&
@@ -4509,7 +4532,7 @@ export function NewSessionForm({
         caption={sessionDefaultCopy.provider.description}
         showCaption={showOptionCaptions}
       >
-        <div aria-busy={providersStale}>
+        <div aria-busy={providersStale || displayDefaultsPending}>
           <FilterDropdown<ProviderName>
             label={sessionDefaultCopy.provider.title}
             options={providers.map((provider) => ({
@@ -5154,6 +5177,21 @@ export function NewSessionForm({
       : null,
   ].filter((label): label is string => label !== null);
 
+  const displayDefaultsError =
+    displayDefaultsPending && settingsError ? (
+      <div role="alert" className={styles.catalogStatus}>
+        <span>{t("newSessionDefaultsUnavailable")}</span>
+        <button
+          type="button"
+          className={styles.catalogAction}
+          onClick={() => void refetchSettings()}
+          disabled={settingsLoading}
+        >
+          {t("newSessionDefaultsRetry")}
+        </button>
+      </div>
+    ) : null;
+
   // Compact mode: just the input area, no header or mode selector
   if (compact) {
     return (
@@ -5161,6 +5199,7 @@ export function NewSessionForm({
         className="new-session-form new-session-form-compact"
         onKeyDownCapture={handleComposerKeyDown}
       >
+        {displayDefaultsError}
         {inputArea}
       </div>
     );
@@ -5189,6 +5228,8 @@ export function NewSessionForm({
           </p>
         </div>
       )}
+
+      {displayDefaultsError}
 
       <div
         className={`new-session-top-layout ${styles.optionLayout}${

@@ -100,6 +100,18 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Returning tabs now restore provider/model/thinking/effort display defaults
+without waiting for settings (2026-10-09). A real sibling-tab check holds its
+settings response indefinitely and verifies Sonnet/High plus sequential typing.
+Current settings remain required for launch and automatic preference writes.
+The cache excludes permissions, paid tiers and private configuration; see
+[session defaults](../topics/session-defaults.md#provider-catalog-readiness).
+This removes a dependency, but does not establish an overall speedup: a
+contended same-run comparison measured full warm UI at 434/391/541 ms with the
+display cache and 441/452/458 ms without it. The cold sample was 2025 ms, with
+the named Claude request taking 1589 ms. Server provider discovery, project
+snapshots and cold bootstrap remain open. Contributing-model: 6-astra.
+
 Project collection requests now use retained discovery on capable servers
 (2026-10-09), including current names, visibility and ownership. Incomplete
 collections preserve known choices and cannot select an arbitrary project while

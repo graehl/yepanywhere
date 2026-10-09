@@ -96,6 +96,23 @@ exact saved provider and provider-local model in its final control region, then
 revalidates installation, authentication, alternatives, and capabilities in
 place. An unselected provider's discovery does not delay or clear that choice.
 
+New tabs restore a seven-day, source-scoped browser snapshot of provider,
+provider-local model, thinking mode and effort while settings load. Only these
+display fields are retained; permissions, sandbox policy, paid tiers, helper
+targets, credentials and the rest of the settings document are excluded. They
+are server-wide defaults already readable by every authenticated principal,
+not a cached identity or grant. Project snapshots need a separate account
+boundary and are not part of this cache.
+
+The settings owner writes the snapshot only when it accepts a response or
+mutation, preserving its request-order rules. Cached display defaults never
+populate the authoritative settings object or mark its query complete. Start,
+Project Queue and automatic preference writes wait for current settings when
+the display was restored from storage. Typing and selecting controls remain
+available. Current settings reconcile untouched controls; an explicit user
+selection survives. A failed settings read retains the display and offers a
+retry. Missing, malformed or expired storage falls back to normal acquisition.
+
 The dynamic catalog keeps the existing two request shapes:
 
 - `GET /api/providers` returns the exposed provider-card collection and remains

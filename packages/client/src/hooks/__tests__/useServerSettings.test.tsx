@@ -122,6 +122,7 @@ async function settle() {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(0);
   resetClientSummaryStoreForTests();
@@ -150,6 +151,44 @@ afterEach(() => {
 });
 
 describe("useServerSettings", () => {
+  it("restores display defaults in a new tab without treating them as settings", async () => {
+    mocks.getServerSettings.mockResolvedValueOnce({
+      settings: settings({
+        newSessionDefaults: {
+          provider: "claude",
+          permissionMode: "bypassPermissions",
+          providers: {
+            claude: {
+              model: "sonnet",
+              thinkingMode: "on",
+              effortLevel: "high",
+              serviceTier: "fast",
+            },
+          },
+        },
+      }),
+    });
+    const first = renderHook(() => useServerSettings());
+    await settle();
+    first.unmount();
+    resetServerSettingsForTests();
+    resetClientQueryControllerForTests();
+    const pending = deferred<{ settings: ServerSettings }>();
+    mocks.getServerSettings.mockReturnValueOnce(pending.promise);
+    const nextTab = renderHook(() => useServerSettings());
+    expect(nextTab.result.current.displayDefaults).toEqual({
+      provider: "claude",
+      providers: {
+        claude: { model: "sonnet", thinkingMode: "on", effortLevel: "high" },
+      },
+    });
+    expect(nextTab.result.current.settings).toBeNull();
+    expect(nextTab.result.current.isLoading).toBe(true);
+    pending.resolve({ settings: settings() });
+    await settle();
+    expect(nextTab.result.current.displayDefaults).toBeUndefined();
+  });
+
   it("shares the initial settings fetch across mounted consumers", async () => {
     mocks.getServerSettings.mockResolvedValue({
       settings: settings({ publicSharesEnabled: true }),

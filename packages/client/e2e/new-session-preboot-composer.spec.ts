@@ -202,3 +202,79 @@ test("refresh preserves saved sidebar modes on New Session", async ({
     /sidebar-collapsed/,
   );
 });
+
+test("a sibling tab shows saved model and effort before settings arrive", async ({
+  page,
+  context,
+  request,
+  baseURL,
+}) => {
+  const before = await (await request.get(`${baseURL}/api/settings`)).json();
+  const headers = { "X-Yep-Anywhere": "true" };
+  const update = await request.put(`${baseURL}/api/settings`, {
+    headers,
+    data: {
+      newSessionDefaults: {
+        provider: "claude",
+        providers: {
+          claude: { model: "sonnet", thinkingMode: "on", effortLevel: "high" },
+        },
+      },
+    },
+  });
+  expect(update.ok()).toBe(true);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const sibling = await context.newPage();
+  try {
+    await page.goto(`${baseURL}/new-session`);
+    await expect(
+      page.locator(".new-session-model-field button").first(),
+    ).toContainText("Sonnet");
+    await page.waitForFunction(
+      () => localStorage.getItem("ya:providers:local") !== null,
+    );
+    await sibling.route("**/api/settings", async (route) => {
+      await gate;
+      await route.continue();
+    });
+    await sibling.goto(page.url(), { waitUntil: "commit" });
+    await expect(
+      sibling.locator(".new-session-model-field button").first(),
+    ).toContainText("Sonnet");
+    await expect(
+      sibling.locator(
+        '.new-session-helper-section button[aria-label*="Thinking"]',
+      ),
+    ).toContainText("High");
+    const composer = sibling.locator("textarea.new-session-form-textarea");
+    const originalDraft = await composer.inputValue();
+    await composer.press("ControlOrMeta+End");
+    await composer.pressSequentially("cached choices, live typing", {
+      delay: 10,
+    });
+    await expect(composer).toHaveValue(
+      `${originalDraft}cached choices, live typing`,
+    );
+    for (const viewport of [
+      { width: 1000, height: 600 },
+      { width: 375, height: 812 },
+    ]) {
+      await sibling.setViewportSize(viewport);
+      await recordUiCapture(
+        sibling,
+        `new-session-retained-defaults-${viewport.width}`,
+      );
+    }
+  } finally {
+    release();
+    await sibling.close();
+    const restored = await request.put(`${baseURL}/api/settings`, {
+      headers,
+      data: { newSessionDefaults: before.settings.newSessionDefaults ?? {} },
+    });
+    expect(restored.ok()).toBe(true);
+  }
+});

@@ -182,6 +182,11 @@ const {
     executors: [] as string[],
   },
   serverSettingsState: {
+    error: null as string | null,
+    refetch: vi.fn(),
+    displayDefaults: undefined as
+      | import("@yep-anywhere/shared").NewSessionDefaults
+      | undefined,
     settings: null as {
       newSessionDefaults?: {
         provider?: "claude" | "claude-gateway" | "codex" | "opencode";
@@ -514,11 +519,12 @@ vi.mock("../../hooks/useRemoteExecutors", () => ({
 vi.mock("../../hooks/useServerSettings", () => ({
   useServerSettings: () => ({
     settings: serverSettingsState.settings,
+    displayDefaults: serverSettingsState.displayDefaults,
     isLoading: serverSettingsState.isLoading,
-    error: null,
+    error: serverSettingsState.error,
     updateSettings: vi.fn(),
     updateSetting: mockUpdateSetting,
-    refetch: vi.fn(),
+    refetch: serverSettingsState.refetch,
   }),
 }));
 
@@ -858,6 +864,9 @@ describe("NewSessionForm", () => {
     providerRowState.error = null;
     remoteExecutorsState.executors = [];
     serverSettingsState.settings = null;
+    serverSettingsState.error = null;
+    serverSettingsState.refetch.mockClear();
+    serverSettingsState.displayDefaults = undefined;
     serverSettingsState.isLoading = true;
     filterDropdownState.selected = [];
     toolbarVisibilityState.projectQueue = false;
@@ -1017,6 +1026,10 @@ describe("NewSessionForm", () => {
   });
 
   it("keeps an explicit Claude selection when saved Codex defaults load later", async () => {
+    serverSettingsState.displayDefaults = {
+      provider: "codex",
+      model: "gpt-5.3-codex",
+    };
     const { rerender } = render(<NewSessionForm projectId="project-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
@@ -1026,6 +1039,8 @@ describe("NewSessionForm", () => {
     );
     expect(selectedDropdownValue("newSessionModelTitle")).toBe("opus");
 
+    expect(mockUpdateSetting).not.toHaveBeenCalled();
+
     serverSettingsState.settings = {
       newSessionDefaults: {
         provider: "codex",
@@ -1034,6 +1049,7 @@ describe("NewSessionForm", () => {
       },
     };
     serverSettingsState.isLoading = false;
+    serverSettingsState.displayDefaults = undefined;
 
     rerender(<NewSessionForm projectId="project-1" />);
 
@@ -1046,6 +1062,66 @@ describe("NewSessionForm", () => {
       ).not.toContain("selected");
       expect(selectedDropdownValue("newSessionModelTitle")).toBe("opus");
     });
+  });
+
+  it("renders retained display defaults while settings are pending and then reconciles", async () => {
+    serverSettingsState.displayDefaults = {
+      provider: "codex",
+      providers: {
+        codex: {
+          model: "gpt-5.3-codex",
+          thinkingMode: "on",
+          effortLevel: "high",
+        },
+      },
+    };
+    const view = () => (
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />
+    );
+    const { rerender } = render(view());
+    expect(selectedDropdownValue("newSessionModelTitle")).toBe("gpt-5.3-codex");
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "hello" },
+    });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "newSessionStartAction",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    serverSettingsState.error = "offline";
+    serverSettingsState.isLoading = false;
+    rerender(view());
+    expect(selectedDropdownValue("newSessionModelTitle")).toBe("gpt-5.3-codex");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "newSessionDefaultsUnavailable",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionDefaultsRetry" }),
+    );
+    expect(serverSettingsState.refetch).toHaveBeenCalledTimes(1);
+    serverSettingsState.error = null;
+    serverSettingsState.settings = {
+      newSessionDefaults: { provider: "claude", model: "opus" },
+    };
+    serverSettingsState.isLoading = false;
+    serverSettingsState.displayDefaults = undefined;
+    rerender(view());
+    await waitFor(() =>
+      expect(selectedDropdownValue("newSessionModelTitle")).toBe("opus"),
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "newSessionStartAction",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it("does not reuse the Claude fallback model when switching to Codex", async () => {

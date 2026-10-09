@@ -192,6 +192,13 @@ Successful visit/clear/remove mutations update the captured source. A browser
 recent-project shortcut is source-scoped as well; the same encoded path on two
 hosts is not one preference.
 
+A New Session URL already carries its requested project path. The form may
+display that path before project discovery finishes, without inventing a
+project record or session counts. An unchanged requested path remains a
+selection awaiting resolution, not a request to create a new folder. Start
+and Queue still require the resolved server project; an arriving canonical
+path replaces the requested path only when the user has not edited it.
+
 The implementation handoff is
 [`docs/tactical/095-new-session-recent-project-readiness.md`](../docs/tactical/095-new-session-recent-project-readiness.md).
 

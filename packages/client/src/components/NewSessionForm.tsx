@@ -29,6 +29,8 @@ import templateStyles from "./TemplateProjectForm.module.css";
 import { useProjectTemplateChoices } from "../hooks/useProjectTemplateChoices";
 import {
   DEFAULT_PROVIDER,
+  fromUrlProjectId,
+  isUrlProjectId,
   SERVER_CAPABILITIES,
   serverHasCapability,
   isTurnEffort,
@@ -262,7 +264,7 @@ import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useRecentSpeechAttribution } from "../hooks/useRecentSpeechAttribution";
 import { useProviderSubscriptionUsage } from "../hooks/useProviderSubscriptionUsage";
 import { useActingPrincipal } from "../hooks/useActingPrincipal";
-import { shortenPath } from "../lib/text";
+import { isAbsoluteLikePath, shortenPath } from "../lib/text";
 import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
@@ -593,8 +595,17 @@ export function NewSessionForm({
       projectId: null,
       workstreams: [],
     });
+  const requestedProjectPath = useMemo(() => {
+    if (!projectId || !isUrlProjectId(projectId)) return "";
+    try {
+      const path = fromUrlProjectId(projectId);
+      return isAbsoluteLikePath(path) ? path : "";
+    } catch {
+      return "";
+    }
+  }, [projectId]);
   const [projectInput, setProjectInput] = useState(
-    () => selectedProject?.path ?? "",
+    () => selectedProject?.path ?? requestedProjectPath,
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectChooserRef = useRef<HTMLDivElement>(null);
@@ -1500,7 +1511,7 @@ export function NewSessionForm({
   );
   const normalizedProjectInput = normalizeProjectInput(projectInput);
   const normalizedSelectedProjectPath = normalizeProjectInput(
-    selectedProject?.path ?? "",
+    selectedProject?.path ?? requestedProjectPath,
   );
   const isProjectInputCommittedSelection =
     Boolean(normalizedProjectInput) &&
@@ -2061,15 +2072,19 @@ export function NewSessionForm({
     if (lastSyncedProjectIdRef.current === nextProjectId) {
       return;
     }
-    // The form mounts before the named project's record arrives; fill the
-    // project field from that record once it does.
+    // URL identity is display intent; only a server row authorizes launch.
     if (nextProjectId && !selectedProject) {
+      setProjectInput((prev) => prev || requestedProjectPath);
       return;
     }
 
     lastSyncedProjectIdRef.current = nextProjectId;
-    setProjectInput((prev) => prev || (selectedProject?.path ?? ""));
-  }, [projectId, selectedProject]);
+    setProjectInput((prev) =>
+      !prev || prev === requestedProjectPath
+        ? (selectedProject?.path ?? "")
+        : prev,
+    );
+  }, [projectId, requestedProjectPath, selectedProject]);
 
   useEffect(() => {
     if (!isProjectChooserExpanded) return;

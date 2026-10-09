@@ -17,6 +17,7 @@ import {
   SESSION_SANDBOXING_CAPABILITY,
   SESSION_SANDBOXING_STATUS_CAPABILITY,
   type SessionSandboxBlocker,
+  toUrlProjectId,
 } from "@yep-anywhere/shared";
 import {
   Fragment,
@@ -1641,9 +1642,18 @@ describe("NewSessionForm", () => {
     };
     serverSettingsState.isLoading = false;
 
+    const project = {
+      ...chooserProjects[0]!,
+      id: toUrlProjectId(chooserProjects[0]!.path),
+    };
     const { rerender } = render(
-      <NewSessionForm projectId="project-1" projects={[]} />,
+      <NewSessionForm projectId={project.id} projects={[]} />,
     );
+
+    expect(
+      screen.getByPlaceholderText("newSessionProjectPathPlaceholder"),
+    ).toHaveProperty("value", project.path);
+    expect(mockAddProject).not.toHaveBeenCalled();
 
     const composer = screen.getByPlaceholderText("newSessionPlaceholder");
     fireEvent.change(composer, { target: { value: "hello" } });
@@ -1656,9 +1666,9 @@ describe("NewSessionForm", () => {
 
     rerender(
       <NewSessionForm
-        projectId="project-1"
-        selectedProject={chooserProjects[0]}
-        projects={[...chooserProjects]}
+        projectId={project.id}
+        selectedProject={project}
+        projects={[project]}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
@@ -1671,7 +1681,7 @@ describe("NewSessionForm", () => {
       expect(mockStartSession).toHaveBeenCalledTimes(1);
     });
     expect(mockStartSession.mock.calls[0]?.slice(0, 2)).toEqual([
-      "project-1",
+      project.id,
       "hello",
     ]);
   });

@@ -214,6 +214,27 @@ inventory results; do not fabricate empty counts or omit older sessions.
 The live backend still needs the user-performed restart to activate its changes
 and built-client default. Contributing-model: 6-astra.
 
+The requested project path now displays directly from its URL identity while
+the server resolves the project. It does not open folder creation, fabricate
+session counts or authorize Start/Queue. The regression fails before this
+change and passes after it; all 106 form tests and ten startup browser cases
+pass. A held-project browser check confirms sequential typing within 100 ms
+and disabled Start; desktop and phone captures were inspected.
+
+With the saved model ID recognized independently of its later catalog display
+name, two native-corpus runs gave cold full UI 417/817/815 ms and
+2746/922/876 ms. Returning tabs in the final run took 349–453 ms. All nine
+final-run tabs passed the revised 3,000 ms threshold. The earlier model-name
+check overstated model readiness time, but its project-last cold failures
+remain valid. These contended-host samples establish the measured cases, not
+a universal upper bound.
+
+Settings remains open: three new browser contexts on warm native-data servers
+showed populated Settings at 931–1,433 ms. Three fresh native-data servers
+gave 3,206/1,619/1,467 ms, reproducing a miss of the revised target. No Settings
+implementation change has been made; attribute that delay before choosing its
+fix. All probe processes were removed. Contributing-model: 6-astra.
+
 Earlier acquisition investigation (2026-10-09), before the pure owners above:
 the five
 startup query modules' static chunk graph includes about 1.54 MB of unminified

@@ -1,13 +1,19 @@
+import {
+  type ServerSettingsSnapshot,
+  type ServerSettingsResponse,
+  EMPTY_SERVER_SETTINGS_SNAPSHOT,
+  SERVER_SETTINGS_QUERY_KEY,
+  subscribeServerSettingsSnapshots,
+  getServerSettingsSnapshot,
+  acceptServerSettingsSnapshot,
+  nextMutationObservedAt,
+  applySettingsQuerySnapshot,
+} from "../lib/serverSettingsQuery";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ServerSettings } from "../api/client";
 import type { NewSessionDefaults } from "@yep-anywhere/shared";
-import {
-  readNewSessionDisplayDefaults,
-  writeNewSessionDisplayDefaults,
-} from "../lib/newSessionDisplayDefaults";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import {
-  createClientQueryKey,
   ensureClientQuery,
   type ClientQueryRequestContext,
 } from "../lib/clientQueryController";
@@ -35,79 +41,7 @@ interface UseServerSettingsResult {
   refetch: () => Promise<void>;
 }
 
-interface ServerSettingsSnapshot {
-  settings: ServerSettings | null;
-  displayDefaults?: NewSessionDefaults;
-  observedAt?: number;
-}
-
-const EMPTY_SERVER_SETTINGS_SNAPSHOT: ServerSettingsSnapshot = {
-  settings: null,
-};
-
-const SERVER_SETTINGS_QUERY_KEY = createClientQueryKey({
-  endpoint: "settings",
-});
 const SERVER_SETTINGS_REVALIDATE_EVENTS = ["refresh", "reconnect"] as const;
-type ServerSettingsResponse = { settings: ServerSettings };
-
-const serverSettingsSnapshotsBySource = new Map<
-  ClientSummarySourceKey,
-  ServerSettingsSnapshot
->();
-const serverSettingsSnapshotListeners = new Set<() => void>();
-
-function emitServerSettingsSnapshotChange(): void {
-  for (const listener of Array.from(serverSettingsSnapshotListeners)) {
-    listener();
-  }
-}
-
-function subscribeServerSettingsSnapshots(listener: () => void): () => void {
-  serverSettingsSnapshotListeners.add(listener);
-  return () => {
-    serverSettingsSnapshotListeners.delete(listener);
-  };
-}
-
-function getServerSettingsSnapshot(
-  sourceKey: ClientSummarySourceKey,
-): ServerSettingsSnapshot {
-  let snapshot = serverSettingsSnapshotsBySource.get(sourceKey);
-  if (!snapshot) {
-    snapshot = {
-      settings: null,
-      displayDefaults: readNewSessionDisplayDefaults(sourceKey),
-    };
-    serverSettingsSnapshotsBySource.set(sourceKey, snapshot);
-  }
-  return snapshot;
-}
-
-function acceptServerSettingsSnapshot(
-  sourceKey: ClientSummarySourceKey,
-  settings: ServerSettings,
-  observedAt: number,
-): void {
-  const current = serverSettingsSnapshotsBySource.get(sourceKey);
-  if (current?.observedAt !== undefined && current.observedAt > observedAt) {
-    return;
-  }
-
-  serverSettingsSnapshotsBySource.set(sourceKey, {
-    settings,
-    observedAt,
-  });
-  writeNewSessionDisplayDefaults(sourceKey, settings.newSessionDefaults);
-  emitServerSettingsSnapshotChange();
-}
-
-function nextMutationObservedAt(sourceKey: ClientSummarySourceKey): number {
-  const currentObservedAt =
-    serverSettingsSnapshotsBySource.get(sourceKey)?.observedAt ??
-    Number.NEGATIVE_INFINITY;
-  return Math.max(Date.now(), currentObservedAt + 1);
-}
 
 function getSourceTransport(sourceKey: ClientSummarySourceKey) {
   return getSourceRuntimeRegistry().getOrCreateSourceRuntime(sourceKey)
@@ -129,17 +63,6 @@ async function fetchSettingsQuery(context: ClientQueryRequestContext) {
     console.error("[useServerSettings] Failed to fetch settings:", err);
     throw err;
   }
-}
-
-function applySettingsQuerySnapshot(
-  response: ServerSettingsResponse,
-  context: ClientQueryRequestContext,
-) {
-  acceptServerSettingsSnapshot(
-    context.sourceKey,
-    response.settings,
-    context.requestStartedAt,
-  );
 }
 
 /** Local entrypoint hint; mounted consumers join the same source-owned read. */
@@ -178,10 +101,7 @@ function useServerSettingsSnapshot(
   );
 }
 
-export function resetServerSettingsForTests(): void {
-  serverSettingsSnapshotsBySource.clear();
-  serverSettingsSnapshotListeners.clear();
-}
+export { resetServerSettingsForTests } from "../lib/serverSettingsQuery";
 
 /**
  * Hook for managing server-wide settings.

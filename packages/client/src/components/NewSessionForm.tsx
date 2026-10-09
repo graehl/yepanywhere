@@ -1232,9 +1232,7 @@ export function NewSessionForm({
   // Get models and capabilities for the currently selected provider. Its named
   // row wins once available because it is independent of the aggregate's
   // slowest member and can carry stronger freshness than a retained snapshot.
-  const selectedProviderQuery = useProviderRow(selectedProvider, {
-    forceRefreshOnMount: selectedProvider === "claude-gateway",
-  });
+  const selectedProviderQuery = useProviderRow(selectedProvider);
   const aggregateProviderInfo = providers.find(
     (p) => p.name === selectedProvider,
   );

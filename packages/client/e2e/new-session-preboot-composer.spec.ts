@@ -153,6 +153,45 @@ test("a reload before the app adopts the composer keeps what was typed", async (
   ).toBeNull();
 });
 
+test("settings, version and selected provider arrive before the UI runtime executes", async ({
+  page,
+  baseURL,
+}) => {
+  const held: Route[] = [];
+  let releasing = false;
+  await page.route("**/assets/react-runtime-*.js", (route) => {
+    if (releasing) return route.continue();
+    held.push(route);
+  });
+  const responses = [
+    "/api/settings",
+    "/api/version",
+    "/api/providers/claude",
+  ].map((path) =>
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === path && response.ok(),
+    ),
+  );
+  try {
+    await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });
+    await Promise.all(responses);
+    expect(held.length).toBeGreaterThan(0);
+    await expect(page.locator(".new-session-form textarea")).toHaveCount(0);
+  } finally {
+    releasing = true;
+    await Promise.all(held.map((route) => route.continue()));
+  }
+  const composer = page.locator("textarea.new-session-form-textarea");
+  await expect(composer).toBeVisible();
+  await composer.focus();
+  let typed = "";
+  for (const character of "early data") {
+    await page.keyboard.type(character);
+    typed += character;
+    await expect(composer).toHaveValue(typed, { timeout: 100 });
+  }
+});
+
 test("route data arrives before the New Session module executes", async ({
   page,
   baseURL,

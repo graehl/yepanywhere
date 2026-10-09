@@ -113,8 +113,8 @@ available. Current settings reconcile untouched controls; an explicit user
 selection survives. A failed settings read retains the display and offers a
 retry. Missing, malformed or expired storage falls back to normal acquisition.
 
-The local `/new-session` entry starts current settings acquisition while its
-route modules load. It uses the same source transport, query identity and
+The local `/new-session` entry starts current settings acquisition before its
+React runtime loads. It uses canonical same-origin HTTP, the same query identity and
 snapshot publication as `useServerSettings`; a mounted consumer joins pending
 work or reuses its accepted response. A failed primer does not mark settings
 ready and leaves retry/error presentation with the mounted owner. It neither
@@ -125,8 +125,7 @@ read for a recognized URL preference, otherwise the saved provider or ordinary
 Claude default. It shares the form's row cache and pending request instead of
 waiting for the form's seeding effect. Settings failure starts no provider read.
 This is an acquisition hint: the mounted form still reconciles current provider
-availability and principal locks, and Gateway selection still requires its own
-forced current probe. The primer does not select or authorize a launch.
+availability and principal locks. The primer does not select or authorize a launch.
 
 The provider chooser separates identity enumeration from dynamic readiness:
 
@@ -147,8 +146,15 @@ The provider chooser separates identity enumeration from dynamic readiness:
 - `GET /api/providers/:name` resolves and refreshes one selected provider without
   probing unrelated providers.
 
-The server retains provider rows through one byte-bounded,
-source-versioned owner. Ordinary callers join current work, concurrent forced
+The server retains one provider row per registered provider for its lifetime,
+including unavailable-provider results. Ordinary reads from any client reuse
+that result without time expiry or size eviction; opening a tab does not
+schedule a background probe. Explicit Refresh or a changed model-catalog
+configuration key starts discovery again. The fixed provider set bounds the
+number of retained rows, rather than a shared byte budget that could make a
+large catalog rediscover itself on every read.
+
+One source-versioned owner coordinates acquisition. Ordinary callers join current work, concurrent forced
 callers coalesce, forced work supersedes older ordinary work, and late old
 success or failure cannot replace or delete the newer row. The provider's model
 catalog key participates in generation identity. Aggregate `Promise.all`
@@ -169,7 +175,8 @@ fallback list or a failed refresh. Refresh is the named `refresh=1` probe for
 the selected provider. Pool launches omit the line until the router catalog
 carries its own provenance.
 
-The client persists a versioned, source-scoped browser snapshot for seven days.
+The client persists a versioned, source-scoped browser display snapshot without
+age expiry.
 An explicit allowlist retains provider/model display metadata and capabilities;
 identity, expiry, login commands, credentials, authorization material, raw
 provider output, and unknown configuration are excluded. Hydration marks the
@@ -181,7 +188,7 @@ source consumer: a later aggregate settings reload supersedes an older named
 cache entry, while a late older aggregate cannot displace newer named facts or
 reintroduce an old error.
 
-Accepted named rows also persist independently, using the same seven-day
+Accepted named rows also persist independently, using the same non-expiring
 allowlist and source boundary. A sibling tab can restore the selected model
 and capabilities while the complete catalog is still waiting on unrelated
 providers. A named snapshot never becomes a partial provider collection or a
@@ -191,9 +198,10 @@ or aggregate runtime status is required to authorize an explicit launch;
 persisted installation status alone does not enable Start or Project Queue.
 
 Display validity and launch authority are separate. A stale selected row may
-remain visible while a named probe is pending or failed. Claude Gateway starts
-a forced named probe after the selection becomes current; Start and Project
-Queue launch remain blocked until that successful response advertises the
+remain visible while a named read is pending or failed. Claude Gateway uses
+the ordinary server cache after the selection becomes current; opening a tab
+does not force discovery. Start and Project Queue launch remain blocked until
+a current server response advertises the
 required model. Actual new-session process creation repeats the Gateway-only
 advertised-model check, so deferred Project Queue and internal worker-queue
 launches cannot reuse enqueue-time authority. A Project Queue item held by the
@@ -202,7 +210,7 @@ validation failure moves it to `failed` with the catalog error rather than
 removing its prompt. At worker capacity, a direct Gateway caller without that
 durable failure channel receives the existing `queue_full` response instead of
 a queued acceptance whose later failure would discard its prompt. Retry
-refreshes Gateway alone. Other providers retain ordinary five-minute row reuse
+refreshes Gateway alone. Other providers retain ordinary server-row reuse
 and exact unlisted model-id behavior.
 
 For ordinary local providers, `installed` is the New Session selection and

@@ -162,7 +162,8 @@ provider-card rows, and a fresh server still computes the aggregate on demand.
 
 The app shell's `primeProviderCache()` and New Session continue to join one
 aggregate request. That avoids duplicate client requests but does not make the
-aggregate cheap. The server retains successful provider rows for five minutes;
+aggregate cheap. The server now retains provider rows until explicit refresh,
+relevant configuration change or restart (maintainer direction, 2026-10-09);
 there is no durable server provider/model snapshot across restart.
 
 New Session concurrently requests recent project choices. That route is not a
@@ -244,9 +245,10 @@ product purposes.
 
 The existing provider route now owns each provider row independently through
 `SourceVersionedSingleFlight`. Its source version includes the provider's model
-catalog key and a monotonic acquisition generation. Accepted rows have a
-five-minute TTL and a shared 4 MiB byte budget. This is enough to order current
-process work and prevent stale completion; it is not a durable server snapshot
+catalog key and a monotonic acquisition generation. Accepted rows do not expire
+or evict by byte size: one row per registered provider bounds retained entries.
+Explicit refresh and configuration-key changes replace those rows. This orders
+current process work and prevents stale completion; it is not a durable server snapshot
 and adds no freshness/error fields to the wire response.
 
 A persisted install-scoped provider/model snapshot remains conditional on the
@@ -394,7 +396,7 @@ slice; three remain partial and have explicit evidence gates.
 | 7 | Cached rows and requests remain isolated by client source and provider | Source-switch tests plus distinct source/provider cache keys | **Met** |
 | 8 | Browser snapshots retain only versioned display/capability fields | Inspect serialized fixture containing identity, expiry, login command, and unknown authorization | **Met** — all four excluded fields become zero; unknown/unversioned snapshots are removed |
 | 9 | Browser and server restart retain a bounded, non-secret last-successful model snapshot | Reload with aggregate held, then restart with a clean browser | **Partial** — browser snapshot is bounded by its allowlist and storage quota; server persistence is absent |
-| 10 | Server route retention and refresh work have one byte-bounded generation owner | Inspect owner budget and test ordinary/forced overlap, coalescing, late success, and late failure | **Met** — one `SourceVersionedSingleFlight` owner with a 4 MiB accepted-value budget |
+| 10 | Server route retention and refresh work have one generation owner, retaining one result per provider until explicit refresh or configuration change | Test cross-client reuse after a year and above the former byte limit, plus ordinary/forced overlap and late completion | **Met** — one `SourceVersionedSingleFlight` owner, no expiry or size eviction; finite registered-provider key set |
 | 11 | One provider failure does not erase another provider's usable row | Fail named and aggregate provider probes independently | **Partial** — named failure retains stale display data; aggregate `Promise.all` still rejects |
 
 Criterion 4's route measurement is also recorded in tactical 093, without

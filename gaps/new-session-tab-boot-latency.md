@@ -9,6 +9,12 @@ current state.
 
 ## Observed
 
+Current acceptance (maintainer, 2026-10-09): **at most 1,500 ms** from new-tab
+navigation to the real project/provider/model/effort UI. The earlier 500 ms
+target is superseded; historical measurements below retain their original
+qualifications. The pre-boot textarea alone never satisfies acceptance.
+Frontend reloads remain user-initiated. Contributing-model: 6-astra.
+
 On the maintainer's live dev server, about 1.5 s after opening
 `/new-session?projectId=…` in a new tab the pre-boot composer (see
 [early typing handoff](../topics/early-typing-handoff.md#pre-boot-composer))
@@ -99,6 +105,33 @@ form readiness from 5.01 s to 0.98 s. This fixes the measured delivery bottlenec
 the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
+
+Latest slice (2026-10-09): settings and version now start from a lightweight
+local entry, followed by the selected provider as soon as settings resolve.
+A real browser regression holds the React runtime download and requires all
+three responses before releasing it. Existing hook tests preserve
+source isolation, mutation ordering, fresh-version coverage and speech retries.
+Alternating saved/current builds gave full UI 690/781/702 ms versus 726/508/647
+ms. These six contended samples do not establish a reliable speedup and preceded
+the selected-provider owner extraction. The final owner extraction passes all
+eight startup browser cases and 55 query-hook tests; full timing remains due.
+
+Maintainer-directed cache policy now keeps the server's accepted provider rows
+until explicit refresh, relevant configuration change or server restart. The
+old five-minute positive expiry, 15-second negative expiry and 4 MiB eviction
+could all restart discovery after another client had already completed it.
+Route tests advance time by a year and reuse a catalog over 4 MiB across client
+requests without another probe; refresh and generation-ordering tests pass.
+Browser provider display snapshots also have no age expiry. Gateway no longer
+forces a probe just because a New Session form mounts; launch-time validation
+remains separate. Contributing-model: 6-astra.
+
+Still required: stable reserved control positions as independent data arrives,
+an accessible subtle refresh action even without a live catalog, complete
+<=1,500 ms cold/returning/concurrent/hosted verification, and final broader
+checks. A manual-mode Vite guard was found to force document reloads after
+source edits. Its opt-in correction is being verified separately without
+restarting the live development server.
 
 Cold acquisition still loads unnecessary prerequisites (2026-10-09). The five
 startup query modules' static chunk graph includes about 1.54 MB of unminified

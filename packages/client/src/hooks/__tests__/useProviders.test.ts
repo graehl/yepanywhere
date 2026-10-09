@@ -357,6 +357,14 @@ describe("useProviders", () => {
     });
     unmount();
 
+    // An old display remains useful; it never substitutes for current server data.
+    for (const key of Object.keys(localStorage).filter((key) =>
+      key.startsWith("ya:providers:"),
+    )) {
+      const snapshot = JSON.parse(localStorage.getItem(key)!);
+      snapshot.savedAt = 0;
+      localStorage.setItem(key, JSON.stringify(snapshot));
+    }
     // A later visit: the module cache is gone, the browser snapshot is not.
     vi.resetModules();
     const reloadedModule = await import("../useProviders");
@@ -505,6 +513,13 @@ describe("useProviders", () => {
     first.unmount();
     catalog.unmount();
 
+    for (const key of Object.keys(localStorage).filter((key) =>
+      key.startsWith("ya:provider-row:"),
+    )) {
+      const snapshot = JSON.parse(localStorage.getItem(key)!);
+      snapshot.savedAt = 0;
+      localStorage.setItem(key, JSON.stringify(snapshot));
+    }
     vi.resetModules();
     const siblingModule = await import("../useProviders");
     const pending = deferred<{ provider: typeof provider }>();
@@ -550,7 +565,7 @@ describe("useProviders", () => {
   });
 
   it.each([
-    ["expired", "local", "claude", Date.now() - 8 * 24 * 60 * 60_000],
+    ["invalid timestamp", "local", "claude", null],
     ["other source", "host:other", "claude", Date.now()],
     ["other provider", "local", "codex", Date.now()],
   ])(

@@ -32,6 +32,7 @@ export interface SourceVersionedSingleFlightStats {
 }
 
 export interface SourceVersionedSingleFlightOptions<Value> {
+  /** Infinity retains every key; use only for an independently bounded key set. */
   maxRetainedBytes: number;
   estimateBytes(value: Value): number;
   /**
@@ -100,12 +101,10 @@ export class SourceVersionedSingleFlight<Key, Value> {
 
   constructor(options: SourceVersionedSingleFlightOptions<Value>) {
     if (
-      !Number.isFinite(options.maxRetainedBytes) ||
+      Number.isNaN(options.maxRetainedBytes) ||
       options.maxRetainedBytes < 0
     ) {
-      throw new RangeError(
-        "maxRetainedBytes must be a finite non-negative number",
-      );
+      throw new RangeError("maxRetainedBytes must be a non-negative number");
     }
     this.maxRetainedBytes = options.maxRetainedBytes;
     this.estimateBytes = options.estimateBytes;

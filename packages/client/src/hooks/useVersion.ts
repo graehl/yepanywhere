@@ -1,8 +1,16 @@
+import {
+  type VersionSnapshot,
+  EMPTY_VERSION_SNAPSHOT,
+  VERSION_QUERY_KEY,
+  getVersionSnapshot,
+  subscribeVersionSnapshots,
+  applyVersionSnapshot,
+  resetVersionQueryForTests,
+} from "../lib/versionQuery";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { type VersionInfo, api } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import {
-  createClientQueryKey,
   ensureClientQuery,
   type ClientQueryCoverage,
   type ClientQueryRequestContext,
@@ -20,7 +28,6 @@ interface UseVersionOptions {
   freshOnMount?: boolean;
 }
 
-const VERSION_QUERY_KEY = createClientQueryKey({ endpoint: "version" });
 const VERSION_REVALIDATE_EVENTS = ["reconnect"] as const;
 const PENDING_SPEECH_BACKEND_RETRY_MS = 1000;
 
@@ -33,72 +40,13 @@ const PENDING_SPEECH_BACKEND_RETRY_MS = 1000;
  */
 const FRESH_VERSION_COVERAGE: ClientQueryCoverage = { fresh: true };
 
-interface VersionSnapshot {
-  version: VersionInfo | null;
-  observedAt?: number;
-}
-
-const EMPTY_VERSION_SNAPSHOT: VersionSnapshot = { version: null };
-
-const versionSnapshotsBySource = new Map<
-  ClientSummarySourceKey,
-  VersionSnapshot
->();
-const versionSnapshotListeners = new Set<() => void>();
-
-function emitVersionSnapshotChange(): void {
-  for (const listener of Array.from(versionSnapshotListeners)) {
-    listener();
-  }
-}
-
-function subscribeVersionSnapshots(listener: () => void): () => void {
-  versionSnapshotListeners.add(listener);
-  return () => {
-    versionSnapshotListeners.delete(listener);
-  };
-}
-
-function getVersionSnapshot(
-  sourceKey: ClientSummarySourceKey,
-): VersionSnapshot {
-  return versionSnapshotsBySource.get(sourceKey) ?? EMPTY_VERSION_SNAPSHOT;
-}
-
-function acceptVersionSnapshot(
-  sourceKey: ClientSummarySourceKey,
-  version: VersionInfo,
-  observedAt: number,
-): void {
-  const current = versionSnapshotsBySource.get(sourceKey);
-  if (current?.observedAt !== undefined && current.observedAt > observedAt) {
-    return;
-  }
-
-  versionSnapshotsBySource.set(sourceKey, { version, observedAt });
-  emitVersionSnapshotChange();
-  syncPendingSpeechFollowUp(sourceKey);
-}
-
 function versionFetcher(
   context: ClientQueryRequestContext,
 ): Promise<VersionInfo> {
   return api.getVersion({ fresh: context.coverage.fresh === true });
 }
 
-function applyVersionSnapshot(
-  version: VersionInfo,
-  context: ClientQueryRequestContext,
-): void {
-  acceptVersionSnapshot(context.sourceKey, version, context.requestStartedAt);
-}
-
-/** Read source-owned version facts without starting or waiting for a request. */
-export function readVersionInfo(
-  sourceKey: ClientSummarySourceKey,
-): VersionInfo | null {
-  return getVersionSnapshot(sourceKey).version;
-}
+export { readVersionInfo } from "../lib/versionQuery";
 
 /** Local entrypoint hint; mounted consumers join the same capability read. */
 export function primeLocalVersion() {
@@ -151,6 +99,7 @@ async function ensureFreshVersion(
 interface VersionFollowUpEntry {
   retainedCount: number;
   timer: ReturnType<typeof setTimeout> | null;
+  unsubscribe: () => void;
 }
 
 const versionFollowUpsBySource = new Map<
@@ -213,7 +162,13 @@ function retainPendingSpeechFollowUp(
 ): () => void {
   let entry = versionFollowUpsBySource.get(sourceKey);
   if (!entry) {
-    entry = { retainedCount: 0, timer: null };
+    entry = {
+      retainedCount: 0,
+      timer: null,
+      unsubscribe: subscribeVersionSnapshots(() =>
+        syncPendingSpeechFollowUp(sourceKey),
+      ),
+    };
     versionFollowUpsBySource.set(sourceKey, entry);
   }
   entry.retainedCount += 1;
@@ -228,6 +183,7 @@ function retainPendingSpeechFollowUp(
       if (entry.timer) {
         clearTimeout(entry.timer);
       }
+      entry.unsubscribe();
       versionFollowUpsBySource.delete(sourceKey);
     }
   };
@@ -261,9 +217,9 @@ export function useRetainedVersionInfo(
 }
 
 export function resetVersionSnapshotsForTests(): void {
-  versionSnapshotsBySource.clear();
-  versionSnapshotListeners.clear();
+  resetVersionQueryForTests();
   for (const entry of versionFollowUpsBySource.values()) {
+    entry.unsubscribe();
     if (entry.timer) {
       clearTimeout(entry.timer);
     }

@@ -112,14 +112,21 @@ saved model ID before its catalog label arrives. The timing probe retains both
 milestones; neither substitutes the early textarea for the full form.
 Contributing-model: 6-astra.
 
-The healthy traces still show projects and recents waiting on version
-acquisition: version completed at 418–701 ms, then those collection reads
-started at 433–745 ms. This remains a concrete serial bootstrap dependency.
-The supported v0.8.0–v0.9.2 collection routes ignore the `summaryMode` query
-parameter and return their normal complete responses, so a read-preference
-approach is a candidate for removing this wait. No client contract change has
-landed yet; withdrawal semantics and response compatibility need to remain
-explicit when replacing the current capability gate.
+Projects and recents no longer wait for version acquisition (2026-10-09).
+Unknown versions receive a retained-read preference; the reviewed
+v0.8.0–v0.9.2 handlers ignore it and return complete responses. Known absent
+or withdrawn support still selects complete reads. Response metadata owns
+completeness; the source-bound query owners preserve late-response isolation.
+See [retained collection gate](../topics/server-capabilities.md#retained-collection-gate).
+
+Three healthy isolated cold loads now started both collections alongside
+version at 213/351/232 ms, rather than after its response. Full saved controls
+appeared at 361/533/458 ms; catalog-enriched labels at 492/663/485 ms. These
+remain diagnostic samples under host load 13–15 on 16 cores, with project
+discovery warmed by fixture setup. The 500 ms requirement is not established.
+Settings response consumption and selected-provider acquisition still form a
+serial chain; initial client startup also varies materially. Contributing-model:
+6-astra.
 
 Claude native-executable selection no longer asks Node to inspect network
 interfaces or perform reverse DNS while determining libc (2026-10-09). The

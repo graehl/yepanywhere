@@ -92,6 +92,13 @@ function applyVersionSnapshot(
   acceptVersionSnapshot(context.sourceKey, version, context.requestStartedAt);
 }
 
+/** Read source-owned version facts without starting or waiting for a request. */
+export function readVersionInfo(
+  sourceKey: ClientSummarySourceKey,
+): VersionInfo | null {
+  return getVersionSnapshot(sourceKey).version;
+}
+
 /** Resolve capability-dependent first requests through the existing source owner. */
 export async function ensureVersionInfo(
   sourceKey: ClientSummarySourceKey,
@@ -237,8 +244,9 @@ function useVersionSnapshot(
  * answer, not another acquisition: `useVersion` retains this fact at the
  * `route` tier, so a second retainer here would only add a consumer competing
  * for a request already in flight. Before it resolves this reads `null`, which
- * every synchronous gate treats as "capability absent". Collection fetchers
- * join `ensureVersionInfo` before choosing their first request's mode.
+ * capability gates treat as "capability absent". Projects and recents can send
+ * a backward-compatible read preference without waiting for this snapshot;
+ * capability-dependent session collection reads still join `ensureVersionInfo`.
  */
 export function useRetainedVersionInfo(
   sourceKey: ClientSummarySourceKey,

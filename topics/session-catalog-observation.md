@@ -128,7 +128,11 @@ names overlay retained provider facts.
 Every persisted recents mutation publishes a coalesced `recents-changed`
 notification. Mounted client consumers share one bounded source collection and
 revalidate on it and on `session-catalog-updated`, without polling. Request
-transport remains bound to the source selected before capability lookup.
+transport remains bound to the requested source. The initial read does not
+await version acquisition: an unknown version sends the retained preference,
+which supported older releases ignore. An absent `catalog` means a complete
+response, and absent `visits` uses the returned recents as visit identities.
+Known absent or withdrawn support omits the preference.
 Incomplete enrichment preserves known titles and still-recorded visits, while
 an authoritative empty visit list clears them even during reconciliation.
 The final consumer releases its private in-memory rows and invalidates pending
@@ -163,7 +167,10 @@ cancels queued work, drains active retained work and prevents its publication.
 Client consumers share one source-bound request. Incomplete responses preserve
 known collection members and cannot replace an undiscovered preferred project
 with an arbitrary first row. A complete empty response clears membership.
-Without the capability, clients request the existing complete enumeration.
+With known absent or withdrawn support, clients request the existing complete
+enumeration. While the version is unknown they send the retained preference
+without waiting; supported older releases ignore it and return complete data.
+Response metadata determines completeness, not the requested preference.
 External activity counts resolve directory identity from the retained scanner
 index, avoiding an indirect foreground scan through the session tracker.
 

@@ -27,7 +27,7 @@ vi.mock("../../contexts/RemoteConnectionContext", () => ({
   useOptionalRemoteConnection: () => null,
 }));
 vi.mock("../../lib/connection", () => ({ isRemoteClient: () => false }));
-vi.mock("../useVersion", () => ({ ensureVersionInfo: mocks.version }));
+vi.mock("../useVersion", () => ({ readVersionInfo: mocks.version }));
 vi.mock("../../lib/activityBus", () => ({
   activityBus: {
     on: (event: string, listener: () => void) => {
@@ -74,7 +74,7 @@ beforeEach(() => {
   mocks.fetchB.mockReset();
   mocks.runtime = { sourceKey: "host:a", transport: { fetch: mocks.fetchA } };
   mocks.version.mockReset();
-  mocks.version.mockResolvedValue({
+  mocks.version.mockReturnValue({
     current: "0.9.2",
     capabilities: [SERVER_CAPABILITIES.retainedRecents.name],
   });
@@ -113,7 +113,7 @@ it("joins consumers, then replaces first-generation loading on a catalog publica
 });
 
 it("omits the new parameter for older servers", async () => {
-  mocks.version.mockResolvedValue({ current: "0.9.2", capabilities: [] });
+  mocks.version.mockReturnValue({ current: "0.9.2", capabilities: [] });
   mocks.fetchA.mockResolvedValue({ recents: [entry] });
   const hook = renderHook(() => useRecentSessions());
   await settle();
@@ -150,15 +150,14 @@ it("preserves known titles and membership across incomplete catalog reads", asyn
   expect(hook.result.current.isLoading).toBe(false);
 });
 
-it("keeps requests and late results with their source while capability lookup is pending", async () => {
-  let resolveVersion!: (version: unknown) => void;
-  mocks.version.mockImplementationOnce(
+it("keeps requests and late collection results with their source", async () => {
+  let resolveRecents!: (response: unknown) => void;
+  mocks.fetchA.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
-        resolveVersion = resolve;
+        resolveRecents = resolve;
       }),
   );
-  mocks.fetchA.mockResolvedValue({ recents: [entry] });
   mocks.fetchB.mockResolvedValue({
     recents: [{ ...entry, sessionId: "other-host" }],
     catalog,
@@ -169,9 +168,11 @@ it("keeps requests and late results with their source while capability lookup is
   hook.rerender();
   await settle();
   expect(hook.result.current.recentSessions[0]?.sessionId).toBe("other-host");
-  act(() => resolveVersion({ current: "0.9.2" }));
+  act(() => resolveRecents({ recents: [entry] }));
   await settle();
-  expect(mocks.fetchA).toHaveBeenCalledWith("/recents?limit=100");
+  expect(mocks.fetchA).toHaveBeenCalledWith(
+    "/recents?limit=100&summaryMode=retained",
+  );
   expect(mocks.fetchB).toHaveBeenCalledTimes(1);
   expect(hook.result.current.recentSessions[0]?.sessionId).toBe("other-host");
 });

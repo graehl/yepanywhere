@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import { SERVER_CAPABILITIES, serverHasCapability } from "@yep-anywhere/shared";
 import { createProjectsApi } from "../api/projectsClient";
 import { catalogLoadState } from "../lib/clientSummaryCollections";
-import { ensureVersionInfo } from "./useVersion";
+import { readVersionInfo } from "./useVersion";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import {
@@ -184,10 +184,16 @@ export function useProjects({
     ready,
     hasData: projects.length > 0,
     revalidateOn: PROJECTS_REVALIDATE_EVENTS,
-    fetcher: async (context) => {
-      const version = await ensureVersionInfo(context.sourceKey);
+    fetcher: (context) => {
+      const version = readVersionInfo(context.sourceKey);
+      // Older servers ignore this preference and return a complete collection.
+      // Honor known capability withdrawals without delaying the cold read.
       return projectsApi.getProjects(
-        serverHasCapability(version, SERVER_CAPABILITIES.retainedProjects.name)
+        version === null ||
+          serverHasCapability(
+            version,
+            SERVER_CAPABILITIES.retainedProjects.name,
+          )
           ? "retained"
           : undefined,
       );

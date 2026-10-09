@@ -926,8 +926,8 @@ persistence in the same plan step, are not built.
 `collectionRefresh` completion flag on `projects-changed`. The 2026-10-09
 core release review checked v0.8.0, v0.8.1, v0.9.0, v0.9.1 and v0.9.2;
 none provides this contract. Standing compatibility approval applies. Clients
-bind transport to the requested source before awaiting version acquisition,
-then omit the parameter when support is absent or unknown. Other retained
+bind transport to the requested source and use the read preference below
+without awaiting version acquisition. Other retained
 collection capabilities keep their existing meanings. See
 [retained project discovery](session-catalog-observation.md#retained-project-discovery-owner).
 
@@ -935,11 +935,22 @@ collection capabilities keep their existing meanings. See
 owns `summaryMode=retained` on `GET /api/recents`, its `visits` and `catalog`
 fields, and `recents-changed`. The 2026-10-09 core release review checked
 v0.8.0, v0.8.1, v0.9.0, v0.9.1 and v0.9.2; none has this contract. The
-maintainer's standing compatibility approval applies. Clients join the source
-version acquisition and omit the parameter when the capability is absent or
-unknown. Older servers and older clients keep the complete response. The
+maintainer's standing compatibility approval applies. Older servers and older
+clients keep the complete response. The
 existing retained-session-collections capability retains its original meaning.
 See [retained recent visits](session-catalog-observation.md#retained-recent-visits).
+
+For these two existing GET endpoints only, an unknown source version does not
+delay collection acquisition: clients send `summaryMode=retained` as a read
+preference. The reviewed v0.8.0–v0.9.2 handlers ignore that unknown parameter
+and return their ordinary complete response. Clients determine completeness
+from the returned `catalog`; its absence means the legacy complete response.
+Legacy recents also supply visit identities from `recents` when `visits` is
+absent. Sending this preference does not establish capability support or
+authorize any capability-dependent write. Once the source's version is known,
+absent or explicitly denied support omits the parameter, including on later
+revalidation. A first unknown-version request can precede discovery of a
+withdrawal. Session and inbox collection gates remain unchanged.
 
 Approved 2026-09-08. `retained-session-collections` is permanent ID 63,
 version-implied from 0.8.2. The reviewed core-functionality corpus is v0.6.1,

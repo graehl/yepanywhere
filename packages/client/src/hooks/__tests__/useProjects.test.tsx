@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => {
   return {
     getProject: vi.fn(),
     getProjects: vi.fn(),
-    ensureVersionInfo: vi.fn(),
+    readVersionInfo: vi.fn(),
     isRemoteClient: vi.fn(() => false),
     remoteState: {
       connection: null as { connection: object | null } | null,
@@ -41,7 +41,7 @@ vi.mock("../../api/client", () => ({
   },
 }));
 vi.mock("../useVersion", () => ({
-  ensureVersionInfo: mocks.ensureVersionInfo,
+  readVersionInfo: mocks.readVersionInfo,
 }));
 
 vi.mock("../../lib/activityBus", () => ({
@@ -109,7 +109,7 @@ beforeEach(() => {
   resetClientQueryControllerForTests();
   mocks.getProject.mockReset();
   mocks.getProjects.mockReset();
-  mocks.ensureVersionInfo.mockReset().mockResolvedValue(undefined);
+  mocks.readVersionInfo.mockReset().mockReturnValue({ current: "0.9.2" });
   vi.spyOn(
     getSourceRuntimeRegistry().getOrCreateSourceRuntime(
       LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -133,18 +133,15 @@ afterEach(() => {
 });
 
 describe("useProjects", () => {
-  it("keeps a pending capability lookup bound to its original source", async () => {
+  it("keeps a pending collection response bound to its original source", async () => {
     vi.useFakeTimers();
     let release!: (value: unknown) => void;
-    mocks.ensureVersionInfo.mockImplementationOnce(
+    mocks.getProjects.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           release = resolve;
         }),
     );
-    mocks.getProjects.mockResolvedValue({
-      projects: [project("local-project")],
-    });
     const other = createClientSummaryHostSourceKey("other");
     const fetchOther = vi
       .spyOn(
@@ -157,7 +154,7 @@ describe("useProjects", () => {
     act(() => setCurrentClientSummarySourceKey(other));
     await settle();
     expect(hook.result.current.projects[0]?.id).toBe("other-project");
-    act(() => release({ current: "0.9.2" }));
+    act(() => release({ projects: [project("local-project")] }));
     await settle();
     expect(mocks.getProjects).toHaveBeenCalledExactlyOnceWith("/projects");
     expect(fetchOther).toHaveBeenCalledTimes(1);
@@ -166,7 +163,7 @@ describe("useProjects", () => {
 
   it("gates retained reads and waits for an incomplete collection to publish", async () => {
     vi.useFakeTimers();
-    mocks.ensureVersionInfo.mockResolvedValue({ current: "0.9.4" });
+    mocks.readVersionInfo.mockReturnValue({ current: "0.9.4" });
     mocks.getProjects
       .mockResolvedValueOnce({
         projects: [],

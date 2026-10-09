@@ -17,7 +17,7 @@ import {
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { catalogLoadState } from "../lib/clientSummaryCollections";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
-import { ensureVersionInfo } from "./useVersion";
+import { readVersionInfo } from "./useVersion";
 
 export type { EnrichedRecentEntry };
 
@@ -176,11 +176,13 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
     ready,
     hasData: snapshot.loaded,
     revalidateOn: REVALIDATE_EVENTS,
-    fetcher: async (context) => {
-      const version = await ensureVersionInfo(context.sourceKey);
+    fetcher: (context) => {
+      const version = readVersionInfo(context.sourceKey);
+      // The legacy response remains complete when this preference is ignored.
       return recentsApi.getRecents(
         100,
-        serverHasCapability(version, SERVER_CAPABILITIES.retainedRecents.name)
+        version === null ||
+          serverHasCapability(version, SERVER_CAPABILITIES.retainedRecents.name)
           ? "retained"
           : undefined,
       );

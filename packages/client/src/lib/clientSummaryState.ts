@@ -436,24 +436,37 @@ function putProjectsQuery(
   state: ClientSummaryState,
   projects: readonly Project[],
   requestStartedAt: number,
+  catalog?: ProjectsCollectionSnapshot["catalog"],
 ): ClientSummaryState {
   const existing = state.projects.queries.get(ALL_PROJECTS_QUERY_KEY);
   if (existing && requestStartedAt < existing.requestStartedAt) {
     return state;
   }
 
-  const ids = projects.map((project) => project.id);
+  const ids =
+    catalog?.complete === false
+      ? [
+          ...new Set([
+            ...projects.map((project) => project.id),
+            ...(existing?.ids ?? []),
+          ]),
+        ]
+      : projects.map((project) => project.id);
   if (
     existing &&
     existing.ids.length === ids.length &&
     existing.ids.every((id, index) => id === ids[index])
   ) {
-    if (requestStartedAt === existing.requestStartedAt) {
+    if (
+      requestStartedAt === existing.requestStartedAt &&
+      normalizedJsonEqual(catalog, existing.catalog)
+    ) {
       return state;
     }
     const queries = new Map(state.projects.queries);
     queries.set(ALL_PROJECTS_QUERY_KEY, {
       ...existing,
+      catalog,
       requestStartedAt,
       fetchedAt: Date.now(),
     });
@@ -469,6 +482,7 @@ function putProjectsQuery(
   const queries = new Map(state.projects.queries);
   queries.set(ALL_PROJECTS_QUERY_KEY, {
     key: ALL_PROJECTS_QUERY_KEY,
+    catalog,
     ids,
     requestStartedAt,
     fetchedAt: Date.now(),
@@ -1786,7 +1800,12 @@ export function applyProjectsCollectionSnapshot(
   for (const project of snapshot.projects) {
     next = putProjectRecord(next, project, requestStartedAt);
   }
-  return putProjectsQuery(next, snapshot.projects, requestStartedAt);
+  return putProjectsQuery(
+    next,
+    snapshot.projects,
+    requestStartedAt,
+    snapshot.catalog,
+  );
 }
 
 export function applyProjectCollectionSnapshot(

@@ -53,6 +53,24 @@ describe("resolvePreferredProjectId", () => {
   it("returns null when no projects are available", () => {
     expect(resolvePreferredProjectId([], "jstorrent")).toBeNull();
   });
+
+  it("waits for an undiscovered recent project before choosing a fallback", () => {
+    localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "missing-project");
+    expect(resolvePreferredProjectId(projects, "webvam", false)).toBeNull();
+    expect(resolvePreferredProjectId(projects, "webvam", true)).toBe("webvam");
+  });
+
+  it("uses a known preference but never guesses from an incomplete list", () => {
+    expect(resolvePreferredProjectId(projects, "webvam", false)).toBe("webvam");
+    expect(
+      resolvePreferredProjectId(projects, "missing-project", false),
+    ).toBeNull();
+    expect(resolvePreferredProjectId(projects, undefined, false)).toBeNull();
+    localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "jstorrent");
+    expect(resolvePreferredProjectId(projects, "webvam", false)).toBe(
+      "jstorrent",
+    );
+  });
 });
 
 describe("project context extraction", () => {

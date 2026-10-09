@@ -100,12 +100,14 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
-The scanner now has an internal retained-project read and finite refresh owner
-(2026-10-09). Thirty reads complete while discovery is blocked; restart,
-invalidation, failure/backoff and disposal checks cover its lifecycle. HTTP
-project routes still use complete reads, so this preparation alone changes no
-tab timing. Route/capability integration, current metadata overlays and client
-completeness handling remain open; see
+Project collection requests now use retained discovery on capable servers
+(2026-10-09), including current names, visibility and ownership. Incomplete
+collections preserve known choices and cannot select an arbitrary project while
+the preferred project is undiscovered. Older servers retain complete requests.
+Thirty scanner reads complete while discovery is blocked; restart,
+invalidation, failure/backoff and disposal checks cover its lifecycle. Captions,
+selected-project detail, targeted incremental updates and browser snapshots
+remain open; see
 [retained project discovery owner](../topics/session-catalog-observation.md#retained-project-discovery-owner).
 Contributing-model: 6-astra.
 

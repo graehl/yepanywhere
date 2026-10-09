@@ -10,6 +10,45 @@ import type { Supervisor } from "../../src/supervisor/Supervisor.js";
 import { EventBus, type BusEvent } from "../../src/watcher/EventBus.js";
 
 describe("ExternalSessionTracker", () => {
+  it("resolves retained activity counts without foreground project discovery", async () => {
+    const eventBus = new EventBus();
+    const projectId = encodeProjectId("/tmp/test");
+    const complete = vi.fn().mockResolvedValue({ id: projectId });
+    const retained = vi.fn().mockReturnValue({ id: projectId });
+    const tracker = new ExternalSessionTracker({
+      eventBus,
+      supervisor: {
+        getProcessForSession: () => undefined,
+      } as unknown as Supervisor,
+      scanner: {
+        getProjectBySessionDirSuffix: complete,
+        getRetainedProjectBySessionDirSuffix: retained,
+      } as unknown as ProjectScanner,
+    });
+    try {
+      eventBus.emit({
+        type: "file-change",
+        provider: "claude",
+        path: "/tmp/projects/-tmp-test/external.jsonl",
+        relativePath: "-tmp-test/external.jsonl",
+        changeType: "modify",
+        fileType: "session",
+        timestamp: new Date().toISOString(),
+      });
+      await vi.waitFor(() => expect(tracker.isExternal("external")).toBe(true));
+      const calls = complete.mock.calls.length;
+      expect(
+        await tracker.getExternalSessionInfoWithUrlId("external", {
+          retained: true,
+        }),
+      ).toMatchObject({ projectId });
+      expect(retained).toHaveBeenCalledExactlyOnceWith("-tmp-test");
+      expect(complete).toHaveBeenCalledTimes(calls);
+    } finally {
+      tracker.dispose();
+    }
+  });
+
   it("does not mark owned active Claude sessions external on file changes", async () => {
     const eventBus = new EventBus();
     const events: BusEvent[] = [];

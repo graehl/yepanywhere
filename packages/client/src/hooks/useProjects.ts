@@ -1,5 +1,9 @@
 import { useEffect, useMemo } from "react";
 import { api } from "../api/client";
+import { SERVER_CAPABILITIES, serverHasCapability } from "@yep-anywhere/shared";
+import { createProjectsApi } from "../api/projectsClient";
+import { catalogLoadState } from "../lib/clientSummaryCollections";
+import { ensureVersionInfo } from "./useVersion";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import {
@@ -15,6 +19,7 @@ import {
 import {
   useProjectCollectionRecord,
   useProjectCollectionRecords,
+  useProjectCollectionCatalog,
 } from "../lib/clientSummaryStore";
 import { isRemoteClient } from "../lib/connection";
 import type { ClientQueryBootstrapTier } from "../lib/clientQueryBootstrap";
@@ -166,6 +171,11 @@ export function useProjects({
   const sourceKey = runtime.sourceKey;
   const sourceSummary = runtime.summary;
   const projects = useProjectCollectionRecords();
+  const catalog = useProjectCollectionCatalog();
+  const projectsApi = useMemo(
+    () => createProjectsApi(runtime.transport.fetch.bind(runtime.transport)),
+    [runtime],
+  );
   const ready = useRemoteReady();
   const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
     sourceKey,
@@ -174,14 +184,28 @@ export function useProjects({
     ready,
     hasData: projects.length > 0,
     revalidateOn: PROJECTS_REVALIDATE_EVENTS,
-    fetcher: () => api.getProjects(),
+    fetcher: async (context) => {
+      const version = await ensureVersionInfo(context.sourceKey);
+      return projectsApi.getProjects(
+        serverHasCapability(version, SERVER_CAPABILITIES.retainedProjects.name)
+          ? "retained"
+          : undefined,
+      );
+    },
     applySnapshot: (data, context: ClientQueryRequestContext) => {
       sourceSummary.reportProjectsCollectionSnapshot(
-        { projects: data.projects },
+        { projects: data.projects, catalog: data.catalog },
         context.requestStartedAt,
       );
     },
   });
 
-  return { projects, loading, error, refetch };
+  const status = catalogLoadState(catalog, projects.length);
+  return {
+    projects,
+    complete: !loading && catalog?.complete !== false,
+    loading: loading || status.awaitingFirstRows,
+    error: error ?? status.refreshError,
+    refetch,
+  };
 }

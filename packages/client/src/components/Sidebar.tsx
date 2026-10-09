@@ -480,12 +480,12 @@ export function Sidebar({
 
   // Global inbox count. Title badge updates are owned by the app shell.
   const { needsAttention: inboxCount } = useInboxCounts();
-  const { projects } = useProjects();
+  const { projects, complete: projectsComplete } = useProjects();
   const sourceControlProjectId = useMemo(
     () =>
       getProjectIdFromLocation(location.pathname, location.search) ??
-      resolvePreferredProjectId(projects),
-    [location.pathname, location.search, projects],
+      resolvePreferredProjectId(projects, undefined, projectsComplete),
+    [location.pathname, location.search, projects, projectsComplete],
   );
   const sourceControlPath = sourceControlProjectId
     ? `/git-status?projectId=${encodeURIComponent(sourceControlProjectId)}`

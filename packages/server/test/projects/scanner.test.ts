@@ -245,6 +245,38 @@ describe("ProjectScanner cache", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  it("does not resurrect removed registered directories after discovery", async () => {
+    const dataDir = join(tmpdir(), `project-metadata-${randomUUID()}`);
+    tempDirs.push(dataDir);
+    const projectPath = join(dataDir, "registered");
+    await mkdir(projectPath, { recursive: true });
+    const metadata = new ProjectMetadataService({ dataDir });
+    await metadata.initialize();
+    await metadata.addProject(encodeProjectId(projectPath), projectPath);
+    const scanner = new ProjectScanner({
+      projectsDir: join(dataDir, "no-transcripts"),
+      enableCodex: false,
+      enableGemini: false,
+      projectMetadataService: metadata,
+    });
+    try {
+      expect(
+        (await scanner.readRetainedProjects()).projects.some(
+          (p) => p.path === projectPath,
+        ),
+      ).toBe(true);
+      await scanner.refreshRetainedProjects();
+      await rm(projectPath, { recursive: true });
+      scanner.invalidateCache();
+      await scanner.refreshRetainedProjects();
+      const result = await scanner.readRetainedProjects();
+      expect(result.complete).toBe(true);
+      expect(result.projects.some((p) => p.path === projectPath)).toBe(false);
+    } finally {
+      await scanner.dispose();
+    }
+  });
+
   it.each(["expired", "recent"])(
     "restores %s retained projects without certifying them as current",
     async (age) => {

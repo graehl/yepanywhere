@@ -140,6 +140,19 @@ describe("limited-user activity events", () => {
   });
 
   it("keeps catalog refresh signals but drops their operator diagnostic", () => {
+    expect(
+      deliver({
+        type: "projects-changed",
+        projectIds: ["other"],
+        collectionRefresh: true,
+        timestamp,
+      }),
+    ).toEqual({
+      type: "projects-changed",
+      projectIds: [],
+      collectionRefresh: true,
+      timestamp,
+    });
     expect(deliver({ type: "recents-changed", timestamp })).toEqual({
       type: "recents-changed",
       timestamp,

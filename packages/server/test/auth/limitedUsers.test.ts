@@ -965,7 +965,9 @@ describe("limited-user middleware", () => {
       recents: [{ sessionId: "visible", projectId: "view-project" }],
       visits: [{ sessionId: "pending-visible", projectId: "view-project" }],
     });
-    const projects = (await (await app.request("/api/projects")).json()) as {
+    const projects = (await (
+      await app.request("/api/projects?summaryMode=retained")
+    ).json()) as {
       projects: Array<{ id: string }>;
     };
     expect(projects.projects.map((p) => p.id)).toEqual(["view-project"]);

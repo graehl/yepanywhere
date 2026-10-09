@@ -1989,6 +1989,32 @@ describe("clientSummaryState", () => {
     });
   });
 
+  it("preserves project membership until retained discovery is complete", () => {
+    let state = applyProjectsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      { projects: [project("old")] },
+      100,
+    );
+    state = applyProjectsCollectionSnapshot(
+      state,
+      {
+        projects: [project("registered")],
+        catalog: { complete: false, refreshing: true },
+      },
+      200,
+    );
+    expect(selectProjectCollectionRecords(state).map((row) => row.id)).toEqual([
+      "registered",
+      "old",
+    ]);
+    state = applyProjectsCollectionSnapshot(
+      state,
+      { projects: [], catalog: { complete: true, refreshing: false } },
+      300,
+    );
+    expect(selectProjectCollectionRecords(state)).toEqual([]);
+  });
+
   it("stores single project snapshots without replacing project list membership", () => {
     let state = applyProjectsCollectionSnapshot(
       createEmptyClientSummaryState(),

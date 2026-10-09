@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
   return {
     getProject: vi.fn(),
     getProjects: vi.fn(),
+    ensureVersionInfo: vi.fn(),
     isRemoteClient: vi.fn(() => false),
     remoteState: {
       connection: null as { connection: object | null } | null,
@@ -39,6 +40,9 @@ vi.mock("../../api/client", () => ({
     getProjects: mocks.getProjects,
   },
 }));
+vi.mock("../useVersion", () => ({
+  ensureVersionInfo: mocks.ensureVersionInfo,
+}));
 
 vi.mock("../../lib/activityBus", () => ({
   activityBus: {
@@ -68,6 +72,11 @@ import {
 import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummarySourceKey";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { useProject, useProjects } from "../useProjects";
+import { getSourceRuntimeRegistry } from "../../lib/sourceRuntime";
+import {
+  createClientSummaryHostSourceKey,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummarySourceKey";
 
 const RECENT = "2026-06-27T11:00:00.000Z";
 
@@ -94,11 +103,19 @@ function project(id: string, overrides: Partial<Project> = {}): Project {
 }
 
 beforeEach(() => {
+  setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
   resetClientQueryBootstrapForTests();
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
   mocks.getProject.mockReset();
   mocks.getProjects.mockReset();
+  mocks.ensureVersionInfo.mockReset().mockResolvedValue(undefined);
+  vi.spyOn(
+    getSourceRuntimeRegistry().getOrCreateSourceRuntime(
+      LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+    ).transport,
+    "fetch",
+  ).mockImplementation(mocks.getProjects);
   mocks.isRemoteClient.mockReset();
   mocks.isRemoteClient.mockReturnValue(false);
   mocks.remoteState.connection = null;
@@ -112,9 +129,71 @@ afterEach(() => {
   resetClientQueryControllerForTests();
   resetClientSummaryStoreForTests();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("useProjects", () => {
+  it("keeps a pending capability lookup bound to its original source", async () => {
+    vi.useFakeTimers();
+    let release!: (value: unknown) => void;
+    mocks.ensureVersionInfo.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    mocks.getProjects.mockResolvedValue({
+      projects: [project("local-project")],
+    });
+    const other = createClientSummaryHostSourceKey("other");
+    const fetchOther = vi
+      .spyOn(
+        getSourceRuntimeRegistry().getOrCreateSourceRuntime(other).transport,
+        "fetch",
+      )
+      .mockResolvedValue({ projects: [project("other-project")] });
+    const hook = renderHook(() => useProjects({ bootstrapTier: "route" }));
+    await settle();
+    act(() => setCurrentClientSummarySourceKey(other));
+    await settle();
+    expect(hook.result.current.projects[0]?.id).toBe("other-project");
+    act(() => release({ current: "0.9.2" }));
+    await settle();
+    expect(mocks.getProjects).toHaveBeenCalledExactlyOnceWith("/projects");
+    expect(fetchOther).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.projects[0]?.id).toBe("other-project");
+  });
+
+  it("gates retained reads and waits for an incomplete collection to publish", async () => {
+    vi.useFakeTimers();
+    mocks.ensureVersionInfo.mockResolvedValue({ current: "0.9.4" });
+    mocks.getProjects
+      .mockResolvedValueOnce({
+        projects: [],
+        catalog: { complete: false, refreshing: true },
+      })
+      .mockResolvedValueOnce({
+        projects: [project("ready")],
+        catalog: { complete: true, refreshing: false },
+      });
+    const first = renderHook(() => useProjects({ bootstrapTier: "route" }));
+    const second = renderHook(() => useProjects({ bootstrapTier: "route" }));
+    await settle();
+    expect(mocks.getProjects).toHaveBeenCalledExactlyOnceWith(
+      "/projects?summaryMode=retained",
+    );
+    expect(first.result.current.loading).toBe(true);
+    expect(second.result.current.loading).toBe(true);
+    await act(async () => {
+      mocks.activityBus.emit("projects-changed", { projectIds: ["ready"] });
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await settle();
+    expect(first.result.current.loading).toBe(false);
+    expect(second.result.current.projects[0]?.id).toBe("ready");
+    expect(mocks.getProjects).toHaveBeenCalledTimes(2);
+  });
+
   it("starts a route's project selector while unrelated route work is pending", async () => {
     vi.useFakeTimers();
     const unrelatedRoute = acquireClientQueryBootstrapSlot(
@@ -130,6 +209,7 @@ describe("useProjects", () => {
     await settle();
     expect(selector.result.current.projects[0]?.id).toBe("project-a");
     expect(mocks.getProjects).toHaveBeenCalledTimes(1);
+    expect(mocks.getProjects).toHaveBeenCalledWith("/projects");
     unrelatedRoute.settle();
     await settle();
     expect(mocks.getProjects).toHaveBeenCalledTimes(1);

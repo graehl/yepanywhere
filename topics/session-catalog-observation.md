@@ -136,30 +136,41 @@ work; this is not browser persistence or authority across logins.
 
 ## Retained project discovery owner
 
-`ProjectScanner.readRetainedProjects` is an internal preparation for moving
-project collection requests off provider discovery. It returns the last
+Servers advertising `retained-projects` accept `summaryMode=retained` on
+`GET /api/projects`. `ProjectScanner.readRetainedProjects` returns the last
 accepted collection without awaiting a transcript scan or current sandbox
 counts. The scanner reuses its existing persisted snapshot across restarts,
 including an expired snapshot, only for the same provider roots, enabled
 providers, metadata store and workstream store. A retained disk read cannot
 certify a later complete read as fresh. Hidden projects are filtered and current
-display names overlay saved rows. With no saved enumeration the collection is
-incomplete, rather than authoritatively empty.
+display names and ownership overlay saved rows. With no saved enumeration,
+registered projects seed an incomplete collection. Once discovery has run, its
+membership takes precedence over registrations, so a deleted registered
+directory cannot reappear from metadata. Newly registered directories join on
+the next refresh without adding request-time filesystem probes.
 
 The first retained read schedules one finite refresh after 300 ms. Subsequent
 invalidation coalesces into that refresh and one trailing pass when needed.
 Accepted complete reads and retained reads share the scanner's snapshot and
 persistence owner. Failed refreshes preserve it, expose the error and impose a
 five-second admission backoff. A later read or event can retry; there is no
-periodic scan timer. Refresh completion emits `projects-changed`. Disposal
+periodic scan timer. Refresh completion emits `projects-changed` with
+`collectionRefresh: true`. Limited users receive this completion signal even
+when no affected project is accessible, with an empty project-id list; they
+never receive catalog error details. Disposal
 cancels queued work, drains active retained work and prevents its publication.
 
-**Partial implementation:** HTTP project routes still use complete reads, and
-no browser relies on this internal contract yet. Route/capability integration,
-registered-project overlays before discovery, current ownership overlays,
-caption enrichment, client completeness handling and targeted incremental
-discovery remain required before switching consumers. This does not establish
-the New Session latency target.
+Client consumers share one source-bound request. Incomplete responses preserve
+known collection members and cannot replace an undiscovered preferred project
+with an arbitrary first row. A complete empty response clears membership.
+Without the capability, clients request the existing complete enumeration.
+External activity counts resolve directory identity from the retained scanner
+index, avoiding an indirect foreground scan through the session tracker.
+
+**Remaining:** captions and code names still use their existing request-time
+enrichment, selected-project detail still uses complete discovery, and refresh
+still enumerates the provider stores rather than applying targeted updates.
+Browser persistence and the full New Session latency target remain open.
 
 **Design decision:** retain inside the existing project scanner rather than
 constructing another project inventory from session rows. Registered empty

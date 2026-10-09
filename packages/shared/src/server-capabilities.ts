@@ -1970,6 +1970,27 @@ export const SERVER_CAPABILITIES = {
       reason: "Older servers retain the complete-request recents path.",
     },
   },
+  retainedProjects: {
+    id: CAPABILITY_ID_ALLOCATIONS.retainedProjects.id,
+    name: "retained-projects",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.9.4",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Project collections return retained discovery without foreground transcript scans.",
+    clientFallback: "Omit summaryMode and use complete project enumeration.",
+    serverContract: {
+      routes: ["GET /api/projects"],
+      requestFields: ["summaryMode"],
+      responseFields: ["catalog"],
+      events: ["projects-changed"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason: "Older servers retain the complete-request project path.",
+    },
+  },
   projectDirectoryStoragePolicy: {
     id: CAPABILITY_ID_ALLOCATIONS.projectDirectoryStoragePolicy.id,
     name: "project-directory-storage-policy",

@@ -219,6 +219,7 @@ function getProjectQueueCountForProject(
 async function getProjectActivityCounts(
   supervisor: Supervisor | undefined,
   externalTracker: ExternalSessionTracker | undefined,
+  retained = false,
 ): Promise<Map<string, ProjectActivityCounts>> {
   const counts = new Map<string, ProjectActivityCounts>();
 
@@ -247,8 +248,10 @@ async function getProjectActivityCounts(
   // Count external sessions - convert to UrlProjectId for consistent keys
   if (externalTracker) {
     for (const sessionId of externalTracker.getExternalSessions()) {
-      const info =
-        await externalTracker.getExternalSessionInfoWithUrlId(sessionId);
+      const info = await externalTracker.getExternalSessionInfoWithUrlId(
+        sessionId,
+        { retained },
+      );
       if (info) {
         const existing = getMutableProjectActivityCounts(
           counts,
@@ -466,12 +469,17 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
 
   // GET /api/projects - List all projects
   routes.get("/", async (c) => {
-    const rawProjects = (await deps.scanner.listProjects()).filter(
-      (project) => !isDetachedProjectPath(project.path),
-    );
+    const retained =
+      c.req.query("summaryMode") === "retained"
+        ? await deps.scanner.readRetainedProjects()
+        : undefined;
+    const rawProjects = (
+      retained?.projects ?? (await deps.scanner.listProjects())
+    ).filter((project) => !isDetachedProjectPath(project.path));
     const activityCounts = await getProjectActivityCounts(
       deps.supervisor,
       deps.externalTracker,
+      retained !== undefined,
     );
     const codeNameByProjectId = await codeNamesForProjects(rawProjects);
     const captionByProjectId = await captionsForProjects(rawProjects);
@@ -503,6 +511,16 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       );
     });
 
+    if (retained) {
+      const { projects: _projects, refreshError, ...catalog } = retained;
+      return c.json({
+        projects,
+        catalog: {
+          ...catalog,
+          ...(principalFor(c).kind === "limited" ? {} : { refreshError }),
+        },
+      });
+    }
     return c.json({ projects });
   });
 

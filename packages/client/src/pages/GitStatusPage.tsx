@@ -667,9 +667,15 @@ export function GitStatusPage() {
   const documentAttentive = useDocumentAttention();
   const worktreeLeasePaused = worktreePaused || !documentAttentive;
 
-  const { projects, loading: projectsLoading } = useProjects();
+  const {
+    projects,
+    loading: projectsLoading,
+    complete: projectsComplete,
+  } = useProjects();
   const effectiveProjectId =
-    projectId || resolvePreferredProjectId(projects) || undefined;
+    projectId ||
+    resolvePreferredProjectId(projects, undefined, projectsComplete) ||
+    undefined;
   const { project } = useProject(effectiveProjectId);
   const {
     version,

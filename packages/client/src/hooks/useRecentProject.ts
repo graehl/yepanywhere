@@ -27,11 +27,13 @@ export function setRecentProjectId(projectId: string): void {
  *
  * Prefers the recent project stored in localStorage when it still exists in the
  * current project list, then an optional caller-provided fallback, then the
- * first available project.
+ * first available project. An incomplete list cannot disprove a preference
+ * or establish which project should be the first available fallback.
  */
 export function resolvePreferredProjectId<T extends ProjectLike>(
   projects: readonly T[],
   fallbackProjectId?: string | null,
+  complete = true,
 ): string | null {
   const recentProjectId = getRecentProjectId();
   if (
@@ -41,6 +43,8 @@ export function resolvePreferredProjectId<T extends ProjectLike>(
     return recentProjectId;
   }
 
+  if (recentProjectId && !complete) return null;
+
   if (
     fallbackProjectId &&
     projects.some((project) => project.id === fallbackProjectId)
@@ -48,7 +52,7 @@ export function resolvePreferredProjectId<T extends ProjectLike>(
     return fallbackProjectId;
   }
 
-  return projects[0]?.id ?? null;
+  return complete ? (projects[0]?.id ?? null) : null;
 }
 
 /**

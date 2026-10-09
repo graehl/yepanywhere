@@ -109,6 +109,7 @@ import { onboardingApi } from "./onboardingClient";
 import { getDesktopAuthToken } from "./plainFetch";
 import { pushApi, pushSettingsApi } from "./pushClient";
 import { recentsApi } from "./recentsClient";
+import { projectsApi } from "./projectsClient";
 import { serverMetadataApi } from "./serverMetadataClient";
 import { fetchJSON } from "./sourceApiFetch";
 import { createSessionApi } from "./sessionClient";
@@ -598,7 +599,7 @@ export const api = {
         : undefined,
     ),
 
-  getProjects: () => fetchJSON<{ projects: Project[] }>("/projects"),
+  getProjects: projectsApi.getProjects,
 
   /**
    * Add a project by file path.

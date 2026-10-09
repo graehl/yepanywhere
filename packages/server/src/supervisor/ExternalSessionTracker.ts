@@ -343,6 +343,7 @@ export class ExternalSessionTracker {
    */
   async getExternalSessionInfoWithUrlId(
     sessionId: string,
+    options?: { retained?: boolean },
   ): Promise<{ lastActivity: Date; projectId: UrlProjectId } | null> {
     const info = this.externalSessions.get(sessionId);
     if (!info) return null;
@@ -356,9 +357,9 @@ export class ExternalSessionTracker {
 
     if (!info.dirProjectId) return null;
 
-    const project = await this.scanner.getProjectBySessionDirSuffix(
-      info.dirProjectId,
-    );
+    const project = options?.retained
+      ? this.scanner.getRetainedProjectBySessionDirSuffix(info.dirProjectId)
+      : await this.scanner.getProjectBySessionDirSuffix(info.dirProjectId);
     if (!project) return null;
 
     return {

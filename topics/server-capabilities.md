@@ -921,6 +921,16 @@ persistence in the same plan step, are not built.
 
 ### Retained collection gate
 
+`retained-projects` (permanent ID 124, version-implied from 0.9.4) owns
+`summaryMode=retained` on `GET /api/projects`, its `catalog` status and the
+`collectionRefresh` completion flag on `projects-changed`. The 2026-10-09
+core release review checked v0.8.0, v0.8.1, v0.9.0, v0.9.1 and v0.9.2;
+none provides this contract. Standing compatibility approval applies. Clients
+bind transport to the requested source before awaiting version acquisition,
+then omit the parameter when support is absent or unknown. Other retained
+collection capabilities keep their existing meanings. See
+[retained project discovery](session-catalog-observation.md#retained-project-discovery-owner).
+
 `retained-recents` (permanent ID 123, version-implied from 0.9.4) separately
 owns `summaryMode=retained` on `GET /api/recents`, its `visits` and `catalog`
 fields, and `recents-changed`. The 2026-10-09 core release review checked

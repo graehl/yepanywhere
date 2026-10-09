@@ -260,16 +260,64 @@ export class ProjectScanner {
     if (this.disposed) throw new Error("Project scanner is disposed");
     this.scheduleRetainedRefresh();
     const sandboxDirs = this.sandboxSessionDirs();
+    const projects = new Map(
+      (this.snapshot?.projects ?? []).map((project) => [
+        getProjectIdentityKey(project.path),
+        this.cloneProject(project, sandboxDirs),
+      ]),
+    );
+    for (const project of projects.values()) delete project.ownerUsername;
+    for (const metadata of Object.values(
+      this.projectMetadataService?.getAllProjects() ?? {},
+    )) {
+      const path = canonicalizeProjectPath(metadata.path);
+      const identity = getProjectIdentityKey(path);
+      // Once discovery has run, registration cannot resurrect an absent directory.
+      if (this.snapshot && !projects.has(identity)) continue;
+      const project =
+        projects.get(identity) ??
+        this.registeredProject(path, metadata.addedAt);
+      project.ownerUsername = metadata.ownerUsername;
+      project.name = this.displayName(project);
+      projects.set(identity, project);
+    }
     return {
-      projects: (this.snapshot?.projects ?? [])
-        .filter((project) => !this.isHiddenProjectPath(project.path))
-        .map((project) => this.cloneProject(project, sandboxDirs)),
+      projects: [...projects.values()].filter(
+        (project) => !this.isHiddenProjectPath(project.path),
+      ),
       complete: this.snapshot !== null,
       refreshing: Boolean(this.retainedRefresh || this.retainedTimer),
       ...(this.retainedRefreshError
         ? { refreshError: this.retainedRefreshError }
         : {}),
     };
+  }
+
+  private registeredProject(path: string, addedAt: string): Project {
+    return {
+      id: encodeProjectId(path),
+      path,
+      name: getProjectName(path),
+      sessionCount: 0,
+      sessionCountsByProvider: { claude: 0 },
+      sessionDir: join(this.projectsDir, path.replace(/[/\\:]/g, "-")),
+      hasCodexSessions: false,
+      hasGeminiSessions: false,
+      activeOwnedCount: 0,
+      activeExternalCount: 0,
+      lastActivity: addedAt,
+      provider: "claude",
+    };
+  }
+
+  /** Resolve retained directory identity without scanning any provider store. */
+  getRetainedProjectBySessionDirSuffix(dirSuffix: string): Project | null {
+    const project = this.snapshot?.bySessionDirSuffix.get(
+      this.normalizeDirSuffix(dirSuffix),
+    );
+    return project && !this.isHiddenProjectPath(project.path)
+      ? this.cloneProject(project)
+      : null;
   }
 
   private initializeRetainedProjects(): Promise<void> {
@@ -329,6 +377,7 @@ export class ProjectScanner {
         if (this.disposed) return;
         this.eventBus?.emit({
           type: "projects-changed",
+          collectionRefresh: true,
           projectIds: [
             ...new Set([
               ...previousIds,
@@ -1171,21 +1220,7 @@ export class ProjectScanner {
 
         seenPaths.add(projectPath);
         seenIdentityKeys.add(getProjectIdentityKey(projectPath));
-        const encodedPath = projectPath.replace(/[/\\:]/g, "-");
-        projects.push({
-          id: encodeProjectId(projectPath),
-          path: projectPath,
-          name: getProjectName(projectPath),
-          sessionCount: 0,
-          sessionCountsByProvider: { claude: 0 },
-          sessionDir: join(this.projectsDir, encodedPath),
-          hasCodexSessions: false,
-          hasGeminiSessions: false,
-          activeOwnedCount: 0,
-          activeExternalCount: 0,
-          lastActivity: metadata.addedAt,
-          provider: "claude",
-        });
+        projects.push(this.registeredProject(projectPath, metadata.addedAt));
       }
     }
 

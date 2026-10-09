@@ -1,5 +1,12 @@
 import type { EnrichedRecentEntry } from "./app-types.js";
 
+/** Retained project membership and the discovery updating it. */
+export interface RetainedProjectCollectionState {
+  complete: boolean;
+  refreshing: boolean;
+  refreshError?: string;
+}
+
 /** Accepted durable rows and the independent work repairing their freshness. */
 export interface RetainedSessionCollectionState {
   catalogEpoch: string;

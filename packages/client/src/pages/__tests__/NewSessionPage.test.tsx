@@ -39,6 +39,7 @@ const { projectFetch, projectsState, recentSessionsState, versionState } =
         },
       ],
       loading: false,
+      complete: true,
       error: null as Error | null,
     },
     recentSessionsState: {
@@ -209,6 +210,7 @@ describe("NewSessionPage", () => {
     versionState.capabilities = [];
     projectFetch.settled = false;
     projectsState.loading = false;
+    projectsState.complete = true;
     recentSessionsState.recentSessions = [];
     recentSessionsState.recentProjectIds = [];
     recentSessionsState.isLoadingVisits = false;
@@ -281,6 +283,30 @@ describe("NewSessionPage", () => {
         window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject),
       ).toBe("project-1");
     });
+  });
+
+  it("waits for collection completion before replacing an undiscovered preference", async () => {
+    projectsState.complete = false;
+    localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "undiscovered");
+    recentSessionsState.recentProjectIds = ["project-2"];
+    const view = () => (
+      <MemoryRouter initialEntries={["/new-session"]}>
+        <NewSessionPage />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view());
+    expect(screen.getByTestId("location").textContent).toBe("/new-session");
+    expect(localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject)).toBe(
+      "undiscovered",
+    );
+    projectsState.complete = true;
+    rerender(view());
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/new-session?projectId=project-2",
+      ),
+    );
   });
 
   it("stores dropdown project changes and updates the URL", async () => {

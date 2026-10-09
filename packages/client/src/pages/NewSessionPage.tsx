@@ -82,7 +82,11 @@ export function NewSessionPage() {
     onError: () => showToast(t("incomingShareAttachmentUnavailable"), "error"),
   });
 
-  const { projects, loading: projectsLoading } = useProjects({
+  const {
+    projects,
+    loading: projectsLoading,
+    complete: projectsComplete,
+  } = useProjects({
     bootstrapTier: "route",
   });
   const { version } = useVersion();
@@ -152,6 +156,7 @@ export function NewSessionPage() {
     const preferredProjectId = resolvePreferredProjectId(
       projects,
       recentProjectIds[0],
+      projectsComplete,
     );
     if (!preferredProjectId) {
       return;
@@ -165,6 +170,7 @@ export function NewSessionPage() {
     projectId,
     projects,
     projectsLoading,
+    projectsComplete,
     recentProjectIds,
     recentSessionsLoading,
     requestedDetached,

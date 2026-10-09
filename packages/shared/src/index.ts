@@ -16,6 +16,7 @@ export {
 export type {
   RecentSessionsResponse,
   RecentsChangedEvent,
+  RetainedProjectCollectionState,
   RetainedSessionCollectionState,
   SessionCatalogUpdatedEvent,
 } from "./retained-session-collections.js";

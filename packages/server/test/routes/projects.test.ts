@@ -69,6 +69,55 @@ function createProcess(
 }
 
 describe("Projects Routes", () => {
+  it("serves registered projects without foreground discovery", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "retained-projects-route-"));
+    const metadata = new ProjectMetadataService({ dataDir });
+    await metadata.initialize();
+    const projectId = toUrlProjectId(dataDir);
+    await metadata.addProject(projectId, dataDir, "alice");
+    await metadata.setProjectNameOverride(projectId, "Current name");
+    const scanner = new ProjectScanner({
+      projectsDir: join(dataDir, "no-transcripts"),
+      enableCodex: false,
+      enableGemini: false,
+      projectMetadataService: metadata,
+    });
+    const discover = vi
+      .spyOn(scanner, "listProjects")
+      .mockRejectedValue(new Error("foreground discovery"));
+    const routes = createProjectsRoutes({
+      scanner,
+      projectMetadataService: metadata,
+      readerFactory: () => {
+        throw new Error("foreground reader");
+      },
+    });
+    try {
+      const response = await routes.request("/?summaryMode=retained");
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.projects).toHaveLength(1);
+      expect(result.projects[0]).toMatchObject({
+        id: projectId,
+        name: "Current name",
+        ownerUsername: "alice",
+      });
+      expect(result.catalog).toMatchObject({
+        complete: false,
+        refreshing: true,
+      });
+      expect(discover).not.toHaveBeenCalled();
+      await metadata.hideProject(projectId, dataDir);
+      expect(
+        (await (await routes.request("/?summaryMode=retained")).json())
+          .projects,
+      ).toEqual([]);
+    } finally {
+      await scanner.dispose();
+      await rm(dataDir, { recursive: true });
+    }
+  });
+
   it("uses content rather than housekeeping recency for project unread state", async () => {
     const project = { ...createProject(), provider: "grok" as const };
     const summary = { ...createSummary(), provider: "grok" as const };

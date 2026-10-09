@@ -62,7 +62,11 @@ export function limitedActivityEvent(
     case "project-captions-changed":
     case "projects-changed": {
       const projectIds = event.projectIds.filter(access.isProjectAccessible);
-      return projectIds.length > 0 ? { ...event, projectIds } : null;
+      const collectionRefresh =
+        event.type === "projects-changed" && event.collectionRefresh;
+      return projectIds.length > 0 || collectionRefresh
+        ? { ...event, projectIds }
+        : null;
     }
 
     case "session-created":

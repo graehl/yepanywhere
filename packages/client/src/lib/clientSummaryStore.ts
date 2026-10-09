@@ -83,6 +83,7 @@ import type {
   SessionCollectionQueryState,
   SessionCollectionRecord,
 } from "./clientSummaryCollections";
+import { ALL_PROJECTS_QUERY_KEY } from "./clientSummaryCollections";
 import {
   type DraftPresenceChange,
   subscribeDraftPresenceChanges,
@@ -652,6 +653,14 @@ export function useProjectCollectionRecord(
 export function useProjectCollectionRecords(): ProjectCollectionRecord[] {
   const state = useClientSummaryState();
   return useMemo(() => selectProjectCollectionRecords(state), [state]);
+}
+
+export function useProjectCollectionCatalog() {
+  const store = useCurrentClientSummaryStore();
+  return useStore(
+    store,
+    (state) => state.projects.queries.get(ALL_PROJECTS_QUERY_KEY)?.catalog,
+  );
 }
 
 export function useProjectQueueItemsByProject(

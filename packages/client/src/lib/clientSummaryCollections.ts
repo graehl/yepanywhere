@@ -11,6 +11,7 @@ import type {
   ProviderChildSessionSummary,
   ProviderName,
   RetainedSessionCollectionState,
+  RetainedProjectCollectionState,
   ProviderRuntimeStatus,
 } from "@yep-anywhere/shared";
 import type { GlobalSessionItem, InboxResponse } from "../api/client";
@@ -107,6 +108,7 @@ export interface ProjectCollectionRecord extends Project {
 }
 
 export interface ProjectCollectionQueryState {
+  catalog?: RetainedProjectCollectionState;
   key: string;
   ids: string[];
   requestStartedAt: number;
@@ -209,7 +211,7 @@ export interface CatalogLoadState {
  * answered-and-empty one, and whether its last refresh failed.
  */
 export function catalogLoadState(
-  catalog: RetainedSessionCollectionState | undefined,
+  catalog: RetainedProjectCollectionState | undefined,
   rowCount: number,
 ): CatalogLoadState {
   return {
@@ -249,6 +251,7 @@ export interface GlobalSessionsCollectionSnapshot {
 
 export interface ProjectsCollectionSnapshot {
   projects: readonly Project[];
+  catalog?: RetainedProjectCollectionState;
 }
 
 export interface ProjectCollectionSnapshot {

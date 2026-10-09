@@ -17,6 +17,8 @@ export const MAX_PROJECT_NAME_LENGTH = 80;
 export interface ProjectsChangedEvent {
   type: "projects-changed";
   projectIds: string[];
+  /** A retained enumeration settled, including an empty visible collection. */
+  collectionRefresh?: true;
   timestamp: string;
 }
 

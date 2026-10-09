@@ -1088,16 +1088,24 @@ export class ProjectScanner {
       }
     };
 
-    for (const [dir, info] of await this.readClaudeDirectories()) {
+    // Acquire independent inputs together, but drain both before releasing a
+    // failed refresh and preserve Claude-first merge precedence below.
+    const [claudeResult, codexResult] = await Promise.allSettled([
+      this.readClaudeDirectories(),
+      this.codexScanner?.listProjects({
+        allowStaleSnapshot: reuseUnchangedProviders,
+      }) ?? Promise.resolve([]),
+    ]);
+    if (claudeResult.status === "rejected") throw claudeResult.reason;
+    if (codexResult.status === "rejected") throw codexResult.reason;
+
+    for (const [dir, info] of claudeResult.value) {
       addOrMerge(info.projectPath, dir, info.sessionCount, info.lastActivity);
     }
 
     // Merge Codex projects if enabled
     if (this.codexScanner) {
-      const codexProjects = await this.codexScanner.listProjects({
-        allowStaleSnapshot: reuseUnchangedProviders,
-      });
-      for (const codexProject of codexProjects) {
+      for (const codexProject of codexResult.value) {
         const projectPath = canonicalizeProjectPath(
           this.resolveProjectPathForKnownWorkstream(codexProject.path),
         );

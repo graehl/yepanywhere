@@ -216,6 +216,11 @@ before grouping; a provider event never renews another provider by walking its
 store. Explicit project-cache invalidation also invalidates provider inputs,
 and complete-read age reconciliation keeps the existing discovery behavior.
 
+Claude and Codex project inputs are acquired concurrently. Publication waits
+for both acquisitions to settle, including on failure, then merges Claude
+before Codex to preserve identity precedence. Gemini still follows known-path
+registration because its hash resolution depends on those merged paths.
+
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail for an unknown directory still uses complete
 discovery, and standalone complete provider reads retain age-driven enumeration.

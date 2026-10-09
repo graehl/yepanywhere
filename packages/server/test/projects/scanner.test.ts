@@ -188,6 +188,48 @@ describe("ProjectScanner cache", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("acquires independent provider inputs while Claude discovery is pending", async () => {
+    const projectsDir = join(tmpdir(), `parallel-discovery-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const codexScanner = new CodexSessionScanner({
+      sessionsDir: join(projectsDir, "codex"),
+    });
+    const codexRead = vi.spyOn(codexScanner, "listProjects");
+    const scanner = new ProjectScanner({
+      projectsDir,
+      codexScanner,
+      enableGemini: false,
+    });
+    const internals = scanner as unknown as {
+      readClaudeDirectories: () => Promise<Map<string, unknown>>;
+    };
+    const readClaude = internals.readClaudeDirectories.bind(scanner);
+    vi.spyOn(internals, "readClaudeDirectories").mockImplementationOnce(
+      async () => {
+        started();
+        await gate;
+        return readClaude();
+      },
+    );
+    const result = scanner.listProjects();
+    try {
+      await entered;
+      expect(codexRead).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      await result;
+      await scanner.dispose();
+    }
+  });
+
   it.each(["localhost", ""])(
     "refreshes only the changed Claude directory under %s",
     async (host) => {

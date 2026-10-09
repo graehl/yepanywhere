@@ -109,12 +109,27 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
-Current audit (2026-10-09): measured New Session and Settings cases meet the
-revised three-second target. File-event project discovery is now incremental
-across Claude, Codex and Gemini. Detail lookup for directories absent from a
-complete collection retains its discovery path, and complete-read acquisition
-still needs its final audit. The goal remains open pending those paths and
+Current audit (2026-10-09): selected-project New Session and Settings cases met
+the revised three-second target, but newly measured default-project cold tabs
+do not consistently meet it. File-event project discovery is now incremental
+across Claude, Codex and Gemini and remains part of this goal by maintainer
+direction. Detail lookup for directories absent from a complete collection
+retains its discovery path. The goal remains open pending those paths and
 renewed startup acceptance. Contributing-model: 6-astra.
+
+Default-project audit (2026-10-09): three fresh isolated servers, fresh browser
+profiles and app-data directories, authenticated Claude and the native session
+stores took 4,861/2,901/3,578 ms to show all real controls with a valid selected
+project. Returning tabs took 346–449 ms. Stage profiling found serial Claude
+directory acquisition (135–2,136 ms) followed by Codex acquisition (1,706–1,853
+ms; 1,303 rollout metadata reads). Independent Claude/Codex acquisition now
+runs concurrently, retaining Claude-first merge precedence and draining both
+on failure. The same browser probe then took 5,396/2,396/2,348 ms cold and
+325–440 ms returning. The first candidate also spent over three seconds in
+provider/version requests. This is an improvement in two samples, not a
+verified cold-start bound or a controlled speedup estimate: shared-host load
+was 26–28 on sixteen cores. Both runs checked actual project membership and
+cleaned up all spawned processes. Contributing-model: 6-astra.
 
 Native-data concurrent acceptance at 6c4ad0710 (2026-10-09): three fresh
 isolated servers each received three simultaneous new tabs, with authenticated

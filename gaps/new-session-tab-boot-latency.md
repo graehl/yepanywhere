@@ -100,6 +100,27 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Cold acquisition still loads unnecessary prerequisites (2026-10-09). The five
+startup query modules' static chunk graph includes about 1.54 MB of unminified
+code: React DOM, relay protocol validation and encryption are among the
+dependencies of local HTTP reads. Moving those same modules to an earlier
+entry did not remove that cost: version/settings still began at 138–169 ms;
+paired full UI was 447/669/680 ms before and 657/567/515 ms with the split.
+The experimental entry was removed. Separate query state/acquisition from its
+React and transport adapters before trying another entry change.
+
+An isolated server probe found Claude auth subprocesses taking 222–338 ms and
+version handlers taking 206–345 ms; settings and retained project/recents
+handlers took 1–4 ms. Libc report generation took 20–25 ms with network
+inspection already disabled. Starting only the selected provider earlier
+shifted the final wait to version and descriptors. A diagnostic that started
+version/settings at document startup, then selected the provider from those
+settings, gave full UI 334/317/599 ms versus paired 445/443/594 ms. The slow
+candidate mounted its form at 489 ms despite provider data arriving at 334 ms.
+These contended runs (roughly 22–31 load on 16 cores) identify dependencies;
+they do not establish 500 ms acceptance. No speculative-provider request or
+fetch interception was shipped. Contributing-model: 6-astra.
+
 Accepted named provider rows now persist before the complete aggregate returns
 (2026-10-09). A sibling browser regression holds settings, aggregate and named
 responses and still displays the real project/Claude/Sonnet/High controls with

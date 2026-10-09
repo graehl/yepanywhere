@@ -356,10 +356,13 @@ export class ProjectScanner {
       (!this.retainedNeedsRefresh && this.cleanRevision === this.cacheRevision)
     )
       return;
-    this.retainedTimer = setTimeout(() => {
-      this.retainedTimer = null;
-      void this.refreshRetainedProjects();
-    }, 300);
+    this.retainedTimer = setTimeout(
+      () => {
+        this.retainedTimer = null;
+        void this.refreshRetainedProjects();
+      },
+      this.snapshot ? 300 : 0,
+    );
     this.retainedTimer.unref?.();
   }
 

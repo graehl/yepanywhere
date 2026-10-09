@@ -634,6 +634,28 @@ describe("ProjectScanner cache", () => {
     }
   });
 
+  it("starts first retained discovery without the file-event debounce", async () => {
+    const projectsDir = join(tmpdir(), `initial-discovery-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+    });
+    const refresh = vi
+      .spyOn(scanner, "refreshRetainedProjects")
+      .mockResolvedValue(undefined);
+    vi.useFakeTimers();
+    try {
+      await scanner.readRetainedProjects();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      await scanner.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("cancels queued retained discovery on disposal", async () => {
     const scanner = new ProjectScanner({
       projectsDir: join(tmpdir(), randomUUID()),

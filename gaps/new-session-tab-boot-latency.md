@@ -131,6 +131,26 @@ verified cold-start bound or a controlled speedup estimate: shared-host load
 was 26–28 on sixteen cores. Both runs checked actual project membership and
 cleaned up all spawned processes. Contributing-model: 6-astra.
 
+Initial discovery now skips the 300 ms file-event debounce when there is no
+snapshot to display; later refreshes keep coalescing. The timer regression
+fails before the change and passes afterward. Native default selection still
+took 2,642/2,904/3,594 ms, so this removes a fixed delay but does not establish
+the cold automatic-selection bound. Empty-directory URLs passed all nine tabs
+at 240–1,259 ms, with the server's zero-session record checked afterward.
+An experimental 64 KB metadata-read chunk reduced a 22 KB line from six reads
+to one but showed no browser improvement (5,800/3,515/3,071 ms); that experiment
+was removed. Host load was 25–28 on sixteen cores, and all process sweeps were
+clean. Contributing-model: 6-astra.
+
+Acceptance distinction under clarification: on a fresh profile with no saved
+or URL project, the real enabled project input is already present while the
+inventory is loading. The default-project probe above times its eventual
+nonempty automatic selection. The maintainer explicitly permits empty controls
+while data is pending; confirm whether automatic selection itself is subject
+to the three-second bound. Saved and requested project selections retain their
+existing timing requirement. Do not silently relabel the measurements or
+claim completion before resolving this distinction. Contributing-model: 6-astra.
+
 Native-data concurrent acceptance at 6c4ad0710 (2026-10-09): three fresh
 isolated servers each received three simultaneous new tabs, with authenticated
 Claude discovery and the real Claude/Codex stores. Full UI times were

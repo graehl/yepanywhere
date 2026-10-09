@@ -221,6 +221,10 @@ for both acquisitions to settle, including on failure, then merges Claude
 before Codex to preserve identity precedence. Gemini still follows known-path
 registration because its hash resolution depends on those merged paths.
 
+Without any snapshot to display, initial retained discovery is queued for the
+next event-loop turn. The 300 ms debounce applies only when a snapshot already
+exists, coalescing subsequent file-event refreshes without delaying first use.
+
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail for an unknown directory still uses complete
 discovery, and standalone complete provider reads retain age-driven enumeration.

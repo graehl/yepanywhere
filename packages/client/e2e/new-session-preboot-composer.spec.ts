@@ -36,6 +36,12 @@ test("keys typed before the app loads reach the new-session composer", async ({
     localStorage.setItem("yep-anywhere-sidebar-expanded", "true");
     localStorage.setItem("yep-anywhere-sidebar-width", "360");
     const samples: number[] = [];
+    const moduleFallbacks: number[] = [];
+    new MutationObserver(() => {
+      if (document.querySelector('[data-startup-phase="module"]')) {
+        moduleFallbacks.push(performance.now());
+      }
+    }).observe(document, { childList: true, subtree: true });
     let keyAt = 0;
     document.addEventListener(
       "keydown",
@@ -51,7 +57,7 @@ test("keys typed before the app loads reach the new-session composer", async ({
       },
       true,
     );
-    Object.assign(window, { typingSamples: samples });
+    Object.assign(window, { typingSamples: samples, moduleFallbacks });
   });
   const release = await holdScripts(page);
   // DOMContentLoaded waits for the held module scripts, so only commit.
@@ -71,6 +77,12 @@ test("keys typed before the app loads reach the new-session composer", async ({
   const composer = page.locator("textarea.new-session-form-textarea");
   await expect(composer).toBeFocused({ timeout: 30_000 });
   await expect(page.locator("#yep-preboot-composer")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { moduleFallbacks: number[] }).moduleFallbacks,
+    ),
+  ).toEqual([]);
   await page.keyboard.type(" and after", { delay: 10 });
   await expect(composer).toHaveValue(
     "Saved prompt: typed before boot and after",

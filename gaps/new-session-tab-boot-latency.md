@@ -100,6 +100,17 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Local route acquisition also avoids committing a React loading fallback before
+mounting ready modules (2026-10-09). In an isolated built-client check, the last
+script finished roughly 300 ms before the old form appeared. Mounting the
+preloaded route removed that pause. With the same seeded project and default
+Claude/model/Thinking controls, warm new-tab full-UI samples changed from
+732/641/524 ms to 408/433/395 ms. The cold sample was still 988 ms (baseline
+1026 ms), waiting for server data. These are diagnostic samples under CPU
+contention (16 cores, load 17–23), not a stable 500 ms guarantee. The remaining
+items still need implementation and broader verification. Contributing-model:
+6-astra.
+
 The local pre-boot draft restoration is also fixed (2026-10-09): the inline
 field reads the account-scoped draft, and adoption transfers edits exactly
 once, including deletion. Account changes cannot adopt another account's

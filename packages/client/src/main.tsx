@@ -26,9 +26,12 @@ import { initializeTooltipAppearance } from "./hooks/useTooltipAppearance";
 import { initializeUnicodeProseMath } from "./lib/unicodeProseMath";
 import { I18nProvider, useI18n } from "./i18n";
 import { installModifierChordTracking } from "./lib/modifierChords";
+import { preloadableComponent } from "./lib/preloadableComponent";
 import "./styles/index.css";
 
-const App = lazy(() => import("./App").then(({ App }) => ({ default: App })));
+const App = preloadableComponent(async () => ({
+  default: (await import("./App")).App,
+}));
 const ConversationPreviewPage = lazy(() =>
   import("./pages/ConversationPreviewPage").then(
     ({ ConversationPreviewPage }) => ({ default: ConversationPreviewPage }),
@@ -40,11 +43,9 @@ function LocalAppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   return /^\/-\/preview\/?$/.test(pathname) ? children : <App>{children}</App>;
 }
-const NavigationLayout = lazy(() =>
-  import("./layouts").then(({ NavigationLayout }) => ({
-    default: NavigationLayout,
-  })),
-);
+const NavigationLayout = preloadableComponent(async () => ({
+  default: (await import("./layouts")).NavigationLayout,
+}));
 const SessionDomLingerRouteMarker = lazy(() =>
   import("./layouts").then(({ SessionDomLingerRouteMarker }) => ({
     default: SessionDomLingerRouteMarker,
@@ -111,11 +112,9 @@ const LoginPage = lazy(() =>
     default: LoginPage,
   })),
 );
-const NewSessionPage = lazy(() =>
-  import("./pages/NewSessionPage").then(({ NewSessionPage }) => ({
-    default: NewSessionPage,
-  })),
-);
+const NewSessionPage = preloadableComponent(async () => ({
+  default: (await import("./pages/NewSessionPage")).NewSessionPage,
+}));
 const ProjectAppPage = lazy(() =>
   import("./pages/ProjectAppPage").then(({ ProjectAppPage }) => ({
     default: ProjectAppPage,
@@ -289,8 +288,9 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
   const initialPath = basename
     ? window.location.pathname.slice(basename.length)
     : window.location.pathname;
+  let initialModules: Promise<unknown> | undefined;
   // Start independent downloads before lazy ancestors can serialize them.
-  // React.lazy retains ownership of any import failure's route error UI.
+  // Route error boundaries retain ownership of any import failure's UI.
   if (/^\/settings(?:\/|$)/.test(initialPath)) {
     void Promise.allSettled([
       import("./App"),
@@ -298,14 +298,14 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
       import("./pages/settings"),
     ]);
   } else if (/^\/new-session\/?$/.test(initialPath)) {
-    void Promise.allSettled([
-      import("./App"),
-      import("./layouts"),
-      import("./pages/NewSessionPage"),
+    initialModules = Promise.all([
+      App.preload(),
+      NavigationLayout.preload(),
+      NewSessionPage.preload(),
     ]);
   }
 
-  createRoot(rootElement).render(
+  const app = (
     <Wrapper>
       <ErrorBoundary>
         <TooltipLayer />
@@ -444,6 +444,11 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
           </I18nProvider>
         </BrowserRouter>
       </ErrorBoundary>
-    </Wrapper>,
+    </Wrapper>
   );
+  // The inline composer holds input while code loads. Mounting ready route
+  // components avoids React's minimum fallback display delay on a fresh tab.
+  const renderApp = () => createRoot(rootElement).render(app);
+  if (initialModules) void initialModules.then(renderApp, renderApp);
+  else renderApp();
 }

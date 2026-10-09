@@ -271,6 +271,14 @@ Search remains marked busy while panes are incomplete, and does not claim
 there are no matches until all panes have loaded. A failed module exposes the
 existing diagnostic and Reload Page recovery within that pane.
 
+A local new-session tab acquires its app, navigation layout and form modules
+together, then mounts those ready components in its first React commit. The
+inline composer retains typing during acquisition. Successful startup does
+not insert a module loading fallback between that field and the real form:
+doing so adds React's minimum fallback display delay even after code is ready.
+Acquisition failures still reach the route error boundary. Later navigation
+retains lazy acquisition and the normal route boundaries.
+
 Dynamic route assets remain part of one deployed entrypoint generation. Old
 loaded entrypoints must be able to acquire chunks they name after a deployment,
 or recover once through a state-preserving fresh entry. The delivery contract

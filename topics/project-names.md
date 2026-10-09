@@ -50,8 +50,11 @@ Status: **implemented (2026-09-20).**
     the same panel for that entry, the search box serving as its path
     field; there is no separate typed-path row. Opening the panel from its
     button carries such an entry into its field. Closing and reopening it
-    keeps the entry and choice; choosing a listed project or No project
-    closes it.
+    keeps the entry and choice. The project list still opens while the
+    panel is open, drawn over it; choosing a listed project or No project
+    closes the panel. On wide screens the panel is its own row spanning
+    the composer and the project column, so the palette lays out across
+    the page instead of lengthening the narrow column.
   - The chooser's summary names the project the panel will start (the
     description, else the settled path's last folder), not the selection
     it replaced: a selected `draft` overtyped with `~/math` previews

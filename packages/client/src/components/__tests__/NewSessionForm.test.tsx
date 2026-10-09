@@ -3568,6 +3568,32 @@ describe("NewSessionForm", () => {
     );
   });
 
+  it("lists projects over an open New project, which a choice closes", () => {
+    const onProjectChange = vi.fn();
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+        onProjectChange={onProjectChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "templateNewProject" }));
+    expect(
+      screen.getByRole("region", { name: "templateNewProject" }),
+    ).toBeDefined();
+    fireEvent.click(
+      container.querySelector(
+        ".new-session-project-summary",
+      ) as HTMLButtonElement,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Beta/ }));
+    expect(onProjectChange).toHaveBeenCalledWith("project-2");
+    expect(
+      screen.queryByRole("region", { name: "templateNewProject" }),
+    ).toBeNull();
+  });
+
   it("keeps Git on for servers that always initialize it", () => {
     render(<NewSessionForm projects={[...chooserProjects]} />);
     fireEvent.click(screen.getByRole("button", { name: "templateNewProject" }));

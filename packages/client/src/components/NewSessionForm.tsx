@@ -4356,7 +4356,8 @@ export function NewSessionForm({
             </button>
           </div>
         )}
-        {isProjectChooserExpanded && projectPanelRows && !newProjectOpen && (
+        {/* Shown over an open New project too: choosing a project closes it. */}
+        {isProjectChooserExpanded && projectPanelRows && (
           <div
             id="new-session-project-panel"
             className="new-session-project-panel"
@@ -4371,92 +4372,92 @@ export function NewSessionForm({
           </div>
         )}
       </div>
-      {newProjectPanelShown && (
-        <section
-          id="new-session-new-project"
-          className={styles.newProject}
-          aria-label={t("templateNewProject")}
-        >
-          {newProjectOpen ? (
-            <label className={styles.newProjectField}>
-              <span>{t("newProjectEntryLabel")}</span>
-              <input
-                type="text"
-                value={newProjectEntry}
-                onChange={(event) => setNewProjectEntry(event.target.value)}
-                placeholder={t("newProjectEntryPlaceholder")}
-                disabled={isStarting || templateProjectBusy}
-                spellCheck={false}
-                ref={newProjectEntryRef}
-              />
-            </label>
-          ) : null}
-          <p className={styles.newProjectTarget}>
-            {newProjectTarget?.path
-              ? t(
-                  newProjectOpen ? "newProjectCreates" : "newProjectFromSearch",
-                  {
-                    path: shortenPath(newProjectTarget.path),
-                  },
-                )
-              : t("newProjectNeedsName")}
-          </p>
-          <ProjectStartPalette
-            name="new-session-project-start"
-            legend={t("newProjectStartFrom")}
-            disabled={isStarting || templateProjectBusy}
-            choices={[
-              {
-                key: EMPTY_FOLDER_CHOICE,
-                title: t("newProjectEmptyFolder"),
-                description: t("newProjectEmptyFolderHint"),
-              },
-              ...newProjectTemplates.map((template) => ({
-                key: templateChoiceKey(template),
-                title: template.title,
-                description: template.description,
-                icon: template.icon,
-              })),
-            ]}
-            selected={
-              newProjectTemplate
-                ? templateChoiceKey(newProjectTemplate)
-                : EMPTY_FOLDER_CHOICE
-            }
-            onSelect={setNewProjectChoice}
-          />
-          {!newProjectTemplate && (
-            <>
-              <label className={styles.newProjectGit}>
-                <input
-                  type="checkbox"
-                  checked={newProjectInitializesGit}
-                  disabled={!projectCreationGitChoice || isStarting}
-                  onChange={(event) => {
-                    setNewProjectGitInit(event.target.checked);
-                    localStorage.setItem(
-                      UI_KEYS.newProjectGitInit,
-                      String(event.target.checked),
-                    );
-                  }}
-                />
-                {t("newProjectGitInit")}
-              </label>
-              {newProjectTarget?.path && (
-                <p className={styles.newProjectPlan}>
-                  {t(
-                    newProjectInitializesGit
-                      ? "newProjectPlanGit"
-                      : "newProjectPlan",
-                  )}
-                </p>
-              )}
-            </>
-          )}
-        </section>
-      )}
     </div>
   );
+  // A grid row of its own, below both the composer and the project column, so
+  // the palette spreads across the page width instead of stretching the
+  // narrow project column (and never sits under the project list).
+  const newProjectSection = newProjectPanelShown ? (
+    <section
+      id="new-session-new-project"
+      className={styles.newProject}
+      aria-label={t("templateNewProject")}
+    >
+      {newProjectOpen ? (
+        <label className={styles.newProjectField}>
+          <span>{t("newProjectEntryLabel")}</span>
+          <input
+            type="text"
+            value={newProjectEntry}
+            onChange={(event) => setNewProjectEntry(event.target.value)}
+            placeholder={t("newProjectEntryPlaceholder")}
+            disabled={isStarting || templateProjectBusy}
+            spellCheck={false}
+            ref={newProjectEntryRef}
+          />
+        </label>
+      ) : null}
+      <p className={styles.newProjectTarget}>
+        {newProjectTarget?.path
+          ? t(newProjectOpen ? "newProjectCreates" : "newProjectFromSearch", {
+              path: shortenPath(newProjectTarget.path),
+            })
+          : t("newProjectNeedsName")}
+      </p>
+      <ProjectStartPalette
+        name="new-session-project-start"
+        legend={t("newProjectStartFrom")}
+        disabled={isStarting || templateProjectBusy}
+        choices={[
+          {
+            key: EMPTY_FOLDER_CHOICE,
+            title: t("newProjectEmptyFolder"),
+            description: t("newProjectEmptyFolderHint"),
+          },
+          ...newProjectTemplates.map((template) => ({
+            key: templateChoiceKey(template),
+            title: template.title,
+            description: template.description,
+            icon: template.icon,
+          })),
+        ]}
+        selected={
+          newProjectTemplate
+            ? templateChoiceKey(newProjectTemplate)
+            : EMPTY_FOLDER_CHOICE
+        }
+        onSelect={setNewProjectChoice}
+      />
+      {!newProjectTemplate && (
+        <>
+          <label className={styles.newProjectGit}>
+            <input
+              type="checkbox"
+              checked={newProjectInitializesGit}
+              disabled={!projectCreationGitChoice || isStarting}
+              onChange={(event) => {
+                setNewProjectGitInit(event.target.checked);
+                localStorage.setItem(
+                  UI_KEYS.newProjectGitInit,
+                  String(event.target.checked),
+                );
+              }}
+            />
+            {t("newProjectGitInit")}
+          </label>
+          {newProjectTarget?.path && (
+            <p className={styles.newProjectPlan}>
+              {t(
+                newProjectInitializesGit
+                  ? "newProjectPlanGit"
+                  : "newProjectPlan",
+              )}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  ) : null;
   const workstreamChooser =
     showWorkstreamChooser && selectedWorkstream ? (
       <label className="new-session-workstream-field">
@@ -5214,6 +5215,7 @@ export function NewSessionForm({
             {workstreamChooser}
           </aside>
         )}
+        {newProjectSection}
         {templateChoices?.enabled && !launch && !fixedProject && (
           <div
             className={styles.templateProjectSlot}

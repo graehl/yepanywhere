@@ -75,6 +75,14 @@ Host at load average 16 on 16 cores. Headless Chromium, warm server:
   requests (recents, the drafts long poll) occupy the browser's six HTTP/1.1
   connections that the hundreds of module requests need. This does not
   apply to the hosted client over the relay, which was not measured.
+- Request census of one load from the dev origin: 724 module requests and
+  about 30 API requests before the form, all HTTP/1.1, with up to 165
+  requested at once against the browser's six connections per origin.
+  Modules finished at 2.4–4.4 s and the form followed at 3.1–5.5 s, so the
+  module waterfall, not API data, dominates. Browsers speak HTTP/2 only over
+  TLS, and the server's self-signed HTTPS option is `node:https`, which is
+  HTTP/1.1. Candidate remedies: HTTP/2 with TLS on the dev origin, or serving
+  the built client from the live server.
 - A warmed browser profile showed the form at 1.6–2.5 s, with about 49 KB of
   local storage, no IndexedDB, and no long tasks over 213 ms.
 

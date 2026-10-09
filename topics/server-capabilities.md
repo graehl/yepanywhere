@@ -1025,6 +1025,12 @@ in-flight coalescing. `fresh=1` remains the explicit path for bypassing the
 applicable caches; a normal capability read must not repeatedly launch Git,
 package-manager, sandbox, bridge, or provider subprocesses.
 
+When acquisition is necessary, build metadata, device-bridge status and sandbox
+preflight start concurrently. The update lookup starts as soon as the current
+version is known, independently of device and sandbox completion. The response
+still waits for all results before encoding capabilities; concurrency must not
+turn incomplete preflight into an advertised capability or skip `fresh=1`.
+
 A source launch also reports `sourceRevision`, taken once at startup: the
 checked-out commit, its committer date, and whether `packages/` had tracked or
 untracked changes, with the newest modification time among them. Other paths

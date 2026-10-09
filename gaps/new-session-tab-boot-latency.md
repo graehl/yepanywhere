@@ -100,6 +100,18 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Version acquisition no longer serializes independent build, bridge, sandbox
+and update work (2026-10-09). Held-promise route tests require independent
+probes to start together and the response to await their results. Ten isolated
+fresh-server/fresh-browser loads measured full UI median/p90 at 761/934 ms
+before and 693/826 ms after. CPU load varied from 18 to 23 on 16 cores, so
+this is diagnostic evidence, not a clean attribution or 500 ms acceptance.
+These fixtures are signed out: Claude returns a fallback catalog, not a live
+SDK probe. Separate phase measurements found 47–61 ms of build metadata
+followed by 74–173 ms of sandbox preflight. Current capability acquisition
+still gates project/recents requests; cold and cross-tab snapshots remain
+open. Contributing-model: 6-astra.
+
 Claude catalog requests no longer launch duplicate authentication commands
 (2026-10-09). A route-level regression reproduced two `claude auth status`
 subprocesses for one cold request and now requires one. Completed and failed

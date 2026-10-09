@@ -8,7 +8,7 @@ import {
 import { resolveRouterModel, routerAliasTargets } from "@yep-anywhere/shared";
 import type { RouterSelection } from "./RouterPoolSelector";
 import { DraftSyncNotice } from "./DraftSyncNotice";
-import { DRAFT_STORAGE_EVENT } from "../lib/draftSyncStorage";
+import { DRAFT_STORAGE_EVENT, draftStorage } from "../lib/draftSyncStorage";
 import { MachineControlSessionSelection } from "./MachineControlSessionSelection";
 import { useComposerVoiceRef } from "../hooks/useComposerVoiceRef";
 import type { ProjectAppTarget } from "../api/projectApp";
@@ -2281,8 +2281,8 @@ export function NewSessionForm({
   // A tab opened on this page was already typeable before the app loaded
   // (lib/prebootComposer), so the page's form takes over that text and caret
   // in this same commit: nothing can be struck between the two fields. The
-  // text was typed without seeing a restored draft, so it follows the draft
-  // as its own paragraph.
+  // saved draft was visible on the local path, so its edited value replaces
+  // that draft. Text typed before remote identity was known follows it.
   const attachComposerTextarea = useCallback(
     (textarea: HTMLTextAreaElement | null) => {
       textareaRef.current = textarea;
@@ -2293,7 +2293,17 @@ export function NewSessionForm({
       autoFocusRef.current = false;
       let selectionStart = textarea.value.length;
       let selectionEnd = selectionStart;
-      if (preboot?.text) {
+      if (preboot?.draftKey) {
+        if (
+          preboot.edited &&
+          preboot.draftKey === draftStorage.physicalKey(newSessionDraftKey)
+        ) {
+          textarea.value = preboot.text;
+          setMessage(preboot.text);
+          selectionStart = preboot.selectionStart;
+          selectionEnd = preboot.selectionEnd;
+        }
+      } else if (preboot?.text) {
         const draft = textarea.value;
         const separator =
           !draft || /\s$/.test(draft) || /^\s/.test(preboot.text) ? "" : "\n\n";
@@ -2307,7 +2317,7 @@ export function NewSessionForm({
       textarea.focus();
       textarea.setSelectionRange(selectionStart, selectionEnd);
     },
-    [setMessage],
+    [newSessionDraftKey, setMessage],
   );
 
   useLayoutEffect(() => {

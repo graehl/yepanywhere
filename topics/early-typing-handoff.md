@@ -107,9 +107,14 @@ its own composer.
    the tab's startup does not delay it.
 2. **Adopted in one commit.** The page's `NewSessionForm` takes the text and
    selection in the ref callback that creates its own textarea and focuses
-   it there, so no key falls between the two fields. Text typed there follows
-   a restored draft as its own paragraph (rule 7), since it was typed without
-   seeing it. Launch composers (fork, handoff) never adopt it. The form does
+   it there, so no key falls between the two fields. On the local route the
+   field already shows the current account's saved new-session draft. Edits
+   replace that draft once, including an intentional deletion; they are never
+   appended to it. An untouched snapshot does not overwrite a newer draft
+   loaded by the app. A change of account before adoption discards the old
+   account's snapshot. On remote paths identity is not known before boot, so
+   early text still follows the unseen restored draft as its own paragraph
+   (rule 7). Launch composers (fork, handoff) never adopt it. The form does
    not wait for the selected project's record: it mounts, adopts and takes
    typing at once, shows the project as loading rather than detached, and
    holds Start (button and Enter) until the record arrives and fills the
@@ -120,7 +125,8 @@ its own composer.
    the next adoption in that tab. It sits below the app's modals, so a
    blocking dialog raised at the same URL (host offline) shows over it.
 4. **A reload before adoption keeps the text.** The pre-boot field writes its
-   text to the tab's `sessionStorage` stash on every input and restores it,
+   text, account-scoped draft address and edit state to the tab's
+   `sessionStorage` stash on every input and restores them,
    caret at the end, when a reloaded document shows it again. Reloads during
    boot are real: the development source-version check reloads at a lazy
    import, and a limited user's newly published browser defaults reload once.
@@ -143,7 +149,9 @@ its own composer.
 
 `packages/client/preboot/new-session-composer.js` is the inline source,
 injected into both entry documents by `vite-plugin-preboot-composer.ts`
-ahead of the CSP pass, which hashes it for the production policy.
+ahead of the CSP pass, which hashes it for the production policy. The inline
+bundle shares the app's draft envelope reader and account-key encoding; it
+does not fetch modules to restore the draft.
 `src/lib/prebootComposer.ts` owns adoption and retirement;
 `e2e/new-session-preboot-composer.spec.ts` holds the app's scripts, types,
 releases them, and checks the handoff.

@@ -8,7 +8,7 @@
  * inline script.
  */
 
-import { readFileSync } from "node:fs";
+import { buildSync } from "esbuild";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
@@ -28,7 +28,18 @@ export function prebootComposerPlugin(): Plugin {
           `preboot composer: ${context.filename} has no ${ROOT_ELEMENT}`,
         );
       }
-      const script = readFileSync(SOURCE, "utf8").trim();
+      const script = buildSync({
+        entryPoints: [SOURCE],
+        bundle: true,
+        write: false,
+        format: "iife",
+        minify: true,
+        define: {
+          "import.meta.env.VITE_IS_REMOTE_CLIENT": JSON.stringify(
+            /(?:^|\/)remote\.html$/.test(context.filename),
+          ),
+        },
+      }).outputFiles[0]!.text.trim();
       return html.replace(
         ROOT_ELEMENT,
         `${ROOT_ELEMENT}\n    <script>\n${script}\n    </script>`,

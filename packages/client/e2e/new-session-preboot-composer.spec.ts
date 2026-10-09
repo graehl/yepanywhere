@@ -29,6 +29,10 @@ test("keys typed before the app loads reach the new-session composer", async ({
   // Wide enough for the saved desktop sidebar, which stays expanded.
   await page.setViewportSize({ width: 1400, height: 700 });
   await page.addInitScript(() => {
+    localStorage.setItem(
+      "draft-new-session:local",
+      JSON.stringify({ version: 1, text: "Saved prompt: " }),
+    );
     localStorage.setItem("yep-anywhere-sidebar-expanded", "true");
     localStorage.setItem("yep-anywhere-sidebar-width", "360");
     const samples: number[] = [];
@@ -55,10 +59,11 @@ test("keys typed before the app loads reach the new-session composer", async ({
 
   const preboot = page.locator("#yep-preboot-composer textarea");
   await expect(preboot).toBeFocused();
+  await expect(preboot).toHaveValue("Saved prompt: ");
   await page.keyboard.type("typed before boot", { delay: 10 });
   // Enter sends in the app; it must not become a newline in the meantime.
   await page.keyboard.press("Enter");
-  await expect(preboot).toHaveValue("typed before boot");
+  await expect(preboot).toHaveValue("Saved prompt: typed before boot");
 
   const earlyBox = await preboot.boundingBox();
   await release();
@@ -67,7 +72,9 @@ test("keys typed before the app loads reach the new-session composer", async ({
   await expect(composer).toBeFocused({ timeout: 30_000 });
   await expect(page.locator("#yep-preboot-composer")).toHaveCount(0);
   await page.keyboard.type(" and after", { delay: 10 });
-  await expect(composer).toHaveValue("typed before boot and after");
+  await expect(composer).toHaveValue(
+    "Saved prompt: typed before boot and after",
+  );
 
   await expect(page.locator(".sidebar-desktop")).toBeVisible();
   await expect(page.locator(".sidebar-desktop")).not.toHaveClass(

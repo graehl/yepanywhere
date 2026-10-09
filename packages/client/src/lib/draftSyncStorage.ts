@@ -18,6 +18,7 @@ import {
   type DraftWriteResult,
 } from "@yep-anywhere/shared";
 import { readDraftEnvelopeValue } from "./draftEnvelope";
+import { accountDraftStorageKey } from "./draftAccountStorage";
 import type { SourceTransport } from "./transport/types";
 
 export const DRAFT_STORAGE_EVENT = "yep-draft-storage";
@@ -286,9 +287,7 @@ function physical(key: string, address: Address): string {
     address.slot.kind === "handoff" && address.source !== "local"
       ? `draft-source:${encodeURIComponent(address.source)}:${key}`
       : key;
-  return owner == null || owner === ""
-    ? sourceKey
-    : `draft-account:${encodeURIComponent(owner)}:${sourceKey}`;
+  return accountDraftStorageKey(sourceKey, owner);
 }
 function notify(key: string): void {
   for (const listener of listeners.get(key) ?? []) listener();
@@ -330,6 +329,10 @@ function observed(key: string): boolean {
   return false;
 }
 export const draftStorage = {
+  physicalKey(key: string): string {
+    const address = storageAddress(key);
+    return address ? physical(key, address) : key;
+  },
   keys(): string[] {
     const keys = new Set<string>();
     for (let i = 0; i < localStorage.length; i++) {

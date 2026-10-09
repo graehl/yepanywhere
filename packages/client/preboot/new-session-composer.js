@@ -4,8 +4,10 @@
 // vite-plugin-preboot-composer.ts, so it runs during parse, before any module
 // is fetched. A tab opened on /new-session can be typed into as soon as the
 // document arrives instead of after the app has loaded; NewSessionForm adopts
-// the text and caret (src/lib/prebootComposer.ts). Keep it dependency-free
-// and small: every byte here delays first paint of every page.
+// the text and caret (src/lib/prebootComposer.ts). Keep the inline bundle
+// small: every byte here delays first paint of every page.
+import { restorePrebootComposer } from "../src/lib/prebootComposer";
+
 (() => {
   if (!/(?:^|\/)new-session\/?$/.test(location.pathname)) return;
   // A prefill arrives with the app; typing ahead of it has no field to go to.
@@ -120,16 +122,7 @@
   // A reload before the app adopts this field (a development source-version
   // check, applied browser defaults) must not cost what was typed: keep it
   // in the tab's session storage, where prebootComposer.ts also stashes it.
-  var stashKey = "yep-preboot-composer-text";
-  try {
-    textarea.value = sessionStorage.getItem(stashKey) || "";
-  } catch {}
-  textarea.addEventListener("input", () => {
-    try {
-      if (textarea.value) sessionStorage.setItem(stashKey, textarea.value);
-      else sessionStorage.removeItem(stashKey);
-    } catch {}
-  });
+  restorePrebootComposer(textarea, !import.meta.env.VITE_IS_REMOTE_CLIENT);
 
   column.append(textarea, status);
   overlay.append(column);

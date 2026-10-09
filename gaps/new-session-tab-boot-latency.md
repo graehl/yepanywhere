@@ -100,6 +100,13 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+The local pre-boot draft restoration is also fixed (2026-10-09): the inline
+field reads the account-scoped draft, and adoption transfers edits exactly
+once, including deletion. Account changes cannot adopt another account's
+snapshot. The focused browser check types sequentially before and after app
+startup and verifies no duplicate prompt. This is correctness work, not proof
+of the full-UI 500 ms latency target. Contributing-model: 6-astra.
+
 - **Instant first paint from last-known state.** A new tab renders the
   composer, current provider/model/effort, and project selector from a
   snapshot every open tab keeps current (browser storage or a
@@ -111,11 +118,6 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
   new-session path waits on a transcript scan.
 - **No serial bootstrap chain.** Route data requests start together with the
   bootstrap requests, not after them.
-- **The pre-boot composer shows the existing new-session draft.** Otherwise
-  a user who does not see it retypes, and adoption appends the retyped text
-  after the restored draft (topic rule 2), sending the start twice. This
-  needs the draft's account-scoped storage key, which is known only on the
-  local path before the app loads.
 
 Found 2026-09-30 while diagnosing duplicated new-session prompts and
 multi-second new-tab loads. Contributing-model: opus-5.5.

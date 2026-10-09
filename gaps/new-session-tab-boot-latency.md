@@ -116,6 +116,24 @@ lookup for directories absent from a complete collection retains its discovery
 path. The gap's server-work requirement below is therefore not closed merely
 because the display timings pass. Contributing-model: 6-astra.
 
+Native-data concurrent acceptance at 6c4ad0710 (2026-10-09): three fresh
+isolated servers each received three simultaneous new tabs, with authenticated
+Claude discovery and the real Claude/Codex stores. Full UI times were
+2,536/2,549/2,601 ms, 1,206/1,278/1,287 ms and 1,319/1,354/1,379 ms.
+All nine met the revised target. Initial load was 25.87 on sixteen cores,
+with 91 GB available RAM; this is diagnostic shared-host evidence, not a
+universal latency guarantee. No project discovery warm-up preceded navigation.
+The provider host and local SQLite checks passed and all spawned processes
+were removed. Contributing-model: 6-astra.
+
+The scanner audit distinguishes tab reads from file events:
+`readRetainedProjects` reuses a clean accepted snapshot without an age-driven
+refresh, but `handleFileChange` invalidates the entire project snapshot for
+every session or agent-session file change. The retained owner can then
+schedule a complete refresh after 300 ms. Targeted file-event updates remain
+unimplemented; ignoring these events is not an acceptable fix because they
+can change project membership, counts and activity.
+
 New Session now reuses a current project collection row rather than requesting
 the same selected-project detail. It waits for collection completion before
 checking a missing directory; collection failure permits the independent detail

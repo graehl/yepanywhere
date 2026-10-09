@@ -70,6 +70,7 @@ const {
   draftKeys,
   modelSettingsState,
   providersState,
+  providerDescriptorsState,
   providerRowState,
   remoteExecutorsState,
   serverSettingsState,
@@ -172,6 +173,11 @@ const {
       }>;
     }>,
     loading: false,
+  },
+  providerDescriptorsState: {
+    providers: undefined as
+      | import("@yep-anywhere/shared").ProviderDescriptor[]
+      | undefined,
   },
   providerRowState: {
     fresh: true,
@@ -463,6 +469,12 @@ vi.mock("../../hooks/useModelSettings", () => ({
     { value: "high", label: "High", description: "Deep reasoning" },
     { value: "max", label: "Max", description: "Maximum effort" },
   ],
+}));
+
+vi.mock("../../hooks/useProviderDescriptors", () => ({
+  useProviderDescriptors: (enabled: boolean) => ({
+    providers: enabled ? providerDescriptorsState.providers : undefined,
+  }),
 }));
 
 vi.mock("../../hooks/useProviders", () => ({
@@ -804,6 +816,7 @@ function installObjectUrlMock() {
 
 describe("NewSessionForm", () => {
   beforeEach(() => {
+    providerDescriptorsState.providers = undefined;
     coarsePointerState.current = false;
     actingPrincipalState.principal = {
       superuser: true,
@@ -1941,6 +1954,44 @@ describe("NewSessionForm", () => {
         { deliveryIntent: "direct", turnEffort: "slow" },
       ),
     );
+  });
+
+  it("shows descriptors while withholding launch until the selected runtime is known", async () => {
+    const claude = providersState.providers[0]!;
+    providersState.providers = [];
+    providersState.loading = true;
+    providerDescriptorsState.providers = [
+      { name: "claude", displayName: "Claude" },
+      { name: "pi", displayName: "pi" },
+    ];
+    versionState.version = {
+      capabilities: [SERVER_CAPABILITIES.providerDescriptors.name],
+    };
+    serverSettingsState.settings = {
+      newSessionDefaults: { provider: "claude", model: "opus" },
+    };
+    serverSettingsState.isLoading = false;
+    const props = {
+      projectId: "project-1",
+      selectedProject: chooserProjects[0],
+      projects: [...chooserProjects],
+    };
+    const { rerender } = render(<NewSessionForm {...props} />);
+    expect(screen.getByRole("button", { name: "pi" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "wait for selected runtime" },
+    });
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", true);
+    providersState.providers = [claude];
+    rerender(<NewSessionForm {...props} />);
+    expect(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    ).toHaveProperty("disabled", false);
   });
 
   it("allows a launchable provider to start before authentication is confirmed", async () => {

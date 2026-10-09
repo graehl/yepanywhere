@@ -44,6 +44,34 @@ function deferred<T>(): {
 }
 
 describe("Providers Routes", () => {
+  it("enumerates exposed identities without starting any provider probes", async () => {
+    const providers = [
+      createProvider(),
+      createProvider({ name: "pi", displayName: "Pi" }),
+    ];
+    const routes = createProvidersRoutes({ providers });
+    const response = await routes.request("/descriptors");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      providers: [
+        { name: "claude", displayName: "Claude" },
+        { name: "pi", displayName: "Pi" },
+      ],
+    });
+    for (const provider of providers) {
+      expect(provider.isInstalled).not.toHaveBeenCalled();
+      expect(provider.getAuthStatus).not.toHaveBeenCalled();
+      expect(provider.getAvailableModels).not.toHaveBeenCalled();
+    }
+    const restricted = createProvidersRoutes({
+      providers,
+      enabledProviders: ["pi"],
+    });
+    expect(await (await restricted.request("/descriptors")).json()).toEqual({
+      providers: [{ name: "pi", displayName: "Pi" }],
+    });
+  });
+
   it("advertises native bounded turn search independently of provider authentication", async () => {
     const routes = createProvidersRoutes({
       providers: [

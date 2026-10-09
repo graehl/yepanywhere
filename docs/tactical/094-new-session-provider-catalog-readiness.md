@@ -4,7 +4,17 @@
 > refresh only the provider facts the user needs without making an unrelated
 > provider's CLI discovery part of the New Session critical path.
 
-Status: Current-route readiness is implemented (2026-08-05); three acceptance
+Status update (2026-10-09): capability-gated identity enumeration is implemented
+through `GET /api/providers/descriptors` and consumed by New Session. It reads
+the same exposed-provider set without auth/model probes. The stable-release
+review and old-server fallback are recorded in
+[server capabilities](../../topics/server-capabilities.md). The new selector
+is usable while the aggregate is held; explicit selections still require an
+installed named row before launch. Server snapshots and aggregate failure
+isolation remain open. Earlier status, measurement gates and implementation
+recommendations below record the pre-descriptor slice.
+
+Earlier status: Current-route readiness is implemented (2026-08-05); three acceptance
 criteria remain partial. Forced refreshes are generation safe, Gateway launch
 requires a successful current named probe, browser snapshots are versioned and
 allowlisted, and New Session usage telemetry waits behind selected-provider

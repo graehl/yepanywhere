@@ -768,6 +768,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "retained-projects",
     introducedIn: "0.9.4",
   },
+  providerDescriptors: {
+    id: 125,
+    direction: "server",
+    name: "provider-descriptors",
+    introducedIn: "0.9.4",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

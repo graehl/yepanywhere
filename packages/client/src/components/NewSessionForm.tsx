@@ -84,6 +84,7 @@ import {
   useProviderRow,
   useProviders,
 } from "../hooks/useProviders";
+import { useProviderDescriptors } from "../hooks/useProviderDescriptors";
 import {
   getAttachmentUploadLongEdgePx,
   useAttachmentUploadQuality,
@@ -1152,6 +1153,12 @@ export function NewSessionForm({
     loading: providersLoading,
     stale: providersStale,
   } = useProviders();
+  const { providers: providerDescriptors } = useProviderDescriptors(
+    serverHasCapability(
+      versionInfo,
+      SERVER_CAPABILITIES.providerDescriptors.name,
+    ),
+  );
   const { usage: subscriptionUsage } = useProviderSubscriptionUsage(
     routerSelection ? null : selectedProvider,
     { bootstrapTier: "supplementary" },
@@ -1233,6 +1240,14 @@ export function NewSessionForm({
   );
   const selectedProviderInfo =
     selectedProviderQuery.row ?? aggregateProviderInfo;
+  const providerChoices = (providerDescriptors ?? providers).map(
+    (descriptor) => ({
+      ...descriptor,
+      ...(descriptor.name === selectedProvider
+        ? selectedProviderInfo
+        : providers.find((provider) => provider.name === descriptor.name)),
+    }),
+  );
   const routerEnabled =
     serverHasCapability(
       versionInfo,
@@ -1354,7 +1369,8 @@ export function NewSessionForm({
         (selectedRouterPool?.policy !== "manual" ||
           compatibleMembers.some((a) => a.id === routerAccountId))
       )
-    : selectedProviderCatalogCurrent &&
+    : (!selectedProvider || selectedProviderInfo?.installed === true) &&
+      selectedProviderCatalogCurrent &&
       hasRequiredProviderModel(
         selectedProvider,
         selectedProviderInfo?.models ?? [],
@@ -4542,17 +4558,21 @@ export function NewSessionForm({
     ) : null;
 
   const providerSection =
-    providers.length > 1 ? (
+    providerChoices.length > 1 ? (
       <NewSessionOptionSection
         className={`new-session-provider-section ${styles.compactProviderSection}`}
         title={sessionDefaultCopy.provider.title}
         caption={sessionDefaultCopy.provider.description}
         showCaption={showOptionCaptions}
       >
-        <div aria-busy={providersStale || displayDefaultsPending}>
+        <div
+          aria-busy={
+            providersLoading || providersStale || displayDefaultsPending
+          }
+        >
           <FilterDropdown<ProviderName>
             label={sessionDefaultCopy.provider.title}
-            options={providers.map((provider) => ({
+            options={providerChoices.map((provider) => ({
               value: provider.name,
               label: provider.displayName,
               icon: (
@@ -4562,15 +4582,16 @@ export function NewSessionForm({
               ),
               description: [
                 providerDescriptions[provider.name],
-                !provider.installed
+                provider.installed === false
                   ? t("newSessionProviderStatusNotInstalled")
-                  : !provider.authenticated && !provider.enabled
+                  : provider.authenticated === false &&
+                      provider.enabled === false
                     ? t("newSessionProviderStatusAuthenticationNeeded")
                     : null,
               ]
                 .filter(Boolean)
                 .join(" · "),
-              disabled: !provider.installed,
+              disabled: provider.installed === false,
             }))}
             selected={selectedProvider ? [selectedProvider] : []}
             onChange={([provider]) => {
@@ -4587,7 +4608,9 @@ export function NewSessionForm({
                   />
                   <span className={styles.selectedChoiceText}>
                     <span>
-                      {selectedProviderInfo?.displayName ?? selectedProvider}
+                      {providerChoices.find(
+                        (provider) => provider.name === selectedProvider,
+                      )?.displayName ?? selectedProvider}
                     </span>
                     {selectedProviderInfo &&
                       !routerSelection &&

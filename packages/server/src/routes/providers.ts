@@ -1,4 +1,5 @@
 import type {
+  ProviderDescriptor,
   ProviderInfo,
   ProviderName,
   ProviderSubscriptionUsage,
@@ -336,6 +337,14 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
     );
 
     return c.json({ providers: providerInfos });
+  });
+
+  // Enumeration must not wait for any provider's runtime or account probes.
+  routes.get("/descriptors", (c) => {
+    const providers: ProviderDescriptor[] = getExposedProviders().map(
+      ({ name, displayName }) => ({ name, displayName }),
+    );
+    return c.json({ providers });
   });
 
   // GET /api/providers/:name/subscription-usage - normalized account limits

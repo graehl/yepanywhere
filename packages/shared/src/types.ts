@@ -495,9 +495,13 @@ export interface ModelCatalogStatus {
 /**
  * Provider info for UI display.
  */
-export interface ProviderInfo {
+/** Exposed provider identity; does not assert installation or launch readiness. */
+export interface ProviderDescriptor {
   name: ProviderName;
   displayName: string;
+}
+
+export interface ProviderInfo extends ProviderDescriptor {
   installed: boolean;
   /**
    * Coarse desktop-only hint that provider-owned app/config data was found.

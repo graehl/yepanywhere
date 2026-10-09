@@ -1991,6 +1991,30 @@ export const SERVER_CAPABILITIES = {
       reason: "Older servers retain the complete-request project path.",
     },
   },
+  providerDescriptors: {
+    id: CAPABILITY_ID_ALLOCATIONS.providerDescriptors.id,
+    name: "provider-descriptors",
+    kind: "transitional",
+    area: "providers",
+    introducedIn: "0.9.4",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Enumerates exposed provider identities without installation, authentication or model discovery.",
+    clientFallback:
+      "Use the complete providers response and make no descriptor request.",
+    serverContract: {
+      routes: ["GET /api/providers/descriptors"],
+      responseFields: ["providers.name", "providers.displayName"],
+    },
+    lifecycle: {
+      kind: "transitional",
+      reviewAfter: "2026-12-09",
+      removeClientGateWhen:
+        "The core 60-day stable support corpus provides descriptors and the Maintainer approves removal.",
+      removeServerAdvertisementWhen:
+        "No maintained client branches on provider-descriptors.",
+    },
+  },
   projectDirectoryStoragePolicy: {
     id: CAPABILITY_ID_ALLOCATIONS.projectDirectoryStoragePolicy.id,
     name: "project-directory-storage-policy",

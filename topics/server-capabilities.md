@@ -8,6 +8,17 @@
 
 Topic: server-capabilities
 
+`provider-descriptors` (ID 125, transitional, version-implied from 0.9.4)
+adds `GET /api/providers/descriptors`, returning exposed provider names and
+display names without installation, authentication or model probes. The core
+60-day review on 2026-10-09 inspected stable v0.8.0, v0.8.1, v0.9.0, v0.9.1
+and v0.9.2; all lack the route. New clients request it only after the current
+source advertises support. Without support they retain the complete providers
+response and send no descriptor request. New servers preserve that complete
+response for older clients. Existing capabilities keep their meanings.
+Standing maintainer compatibility authorization applies; gate removal remains
+an explicit review after the core support corpus moves forward.
+
 `vhost-file-site-replacement` (permanent ID 109, explicit optional bit) gates
 the file-address replacement checkbox and limited-user file-address access.
 It extends the existing file-address routes with explicit `replace: true` and

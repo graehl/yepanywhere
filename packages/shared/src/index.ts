@@ -417,6 +417,7 @@ export type {
   ClaudeProviderName,
   CodexReasoningSummary,
   ProviderName,
+  ProviderDescriptor,
   ProviderInfo,
   ProviderLoginFlow,
   ProviderLoginFlowState,

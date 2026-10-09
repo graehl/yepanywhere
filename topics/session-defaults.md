@@ -120,7 +120,19 @@ work or reuses its accepted response. A failed primer does not mark settings
 ready and leaves retry/error presentation with the mounted owner. It neither
 populates settings from display storage nor relaxes launch or identity checks.
 
-The dynamic catalog keeps the existing two request shapes:
+The provider chooser separates identity enumeration from dynamic readiness:
+
+- Capability-gated `GET /api/providers/descriptors` returns exposed `name` and
+  `displayName` pairs immediately, applying the same enabled-provider filter
+  as the other provider routes without running installation, auth or model
+  probes. Descriptor acquisition uses the source-bound retained query owner;
+  refresh and reconnect revalidate it. Unknown/older servers receive no such
+  request and keep the aggregate-only chooser.
+- New Session can offer descriptor choices before the complete catalog. Unknown
+  installation is not displayed as missing or unauthenticated. Selecting a
+  choice starts its named read; an explicit selection cannot enable Start or
+  Queue until its row confirms an installed runtime. The existing implicit
+  server-default launch remains available when no provider was selected.
 
 - `GET /api/providers` returns the exposed provider-card collection and remains
   the complete-response compatibility path.
@@ -189,12 +201,13 @@ New Session's initial subscription-usage read is admitted as supplementary
 startup work after earlier route tiers. Direct-demand usage consumers and every
 explicit Refresh remain immediate.
 
-There is no persisted server provider/model snapshot, so a clean browser on a
-fresh server still awaits the aggregate for provider cards. Generic Gateway
+There is no persisted server provider/model snapshot. A clean browser on a
+capable server can enumerate choices immediately through descriptors; dynamic
+installation, auth and model facts still come from provider rows. Generic Gateway
 model discovery can still start its configured runtime, and aggregate failure
-is not isolated by row. The measured aggregate median crosses the threshold for
-reconsidering descriptor/model-refresh separation; those wire changes still
-require the compatibility review in
+is not isolated by row. The descriptor capability removes that aggregate from
+identity enumeration, preserving its complete-response failure semantics for
+existing clients. Server persistence and broader failure isolation remain in
 [`docs/tactical/094-new-session-provider-catalog-readiness.md`](../docs/tactical/094-new-session-provider-catalog-readiness.md).
 
 ## Recap fallback semantics

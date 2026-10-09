@@ -100,6 +100,18 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Provider identity enumeration now has a capability-gated, probe-free route
+(2026-10-09). New Session renders the real selector from those identities and
+resolves the selected provider independently; unknown runtime status cannot
+authorize an explicit launch. A browser regression holds the aggregate and
+still opens the provider menu and types into the real form. In the isolated
+hosted probe, corrected full-UI readiness was 441 ms cold, then 318/410 ms;
+an earlier sample under changing host contention took 711 ms. Load24.6/16cores
+makes these diagnostic, not acceptance evidence. Pi exceeded5s in the cold
+named-route census; OpenCode took1.63s. Their model discovery no longer blocks
+selector enumeration. Repeated cold, larger-catalog and concurrent-tab coverage
+remain open. Contributing-model: 6-astra.
+
 Readiness measurement correction (2026-10-09): the earlier diagnostic
 `controlsMs` checked the provider badge inside the model field, not the separate
 provider selector. Those numbers do not establish the complete requested UI.

@@ -134,6 +134,38 @@ an authoritative empty visit list clears them even during reconciliation.
 The final consumer releases its private in-memory rows and invalidates pending
 work; this is not browser persistence or authority across logins.
 
+## Retained project discovery owner
+
+`ProjectScanner.readRetainedProjects` is an internal preparation for moving
+project collection requests off provider discovery. It returns the last
+accepted collection without awaiting a transcript scan or current sandbox
+counts. The scanner reuses its existing persisted snapshot across restarts,
+including an expired snapshot, only for the same provider roots, enabled
+providers, metadata store and workstream store. A retained disk read cannot
+certify a later complete read as fresh. Hidden projects are filtered and current
+display names overlay saved rows. With no saved enumeration the collection is
+incomplete, rather than authoritatively empty.
+
+The first retained read schedules one finite refresh after 300 ms. Subsequent
+invalidation coalesces into that refresh and one trailing pass when needed.
+Accepted complete reads and retained reads share the scanner's snapshot and
+persistence owner. Failed refreshes preserve it, expose the error and impose a
+five-second admission backoff. A later read or event can retry; there is no
+periodic scan timer. Refresh completion emits `projects-changed`. Disposal
+cancels queued work, drains active retained work and prevents its publication.
+
+**Partial implementation:** HTTP project routes still use complete reads, and
+no browser relies on this internal contract yet. Route/capability integration,
+registered-project overlays before discovery, current ownership overlays,
+caption enrichment, client completeness handling and targeted incremental
+discovery remain required before switching consumers. This does not establish
+the New Session latency target.
+
+**Design decision:** retain inside the existing project scanner rather than
+constructing another project inventory from session rows. Registered empty
+projects and the existing path/workstream identity rules belong to the scanner;
+session catalog membership alone cannot enumerate them.
+
 ## Continuous-observer model
 
 Design session discovery as though one YA server remains alive and watches the

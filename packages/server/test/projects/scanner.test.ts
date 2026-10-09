@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -185,6 +185,251 @@ describe("ProjectScanner cache", () => {
     ]);
 
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves retained projects while discovery is blocked", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    const eventBus = new EventBus();
+    const publish = vi.fn();
+    eventBus.subscribe((event) => {
+      if (event.type === "projects-changed") publish(event);
+    });
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-one",
+      "sess-1",
+    );
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      eventBus,
+    });
+    await scanner.listProjects();
+    const internals = scanner as unknown as {
+      scanProjects: () => Promise<Project[]>;
+    };
+    const originalScan = internals.scanProjects.bind(scanner);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const scan = vi
+      .spyOn(internals, "scanProjects")
+      .mockImplementation(async () => {
+        await gate;
+        return originalScan();
+      });
+    scanner.invalidateCache();
+    const refresh = scanner.refreshRetainedProjects();
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 30 }, () => scanner.readRetainedProjects()),
+      );
+      expect(scan).toHaveBeenCalledTimes(1);
+      for (const result of results) {
+        expect(result.projects.map((project) => project.path)).toEqual([
+          "/home/user/project-one",
+        ]);
+        expect(result.complete).toBe(true);
+        expect(result.refreshing).toBe(true);
+      }
+    } finally {
+      const disposal = scanner.dispose();
+      release();
+      await refresh;
+      await disposal;
+    }
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it.each(["expired", "recent"])(
+    "restores %s retained projects without certifying them as current",
+    async (age) => {
+      const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+      tempDirs.push(projectsDir);
+      const projectScanCachePath = join(projectsDir, "project-cache.json");
+      const options = {
+        projectsDir,
+        projectScanCachePath,
+        enableCodex: false,
+        enableGemini: false,
+        cacheTtlMs: 60_000,
+      };
+      await createClaudeProject(
+        projectsDir,
+        "localhost",
+        "/home/user/one",
+        "one",
+      );
+      const first = new ProjectScanner(options);
+      await first.listProjects();
+      await first.dispose();
+      const saved = JSON.parse(await readFile(projectScanCachePath, "utf-8"));
+      saved.generatedAt = age === "expired" ? 0 : Date.now();
+      await writeFile(projectScanCachePath, JSON.stringify(saved));
+      await createClaudeProject(
+        projectsDir,
+        "localhost",
+        "/home/user/two",
+        "two",
+      );
+
+      const restored = new ProjectScanner(options);
+      try {
+        const retained = await restored.readRetainedProjects();
+        expect(retained.projects.map((project) => project.path)).toEqual([
+          "/home/user/one",
+        ]);
+        expect(retained.complete).toBe(true);
+        expect(retained.refreshing).toBe(true);
+        expect(await restored.listProjects()).toHaveLength(2);
+      } finally {
+        await restored.dispose();
+      }
+
+      const otherSource = new ProjectScanner({
+        ...options,
+        projectsDir: join(projectsDir, "other"),
+      });
+      try {
+        const retained = await otherSource.readRetainedProjects();
+        expect(retained.projects).toEqual([]);
+        expect(retained.complete).toBe(false);
+      } finally {
+        await otherSource.dispose();
+      }
+    },
+  );
+
+  it("keeps retained projects on failure and bounds request-driven retries", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/one",
+      "one",
+    );
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+    });
+    await scanner.listProjects();
+    const internals = scanner as unknown as {
+      scanProjects: () => Promise<Project[]>;
+    };
+    const scan = vi
+      .spyOn(internals, "scanProjects")
+      .mockRejectedValue(new Error("discovery unavailable"));
+    try {
+      await scanner.refreshRetainedProjects();
+      const results = await Promise.all(
+        Array.from({ length: 30 }, () => scanner.readRetainedProjects()),
+      );
+      expect(scan).toHaveBeenCalledTimes(1);
+      for (const result of results) {
+        expect(result.projects).toHaveLength(1);
+        expect(result.refreshError).toBe("discovery unavailable");
+        expect(result.refreshing).toBe(false);
+      }
+    } finally {
+      await scanner.dispose();
+    }
+  });
+
+  it("publishes a trailing refresh for changes arriving during retained discovery", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+    const eventBus = new EventBus();
+    const publications: string[][] = [];
+    eventBus.subscribe((event) => {
+      if (event.type === "projects-changed")
+        publications.push(event.projectIds);
+    });
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/one",
+      "one",
+    );
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: false,
+      enableGemini: false,
+      eventBus,
+    });
+    await scanner.listProjects();
+    const internals = scanner as unknown as {
+      scanProjects: () => Promise<Project[]>;
+    };
+    const originalScan = internals.scanProjects.bind(scanner);
+    let release!: () => void;
+    let captured!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      captured = resolve;
+    });
+    const scan = vi
+      .spyOn(internals, "scanProjects")
+      .mockImplementationOnce(async () => {
+        const result = await originalScan();
+        captured();
+        await gate;
+        return result;
+      });
+    const refresh = scanner.refreshRetainedProjects();
+    try {
+      await started;
+      await createClaudeProject(
+        projectsDir,
+        "localhost",
+        "/home/user/two",
+        "two",
+      );
+      scanner.invalidateCache();
+      release();
+      await refresh;
+      await vi.waitFor(() =>
+        expect(
+          publications.some((ids) =>
+            ids.includes(encodeProjectId("/home/user/two")),
+          ),
+        ).toBe(true),
+      );
+      expect(scan).toHaveBeenCalledTimes(2);
+      expect((await scanner.readRetainedProjects()).projects).toHaveLength(2);
+    } finally {
+      release();
+      await refresh;
+      await scanner.dispose();
+    }
+  });
+
+  it("cancels queued retained discovery on disposal", async () => {
+    const scanner = new ProjectScanner({
+      projectsDir: join(tmpdir(), randomUUID()),
+      enableCodex: false,
+      enableGemini: false,
+    });
+    const internals = scanner as unknown as {
+      scanProjects: () => Promise<Project[]>;
+    };
+    const scan = vi.spyOn(internals, "scanProjects");
+    const retained = await scanner.readRetainedProjects();
+    expect(retained.complete).toBe(false);
+    expect(retained.refreshing).toBe(true);
+    await scanner.dispose();
+    await scanner.refreshRetainedProjects();
+    await expect(scanner.readRetainedProjects()).rejects.toThrow(
+      "Project scanner is disposed",
+    );
+    expect(scan).not.toHaveBeenCalled();
   });
 
   it("preserves invalidation that arrives during an active scan", async () => {

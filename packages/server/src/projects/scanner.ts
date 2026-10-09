@@ -173,6 +173,13 @@ export class ProjectScanner {
     revision: number;
   } | null = null;
   private snapshotSavePromise: Promise<void> | null = null;
+  private retainedInitialization: Promise<void> | null = null;
+  private retainedRefresh: Promise<void> | null = null;
+  private retainedTimer: ReturnType<typeof setTimeout> | null = null;
+  private retainedNeedsRefresh = true;
+  private retainedRetryAfter = 0;
+  private retainedRefreshError: string | undefined;
+  private eventBus: EventBus | undefined;
   private unsubscribeEventBus: (() => void) | null = null;
   private disposed = false;
 
@@ -202,6 +209,7 @@ export class ProjectScanner {
     this.cacheTtlMs = Math.max(0, options.cacheTtlMs ?? 5000);
     this.projectScanCachePath = options.projectScanCachePath ?? null;
     this.getSandboxSessionDirs = options.getSandboxSessionDirs ?? null;
+    this.eventBus = options.eventBus;
 
     if (options.eventBus) {
       this.unsubscribeEventBus = options.eventBus.subscribe((event) => {
@@ -241,11 +249,105 @@ export class ProjectScanner {
     );
   }
 
+  /** Retained project reads never wait for provider discovery or sandbox counts. */
+  async readRetainedProjects(): Promise<{
+    projects: Project[];
+    complete: boolean;
+    refreshing: boolean;
+    refreshError?: string;
+  }> {
+    await this.initializeRetainedProjects();
+    if (this.disposed) throw new Error("Project scanner is disposed");
+    this.scheduleRetainedRefresh();
+    const sandboxDirs = this.sandboxSessionDirs();
+    return {
+      projects: (this.snapshot?.projects ?? [])
+        .filter((project) => !this.isHiddenProjectPath(project.path))
+        .map((project) => this.cloneProject(project, sandboxDirs)),
+      complete: this.snapshot !== null,
+      refreshing: Boolean(this.retainedRefresh || this.retainedTimer),
+      ...(this.retainedRefreshError
+        ? { refreshError: this.retainedRefreshError }
+        : {}),
+    };
+  }
+
+  private initializeRetainedProjects(): Promise<void> {
+    this.retainedInitialization ??= Promise.resolve().then(async () => {
+      if (this.disposed) throw new Error("Project scanner is disposed");
+      if (this.snapshot) return;
+      const snapshot = await this.loadSnapshotFromDisk(Date.now(), true);
+      // A complete read may have published while the saved snapshot was read.
+      if (!this.disposed && !this.snapshot && snapshot) {
+        this.snapshot = snapshot;
+        // Retention is display evidence, never a fresh complete-read cache hit.
+        this.cleanRevision = -1;
+      }
+    });
+    return this.retainedInitialization;
+  }
+
+  private scheduleRetainedRefresh(): void {
+    if (
+      !this.retainedInitialization ||
+      this.disposed ||
+      this.retainedRefresh ||
+      this.retainedTimer ||
+      Date.now() < this.retainedRetryAfter ||
+      (!this.retainedNeedsRefresh && this.cleanRevision === this.cacheRevision)
+    )
+      return;
+    this.retainedTimer = setTimeout(() => {
+      this.retainedTimer = null;
+      void this.refreshRetainedProjects();
+    }, 300);
+    this.retainedTimer.unref?.();
+  }
+
+  /** One finite refresh owns retained project discovery and its notification. */
+  refreshRetainedProjects(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    if (this.retainedRefresh) return this.retainedRefresh;
+    if (this.retainedTimer) clearTimeout(this.retainedTimer);
+    this.retainedTimer = null;
+    this.retainedNeedsRefresh = false;
+    this.retainedRefreshError = undefined;
+    const previousIds =
+      this.snapshot?.projects.map((project) => project.id) ?? [];
+    this.retainedRefresh = this.initializeRetainedProjects()
+      .then(() => this.getSnapshot(true))
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        if (this.disposed) return;
+        this.retainedNeedsRefresh = true;
+        this.retainedRetryAfter = Date.now() + 5_000;
+        this.retainedRefreshError =
+          error instanceof Error ? error.message : String(error);
+      })
+      .finally(() => {
+        this.retainedRefresh = null;
+        if (this.disposed) return;
+        this.eventBus?.emit({
+          type: "projects-changed",
+          projectIds: [
+            ...new Set([
+              ...previousIds,
+              ...(this.snapshot?.projects.map((project) => project.id) ?? []),
+            ]),
+          ],
+          timestamp: new Date().toISOString(),
+        });
+        this.scheduleRetainedRefresh();
+      });
+    return this.retainedRefresh;
+  }
+
   /**
    * Mark the project snapshot stale so next read triggers a rescan.
    */
   invalidateCache(): void {
     this.cacheRevision += 1;
+    this.scheduleRetainedRefresh();
   }
 
   private async getSnapshot(forceRefresh = false): Promise<ProjectSnapshot> {
@@ -271,7 +373,7 @@ export class ProjectScanner {
       scanRevision,
     )
       .then(({ snapshot, shouldPersist }) => {
-        if (this.cacheRevision === scanRevision) {
+        if (!this.disposed && this.cacheRevision === scanRevision) {
           this.snapshot = snapshot;
           this.cleanRevision = scanRevision;
           if (shouldPersist) {
@@ -347,6 +449,7 @@ export class ProjectScanner {
 
   private async loadSnapshotFromDisk(
     now: number,
+    allowStale = false,
   ): Promise<ProjectSnapshot | null> {
     if (!this.projectScanCachePath) return null;
 
@@ -357,15 +460,32 @@ export class ProjectScanner {
         return null;
       }
 
-      if (now - parsed.generatedAt > this.cacheTtlMs) {
+      if (!allowStale && now - parsed.generatedAt > this.cacheTtlMs) {
         return null;
       }
 
-      const currentSourceState = await this.getSourceState();
-      if (
-        !this.areSourceStatesCompatible(currentSourceState, parsed.sourceState)
-      ) {
-        return null;
+      if (allowStale) {
+        const source = parsed.sourceState;
+        if (
+          source.projectsDir !== this.projectsDir ||
+          source.codexSessionsDir !== this.codexSessionsDir ||
+          source.geminiSessionsDir !== this.geminiSessionsDir ||
+          source.projectMetadataFilePath !== this.projectMetadataFilePath ||
+          source.workstreamFilePath !== this.workstreamFilePath ||
+          source.enableCodex !== this.enableCodex ||
+          source.enableGemini !== this.enableGemini
+        )
+          return null;
+      } else {
+        const currentSourceState = await this.getSourceState();
+        if (
+          !this.areSourceStatesCompatible(
+            currentSourceState,
+            parsed.sourceState,
+          )
+        ) {
+          return null;
+        }
       }
 
       if (parsed.projects.length === 0) {
@@ -1265,8 +1385,11 @@ export class ProjectScanner {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    if (this.retainedTimer) clearTimeout(this.retainedTimer);
+    this.retainedTimer = null;
     this.unsubscribeEventBus?.();
     this.unsubscribeEventBus = null;
+    await this.retainedRefresh;
     this.pendingSnapshotSave = null;
     await this.snapshotSavePromise;
   }

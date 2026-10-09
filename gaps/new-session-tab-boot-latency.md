@@ -100,6 +100,15 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+The scanner now has an internal retained-project read and finite refresh owner
+(2026-10-09). Thirty reads complete while discovery is blocked; restart,
+invalidation, failure/backoff and disposal checks cover its lifecycle. HTTP
+project routes still use complete reads, so this preparation alone changes no
+tab timing. Route/capability integration, current metadata overlays and client
+completeness handling remain open; see
+[retained project discovery owner](../topics/session-catalog-observation.md#retained-project-discovery-owner).
+Contributing-model: 6-astra.
+
 An isolated built-client check with saved Claude/Sonnet/High selections, no
 project query parameter, and the first tab left open for sibling loads measured
 full readiness at 815/488/272/380 ms (2026-10-09). The first load waits for

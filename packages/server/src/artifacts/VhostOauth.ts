@@ -53,6 +53,7 @@ function identityAllowed(identity: VhostOauthIdentity, patterns: string[]) {
   );
 }
 const stateSchema = z.object({
+  enabled: z.boolean().default(true),
   provider: vhostOauthProviderSchema.optional(),
   secret: z.string().max(4096).default(""),
   policies: z
@@ -116,7 +117,12 @@ function authResponse(
 /** Public vhost OAuth admission; no credential here grants YA operator access. */
 export class VhostOauth {
   readonly ready: Promise<void>;
-  private state: State = { secret: "", policies: {}, accessedHosts: [] };
+  private state: State = {
+    enabled: true,
+    secret: "",
+    policies: {},
+    accessedHosts: [],
+  };
   private provider?: VhostOauthProviderClient;
   private writing = Promise.resolve();
   private revision = 0;
@@ -216,7 +222,11 @@ export class VhostOauth {
         visitorIp: "peer",
       },
       secretConfigured: !!this.clientSecret,
+      ...(this.clientSecret.length >= 12
+        ? { secretSuffix: this.clientSecret.slice(-4) }
+        : {}),
       configured: !!this.provider,
+      enabled: this.state.enabled,
       policies: this.state.policies,
       accessedHosts: this.state.accessedHosts,
     };
@@ -264,6 +274,13 @@ export class VhostOauth {
     return operation;
   }
 
+  async setEnabled(input: unknown): Promise<void> {
+    await this.ready;
+    const enabled = z.boolean().parse(input);
+    await this.update((current) => ({ ...current, enabled }));
+    this.invalidate();
+  }
+
   async configure(input: unknown): Promise<void> {
     await this.ready;
     if (this.environment)
@@ -306,6 +323,7 @@ export class VhostOauth {
       throw new Error("Use up to 32 email addresses or email globs");
     if (
       parsed.data !== null &&
+      vhostOauthPolicy(this.state.policies, name) === undefined &&
       (!this.provider ||
         !this.config().vhostPublicRoot ||
         !this.config().publicOrigin)
@@ -365,6 +383,8 @@ export class VhostOauth {
     )
       return;
     if (incoming.pathname !== callback.pathname) return;
+    if (!this.state.enabled)
+      return authResponse("Hosted sign-in is disabled", 503);
     if (request.method !== "GET")
       return authResponse("Method not allowed", 405);
     const key = incoming.searchParams.get("state") ?? "";
@@ -423,6 +443,11 @@ export class VhostOauth {
     const publicAuthority = new URL(`https://${host}`);
     if (publicAuthority.hostname !== publicHost || patterns === undefined)
       return;
+    if (!this.state.enabled || !this.provider)
+      return authResponse(
+        "Hosted sign-in is unavailable; this app remains protected",
+        503,
+      );
     if (publicAuthority.host !== publicHost)
       return authResponse("Unexpected app port", 400);
     this.prune();

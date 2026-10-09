@@ -665,7 +665,9 @@ signed ID token or subject-checked UserInfo response. Provider consent policy
 and publisher verification remain external prerequisites.
 
 Without environment configuration, the owner configures the provider and a
-write-only secret in Apps. Settings persist owner-only under
+masked secret in Apps. The full saved secret is never returned; the owner sees
+only a four-character suffix for values at least twelve characters long.
+Shorter values show no suffix. Settings persist owner-only under
 `{dataDir}/artifacts/vhost-oauth.json`. For environment-managed deployments,
 set all three required variables:
 
@@ -679,9 +681,20 @@ UUID), `YEP_VHOST_OAUTH_ISSUER` (required for generic OIDC), and
 `YEP_VHOST_OAUTH_VISITOR_IP` (`peer`, `cloudflare`, or `x-real-ip`). Any OAuth
 environment variable activates this authoritative mode: incomplete/invalid
 configuration fails explicitly. Provider settings become read-only in Apps;
-the environment secret is neither returned nor copied into persisted settings.
+the full environment secret is neither returned nor copied into persisted settings.
 Host allow-lists remain editable. Provider configuration never enables a host
 implicitly. Restart after changing environment variables.
+
+The separate **Enable hosted sign-in** switch defaults on and becomes
+effective when environment or manual provider configuration is complete.
+Switching off retains credentials and every email list, including across
+restart, and remains available when environment settings lock provider edits.
+It invalidates sessions, pending sign-ins and app sockets. Hosts requiring
+sign-in stay blocked with HTTP 503 while disabled or unconfigured; Apps
+highlights those host rows red with the reason. Their saved email lists remain
+editable for repair. Re-enabling requires a fresh sign-in. Older OAuth servers
+without the `enabled` status field retain their existing behavior and receive
+no requests to the enable endpoint.
 
 Only completed browser-bound OAuth checks are logged, with UTC timestamp,
 hostname, account address when available, outcome and optional IP. Ordinary paths,

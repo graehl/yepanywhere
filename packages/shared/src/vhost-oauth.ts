@@ -13,7 +13,11 @@ export interface VhostOauthStatus {
   locked: boolean;
   provider: VhostOauthProvider;
   secretConfigured: boolean;
+  /** Identification hint only; short secrets expose no characters. */
+  secretSuffix?: string;
   configured: boolean;
+  /** Absent on servers predating the independent enable switch. */
+  enabled?: boolean;
   policies: Record<string, string[]>;
   accessedHosts: string[];
 }

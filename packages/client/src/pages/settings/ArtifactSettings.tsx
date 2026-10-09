@@ -266,6 +266,10 @@ function ArtifactSettingsForm({
             : "settingsCollectionPublic"
           : "settingsCollectionPrivate",
     );
+  const oauthBlocked = (row: VhostDraft) =>
+    oauth.status &&
+    vhostOauthPolicy(oauth.status.policies, row.name) !== undefined &&
+    (!oauth.status.configured || oauth.status.enabled === false);
   const displayedVhosts = tableSort.sortedRows(vhosts, (row, column) => {
     if (column === "domain") return row.name;
     if (column === "access") return accessLabel(row);
@@ -913,7 +917,12 @@ function ArtifactSettingsForm({
                         ? siteViews[row.name]?.linkedFiles
                         : undefined;
                     return (
-                      <tr key={row.id}>
+                      <tr
+                        key={row.id}
+                        className={
+                          oauthBlocked(row) ? styles.oauthBlocked : undefined
+                        }
+                      >
                         <td>
                           <div className={styles.domainCell}>
                             <button
@@ -1007,6 +1016,9 @@ function ArtifactSettingsForm({
                             >
                               {accessLabel(row)}
                             </button>
+                            {oauthBlocked(row) && (
+                              <small>{t("vhostOauthBlocked")}</small>
+                            )}
                           </td>
                         )}
                       </tr>

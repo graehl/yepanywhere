@@ -1744,6 +1744,7 @@ export const SERVER_CAPABILITIES = {
       routes: [
         "GET /api/artifacts/vhosts/oauth",
         "PUT /api/artifacts/vhosts/oauth",
+        "PUT /api/artifacts/vhosts/oauth/enabled",
         "PUT /api/artifacts/vhosts/:name/oauth",
         "GET /api/artifacts/vhosts/oauth/log",
       ],

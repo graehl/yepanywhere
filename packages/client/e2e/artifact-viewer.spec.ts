@@ -1150,6 +1150,48 @@ test("edits OAuth email rows without losing sequential input during updates", as
   });
   await instance.artifactServer.vhostOauth.setPolicy("memo", ["*@*"]);
   await page.goto(`${base}/e2e/fixtures/artifact-viewer.html?settings`);
+  const providerSection = page
+    .locator("summary")
+    .filter({ hasText: "Hosted sign-in provider" });
+  await providerSection.click();
+  const enabled = page.getByRole("checkbox", {
+    name: "Enable hosted sign-in",
+    exact: true,
+  });
+  await expect(enabled).toBeChecked();
+  const secret = page.getByLabel(
+    "Client secret value (leave blank to keep existing)",
+    { exact: true },
+  );
+  await expect(secret).toHaveAttribute("type", "password");
+  let typedSecret = "";
+  await secret.focus();
+  for (const character of "new-test-secret-abcd") {
+    typedSecret += character;
+    await page.keyboard.type(character);
+    await expect(secret).toHaveValue(typedSecret, { timeout: 100 });
+  }
+  await expect(
+    page.getByText("Secret ending in abcd", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Configure sign-in provider", exact: true })
+    .click();
+  await expect(secret).toHaveValue("");
+  await expect(
+    page.getByText("Secret ending in abcd", { exact: true }),
+  ).toBeVisible();
+  for (const viewport of [
+    { width: 1000, height: 600 },
+    { width: 375, height: 812 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await enabled.evaluate((input) =>
+      input.closest("label")!.scrollIntoView({ block: "start" }),
+    );
+    await recordUiCapture(page, `vhost-provider-${viewport.width}`, viewport);
+  }
+  await providerSection.click();
   await page
     .getByRole("button", { name: "Sign-in required", exact: true })
     .click();
@@ -1214,4 +1256,37 @@ test("edits OAuth email rows without losing sequential input during updates", as
     .click();
   await expect(page.getByText("No sign-in checks recorded yet.")).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Minimize details", exact: true })
+    .click();
+  await providerSection.click();
+  await enabled.uncheck();
+  await expect(enabled).not.toBeChecked();
+  await providerSection.click();
+  const blocked = page.getByText(
+    "Blocked: hosted sign-in is disabled or unconfigured.",
+    { exact: true },
+  );
+  await expect(blocked).toBeVisible();
+  expect(instance.artifactServer.vhostOauth.status().policies.memo).toEqual([
+    "*@rws.com",
+    "person@rws.com",
+  ]);
+  for (const viewport of [
+    { width: 1000, height: 600 },
+    { width: 375, height: 812 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await blocked.scrollIntoViewIfNeeded();
+    await recordUiCapture(page, `vhost-blocked-${viewport.width}`, viewport);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await providerSection.click();
+  await enabled.check();
+  await expect(blocked).toHaveCount(0);
+  expect(instance.artifactServer.vhostOauth.status().secretSuffix).toBe("abcd");
 });

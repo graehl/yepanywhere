@@ -190,6 +190,24 @@
 .table th:nth-child(2) {
   width: 26%;
 }
+@container settings-collection (max-width: 560px) {
+  .table {
+    --settings-first-column-width: 40%;
+  }
+  .table th:nth-child(2) {
+    width: 20%;
+  }
+}
+.table .oauthBlocked > td {
+  background: color-mix(in srgb, var(--error-color, #c44343) 12%, transparent);
+}
+.table .oauthBlocked button,
+.table .oauthBlocked small {
+  color: var(--error-color, #c44343);
+}
+.table .oauthBlocked small {
+  display: block;
+}
 .linkedFiles {
   display: block;
   color: var(--text-secondary);

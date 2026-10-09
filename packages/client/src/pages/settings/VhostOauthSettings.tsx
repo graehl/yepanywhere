@@ -23,10 +23,43 @@ export function VhostOauthProviderSettings({
   const { t } = useI18n();
   const [provider, setProvider] = useState(status.provider);
   const [secret, setSecret] = useState("");
+  const [pendingEnabled, setPendingEnabled] = useState<boolean>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const secretSuffix = secret
+    ? secret.length >= 12
+      ? secret.slice(-4)
+      : undefined
+    : status.secretSuffix;
   return (
     <div className={styles.settings}>
+      {status.enabled !== undefined && (
+        <>
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={pendingEnabled ?? status.enabled}
+              disabled={busy}
+              onChange={async (event) => {
+                const enabled = event.target.checked;
+                setPendingEnabled(enabled);
+                setBusy(true);
+                setMessage("");
+                try {
+                  await update("/artifacts/vhosts/oauth/enabled", { enabled });
+                } catch (error) {
+                  setMessage(String(error));
+                } finally {
+                  setPendingEnabled(undefined);
+                  setBusy(false);
+                }
+              }}
+            />
+            {t("vhostOauthEnabled")}
+          </label>
+          <p>{t("vhostOauthEnabledHint")}</p>
+        </>
+      )}
       <p>
         {t(status.locked ? "vhostOauthEnvironment" : "vhostOauthProviderHint")}
       </p>
@@ -97,6 +130,9 @@ export function VhostOauthProviderSettings({
             onChange={(e) => setSecret(e.target.value)}
           />
         </label>
+        {secretSuffix && (
+          <p>{t("vhostOauthSecretSuffix", { suffix: secretSuffix })}</p>
+        )}
         <label>
           {t("vhostOauthIp")}
           <select
@@ -164,6 +200,7 @@ export function VhostOauthEmails({
   const first = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focusRequest reselects the first email when the host's access label is clicked again.
   useEffect(() => {
     if (!enabled) return;
     const frame = requestAnimationFrame(() => {
@@ -192,7 +229,11 @@ export function VhostOauthEmails({
         <input
           type="checkbox"
           checked={enabled}
-          disabled={disabled || busy || !status.configured}
+          disabled={
+            disabled ||
+            busy ||
+            (!enabled && (!status.configured || status.enabled === false))
+          }
           onChange={(e) => {
             void persist(
               e.target.checked ? rows.map((row) => row.value) : null,
@@ -208,9 +249,11 @@ export function VhostOauthEmails({
       </label>
       <p>
         {t(
-          !status.configured
-            ? "vhostOauthConfigureFirst"
-            : "vhostOauthLocalExcluded",
+          enabled && (!status.configured || status.enabled === false)
+            ? "vhostOauthBlocked"
+            : !status.configured
+              ? "vhostOauthConfigureFirst"
+              : "vhostOauthLocalExcluded",
         )}
       </p>
       {enabled && (

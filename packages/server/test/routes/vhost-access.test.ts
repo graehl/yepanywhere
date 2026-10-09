@@ -32,6 +32,7 @@ it("keeps app-link issuance and revocation behind YA authentication", async () =
       ["plan/revoke", "POST"],
       ["oauth", "GET"],
       ["oauth", "PUT"],
+      ["oauth/enabled", "PUT"],
       ["oauth/log", "GET"],
       ["plan/oauth", "PUT"],
     ]) {

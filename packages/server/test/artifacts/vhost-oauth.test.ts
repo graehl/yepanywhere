@@ -306,10 +306,97 @@ it("validates environment precedence without disclosing or persisting its creden
   expect(oauth.status()).toMatchObject({
     locked: true,
     configured: true,
+    enabled: true,
+    secretSuffix: "cret",
     provider: { kind: "entra", tenantId: "common" },
   });
   expect(JSON.stringify(oauth.status())).not.toContain("environment-secret");
   await expect(oauth.configure({})).rejects.toThrow("environment variables");
+  await oauth.setEnabled(false);
+  expect(oauth.status()).toMatchObject({
+    enabled: false,
+    configured: true,
+    locked: true,
+  });
+  await oauth.setEnabled(true);
+  expect(oauth.status().enabled).toBe(true);
+});
+
+it("disables admission without deleting provider settings or email lists, including across restart", async () => {
+  const f = await fixture();
+  expect(f.service.status()).toMatchObject({ enabled: true, configured: true });
+  expect(f.service.status().secretSuffix).toBeUndefined();
+  const finish = await f.finish();
+  const cookie = finish.headers.getSetCookie()[0]!.split(";")[0]!;
+  const flow = await f.start();
+  await f.service.setEnabled(false);
+  expect(f.revoke).toHaveBeenCalled();
+  expect((await f.callback(flow)).status).toBe(503);
+  for (const path of ["/", "/_ya/oauth/start", "/_ya/oauth/finish?ticket=old"])
+    expect(
+      ((await f.service.admit(f.request(path, cookie), row)) as Response)
+        .status,
+    ).toBe(503);
+  expect(
+    await f.service.admit(f.request("/", "", "memo.localhost"), row),
+  ).toBeUndefined();
+  await f.service.setPolicy("memo", ["person@rws.com"]);
+  const restarted = new VhostOauth(
+    f.directory,
+    () => ({ port: 4402, vhostPublicRoot: "example.net", vhosts: [row] }),
+    (value) => f.access.token(value),
+    () => {},
+  );
+  await restarted.ready;
+  expect(restarted.status()).toMatchObject({
+    enabled: false,
+    configured: true,
+    provider: settings,
+    policies: { memo: ["person@rws.com"] },
+  });
+  expect(
+    ((await restarted.admit(f.request("/", cookie), row)) as Response).status,
+  ).toBe(503);
+  await f.service.setEnabled(true);
+  expect(
+    ((await f.service.admit(f.request("/", cookie), row)) as Response).status,
+  ).toBe(401);
+  await f.start();
+});
+
+it("keeps protected hosts blocked and their lists repairable when manual credentials are absent", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ya-oauth-unconfigured-"));
+  directories.push(directory);
+  // Existing state files acquire the default enabled switch without a migration.
+  await writeFile(
+    join(directory, "vhost-oauth.json"),
+    JSON.stringify({ policies: { memo: ["*@rws.com"] } }),
+  );
+  const oauth = new VhostOauth(
+    directory,
+    () => ({ port: 4402, vhostPublicRoot: "example.net", vhosts: [row] }),
+    () => "",
+    () => {},
+  );
+  await oauth.ready;
+  expect(oauth.status()).toMatchObject({ enabled: true, configured: false });
+  expect(
+    (
+      (await oauth.admit(
+        new Request("https://memo.example.net/"),
+        row,
+      )) as Response
+    ).status,
+  ).toBe(503);
+  await oauth.setPolicy("memo", ["person@rws.com"]);
+  expect(oauth.status().policies.memo).toEqual(["person@rws.com"]);
+  await oauth.configure({ provider: settings, secret: "manual-secret-1234" });
+  expect(oauth.status()).toMatchObject({
+    configured: true,
+    enabled: true,
+    secretSuffix: "1234",
+  });
+  expect(JSON.stringify(oauth.status())).not.toContain("manual-secret");
 });
 
 it("uses Entra managed account names rather than mutable email claims", async () => {
@@ -373,10 +460,21 @@ it("enforces OAuth before the real file and proxy dispatch, including public and
       expect(await response?.text()).toContain("Sign-in required");
     }
     expect(proxy).not.toHaveBeenCalled();
+    await server.vhostOauth.setEnabled(false);
+    for (const target of [row, site]) {
+      const response = await server.dispatchHost(
+        new Request(`https://${target.name}.example.net/`),
+        "127.0.0.1",
+        proxy,
+      );
+      expect(response?.status).toBe(503);
+    }
+    expect(proxy).not.toHaveBeenCalled();
     const local = await server.dispatchHost(
       new Request("http://site.localhost/"),
     );
     expect(await local?.text()).toBe("private memo");
+    await server.vhostOauth.setEnabled(true);
     expect(
       (await server.dispatchHost(new Request(settings.callbackUrl)))?.status,
     ).toBe(400);

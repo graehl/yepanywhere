@@ -1,5 +1,9 @@
 {
   "vhostOauthProvider": "Hosted sign-in provider",
+  "vhostOauthEnabled": "Enable hosted sign-in",
+  "vhostOauthEnabledHint": "Requires a configured provider. Switching off keeps settings and email lists; hosts requiring sign-in stay blocked.",
+  "vhostOauthBlocked": "Blocked: hosted sign-in is disabled or unconfigured.",
+  "vhostOauthSecretSuffix": "Secret ending in {suffix}",
   "vhostOauthProviderHint": "One registration and callback serve every hosted domain. Microsoft Entra uses common for work and personal accounts; a directory ID restricts sign-in to that tenant. Domain restrictions require a managed work account.",
   "vhostOauthEnvironment": "Configured by YEP_VHOST_OAUTH environment variables. Change those variables and restart the server to change the provider.",
   "vhostOauthTenant": "Tenant (common, organizations, or directory ID)",

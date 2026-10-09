@@ -40,6 +40,18 @@ export function createVhostOauthRoutes(server: ArtifactServer) {
       );
     }
   });
+  routes.put("/artifacts/vhosts/oauth/enabled", async (c) => {
+    try {
+      const body = await c.req.json<{ enabled?: unknown }>();
+      await server.vhostOauth.setEnabled(body.enabled);
+      return c.json(server.vhostOauth.status());
+    } catch {
+      return c.json(
+        { error: "Unable to change hosted sign-in availability" },
+        400,
+      );
+    }
+  });
   routes.get("/artifacts/vhosts/oauth/log", async (c) => {
     await server.ready;
     const entries = server.vhostOauth.logs(c.req.query("host"));

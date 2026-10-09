@@ -100,6 +100,14 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+New Session now admits its project collection in the route tier (2026-10-09),
+alongside its selected-project request. It no longer waits for unrelated route
+work to settle before starting the selector's collection request. Sidebar
+consumers share the same fetch. A focused hook regression holds another route
+request pending and verifies admission plus deduplication; the four existing
+preboot browser cases pass. This removes scheduling delay, not the server scan
+or missing cross-tab snapshot. Contributing-model: 6-astra.
+
 Local route acquisition also avoids committing a React loading fallback before
 mounting ready modules (2026-10-09). In an isolated built-client check, the last
 script finished roughly 300 ms before the old form appeared. Mounting the

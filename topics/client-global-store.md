@@ -298,6 +298,13 @@ coverage retained across routes, `supplementary` for diagnostics, enrichment,
 and usage telemetry. A tier starts only once every earlier tier's registered
 work has settled.
 
+The project collection normally serves navigation, but New Session requests it
+in the route tier: both its project selector and its default project selection
+need that collection. A route consumer and the sidebar still share the same
+source/query request; priority does not create a second collection cache or
+fetch. An unrelated pending route request cannot hold this selector's request
+behind the navigation gate.
+
 These properties are load-bearing and easy to lose:
 
 - **Only the first acquisition is gated.** Revalidation — reconnect, visibility

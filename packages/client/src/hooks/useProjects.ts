@@ -17,6 +17,7 @@ import {
   useProjectCollectionRecords,
 } from "../lib/clientSummaryStore";
 import { isRemoteClient } from "../lib/connection";
+import type { ClientQueryBootstrapTier } from "../lib/clientQueryBootstrap";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 
 const PROJECTS_QUERY_KEY = createClientQueryKey({
@@ -156,7 +157,11 @@ export function useProject(projectId: string | undefined) {
   );
 }
 
-export function useProjects() {
+export function useProjects({
+  bootstrapTier = "navigation",
+}: {
+  bootstrapTier?: ClientQueryBootstrapTier;
+} = {}) {
   const runtime = useCurrentSourceRuntime();
   const sourceKey = runtime.sourceKey;
   const sourceSummary = runtime.summary;
@@ -165,7 +170,7 @@ export function useProjects() {
   const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
     sourceKey,
     key: PROJECTS_QUERY_KEY,
-    bootstrapTier: "navigation",
+    bootstrapTier,
     ready,
     hasData: projects.length > 0,
     revalidateOn: PROJECTS_REVALIDATE_EVENTS,

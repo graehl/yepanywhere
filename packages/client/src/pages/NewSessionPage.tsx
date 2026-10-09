@@ -82,7 +82,9 @@ export function NewSessionPage() {
     onError: () => showToast(t("incomingShareAttachmentUnavailable"), "error"),
   });
 
-  const { projects, loading: projectsLoading } = useProjects();
+  const { projects, loading: projectsLoading } = useProjects({
+    bootstrapTier: "route",
+  });
   const { version } = useVersion();
   const supportsProjectCodeNames = serverHasCapability(
     version,

@@ -61,6 +61,11 @@ vi.mock("../../contexts/RemoteConnectionContext", () => ({
 }));
 
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
+import {
+  acquireClientQueryBootstrapSlot,
+  resetClientQueryBootstrapForTests,
+} from "../../lib/clientQueryBootstrap";
+import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../../lib/clientSummarySourceKey";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { useProject, useProjects } from "../useProjects";
 
@@ -89,6 +94,7 @@ function project(id: string, overrides: Partial<Project> = {}): Project {
 }
 
 beforeEach(() => {
+  resetClientQueryBootstrapForTests();
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
   mocks.getProject.mockReset();
@@ -102,12 +108,33 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetClientQueryBootstrapForTests();
   resetClientQueryControllerForTests();
   resetClientSummaryStoreForTests();
   vi.useRealTimers();
 });
 
 describe("useProjects", () => {
+  it("starts a route's project selector while unrelated route work is pending", async () => {
+    vi.useFakeTimers();
+    const unrelatedRoute = acquireClientQueryBootstrapSlot(
+      LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      "route",
+    );
+    mocks.getProjects.mockResolvedValue({ projects: [project("project-a")] });
+    renderHook(() => useProjects());
+    await settle();
+    expect(mocks.getProjects).not.toHaveBeenCalled();
+
+    const selector = renderHook(() => useProjects({ bootstrapTier: "route" }));
+    await settle();
+    expect(selector.result.current.projects[0]?.id).toBe("project-a");
+    expect(mocks.getProjects).toHaveBeenCalledTimes(1);
+    unrelatedRoute.settle();
+    await settle();
+    expect(mocks.getProjects).toHaveBeenCalledTimes(1);
+  });
+
   it("feeds project list responses into the collection store", async () => {
     mocks.getProjects.mockResolvedValue({
       projects: [project("project-a"), project("project-b")],

@@ -176,6 +176,16 @@ Response metadata determines completeness, not the requested preference.
 External activity counts resolve directory identity from the retained scanner
 index, avoiding an indirect foreground scan through the session tracker.
 
+The local entrypoint declares New Session's initial settings, version, projects
+and recent-visits reads together, before loading React. Selected-provider
+acquisition follows the accepted settings defaults. Settings routes acquire
+only settings and version. Project and recent query owners are independent of
+mounted hooks; project acquisition overlaps loading its destination store, and
+publication still passes through the query controller's generation check.
+Mounted consumers join those reads and own later event-driven revalidation.
+These remain separate HTTP reads; a prepared server route bundle is not yet
+implemented.
+
 New Session uses its current collection row as the selected project's server
 record. It does not request selected-project detail while discovery is pending
 or when that row is already present. After a complete collection omits the

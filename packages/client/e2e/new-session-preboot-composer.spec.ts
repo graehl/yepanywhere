@@ -176,7 +176,7 @@ test("a reload before the app adopts the composer keeps what was typed", async (
   ).toBeNull();
 });
 
-test("settings, version and selected provider arrive before the UI runtime executes", async ({
+test("New Session route data arrives before the UI runtime executes", async ({
   page,
   baseURL,
 }) => {
@@ -190,6 +190,8 @@ test("settings, version and selected provider arrive before the UI runtime execu
     "/api/settings",
     "/api/version",
     "/api/providers/claude",
+    "/api/projects",
+    "/api/recents",
   ].map((path) =>
     page.waitForResponse(
       (response) => new URL(response.url()).pathname === path && response.ok(),

@@ -159,6 +159,17 @@ numbers are not a controlled speedup estimate. Startup preparation is landed;
 the explicit route bundle and recent-project acceptance remain unfinished.
 Contributing-model: 6-astra.
 
+Client route acquisition now starts projects and recent visits at the local
+entrypoint alongside settings and version, without waiting for React or hook
+modules. Mounted consumers join the same source-bound queries. A built-client
+regression holds the React runtime: the previous implementation times out
+waiting for collection responses, while the new implementation receives all
+five route responses before releasing React and then accepts sequential typing.
+The corresponding Settings case also passes; 31 focused query/hook checks pass.
+This removes a client code-loading dependency, but is not the prepared server
+bundle and does not establish the three-second native-data bound.
+Contributing-model: 6-astra.
+
 Native-data concurrent acceptance at 6c4ad0710 (2026-10-09): three fresh
 isolated servers each received three simultaneous new tabs, with authenticated
 Claude discovery and the real Claude/Codex stores. Full UI times were

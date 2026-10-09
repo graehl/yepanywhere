@@ -1,13 +1,16 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../../types";
+import {
+  applyVersionSnapshot,
+  resetVersionQueryForTests,
+} from "../../lib/versionQuery";
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, Set<(data: unknown) => void>>();
   return {
     getProject: vi.fn(),
     getProjects: vi.fn(),
-    readVersionInfo: vi.fn(),
     isRemoteClient: vi.fn(() => false),
     remoteState: {
       connection: null as { connection: object | null } | null,
@@ -39,9 +42,6 @@ vi.mock("../../api/client", () => ({
     getProject: mocks.getProject,
     getProjects: mocks.getProjects,
   },
-}));
-vi.mock("../useVersion", () => ({
-  readVersionInfo: mocks.readVersionInfo,
 }));
 
 vi.mock("../../lib/activityBus", () => ({
@@ -80,6 +80,18 @@ import {
 
 const RECENT = "2026-06-27T11:00:00.000Z";
 
+function setVersion(current: string) {
+  applyVersionSnapshot(
+    { current, latest: null, updateAvailable: false },
+    {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      key: "version",
+      coverage: {},
+      requestStartedAt: Date.now(),
+    },
+  );
+}
+
 async function settle() {
   await act(async () => {
     await Promise.resolve();
@@ -109,7 +121,8 @@ beforeEach(() => {
   resetClientQueryControllerForTests();
   mocks.getProject.mockReset();
   mocks.getProjects.mockReset();
-  mocks.readVersionInfo.mockReset().mockReturnValue({ current: "0.9.2" });
+  resetVersionQueryForTests();
+  setVersion("0.9.2");
   vi.spyOn(
     getSourceRuntimeRegistry().getOrCreateSourceRuntime(
       LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -163,7 +176,8 @@ describe("useProjects", () => {
 
   it("gates retained reads and waits for an incomplete collection to publish", async () => {
     vi.useFakeTimers();
-    mocks.readVersionInfo.mockReturnValue({ current: "0.9.4" });
+    resetVersionQueryForTests();
+    setVersion("0.9.4");
     mocks.getProjects
       .mockResolvedValueOnce({
         projects: [],

@@ -1,9 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { api } from "../api/client";
-import { SERVER_CAPABILITIES, serverHasCapability } from "@yep-anywhere/shared";
 import { createProjectsApi } from "../api/projectsClient";
 import { catalogLoadState } from "../lib/clientSummaryCollections";
-import { readVersionInfo } from "./useVersion";
+import { createProjectsQuery } from "../lib/projectsQuery";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import {
@@ -15,7 +14,6 @@ import {
 import {
   createClientQueryKey,
   ensureClientQuery,
-  type ClientQueryRequestContext,
 } from "../lib/clientQueryController";
 import {
   useProjectCollectionRecord,
@@ -31,9 +29,6 @@ import { isRemoteClient } from "../lib/connection";
 import type { ClientQueryBootstrapTier } from "../lib/clientQueryBootstrap";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 
-const PROJECTS_QUERY_KEY = createClientQueryKey({
-  endpoint: "projects",
-});
 const PROJECTS_REVALIDATE_EVENTS = [
   "refresh",
   "reconnect",
@@ -45,7 +40,6 @@ const PROJECTS_REVALIDATE_EVENTS = [
   "projects-changed",
 ] as const;
 
-type ProjectsResponse = Awaited<ReturnType<typeof api.getProjects>>;
 type ProjectResponse = Awaited<ReturnType<typeof api.getProject>>;
 interface ProjectQueryMeta {
   projectId: string | undefined;
@@ -168,42 +162,16 @@ export function useProject(projectId: string | undefined) {
   );
 }
 
-function createProjectsQuery(runtime: YaSourceRuntime) {
+function projectsQueryForRuntime(runtime: YaSourceRuntime) {
   const projectsApi = createProjectsApi(
     runtime.transport.fetch.bind(runtime.transport),
   );
-  return {
-    sourceKey: runtime.sourceKey,
-    key: PROJECTS_QUERY_KEY,
-    fetcher: (context: ClientQueryRequestContext) => {
-      const version = readVersionInfo(context.sourceKey);
-      // Older servers ignore this preference and return a complete collection.
-      // Honor known capability withdrawals without delaying the cold read.
-      return projectsApi.getProjects(
-        version === null ||
-          serverHasCapability(
-            version,
-            SERVER_CAPABILITIES.retainedProjects.name,
-          )
-          ? "retained"
-          : undefined,
-      );
-    },
-    applySnapshot: (
-      data: ProjectsResponse,
-      context: ClientQueryRequestContext,
-    ) => {
-      runtime.summary.reportProjectsCollectionSnapshot(
-        { projects: data.projects, catalog: data.catalog },
-        context.requestStartedAt,
-      );
-    },
-  };
+  return createProjectsQuery(runtime.sourceKey, projectsApi.getProjects);
 }
 
 export function primeLocalProjects() {
   return ensureClientQuery(
-    createProjectsQuery(
+    projectsQueryForRuntime(
       getSourceRuntimeRegistry().getOrCreateSourceRuntime(
         LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
       ),
@@ -217,11 +185,11 @@ export function useProjects({
   bootstrapTier?: ClientQueryBootstrapTier;
 } = {}) {
   const runtime = useCurrentSourceRuntime();
-  const query = useMemo(() => createProjectsQuery(runtime), [runtime]);
+  const query = useMemo(() => projectsQueryForRuntime(runtime), [runtime]);
   const projects = useProjectCollectionRecords();
   const catalog = useProjectCollectionCatalog();
   const ready = useRemoteReady();
-  const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
+  const { loading, error, refetch } = useRetainedClientQuery({
     ...query,
     bootstrapTier,
     ready,

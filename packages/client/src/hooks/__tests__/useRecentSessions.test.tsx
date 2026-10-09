@@ -4,6 +4,11 @@ import { SERVER_CAPABILITIES } from "@yep-anywhere/shared";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientQueryBootstrapForTests } from "../../lib/clientQueryBootstrap";
 import {
+  applyVersionSnapshot,
+  resetVersionQueryForTests,
+} from "../../lib/versionQuery";
+import { asClientSummarySourceKey } from "../../lib/clientSummarySourceKey";
+import {
   resetRecentSessionsForTests,
   useRecentSessions,
 } from "../useRecentSessions";
@@ -15,7 +20,6 @@ const mocks = vi.hoisted(() => {
     runtime: { sourceKey: "host:a", transport: { fetch: fetchA } },
     fetchA,
     fetchB,
-    version: vi.fn(),
     handlers: new Map<string, Set<() => void>>(),
   };
 });
@@ -27,7 +31,6 @@ vi.mock("../../contexts/RemoteConnectionContext", () => ({
   useOptionalRemoteConnection: () => null,
 }));
 vi.mock("../../lib/connection", () => ({ isRemoteClient: () => false }));
-vi.mock("../useVersion", () => ({ readVersionInfo: mocks.version }));
 vi.mock("../../lib/activityBus", () => ({
   activityBus: {
     on: (event: string, listener: () => void) => {
@@ -64,6 +67,18 @@ function update(event = "session-catalog-updated") {
   for (const listener of mocks.handlers.get(event) ?? []) listener();
 }
 
+function setCapabilities(capabilities: string[]) {
+  applyVersionSnapshot(
+    { current: "0.9.2", latest: null, updateAvailable: false, capabilities },
+    {
+      sourceKey: asClientSummarySourceKey("host:a"),
+      key: "version",
+      coverage: {},
+      requestStartedAt: Date.now(),
+    },
+  );
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   resetClientQueryControllerForTests();
@@ -73,11 +88,8 @@ beforeEach(() => {
   mocks.fetchA.mockReset();
   mocks.fetchB.mockReset();
   mocks.runtime = { sourceKey: "host:a", transport: { fetch: mocks.fetchA } };
-  mocks.version.mockReset();
-  mocks.version.mockReturnValue({
-    current: "0.9.2",
-    capabilities: [SERVER_CAPABILITIES.retainedRecents.name],
-  });
+  resetVersionQueryForTests();
+  setCapabilities([SERVER_CAPABILITIES.retainedRecents.name]);
 });
 afterEach(() => {
   cleanup();
@@ -113,7 +125,7 @@ it("joins consumers, then replaces first-generation loading on a catalog publica
 });
 
 it("omits the new parameter for older servers", async () => {
-  mocks.version.mockReturnValue({ current: "0.9.2", capabilities: [] });
+  setCapabilities([]);
   mocks.fetchA.mockResolvedValue({ recents: [entry] });
   const hook = renderHook(() => useRecentSessions());
   await settle();

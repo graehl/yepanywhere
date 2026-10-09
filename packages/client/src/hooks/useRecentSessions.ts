@@ -1,9 +1,4 @@
-import {
-  type EnrichedRecentEntry,
-  type RecentSessionsResponse,
-  SERVER_CAPABILITIES,
-  serverHasCapability,
-} from "@yep-anywhere/shared";
+import type { EnrichedRecentEntry } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { api } from "../api/client";
 import { createRecentsApi } from "../api/recentsClient";
@@ -11,19 +6,25 @@ import { useCurrentSourceRuntime } from "../contexts/SourceRuntimeContext";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { isRemoteClient } from "../lib/connection";
 import {
-  createClientQueryKey,
   ensureClientQuery,
-  type ClientQueryRequestContext,
   invalidateClientQuery,
 } from "../lib/clientQueryController";
-import {
-  type ClientSummarySourceKey,
-  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-} from "../lib/clientSummaryStore";
+import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "../lib/clientSummaryStore";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { catalogLoadState } from "../lib/clientSummaryCollections";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
-import { readVersionInfo } from "./useVersion";
+import {
+  RECENTS_QUERY_KEY,
+  EMPTY_RECENTS_SNAPSHOT,
+  createRecentsQuery,
+  readRecentsSnapshot,
+  publishRecentsSnapshot,
+  subscribeRecents,
+  retainRecentsSource,
+  hasRecentsConsumers,
+} from "../lib/recentsQuery";
+
+export { resetRecentSessionsForTests } from "../lib/recentsQuery";
 
 export type { EnrichedRecentEntry };
 
@@ -38,26 +39,6 @@ interface UseRecentSessionsOptions {
   limit?: number;
 }
 
-// The server bounds this collection to 100 visits. One source collection
-// serves every consumer's slice and every catalog-update revalidation.
-const RECENTS_QUERY_KEY = createClientQueryKey({
-  endpoint: "recents",
-  limit: 100,
-});
-interface RecentsSnapshot {
-  recents: EnrichedRecentEntry[];
-  catalog?: RecentSessionsResponse["catalog"];
-  loaded: boolean;
-  visits: RecentSessionEntry[];
-}
-const EMPTY_SNAPSHOT: RecentsSnapshot = {
-  recents: [],
-  visits: [],
-  loaded: false,
-};
-const snapshots = new Map<ClientSummarySourceKey, RecentsSnapshot>();
-const listeners = new Set<() => void>();
-const consumers = new Map<ClientSummarySourceKey, number>();
 const REVALIDATE_EVENTS = [
   "refresh",
   "reconnect",
@@ -66,88 +47,6 @@ const REVALIDATE_EVENTS = [
   "session-id-remapped",
   "projects-changed",
 ] as const;
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function readSnapshot(sourceKey: ClientSummarySourceKey): RecentsSnapshot {
-  return snapshots.get(sourceKey) ?? EMPTY_SNAPSHOT;
-}
-
-function publish(sourceKey: ClientSummarySourceKey, snapshot: RecentsSnapshot) {
-  snapshots.set(sourceKey, snapshot);
-  for (const listener of listeners) listener();
-}
-
-function acceptSnapshot(
-  sourceKey: ClientSummarySourceKey,
-  response: RecentSessionsResponse,
-) {
-  const previous = readSnapshot(sourceKey);
-  const visits = response.visits ?? response.recents;
-  const known = new Map(
-    previous.recents.map((entry) => [entry.sessionId, entry]),
-  );
-  const recents = response.recents.map((entry) => ({
-    ...entry,
-    title:
-      entry.title === undefined
-        ? (known.get(entry.sessionId)?.title ?? null)
-        : entry.title,
-  }));
-  // An uninitialized/reset catalog cannot establish that saved visits vanished.
-  if (response.catalog?.complete === false || response.catalog?.refreshing) {
-    const observed = new Set(recents.map((entry) => entry.sessionId));
-    const pending = new Set(
-      visits.map((entry) => entry.sessionId).filter((id) => !observed.has(id)),
-    );
-    recents.push(
-      ...previous.recents.filter((entry) => pending.has(entry.sessionId)),
-    );
-    recents.sort((a, b) => b.visitedAt.localeCompare(a.visitedAt));
-  }
-  publish(sourceKey, {
-    recents,
-    catalog: response.catalog,
-    visits,
-    loaded: true,
-  });
-}
-
-export function resetRecentSessionsForTests() {
-  snapshots.clear();
-  listeners.clear();
-  consumers.clear();
-}
-
-function createRecentsQuery(
-  sourceKey: ClientSummarySourceKey,
-  recentsApi: ReturnType<typeof createRecentsApi>,
-) {
-  return {
-    sourceKey,
-    key: RECENTS_QUERY_KEY,
-    fetcher: (context: ClientQueryRequestContext) => {
-      const version = readVersionInfo(context.sourceKey);
-      // The legacy response remains complete when this preference is ignored.
-      return recentsApi.getRecents(
-        100,
-        version === null ||
-          serverHasCapability(version, SERVER_CAPABILITIES.retainedRecents.name)
-          ? "retained"
-          : undefined,
-      );
-    },
-    applySnapshot: (
-      response: RecentSessionsResponse,
-      context: ClientQueryRequestContext,
-    ) => acceptSnapshot(context.sourceKey, response),
-  };
-}
 
 export function primeLocalRecentSessions() {
   const runtime = getSourceRuntimeRegistry().getOrCreateSourceRuntime(
@@ -189,18 +88,7 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
   const { limit = 50 } = options;
   const runtime = useCurrentSourceRuntime();
   const { sourceKey } = runtime;
-  useEffect(() => {
-    consumers.set(sourceKey, (consumers.get(sourceKey) ?? 0) + 1);
-    return () => {
-      const remaining = (consumers.get(sourceKey) ?? 1) - 1;
-      if (remaining) consumers.set(sourceKey, remaining);
-      else {
-        consumers.delete(sourceKey);
-        snapshots.delete(sourceKey);
-        invalidateClientQuery(sourceKey, RECENTS_QUERY_KEY);
-      }
-    };
-  }, [sourceKey]);
+  useEffect(() => retainRecentsSource(sourceKey), [sourceKey]);
   const recentsApi = useMemo(
     () => createRecentsApi(runtime.transport.fetch.bind(runtime.transport)),
     [runtime],
@@ -208,9 +96,9 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
   const remoteConnection = useOptionalRemoteConnection();
   const ready = !isRemoteClient() || Boolean(remoteConnection?.connection);
   const snapshot = useSyncExternalStore(
-    subscribe,
-    () => readSnapshot(sourceKey),
-    () => EMPTY_SNAPSHOT,
+    subscribeRecents,
+    () => readRecentsSnapshot(sourceKey),
+    () => EMPTY_RECENTS_SNAPSHOT,
   );
   const { loading, error, refetch } = useRetainedClientQuery({
     ...createRecentsQuery(sourceKey, recentsApi),
@@ -220,13 +108,13 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
     revalidateOn: REVALIDATE_EVENTS,
   });
   const fetchRecents = useCallback(() => {
-    if (consumers.has(sourceKey)) void refetch({ force: true });
+    if (hasRecentsConsumers(sourceKey)) void refetch({ force: true });
   }, [refetch, sourceKey]);
 
   const recordVisit = useCallback(
     (sessionId: string, projectId: string) => {
       // Optimistic update: move existing entry to front (preserving enrichment)
-      const prev = readSnapshot(sourceKey);
+      const prev = readRecentsSnapshot(sourceKey);
       const existing = prev.recents.find((e) => e.sessionId === sessionId);
       const recents = existing
         ? [
@@ -235,7 +123,7 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
           ]
         : prev.recents;
       invalidateClientQuery(sourceKey, RECENTS_QUERY_KEY);
-      publish(sourceKey, {
+      publishRecentsSnapshot(sourceKey, {
         ...prev,
         recents,
         visits: [
@@ -260,7 +148,11 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
   const clearRecents = useCallback(() => {
     // Optimistic update
     invalidateClientQuery(sourceKey, RECENTS_QUERY_KEY);
-    publish(sourceKey, { recents: [], visits: [], loaded: true });
+    publishRecentsSnapshot(sourceKey, {
+      recents: [],
+      visits: [],
+      loaded: true,
+    });
 
     recentsApi
       .clearRecents()

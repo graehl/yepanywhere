@@ -298,27 +298,6 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
       import("./pages/settings"),
     ]);
   } else if (/^\/new-session\/?$/.test(initialPath)) {
-    // Acquire route data through its existing source/query owners while code
-    // loads. Mounted hooks join these reads and own retry/error presentation.
-    void Promise.allSettled([
-      import("./hooks/useVersion").then(({ primeLocalVersion }) =>
-        primeLocalVersion(),
-      ),
-      import("./hooks/useServerSettings").then(({ primeLocalServerSettings }) =>
-        primeLocalServerSettings(),
-      ),
-      import("./hooks/useProviders").then(({ primeLocalNewSessionProvider }) =>
-        primeLocalNewSessionProvider(
-          new URLSearchParams(window.location.search).get("provider"),
-        ),
-      ),
-      import("./hooks/useProjects").then(({ primeLocalProjects }) =>
-        primeLocalProjects(),
-      ),
-      import("./hooks/useRecentSessions").then(({ primeLocalRecentSessions }) =>
-        primeLocalRecentSessions(),
-      ),
-    ]);
     initialModules = Promise.all([
       App.preload(),
       NavigationLayout.preload(),

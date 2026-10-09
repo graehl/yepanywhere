@@ -1,20 +1,4 @@
-import { fetchPlainJSON } from "./api/plainFetch";
-import {
-  ALL_PROVIDERS,
-  DEFAULT_PROVIDER,
-  type ProviderInfo,
-} from "@yep-anywhere/shared";
-import { acquireProviderRow } from "./lib/providerQuery";
-import { ensureClientQuery } from "./lib/clientQueryController";
-import { LOCAL_CLIENT_SUMMARY_SOURCE_KEY } from "./lib/clientSourceIdentity";
-import {
-  SERVER_SETTINGS_QUERY_KEY,
-  applySettingsQuerySnapshot,
-  getServerSettingsSnapshot,
-  type ServerSettingsResponse,
-} from "./lib/serverSettingsQuery";
-import { VERSION_QUERY_KEY, applyVersionSnapshot } from "./lib/versionQuery";
-import type { VersionInfo } from "./api/client";
+import { primeLocalRoute } from "./lib/localRouteBootstrap";
 
 // This entry belongs only to the same-origin local client. Remote entrypoints
 // acquire data after their source transport is connected. Keep UI imports
@@ -26,42 +10,10 @@ const wrongDevPort =
 const initialNewSession = /^\/new-session\/?$/.test(initialPath);
 const initialSettings = /^\/settings(?:\/|$)/.test(initialPath);
 if (!wrongDevPort && (initialNewSession || initialSettings)) {
-  void Promise.allSettled([
-    ensureClientQuery({
-      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-      key: SERVER_SETTINGS_QUERY_KEY,
-      fetcher: () => fetchPlainJSON<ServerSettingsResponse>("/settings"),
-      applySnapshot: applySettingsQuerySnapshot,
-    }).then(() => {
-      if (!initialNewSession) return;
-      const settings = getServerSettingsSnapshot(
-        LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-      ).settings;
-      if (!settings) return;
-      const preferred = new URLSearchParams(window.location.search).get(
-        "provider",
-      );
-      const provider =
-        ALL_PROVIDERS.find((name) => name === preferred) ??
-        settings.newSessionDefaults?.provider ??
-        DEFAULT_PROVIDER;
-      return acquireProviderRow(
-        LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-        provider,
-        ({ refresh }) =>
-          fetchPlainJSON<{ provider: ProviderInfo }>(
-            `/providers/${provider}${refresh ? "?refresh=1" : ""}`,
-          ),
-        false,
-      );
-    }),
-    ensureClientQuery({
-      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-      key: VERSION_QUERY_KEY,
-      fetcher: () => fetchPlainJSON<VersionInfo>("/version"),
-      applySnapshot: applyVersionSnapshot,
-    }),
-  ]);
+  void primeLocalRoute(
+    initialNewSession ? "new-session" : "settings",
+    new URLSearchParams(window.location.search).get("provider"),
+  );
 }
 
 void import("./main");

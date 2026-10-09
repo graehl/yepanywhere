@@ -180,10 +180,36 @@ including 20 older than 24 hours. This is consistent with retained rows being
 shown before reconciliation, but the incident's cause was not captured; there
 is no confirmed data loss or age cutoff. No star metadata was changed.
 
-Remaining evidence boundary: the 1,500 ms measurements above cover the listed
-built-client fixtures, not cold authenticated SDK model discovery or a cold
-native project corpus. The live backend still needs the user-performed restart
-to activate its changes and built-client default. Contributing-model: 6-astra.
+Cold native-corpus acceptance now fails (2026-10-09). Three isolated fresh
+server profiles read the maintainer's real Claude/Codex transcript stores and
+use authenticated Claude model discovery. No project-list warm-up precedes
+navigation. For the canonical selected project, first tabs take
+3,041–5,518 ms; six subsequent tabs take 286–479 ms. All servers report a
+healthy provider host and local SQLite, and Claude reports seven live models.
+An earlier run with the home-directory alias also fails, so using the canonical
+project path does not remove the cold delay.
+
+A second three-server run records the individual controls: the project field
+arrives last at 2,745–3,610 ms, provider controls at 1,140–2,756 ms, and effort
+with the form at 302–451 ms. The selected-project request invokes
+`ProjectScanner.getOrCreateProject`, whose first `getProject` waits for the
+complete native-store snapshot. The form needs the selected project identity
+before it needs complete session counts, but currently waits for both.
+Several unrelated requests also finish together after long delays; whether
+native discovery causes that contention remains unproved. The model timing
+check additionally waited for the catalog's capitalized display name, although
+the saved model ID can already be displayed; that check needs to accept the
+same selection before its display name arrives.
+
+These are diagnostic measurements on the shared 16-core host, not a calibrated
+regression bound. The second run began at load 22.16 with 90.8 GB available RAM.
+All isolated processes were removed and the final marker sweep was clean.
+Remaining work: decouple selected-project display/validation from full corpus
+inventory, remove the provider-control wait, and repeat cold acceptance with
+the corrected model-selection check. Preserve project authorization and full
+inventory results; do not fabricate empty counts or omit older sessions.
+The live backend still needs the user-performed restart to activate its changes
+and built-client default. Contributing-model: 6-astra.
 
 Earlier acquisition investigation (2026-10-09), before the pure owners above:
 the five

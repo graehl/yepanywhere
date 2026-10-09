@@ -100,6 +100,27 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Measurement qualification (2026-10-09): the long temporary path used by earlier
+scratch browser runs left the provider host degraded. Their timings remain
+diagnostic and cannot establish acceptance in a healthy runtime. A shorter
+path on verified local XFS storage restores the host and database; the probe
+now rejects either degraded condition. Three healthy cold loads showed the
+complete saved project/provider/model/effort controls at 537/488/854 ms and
+catalog-enriched labels at 537/538/854 ms. Desktop and phone captures with
+provider responses held confirm that the real controls already display the
+saved model ID before its catalog label arrives. The timing probe retains both
+milestones; neither substitutes the early textarea for the full form.
+Contributing-model: 6-astra.
+
+The healthy traces still show projects and recents waiting on version
+acquisition: version completed at 418–701 ms, then those collection reads
+started at 433–745 ms. This remains a concrete serial bootstrap dependency.
+The supported v0.8.0–v0.9.2 collection routes ignore the `summaryMode` query
+parameter and return their normal complete responses, so a read-preference
+approach is a candidate for removing this wait. No client contract change has
+landed yet; withdrawal semantics and response compatibility need to remain
+explicit when replacing the current capability gate.
+
 Claude native-executable selection no longer asks Node to inspect network
 interfaces or perform reverse DNS while determining libc (2026-10-09). The
 report option is scoped to the synchronous read and restored on success or

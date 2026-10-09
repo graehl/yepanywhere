@@ -9,10 +9,13 @@ current state.
 
 ## Observed
 
-Current acceptance (maintainer, 2026-10-09): **at most 1,500 ms** from new-tab
-navigation to the real project/provider/model/effort UI. The earlier 500 ms
-target is superseded; historical measurements below retain their original
-qualifications. The pre-boot textarea alone never satisfies acceptance.
+Current acceptance (maintainer, 2026-10-09): **at most 3,000 ms** from new-tab
+navigation to the real project/provider/model/effort UI. The maintainer raised
+the threshold because this loaded system runs at approximately half normal
+performance. The earlier 500 ms and 1,500 ms targets are superseded; historical
+measurements below retain their original qualifications. The pre-boot textarea
+alone never satisfies acceptance. Slow Settings new-tab opens are also in scope;
+measure the populated settings controls separately from the shared app shell.
 Frontend reloads remain user-initiated. Contributing-model: 6-astra.
 
 On the maintainer's live dev server, about 1.5 s after opening

@@ -100,6 +100,16 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+An isolated built-client check with saved Claude/Sonnet/High selections, no
+project query parameter, and the first tab left open for sibling loads measured
+full readiness at 815/488/272/380 ms (2026-10-09). The first load waits for
+settings (213–418 ms), then Claude details (451–808 ms); version acquisition
+(212–638 ms) also precedes retained recents (665–691 ms). This is a different
+fixture from the default-selection measurements below, not a paired speedup.
+Host load was 22.6 on 16 cores, so these are diagnostic samples, not acceptance
+of the 500 ms target. Browser snapshots and cold bootstrap still need work.
+Contributing-model: 6-astra.
+
 Retained recents now reuse the durable session catalog and expose ordered visit
 identities separately from title enrichment (2026-10-09). New Session can choose
 the recently visited project while enrichment is still pending. Supported

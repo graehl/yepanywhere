@@ -136,10 +136,32 @@ keystrokes appear within 100 ms throughout. All ten startup browser cases and
 Lint, formatting, console checks and typechecking pass. Contributing-model:
 6-astra.
 
-Still required: complete <=1,500 ms cold/returning/concurrent/hosted
-verification and final broader checks. A manual-mode Vite guard was found to force document reloads after
-source edits. Its opt-in correction is being verified separately without
-restarting the live development server.
+At db9aa5995, all 60 measured tabs met the 1,500 ms full-UI check:
+
+| Isolated built-client scenario | Samples | Full UI |
+| --- | ---: | ---: |
+| Fresh local browser and server | 3 | 293–440 ms |
+| Returning local tabs, normal caches | 18 | 216–573 ms |
+| Three local tabs opened together | 9 | 407–777 ms |
+| Hosted client through authenticated local relay | 9 | 439–692 ms |
+| 1,000 project rows and 200 selected-provider models | 21 | 335–804 ms |
+
+These checks require the actual saved project, separate Claude selector,
+Sonnet model and High effort, not just the composer. Three repetitions per
+scenario ran with host load 23–26 on 16 cores and 86–88 GB free RAM. The large
+catalog case injects expanded API responses; it measures client processing,
+not discovery of 1,000 native projects. Fixture setup warms project discovery,
+and provider authentication is absent. Hosted timings begin after relay login,
+with browser HTTP cache cleared for the first measured tab. These are bounded
+acceptance observations, not a universal bound on cold native-provider discovery
+or Internet latency. All fixture teardown and final process sweeps were clean.
+Contributing-model: 6-astra.
+
+Still required: final broader checks and integration of the manual-mode Vite
+correction. Its changed-generation guard was found to force document reloads
+after source edits. A tested correction exists in an isolated worktree; applying
+the plugin to the live checkout would itself restart Vite and awaits the
+maintainer's chosen restart timing. The live server has not been restarted.
 
 Earlier acquisition investigation (2026-10-09), before the pure owners above:
 the five

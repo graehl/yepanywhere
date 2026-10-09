@@ -55,8 +55,7 @@ it.each(["/", "/nested/"])(
       const document = result.output.find(
         (output) => output.type === "asset" && output.fileName === "index.html",
       );
-      if (!document || document.type !== "asset")
-        throw new Error("Missing built HTML");
+      if (document?.type !== "asset") throw new Error("Missing built HTML");
       const html = String(document.source);
       const script =
         /<script data-new-session-preload>([\s\S]*?)<\/script>/.exec(html)?.[1];

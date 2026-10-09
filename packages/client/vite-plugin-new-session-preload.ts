@@ -26,7 +26,7 @@ export function newSessionPreloadPlugin(): Plugin {
       const visit = (file: string) => {
         if (files.has(file)) return;
         const chunk = bundle[file];
-        if (!chunk || chunk.type !== "chunk") return;
+        if (chunk?.type !== "chunk") return;
         files.add(file);
         for (const dependency of chunk.imports) visit(dependency);
       };

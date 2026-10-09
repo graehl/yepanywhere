@@ -659,7 +659,7 @@ test("hands a framed PDF to a new tab through the viewer, never a popup", async 
   const element = page.locator('iframe[title="handoff.html"]');
   await expect(element).toHaveAttribute(
     "sandbox",
-    "allow-scripts allow-same-origin",
+    "allow-scripts allow-same-origin allow-downloads",
   );
   const frame = page.frameLocator('iframe[title="handoff.html"]');
   await frame.getByRole("link", { name: "Paper" }).click();
@@ -691,6 +691,39 @@ test("hands a framed PDF to a new tab through the viewer, never a popup", async 
   // ask the tab itself.
   expect(await tab.evaluate(() => window.opener)).toBeNull();
   await tab.close();
+});
+
+test("saves a file the framed artifact builds in the page", async ({
+  page,
+}) => {
+  const htmlPath = join(directory, "bundle", "blob-download.html");
+  await writeFile(
+    htmlPath,
+    `<!doctype html><title>Blob download</title>
+<button id="save">Download</button>
+<script>
+document.getElementById("save").addEventListener("click", () => {
+  const blob = new Blob(["saved by the artifact"], { type: "text/plain" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "notes.txt";
+  document.body.append(link);
+  link.click();
+  link.remove();
+});
+</script>`,
+  );
+  const grant = await instance.artifactServer.createGrant(htmlPath, "local");
+  await page.goto(
+    `${base}/file-view?mode=interactive&artifactUrl=${encodeURIComponent(grant.url)}`,
+  );
+  const frame = page.frameLocator('iframe[title="blob-download.html"]');
+  const downloaded = page.waitForEvent("download");
+  await frame.getByRole("button", { name: "Download" }).click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toBe("notes.txt");
+  const path = await download.path();
+  expect(await readFile(path, "utf8")).toBe("saved by the artifact");
 });
 
 test("finds within the scriptless preview without giving it scripts", async ({

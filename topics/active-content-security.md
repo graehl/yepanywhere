@@ -292,11 +292,16 @@ these constraints before it ships:
   `allow-same-origin`. A dedicated untrusted origin may later receive narrowly
   justified sandbox tokens for storage/workers; it never gains YA origin.
   The isolated artifact origin's frames and its response `sandbox` directive
-  share one token list, `ARTIFACT_SANDBOX` in `packages/shared`, and it grants
-  no popups, downloads, or top-level navigation. A popup allowed to escape the
-  sandbox would be same-origin with its opener frame, so it could reach
-  `opener.top`, the YA tab, and navigate it (reverse tabnabbing) even though
-  it never gains YA's origin.
+  share one token list, `ARTIFACT_SANDBOX` in `packages/shared`:
+  `allow-scripts allow-same-origin allow-downloads`. It grants no popups or
+  top-level navigation. A popup allowed to escape the sandbox would be
+  same-origin with its opener frame, so it could reach `opener.top`, the YA
+  tab, and navigate it (reverse tabnabbing) even though it never gains YA's
+  origin. Downloads are allowed by maintainer decision (2026-10-09): artifact
+  HTML is the operator's own, and a page that saves a file it builds, such as
+  a Blob behind an `<a download>`, needs the token. This accepts that any
+  artifact may start a download; a download confers no YA origin, opener, or
+  navigation of the YA tab.
   Chromium refuses its PDF viewer inside any sandboxed frame, so a frame
   navigation to a PDF is answered with a hand-off page. Its Open and Download
   buttons post a `yep-artifact-tab/1` request to the parent; the viewer opens
@@ -703,8 +708,9 @@ The granted directory supports relative stylesheets, images/SVG, webfonts,
 classic scripts, modules/dynamic imports, JSON fetches, and linked HTML files.
 Root-relative paths address the artifact host itself and are not mapped to a
 grant. Directory indexes, history-router fallback, service workers, nested
-frames, popups, forms, downloads, native bridges, and device permissions are
-not supplied; a PDF reaches a new tab only through the viewer's hand-off
+frames, popups, forms, native bridges, and device permissions are not
+supplied, though a page may start downloads (*Sandboxed embedding*); a PDF
+reaches a new tab only through the viewer's hand-off
 described under *Sandboxed embedding*. External HTTP(S)/WebSocket services remain subject to the
 browser's ordinary network/CORS rules and the artifact author's setup.
 

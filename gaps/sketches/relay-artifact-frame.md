@@ -123,10 +123,10 @@ Consequences:
   re-checks on a grant-scoped relay read, so an artifact can never ask its
   parent for arbitrary files.
 - **Sandbox.** Frame with `ARTIFACT_SANDBOX` (`allow-scripts
-  allow-same-origin`), with no popups, downloads or top-level navigation. The
-  worker's responses carry the artifact CSP. Root-relative paths, history
-  fallback, WebSockets and app backends stay unsupported, as they are on the
-  current artifact origin.
+  allow-same-origin allow-downloads`), with no popups or top-level
+  navigation. The worker's responses carry the artifact CSP. Root-relative
+  paths, history fallback, WebSockets and app backends stay unsupported, as
+  they are on the current artifact origin.
 - **Embedded only.** A standalone tab on the content origin has no YA parent
   to forward reads, and handing it relay credentials would break the model.
   "Open in new tab" therefore still needs the tunnel or a public share's Play.

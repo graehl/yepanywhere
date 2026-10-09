@@ -2,12 +2,15 @@ import { isRecord } from "./plain-record.js";
 
 /**
  * Sandbox for every frame on the isolated artifact origin and for the artifact
- * response's own CSP `sandbox` directive. It grants no popups, downloads, or
- * top-level navigation: an unsandboxed popup would hold `opener.top`, the YA
- * tab, and could navigate it. A document the frame cannot show is handed to a
- * new tab through the viewer instead (`ARTIFACT_TAB_PROTOCOL`).
+ * response's own CSP `sandbox` directive. It grants no popups or top-level
+ * navigation: an unsandboxed popup would hold `opener.top`, the YA tab, and
+ * could navigate it. A document the frame cannot show is handed to a new tab
+ * through the viewer instead (`ARTIFACT_TAB_PROTOCOL`). Downloads are allowed
+ * because artifact HTML is the operator's own and may save files it builds,
+ * such as a Blob behind an `<a download>`.
  */
-export const ARTIFACT_SANDBOX = "allow-scripts allow-same-origin";
+export const ARTIFACT_SANDBOX =
+  "allow-scripts allow-same-origin allow-downloads";
 
 /**
  * A framed artifact page asks the YA viewer to open one URL of its own grant in

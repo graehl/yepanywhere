@@ -87,12 +87,12 @@ export interface CapturePreviewOptions {
  * A browser notice about the headers YA serves artifacts with, rather than
  * anything the captured document did.
  *
- * The artifact origin sends `sandbox allow-scripts allow-same-origin`, and
- * Chromium warns about that pair on every load. Reporting it as a warning of
- * the artifact would tell the author to fix a page that is already correct,
- * once per capture. Keeping the match to the host's own policy leaves every
- * warning the document earns — deprecations, failed preloads, its own console
- * output — where the author can see it.
+ * The artifact origin sends `sandbox allow-scripts allow-same-origin
+ * allow-downloads`, and Chromium warns about the first pair on every load.
+ * Reporting it as a warning of the artifact would tell the author to fix a
+ * page that is already correct, once per capture. Keeping the match to the
+ * host's own policy leaves every warning the document earns — deprecations,
+ * failed preloads, its own console output — where the author can see it.
  */
 function isHostPolicyNotice(text: string): boolean {
   return text.includes("can escape its sandboxing");

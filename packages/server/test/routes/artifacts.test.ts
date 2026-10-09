@@ -139,10 +139,10 @@ it("serves an authorized HTML directory with executable bytes and revocable acce
   const html = await server.app.request(grant.url);
   expect(html.status).toBe(200);
   expect(html.headers.get("content-type")).toContain("text/html");
-  // No popup or download authority: an unsandboxed popup could navigate the
-  // YA tab that frames this document.
+  // No popup authority: an unsandboxed popup could navigate the YA tab that
+  // frames this document. The artifact may start downloads.
   expect(html.headers.get("content-security-policy")).toContain(
-    "sandbox allow-scripts allow-same-origin;",
+    "sandbox allow-scripts allow-same-origin allow-downloads;",
   );
   // A PDF navigated to inside the sandboxed frame gets a hand-off page that
   // asks the viewer for a tab; other fetch destinations and explicit

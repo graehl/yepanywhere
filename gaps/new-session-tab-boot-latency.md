@@ -157,11 +157,33 @@ acceptance observations, not a universal bound on cold native-provider discovery
 or Internet latency. All fixture teardown and final process sweeps were clean.
 Contributing-model: 6-astra.
 
-Still required: final broader checks and integration of the manual-mode Vite
-correction. Its changed-generation guard was found to force document reloads
-after source edits. A tested correction exists in an isolated worktree; applying
-the plugin to the live checkout would itself restart Vite and awaits the
-maintainer's chosen restart timing. The live server has not been restarted.
+The manual-mode Vite correction is integrated as bbe05e218 after explicit
+maintainer approval of one Vite restart. The live virtual module serves the
+manual-refresh rejection instead of `location.reload()`. A changed source
+generation cannot make a lazy import navigate the current document. This did
+not restart the YA backend or activate the built-client launch default.
+
+Broader verification completed: eight deep checks passed; the full browser
+suite passed 389 cases, skipped ten and failed eleven. Seven failures were
+test contracts or isolation repaired in this slice: Gateway fixtures now
+distinguish persisted display from current aggregate authority; project-list
+interception accepts retained-read parameters; older servers retain plain
+folder creation; early-render tests own their project choice and server draft.
+All eighteen relevant browser cases pass in focused runs after those repairs,
+and the final five-check quick tier passes. The four other failures remain in
+[local browser failures](e2e-local-instructions-and-project-app-failures.md).
+The full browser suite is not claimed green. Contributing-model: 6-astra.
+
+The maintainer reports that the missing starred items healed without an edit.
+Both live server list paths and a fresh browser had 24 unarchived stars,
+including 20 older than 24 hours. This is consistent with retained rows being
+shown before reconciliation, but the incident's cause was not captured; there
+is no confirmed data loss or age cutoff. No star metadata was changed.
+
+Remaining evidence boundary: the 1,500 ms measurements above cover the listed
+built-client fixtures, not cold authenticated SDK model discovery or a cold
+native project corpus. The live backend still needs the user-performed restart
+to activate its changes and built-client default. Contributing-model: 6-astra.
 
 Earlier acquisition investigation (2026-10-09), before the pure owners above:
 the five

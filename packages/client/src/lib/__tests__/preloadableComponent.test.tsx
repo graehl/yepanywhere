@@ -6,7 +6,9 @@ import { preloadableComponent } from "../preloadableComponent";
 describe("preloadable route components", () => {
   it("renders preloaded controls on the first commit without a fallback", async () => {
     const load = vi.fn(async () => ({
-      default: ({ label }: { label: string }) => <button>{label}</button>,
+      default: ({ label }: { label: string }) => (
+        <button type="button">{label}</button>
+      ),
     }));
     const Controls = preloadableComponent(load);
     await Controls.preload();
@@ -25,7 +27,7 @@ describe("preloadable route components", () => {
 
   it("retains lazy loading when the route was not preloaded", async () => {
     const Controls = preloadableComponent(async () => ({
-      default: () => <button>Ready</button>,
+      default: () => <button type="button">Ready</button>,
     }));
     render(
       <Suspense fallback={<p>Loading</p>}>

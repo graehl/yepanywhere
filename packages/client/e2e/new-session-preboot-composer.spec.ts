@@ -175,12 +175,15 @@ test("route data arrives before the New Session module executes", async ({
     if (releasing) return route.continue();
     held.push(route);
   });
-  const responses = ["/api/settings", "/api/projects", "/api/recents"].map(
-    (path) =>
-      page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === path && response.ok(),
-      ),
+  const responses = [
+    "/api/settings",
+    "/api/projects",
+    "/api/recents",
+    "/api/version",
+  ].map((path) =>
+    page.waitForResponse(
+      (response) => new URL(response.url()).pathname === path && response.ok(),
+    ),
   );
   try {
     await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });

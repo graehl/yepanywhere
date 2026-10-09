@@ -301,6 +301,9 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
     // Acquire route data through its existing source/query owners while code
     // loads. Mounted hooks join these reads and own retry/error presentation.
     void Promise.allSettled([
+      import("./hooks/useVersion").then(({ primeLocalVersion }) =>
+        primeLocalVersion(),
+      ),
       import("./hooks/useServerSettings").then(({ primeLocalServerSettings }) =>
         primeLocalServerSettings(),
       ),

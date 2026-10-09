@@ -100,6 +100,19 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Local version discovery now starts while route modules load (2026-10-09),
+sharing the existing retained query with mounted consumers. A browser regression
+holds the New Session module: the previous entry never returned version data,
+and the changed entry does. Three cold samples returned version at 150–159 ms,
+before the form at 177–208 ms; full project/Claude/Sonnet/High UI still took
+560/516/398 ms, ending with the selected Claude request. Before this change,
+three corrected cold samples took 767/513/569 ms; 18 returning samples took
+226–475 ms. Concurrent cold tabs took 570–1168 ms. These runs had changing
+CPU contention (16 cores, latest load 19–20), so they identify dependencies
+rather than establish a paired speedup or the 500 ms acceptance. The concurrent
+run's final suite exit was lost at interruption; its individual measurements
+and process cleanup were recovered. Contributing-model: 6-astra.
+
 Provider identity enumeration now has a capability-gated, probe-free route
 (2026-10-09). New Session renders the real selector from those identities and
 resolves the selected provider independently; unknown runtime status cannot

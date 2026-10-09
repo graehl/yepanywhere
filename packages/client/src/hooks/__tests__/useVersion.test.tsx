@@ -22,6 +22,7 @@ import {
 } from "../../lib/clientSummaryStore";
 import {
   ensureVersionInfo,
+  primeLocalVersion,
   resetVersionSnapshotsForTests,
   useVersion,
 } from "../useVersion";
@@ -137,6 +138,38 @@ afterEach(() => {
 });
 
 describe("useVersion", () => {
+  it.each([false, true])(
+    "shares the local pre-mount version read (resolved=%s)",
+    async (resolved) => {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+      let release!: (version: VersionInfo) => void;
+      mocks.getVersion.mockImplementationOnce(
+        () =>
+          new Promise<VersionInfo>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const priming = primeLocalVersion();
+      await settle();
+      expect(mocks.getVersion).toHaveBeenCalledTimes(1);
+      if (resolved) {
+        release(versionInfo());
+        await priming;
+      }
+      const mounted = renderHook(() => useVersion());
+      await settle();
+      expect(mocks.getVersion).toHaveBeenCalledTimes(1);
+      if (!resolved)
+        await act(async () => {
+          release(versionInfo());
+          await priming;
+        });
+      await settle();
+      expect(mounted.result.current.version).toEqual(versionInfo());
+      expect(mocks.getVersion).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each([false, true])(
     "shares pre-mount collection reads (resolved=%s)",
     async (resolved) => {

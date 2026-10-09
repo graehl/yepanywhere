@@ -9,6 +9,7 @@ import {
 } from "../lib/clientQueryController";
 import {
   type ClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
 import { isRemoteClient } from "../lib/connection";
@@ -97,6 +98,11 @@ export function readVersionInfo(
   sourceKey: ClientSummarySourceKey,
 ): VersionInfo | null {
   return getVersionSnapshot(sourceKey).version;
+}
+
+/** Local entrypoint hint; mounted consumers join the same capability read. */
+export function primeLocalVersion() {
+  return ensureVersionInfo(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
 }
 
 /** Resolve capability-dependent first requests through the existing source owner. */

@@ -79,6 +79,12 @@ their component wrappers have not yet observed the resolved imports. Connection
 and data readiness keep their existing boundaries; the preboot composer retains
 typing until the real form adopts it. Other initial routes remain lazy.
 
+The local New Session entry starts version/capability discovery alongside its
+settings, projects and recent-visit reads while route modules load. Mounted
+consumers join the same retained query, including when it already completed.
+Capability-dependent requests still require the returned current-source facts;
+early acquisition neither invents support nor delays mounting on its response.
+
 ## Shared package initialization
 
 The shared package declares its library modules free of import-time effects

@@ -17,6 +17,7 @@ import type {
   SafeRestartChangedEvent,
   SafeRestartState,
   SessionCatalogUpdatedEvent,
+  RecentsChangedEvent,
   TranscriptDisplayObject,
   UrlProjectId,
   WorkstreamsChangedEvent,
@@ -252,6 +253,7 @@ export interface SessionQueuePersistenceChangedEvent {
 
 // Map event names to their data types
 export interface ActivityEventMap {
+  "recents-changed": RecentsChangedEvent;
   "session-catalog-updated": SessionCatalogUpdatedEvent;
   "file-change": FileChangeEvent;
   "session-status-changed": SessionStatusEvent;
@@ -668,6 +670,7 @@ class ActivityBus {
     return [
       "file-change",
       "session-catalog-updated",
+      "recents-changed",
       "session-status-changed",
       "session-created",
       "session-id-remapped",

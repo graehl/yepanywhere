@@ -14,6 +14,8 @@ export {
   isArtifactTabRequest,
 } from "./artifact-viewer.js";
 export type {
+  RecentSessionsResponse,
+  RecentsChangedEvent,
   RetainedSessionCollectionState,
   SessionCatalogUpdatedEvent,
 } from "./retained-session-collections.js";

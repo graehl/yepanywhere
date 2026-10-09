@@ -921,6 +921,16 @@ persistence in the same plan step, are not built.
 
 ### Retained collection gate
 
+`retained-recents` (permanent ID 123, version-implied from 0.9.4) separately
+owns `summaryMode=retained` on `GET /api/recents`, its `visits` and `catalog`
+fields, and `recents-changed`. The 2026-10-09 core release review checked
+v0.8.0, v0.8.1, v0.9.0, v0.9.1 and v0.9.2; none has this contract. The
+maintainer's standing compatibility approval applies. Clients join the source
+version acquisition and omit the parameter when the capability is absent or
+unknown. Older servers and older clients keep the complete response. The
+existing retained-session-collections capability retains its original meaning.
+See [retained recent visits](session-catalog-observation.md#retained-recent-visits).
+
 Approved 2026-09-08. `retained-session-collections` is permanent ID 63,
 version-implied from 0.8.2. The reviewed core-functionality corpus is v0.6.1,
 v0.6.2, v0.7.0, v0.8.0, and v0.8.1. None provides `summaryMode=retained`

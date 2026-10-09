@@ -43,6 +43,8 @@ const { projectFetch, projectsState, recentSessionsState, versionState } =
     },
     recentSessionsState: {
       recentSessions: [] as Array<{ projectId: string }>,
+      recentProjectIds: [] as string[],
+      isLoadingVisits: false,
       isLoading: false,
       error: null as Error | null,
     },
@@ -208,6 +210,8 @@ describe("NewSessionPage", () => {
     projectFetch.settled = false;
     projectsState.loading = false;
     recentSessionsState.recentSessions = [];
+    recentSessionsState.recentProjectIds = [];
+    recentSessionsState.isLoadingVisits = false;
     recentSessionsState.isLoading = false;
   });
 
@@ -290,6 +294,18 @@ describe("NewSessionPage", () => {
     expect(window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject)).toBe(
       "project-2",
     );
+  });
+
+  it("selects the recent project before session titles finish loading", async () => {
+    recentSessionsState.recentProjectIds = ["project-2"];
+    recentSessionsState.isLoading = true;
+    renderPage("/new-session");
+    await waitFor(() =>
+      expect(screen.getByTestId("form-project-id").textContent).toBe(
+        "project-2",
+      ),
+    );
+    expect(screen.getByTestId("form-project-name").textContent).toBe("Beta");
   });
 
   it("shows the composer before the selected project's record arrives", () => {

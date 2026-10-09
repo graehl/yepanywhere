@@ -828,6 +828,18 @@ describe("limited-user middleware", () => {
         projects: [{ id: "view-project" }, { id: "secret-project" }],
       }),
     );
+    app.get("/api/recents", (c) =>
+      c.json({
+        recents: [
+          { sessionId: "visible", projectId: "view-project" },
+          { sessionId: "hidden", projectId: "secret-project" },
+        ],
+        visits: [
+          { sessionId: "pending-visible", projectId: "view-project" },
+          { sessionId: "pending-hidden", projectId: "secret-project" },
+        ],
+      }),
+    );
     app.get("/api/sessions", (c) =>
       c.json({
         sessions: [
@@ -946,6 +958,13 @@ describe("limited-user middleware", () => {
 
   it("removes inaccessible rows from lists it does serve", async () => {
     const app = await buildApp();
+    const recents = await (
+      await app.request("/api/recents?summaryMode=retained")
+    ).json();
+    expect(recents).toEqual({
+      recents: [{ sessionId: "visible", projectId: "view-project" }],
+      visits: [{ sessionId: "pending-visible", projectId: "view-project" }],
+    });
     const projects = (await (await app.request("/api/projects")).json()) as {
       projects: Array<{ id: string }>;
     };

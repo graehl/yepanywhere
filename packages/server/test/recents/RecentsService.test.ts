@@ -20,6 +20,19 @@ describe("RecentsService", () => {
 
   const ids = () => service.getRecents().map((e) => e.sessionId);
 
+  it("notifies readers after visits, remaps and clears are saved", async () => {
+    const observed: string[][] = [];
+    service = new RecentsService({
+      dataDir,
+      onChanged: () => observed.push(ids()),
+    });
+    await service.initialize();
+    await service.recordVisit("provisional", "proj-1");
+    await service.remapSession("provisional", "real");
+    await service.clear();
+    expect(observed).toEqual([["provisional"], ["real"], []]);
+  });
+
   it("renames a provisional visit to the real session id", async () => {
     await service.recordVisit("other", "proj-1");
     await service.recordVisit("provisional", "proj-1");

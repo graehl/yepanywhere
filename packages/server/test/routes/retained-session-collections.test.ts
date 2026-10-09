@@ -17,6 +17,8 @@ import { RetainedSessionCollections } from "../../src/services/RetainedSessionCo
 import { createGlobalSessionsRoutes } from "../../src/routes/global-sessions.js";
 import { readRetainedSessionItems } from "../../src/routes/retained-session-collections.js";
 import { createInboxRoutes } from "../../src/routes/inbox.js";
+import { createRecentsRoutes } from "../../src/routes/recents.js";
+import { RecentsService } from "../../src/recents/RecentsService.js";
 import type {
   NativeSessionCatalogAdapter,
   SessionCatalogRow,
@@ -51,7 +53,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-it("serves a durable generation through both routes while one shared refresh is blocked", async () => {
+it("serves a durable generation through collection routes while one shared refresh is blocked", async () => {
   dataDir = await mkdtemp(join(tmpdir(), "retained-collections-"));
   const projectId = toUrlProjectId("/work/project");
   const row: SessionCatalogRow = {
@@ -113,18 +115,30 @@ it("serves a durable generation through both routes while one shared refresh is 
   };
   const global = createGlobalSessionsRoutes(deps);
   const inbox = createInboxRoutes(deps);
+  const recentsService = new RecentsService({ dataDir });
+  await recentsService.initialize();
+  await recentsService.recordVisit("saved", projectId);
+  const recents = createRecentsRoutes({ ...deps, recentsService });
+  const projectScan = vi.spyOn(deps.scanner, "listProjects");
+  const reader = vi.spyOn(deps, "readerFactory");
   const responses = await Promise.all(
-    Array.from({ length: 20 }, (_, index) =>
-      index % 2
-        ? global
-            .request("/?summaryMode=retained&knownGeneration=1")
-            .then((response) => response.json())
-        : inbox
+    Array.from({ length: 30 }, (_, index) =>
+      index % 3 === 2
+        ? recents
             .request("/?summaryMode=retained")
-            .then((response) => response.json()),
+            .then((response) => response.json())
+        : index % 3
+          ? global
+              .request("/?summaryMode=retained&knownGeneration=1")
+              .then((response) => response.json())
+          : inbox
+              .request("/?summaryMode=retained")
+              .then((response) => response.json()),
     ),
   );
   expect(starts).toBe(1);
+  expect(projectScan).not.toHaveBeenCalled();
+  expect(reader).not.toHaveBeenCalled();
   for (const response of responses) {
     expect(response.catalog).toMatchObject({
       catalogEpoch: seeded.snapshot.catalogEpoch,
@@ -132,7 +146,10 @@ it("serves a durable generation through both routes while one shared refresh is 
       complete: true,
       refreshing: true,
     });
-    const item = response.sessions?.[0] ?? response.recentActivity[0];
+    const item =
+      response.sessions?.[0] ??
+      response.recents?.[0] ??
+      response.recentActivity[0];
     expect(item.title ?? item.sessionTitle).toBe("Saved title");
     expect(item).not.toHaveProperty("messageCount");
     // Transcript detail stays out, but the session's own words come along:

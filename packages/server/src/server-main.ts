@@ -640,7 +640,14 @@ const browserProfileService = new BrowserProfileService({
   getProtectedBrowserProfileIds: () =>
     Object.keys(pushService.getSubscriptions()),
 });
-const recentsService = new RecentsService({ dataDir: config.dataDir });
+const recentsService = new RecentsService({
+  dataDir: config.dataDir,
+  onChanged: () =>
+    eventBus.emit({
+      type: "recents-changed",
+      timestamp: new Date().toISOString(),
+    }),
+});
 // A new session is opened, and visited, under a provisional id before the
 // provider reports its real one.
 eventBus.subscribe((event) => {

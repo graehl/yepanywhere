@@ -140,6 +140,10 @@ describe("limited-user activity events", () => {
   });
 
   it("keeps catalog refresh signals but drops their operator diagnostic", () => {
+    expect(deliver({ type: "recents-changed", timestamp })).toEqual({
+      type: "recents-changed",
+      timestamp,
+    });
     expect(
       deliver({
         type: "session-catalog-updated",

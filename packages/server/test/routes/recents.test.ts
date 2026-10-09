@@ -8,6 +8,7 @@ import {
 } from "../../src/auth/principal.js";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import type { RecentsService } from "../../src/recents/index.js";
+import type { RetainedSessionCollections } from "../../src/services/RetainedSessionCollections.js";
 import { createRecentsRoutes } from "../../src/routes/recents.js";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
@@ -42,6 +43,92 @@ function createSummary(): SessionSummary {
 }
 
 describe("Recents Routes", () => {
+  it("does not scan or prune visits absent from an incomplete retained catalog", async () => {
+    const scan = vi.fn();
+    const readerFactory = vi.fn();
+    const pruneUnresolved = vi.fn();
+    const catalog = {
+      catalogEpoch: "empty",
+      catalogGeneration: 0,
+      complete: false,
+      refreshing: true,
+    };
+    const routes = createRecentsRoutes({
+      recentsService: {
+        getRecentsWithLimit: () => [
+          {
+            sessionId: "unseen",
+            projectId: "proj-1",
+            visitedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+        pruneUnresolved,
+      } as unknown as RecentsService,
+      scanner: { listProjects: scan } as unknown as ProjectScanner,
+      readerFactory,
+      retainedCollections: {
+        read: async () => ({ rows: [], catalog }),
+      } as unknown as RetainedSessionCollections,
+    });
+    const response = await routes.request("/?summaryMode=retained");
+    expect(await response.json()).toEqual({
+      recents: [],
+      catalog,
+      visits: [
+        {
+          sessionId: "unseen",
+          projectId: "proj-1",
+          visitedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    });
+    expect(scan).not.toHaveBeenCalled();
+    expect(readerFactory).not.toHaveBeenCalled();
+    expect(pruneUnresolved).not.toHaveBeenCalled();
+  });
+
+  it("omits unobserved titles and uses the current project display name", async () => {
+    const routes = createRecentsRoutes({
+      recentsService: {
+        getRecentsWithLimit: () => [
+          {
+            sessionId: "known",
+            projectId: "proj-1",
+            visitedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      } as unknown as RecentsService,
+      scanner: {} as ProjectScanner,
+      readerFactory: vi.fn(),
+      projectDisplayName: (path) => `Renamed ${path}`,
+      retainedCollections: {
+        read: async () => ({
+          rows: [
+            {
+              sessionId: "known",
+              projectId: "proj-1",
+              projectPath: "/work",
+              catalogFamily: "pi",
+            },
+          ],
+          catalog: {
+            catalogEpoch: "one",
+            catalogGeneration: 1,
+            complete: true,
+            refreshing: false,
+          },
+        }),
+      } as unknown as RetainedSessionCollections,
+    });
+    const response = await routes.request("/?summaryMode=retained");
+    const { recents } = await response.json();
+    expect(recents[0]).toMatchObject({
+      projectName: "Renamed /work",
+      provider: "pi",
+    });
+    expect(recents[0]).not.toHaveProperty("title");
+  });
+
   it("resolves recent sessions across providers for mixed-provider projects", async () => {
     const project = createProject();
     const summary = createSummary();

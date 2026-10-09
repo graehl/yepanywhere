@@ -39,6 +39,7 @@ export function limitedActivityEvent(
     // Carry no project data; clients refetch their filtered lists on them.
     case "backend-reloaded":
     case "session-queue-persistence-changed":
+    case "recents-changed":
       return event;
     case "session-catalog-updated": {
       // The refresh error is an operator diagnostic, not list state.

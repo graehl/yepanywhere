@@ -1045,6 +1045,8 @@ export function createApp(options: AppOptions): AppResult {
           new Request(new URL(path, context.req.url), {
             method,
             headers,
+            // The dispatcher accepts only POST | PUT, defaulting to POST;
+            // Oxlint's no-invalid-fetch-options incorrectly assumes GET here.
             body: JSON.stringify(body),
           }),
           undefined,
@@ -3284,6 +3286,9 @@ export function createApp(options: AppOptions): AppResult {
       "/api/recents",
       createRecentsRoutes({
         recentsService: options.recentsService,
+        retainedCollections,
+        projectDisplayName,
+        sessionMetadataService: options.sessionMetadataService,
         scanner,
         readerFactory,
         sessionIndexService: options.sessionIndexService,

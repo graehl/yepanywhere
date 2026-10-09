@@ -9,7 +9,7 @@ import {
   SERVER_CAPABILITIES,
   serverHasCapability,
 } from "@yep-anywhere/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { NewSessionForm } from "../components/NewSessionForm";
@@ -108,7 +108,7 @@ export function NewSessionPage() {
       {t("projectAppLabel")}
     </Link>
   ) : undefined;
-  const { recentSessions, isLoading: recentSessionsLoading } =
+  const { recentProjectIds, isLoadingVisits: recentSessionsLoading } =
     useRecentSessions({
       limit: RECENT_PROJECT_SESSION_LIMIT,
     });
@@ -117,11 +117,6 @@ export function NewSessionPage() {
     (projectId
       ? projects.find((candidate) => candidate.id === projectId)
       : null) ?? project;
-  const recentProjectIds = useMemo(
-    () =>
-      Array.from(new Set(recentSessions.map((session) => session.projectId))),
-    [recentSessions],
-  );
 
   // Update browser tab title (must be called unconditionally before any early returns)
   useDocumentTitle(

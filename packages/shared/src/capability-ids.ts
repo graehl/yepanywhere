@@ -756,6 +756,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "unicode-prose-math",
     introducedIn: "0.9.4",
   },
+  retainedRecents: {
+    id: 123,
+    direction: "server",
+    name: "retained-recents",
+    introducedIn: "0.9.4",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

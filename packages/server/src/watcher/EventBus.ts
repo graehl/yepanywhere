@@ -20,6 +20,7 @@ import type {
   PromptSuggestionMode,
   SafeRestartChangedEvent,
   SessionCatalogUpdatedEvent,
+  RecentsChangedEvent,
   TranscriptDisplayObject,
   UrlProjectId,
   WorkstreamsChangedEvent,
@@ -362,6 +363,7 @@ export interface CacheMissBillingEvent {
 
 /** Union of all event types that can be emitted through the bus */
 export type BusEvent =
+  | RecentsChangedEvent
   | SessionCatalogUpdatedEvent
   | FileChangeEvent
   | SessionStatusEvent

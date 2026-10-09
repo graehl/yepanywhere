@@ -100,6 +100,16 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Retained recents now reuse the durable session catalog and expose ordered visit
+identities separately from title enrichment (2026-10-09). New Session can choose
+the recently visited project while enrichment is still pending. Supported
+clients make no request-time provider/project scan for recents; older clients
+retain the complete response. Catalog publications and persisted visit changes
+notify open tabs. The contract is in
+[retained recent visits](../topics/session-catalog-observation.md#retained-recent-visits).
+Project enumeration, browser snapshots and the complete full-UI latency
+acceptance remain open. Contributing-model: 6-astra.
+
 New Session now admits its project collection in the route tier (2026-10-09),
 alongside its selected-project request. It no longer waits for unrelated route
 work to settle before starting the selector's collection request. Sidebar

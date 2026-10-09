@@ -36,6 +36,8 @@ export interface RecentsServiceOptions {
   dataDir?: string;
   /** Maximum number of entries to keep (defaults to 100) */
   maxEntries?: number;
+  /** Notify readers after a coalesced durable change, without polling. */
+  onChanged?: () => void;
 }
 
 export class RecentsService {
@@ -43,6 +45,7 @@ export class RecentsService {
   private dataDir: string;
   private filePath: string;
   private maxEntries: number;
+  private onChanged: (() => void) | undefined;
   private save = createCoalescingSaver(() => this.doSave()).save;
   /** Provisional id to real id, oldest first. */
   private remappedIds = new Map<string, string>();
@@ -56,6 +59,7 @@ export class RecentsService {
       );
     this.filePath = path.join(this.dataDir, "recents.json");
     this.maxEntries = options.maxEntries ?? MAX_ENTRIES;
+    this.onChanged = options.onChanged;
     this.state = { visits: [], version: CURRENT_VERSION };
   }
 
@@ -224,6 +228,7 @@ export class RecentsService {
     try {
       const content = JSON.stringify(this.state, null, 2);
       await writeFileAtomically(this.filePath, content);
+      this.onChanged?.();
     } catch (error) {
       console.error("[RecentsService] Failed to save state:", error);
       throw error;

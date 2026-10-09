@@ -107,6 +107,33 @@ These are work-count and lifecycle evidence, not browser latency measurements.
 Viewport prioritization, cross-tab persistence, conditional catalog deltas, and
 other collection consumers remain part of the broader architecture below.
 
+## Retained recent visits
+
+Servers advertising `retained-recents` accept `summaryMode=retained` on
+`GET /api/recents`. This joins the existing durable session catalog; the request
+does not enumerate projects, resolve sessions through provider readers, or
+prune visits that the catalog has not observed. The complete-request path stays
+available for older clients.
+
+The response separates authoritative `visits` (ordered session/project ids and
+visit timestamps) from `recents` enriched with known titles and provider names.
+Unknown titles are omitted. `catalog` carries the same completeness, refresh
+and error state as other retained collections. New Session chooses its recent
+project from visits immediately, independently of title discovery. Both arrays
+carry project ids so limited-user list filtering applies to both; catalog
+errors remain operator-only. Session ids ambiguous within a visited project
+do not supply an enriched row. Working-project metadata and current project
+names overlay retained provider facts.
+
+Every persisted recents mutation publishes a coalesced `recents-changed`
+notification. Mounted client consumers share one bounded source collection and
+revalidate on it and on `session-catalog-updated`, without polling. Request
+transport remains bound to the source selected before capability lookup.
+Incomplete enrichment preserves known titles and still-recorded visits, while
+an authoritative empty visit list clears them even during reconciliation.
+The final consumer releases its private in-memory rows and invalidates pending
+work; this is not browser persistence or authority across logins.
+
 ## Continuous-observer model
 
 Design session discovery as though one YA server remains alive and watches the

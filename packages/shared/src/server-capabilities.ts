@@ -1949,6 +1949,27 @@ export const SERVER_CAPABILITIES = {
         "Independently updated clients and servers retain the complete-list fallback.",
     },
   },
+  retainedRecents: {
+    id: CAPABILITY_ID_ALLOCATIONS.retainedRecents.id,
+    name: "retained-recents",
+    kind: "permanent",
+    area: "sessions",
+    introducedIn: "0.9.4",
+    advertisement: { kind: "version-implied" },
+    description:
+      "Recent visits read the retained session catalog without foreground provider discovery.",
+    clientFallback: "Omit summaryMode and use the complete recents response.",
+    serverContract: {
+      routes: ["GET /api/recents"],
+      requestFields: ["summaryMode"],
+      responseFields: ["catalog", "visits"],
+      events: ["session-catalog-updated", "recents-changed"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason: "Older servers retain the complete-request recents path.",
+    },
+  },
   projectDirectoryStoragePolicy: {
     id: CAPABILITY_ID_ALLOCATIONS.projectDirectoryStoragePolicy.id,
     name: "project-directory-storage-policy",

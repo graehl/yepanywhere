@@ -76,6 +76,7 @@ describe("ProjectScanner cache", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(
       tempDirs
         .splice(0)
@@ -976,6 +977,111 @@ describe("ProjectScanner cache", () => {
 
     const projects = await scanner.listProjects();
     expect(projects).toHaveLength(2);
+  });
+
+  it("updates only the changed Gemini file through watcher events", async () => {
+    const root = join(tmpdir(), `gemini-incremental-${randomUUID()}`);
+    tempDirs.push(root);
+    const sessionsDir = join(root, "gemini");
+    const eventBus = new EventBus();
+    const geminiScanner = new GeminiSessionScanner({ sessionsDir });
+    const files = ["first", "second"].map((name) =>
+      join(sessionsDir, name, "chats", `session-${name}.json`),
+    );
+    const writeSession = async (file: string, projectHash: string) => {
+      await writeFile(
+        file,
+        JSON.stringify({
+          sessionId: file,
+          projectHash,
+          startTime: "2026-10-09T00:00:00Z",
+          lastUpdated: "2026-10-09T00:00:00Z",
+          messages: [],
+        }),
+      );
+    };
+    for (const [index, file] of files.entries()) {
+      await mkdir(
+        join(sessionsDir, index === 0 ? "first" : "second", "chats"),
+        { recursive: true },
+      );
+      await writeSession(file, index === 0 ? "first-hash" : "second-hash");
+    }
+    const scanner = new ProjectScanner({
+      projectsDir: join(root, "claude"),
+      geminiScanner,
+      enableCodex: false,
+      enableGemini: true,
+      cacheTtlMs: 60_000,
+      eventBus,
+    });
+    const reads = vi.spyOn(
+      geminiScanner as unknown as {
+        readSessionMeta: (file: string, dir: string) => Promise<unknown>;
+      },
+      "readSessionMeta",
+    );
+    try {
+      expect(await scanner.listProjects()).toHaveLength(2);
+      reads.mockClear();
+      const changed = files[0]!;
+      await writeSession(changed, "second-hash");
+      eventBus.emit({
+        type: "file-change",
+        provider: "gemini",
+        path: changed,
+        relativePath: "first/chats/session-first.json",
+        changeType: "modify",
+        timestamp: new Date().toISOString(),
+        fileType: "session",
+      });
+      expect(await scanner.listProjects()).toEqual([
+        expect.objectContaining({ sessionCount: 2, provider: "gemini" }),
+      ]);
+      expect(reads.mock.calls.map(([file]) => file)).toEqual([changed]);
+      const notify = (
+        path: string,
+        changeType: "create" | "modify" | "delete",
+      ) => {
+        reads.mockClear();
+        eventBus.emit({
+          type: "file-change",
+          provider: "gemini",
+          path,
+          relativePath: "first/chats/session-first.json",
+          changeType,
+          timestamp: new Date().toISOString(),
+          fileType: "session",
+        });
+      };
+      await rm(changed);
+      notify(changed, "delete");
+      expect(await scanner.listProjects()).toEqual([
+        expect.objectContaining({ sessionCount: 1 }),
+      ]);
+      expect(reads.mock.calls.map(([file]) => file)).toEqual([changed]);
+
+      await writeSession(changed, "third-hash");
+      notify(changed, "create");
+      expect(await scanner.listProjects()).toHaveLength(2);
+      expect(reads.mock.calls.map(([file]) => file)).toEqual([changed]);
+
+      await rm(changed);
+      await mkdir(changed);
+      notify(changed, "modify");
+      await expect(scanner.listProjects()).rejects.toMatchObject({
+        code: "EISDIR",
+      });
+      await rm(changed, { recursive: true });
+      await writeSession(changed, "second-hash");
+      reads.mockClear();
+      expect(await scanner.listProjects()).toEqual([
+        expect.objectContaining({ sessionCount: 2 }),
+      ]);
+      expect(reads.mock.calls.map(([file]) => file)).toEqual([changed]);
+    } finally {
+      await scanner.dispose();
+    }
   });
 
   it("invalidates shared codex scanner cache on codex file-change events", async () => {

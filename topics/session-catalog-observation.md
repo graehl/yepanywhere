@@ -192,11 +192,20 @@ the directory inventory; source input retention does not certify a stale full
 project snapshot as fresh. Failed directory reads preserve accepted inputs and
 retain the affected directories for retry. Shutdown drains acquisition.
 
+Gemini discovery retains native session-file metadata. A file event replaces or
+removes only that file's contribution, then project grouping uses the current
+hash-to-cwd map. Concurrent readers share acquisition; events arriving during
+it remain pending, and full invalidation prevents an older scan from publishing
+over the reset. Read failures preserve accepted inputs and pending paths for
+retry. Invalid session JSON retains the existing skip behavior. Complete
+age-driven reconciliation and explicit full invalidation still enumerate the
+store; targeted refresh alone does not remove those paths.
+
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail for an unknown directory still uses complete
-discovery, and Codex/Gemini refresh still enumerates their stores rather than
-applying targeted updates. A Claude change can still trigger that unrelated
-provider work through the existing merged refresh.
+discovery, and Codex file events still invalidate its whole inventory. A Claude
+change can still trigger unrelated Codex/Gemini work through the existing
+age-driven provider refresh.
 The full New Session latency target remains open; the display-only browser
 snapshot below removes collection acquisition from returning-tab display.
 

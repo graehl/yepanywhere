@@ -10,7 +10,7 @@
  */
 
 import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { parseGeminiSessionFile } from "@yep-anywhere/shared";
 import type { Project } from "../supervisor/types.js";
 import {
@@ -77,13 +77,31 @@ export class GeminiSessionScanner {
     result: GeminiSessionInfo[];
     timestamp: number;
   } | null = null;
+  private changedFiles = new Set<string>();
+  private scanEpoch = 0;
+  private inFlightScan: Promise<GeminiSessionInfo[]> | null = null;
 
   constructor(options: GeminiScannerOptions = {}) {
     this.sessionsDir = options.sessionsDir ?? GEMINI_TMP_DIR;
   }
 
-  invalidateCache(): void {
+  invalidateCache(filePath?: string): void {
+    if (filePath) {
+      const parts = relative(this.sessionsDir, filePath).split(sep);
+      if (
+        parts.length === 3 &&
+        parts[0] !== ".." &&
+        parts[1] === "chats" &&
+        parts[2]?.startsWith("session-") &&
+        parts[2].endsWith(".json")
+      ) {
+        this.changedFiles.add(filePath);
+        return;
+      }
+    }
+    this.scanEpoch += 1;
     this.cachedScan = null;
+    this.changedFiles.clear();
   }
 
   /**
@@ -249,21 +267,60 @@ export class GeminiSessionScanner {
    * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.
    */
   private async scanAllSessions(): Promise<GeminiSessionInfo[]> {
+    if (this.inFlightScan) {
+      await this.inFlightScan;
+      return this.scanAllSessions();
+    }
     if (
       this.cachedScan &&
+      this.changedFiles.size === 0 &&
       Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL
     ) {
       return this.cachedScan.result;
     }
 
-    const sessions: GeminiSessionInfo[] = [];
-
+    const epoch = this.scanEpoch;
+    const changed = [...this.changedFiles];
+    this.changedFiles.clear();
+    const accepted = this.cachedScan;
+    const scan = (async () => {
+      try {
+        let result: GeminiSessionInfo[];
+        if (accepted && changed.length > 0) {
+          const sessions = new Map(
+            accepted.result.map((row) => [row.filePath, row]),
+          );
+          for (const filePath of changed) {
+            const dirName = relative(this.sessionsDir, filePath).split(sep)[0]!;
+            const session = await this.readSessionMeta(filePath, dirName);
+            if (session) sessions.set(filePath, session);
+            else sessions.delete(filePath);
+          }
+          result = [...sessions.values()];
+        } else {
+          result = await this.scanFilesystem();
+        }
+        if (epoch === this.scanEpoch) {
+          this.cachedScan = { result, timestamp: Date.now() };
+        }
+        return result;
+      } catch (error) {
+        if (epoch === this.scanEpoch) {
+          for (const filePath of changed) this.changedFiles.add(filePath);
+        }
+        throw error;
+      }
+    })();
+    this.inFlightScan = scan;
     try {
-      await stat(this.sessionsDir);
-    } catch {
-      this.cachedScan = { result: [], timestamp: Date.now() };
-      return [];
+      return await scan;
+    } finally {
+      if (this.inFlightScan === scan) this.inFlightScan = null;
     }
+  }
+
+  private async scanFilesystem(): Promise<GeminiSessionInfo[]> {
+    const sessions: GeminiSessionInfo[] = [];
 
     // Find all project directories (may be slugs or hashes)
     let projectDirNames: string[];
@@ -272,9 +329,9 @@ export class GeminiSessionScanner {
       projectDirNames = entries
         .filter((e) => e.isDirectory())
         .map((e) => e.name);
-    } catch {
-      this.cachedScan = { result: [], timestamp: Date.now() };
-      return [];
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
 
     // Scan each project directory in parallel
@@ -289,7 +346,6 @@ export class GeminiSessionScanner {
       }
     }
 
-    this.cachedScan = { result: sessions, timestamp: Date.now() };
     return sessions;
   }
 
@@ -299,12 +355,6 @@ export class GeminiSessionScanner {
   private async scanProjectDir(dirName: string): Promise<GeminiSessionInfo[]> {
     const sessions: GeminiSessionInfo[] = [];
     const chatsDir = join(this.sessionsDir, dirName, "chats");
-
-    try {
-      await stat(chatsDir);
-    } catch {
-      return [];
-    }
 
     let files: string[];
     try {
@@ -317,8 +367,9 @@ export class GeminiSessionScanner {
             e.name.endsWith(".json"),
         )
         .map((e) => e.name);
-    } catch {
-      return [];
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
 
     // Read session files in parallel
@@ -357,8 +408,9 @@ export class GeminiSessionScanner {
         startTime: session.startTime,
         mtime: stats.mtimeMs,
       };
-    } catch {
-      return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   }
 }

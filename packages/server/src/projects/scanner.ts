@@ -970,7 +970,7 @@ export class ProjectScanner {
     if (event.provider === "codex") {
       this.codexScanner?.invalidateCache();
     } else if (event.provider === "gemini") {
-      this.geminiScanner?.invalidateCache();
+      this.geminiScanner?.invalidateCache(event.path);
     }
   }
 

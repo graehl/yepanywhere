@@ -138,9 +138,18 @@ workstream merge rules still own the final project rows. A real-file/EventBus
 regression read both directories before the change and only the changed one
 afterward; creation, deletion, changed cwd, new directories and failure retry
 preserve counts and membership in both supported directory layouts. Existing
-retained-refresh and shutdown cases also pass. Codex/Gemini acquisition and
+retained-refresh and shutdown cases also pass. Codex acquisition and
 cross-provider refresh work remain open. Ignoring file events is not an
 acceptable fix because they can change project membership, counts and activity.
+Contributing-model: 6-astra.
+
+Gemini file-event discovery now retains unaffected session metadata. The
+real-file/EventBus regression reduced metadata reads from two files to one and
+checks project reassignment, deletion, creation and retry after a read error.
+Concurrent readers share acquisition, and file/full invalidation during a held
+read survives into the next scan. The focused scanner and shutdown checks pass
+(38 tests). Age-driven Gemini enumeration and cross-provider refresh remain;
+this is work-count evidence, not a new browser timing result.
 Contributing-model: 6-astra.
 
 New Session now reuses a current project collection row rather than requesting

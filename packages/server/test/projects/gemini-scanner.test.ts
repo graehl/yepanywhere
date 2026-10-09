@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GeminiSessionScanner } from "../../src/projects/gemini-scanner.js";
 
 function makeGeminiSession(
@@ -29,6 +29,7 @@ describe("GeminiSessionScanner", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(
       tempDirs
         .splice(0)
@@ -150,6 +151,62 @@ describe("GeminiSessionScanner", () => {
     const projects = await scanner.listProjects();
     expect(projects).toHaveLength(0);
   });
+
+  it.each(["file", "full"])(
+    "preserves %s invalidation during a shared acquisition",
+    async (invalidation) => {
+      const sessionsDir = join(tmpdir(), `gemini-race-${randomUUID()}`);
+      tempDirs.push(sessionsDir);
+      const chatsDir = join(sessionsDir, "project", "chats");
+      await mkdir(chatsDir, { recursive: true });
+      const file = join(chatsDir, "session-one.json");
+      await writeFile(file, makeGeminiSession("before", "project-hash"));
+      const scanner = new GeminiSessionScanner({ sessionsDir });
+      const internals = scanner as unknown as {
+        readSessionMeta: (file: string, dir: string) => Promise<unknown>;
+      };
+      const read = internals.readSessionMeta.bind(scanner);
+      let release!: () => void;
+      let signal!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const started = new Promise<void>((resolve) => {
+        signal = resolve;
+      });
+      const reads = vi
+        .spyOn(internals, "readSessionMeta")
+        .mockImplementationOnce(async (...args) => {
+          const result = await read(...args);
+          signal();
+          await gate;
+          return result;
+        });
+      const first = scanner.getSessionsForProject("gemini:project-hash");
+      await started;
+      const followers = Array.from({ length: 10 }, () =>
+        scanner.getSessionsForProject("gemini:project-hash"),
+      );
+      try {
+        expect(reads).toHaveBeenCalledTimes(1);
+        await writeFile(file, makeGeminiSession("after", "project-hash"));
+        scanner.invalidateCache(invalidation === "file" ? file : undefined);
+      } finally {
+        release();
+        await first;
+      }
+      const results = await Promise.all(followers);
+      for (const sessions of results) {
+        expect(sessions.map((session) => session.id)).toEqual(["after"]);
+      }
+      expect(reads).toHaveBeenCalledTimes(2);
+      expect(
+        (await scanner.getSessionsForProject("gemini:project-hash")).map(
+          (session) => session.id,
+        ),
+      ).toEqual(["after"]);
+    },
+  );
 
   it("handles project directories without chats/ subdirectory", async () => {
     const sessionsDir = join(tmpdir(), `gemini-scan-${randomUUID()}`);

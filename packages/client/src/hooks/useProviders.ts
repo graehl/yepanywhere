@@ -1,4 +1,5 @@
 import {
+  ALL_PROVIDERS,
   DEFAULT_PROVIDER,
   type ModelInfo,
   type ProviderInfo,
@@ -9,9 +10,11 @@ import { api } from "../api/client";
 import { acquireClientQueryBootstrapSlot } from "../lib/clientQueryBootstrap";
 import {
   getCurrentClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   type ClientSummarySourceKey,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
+import { primeLocalServerSettings } from "./useServerSettings";
 
 const PROVIDER_CACHE_TTL_MS = 5 * 60_000;
 /**
@@ -310,6 +313,19 @@ export function primeProviderCache(
   sourceKey = getCurrentClientSummarySourceKey(),
 ): Promise<ProviderInfo[]> {
   return loadProviders(sourceKey, false);
+}
+
+/** Start the standing local choice while page code loads, using current settings. */
+export async function primeLocalNewSessionProvider(
+  preferredProvider: string | null,
+) {
+  const settings = await primeLocalServerSettings();
+  if (!settings) return;
+  const provider =
+    ALL_PROVIDERS.find((name) => name === preferredProvider) ??
+    settings.newSessionDefaults?.provider ??
+    DEFAULT_PROVIDER;
+  return loadProviderRow(LOCAL_CLIENT_SUMMARY_SOURCE_KEY, provider, false);
 }
 
 interface ProviderHookState {

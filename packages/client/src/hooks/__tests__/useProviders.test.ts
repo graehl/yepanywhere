@@ -3,9 +3,16 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetProviders, mockGetProvider } = vi.hoisted(() => ({
-  mockGetProviders: vi.fn(),
-  mockGetProvider: vi.fn(),
+const { mockGetProviders, mockGetProvider, mockPrimeSettings } = vi.hoisted(
+  () => ({
+    mockGetProviders: vi.fn(),
+    mockGetProvider: vi.fn(),
+    mockPrimeSettings: vi.fn(),
+  }),
+);
+
+vi.mock("../useServerSettings", () => ({
+  primeLocalServerSettings: mockPrimeSettings,
 }));
 
 vi.mock("../../api/client", () => ({
@@ -35,6 +42,7 @@ describe("useProviders", () => {
   beforeEach(async () => {
     mockGetProviders.mockReset();
     mockGetProvider.mockReset();
+    mockPrimeSettings.mockReset();
     localStorage.clear();
     vi.resetModules();
     providersModule = await import("../useProviders");
@@ -43,6 +51,71 @@ describe("useProviders", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it.each([false, true])(
+    "shares an early selected-provider read (resolved=%s)",
+    async (resolved) => {
+      const settings = deferred<{
+        newSessionDefaults: { provider: "claude" };
+      }>();
+      const response = deferred<{
+        provider: {
+          name: "claude";
+          displayName: string;
+          installed: boolean;
+          authenticated: boolean;
+        };
+      }>();
+      const row = {
+        name: "claude" as const,
+        displayName: "Claude",
+        installed: true,
+        authenticated: true,
+      };
+      mockPrimeSettings.mockReturnValue(settings.promise);
+      mockGetProvider.mockReturnValue(response.promise);
+      const priming = providersModule.primeLocalNewSessionProvider(null);
+      expect(mockGetProvider).not.toHaveBeenCalled();
+      settings.resolve({ newSessionDefaults: { provider: "claude" } });
+      await waitFor(() =>
+        expect(mockGetProvider).toHaveBeenCalledExactlyOnceWith("claude", {
+          refresh: false,
+        }),
+      );
+      if (resolved) {
+        response.resolve({ provider: row });
+        await priming;
+      }
+      const hook = renderHook(() => providersModule.useProviderRow("claude"));
+      await act(async () => {
+        response.resolve({ provider: row });
+        await priming;
+      });
+      await waitFor(() => expect(hook.result.current.row).toEqual(row));
+      expect(mockGetProvider).toHaveBeenCalledTimes(1);
+      expect(mockGetProviders).not.toHaveBeenCalled();
+    },
+  );
+
+  it("primes an explicit URL provider before the saved default", async () => {
+    mockPrimeSettings.mockResolvedValue({
+      newSessionDefaults: { provider: "claude" },
+    });
+    mockGetProvider.mockResolvedValue({ provider: { name: "codex" } });
+    await providersModule.primeLocalNewSessionProvider("codex");
+    expect(mockGetProvider).toHaveBeenCalledExactlyOnceWith("codex", {
+      refresh: false,
+    });
+    expect(mockGetProviders).not.toHaveBeenCalled();
+  });
+
+  it("does not start provider discovery when the settings read fails", async () => {
+    mockPrimeSettings.mockRejectedValue(new Error("signed out"));
+    await expect(
+      providersModule.primeLocalNewSessionProvider("claude"),
+    ).rejects.toThrow("signed out");
+    expect(mockGetProvider).not.toHaveBeenCalled();
   });
 
   it("primes the provider catalog before a new-session consumer mounts", async () => {

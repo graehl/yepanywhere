@@ -180,6 +180,7 @@ test("route data arrives before the New Session module executes", async ({
     "/api/projects",
     "/api/recents",
     "/api/version",
+    "/api/providers/claude",
   ].map((path) =>
     page.waitForResponse(
       (response) => new URL(response.url()).pathname === path && response.ok(),

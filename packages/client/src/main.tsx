@@ -307,6 +307,11 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
       import("./hooks/useServerSettings").then(({ primeLocalServerSettings }) =>
         primeLocalServerSettings(),
       ),
+      import("./hooks/useProviders").then(({ primeLocalNewSessionProvider }) =>
+        primeLocalNewSessionProvider(
+          new URLSearchParams(window.location.search).get("provider"),
+        ),
+      ),
       import("./hooks/useProjects").then(({ primeLocalProjects }) =>
         primeLocalProjects(),
       ),

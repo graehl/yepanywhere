@@ -143,13 +143,14 @@ function applySettingsQuerySnapshot(
 }
 
 /** Local entrypoint hint; mounted consumers join the same source-owned read. */
-export function primeLocalServerSettings() {
-  return ensureClientQuery({
+export async function primeLocalServerSettings() {
+  await ensureClientQuery({
     sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
     key: SERVER_SETTINGS_QUERY_KEY,
     fetcher: fetchSettingsQuery,
     applySnapshot: applySettingsQuerySnapshot,
   });
+  return getServerSettingsSnapshot(LOCAL_CLIENT_SUMMARY_SOURCE_KEY).settings;
 }
 
 function updateServerSettingsForSource(

@@ -100,6 +100,19 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Local selected-provider acquisition can now complete while the page module is
+held (2026-10-09). Current settings select the named read, with an explicit URL
+provider taking precedence; mounted consumers share it. The browser regression
+failed before this change and passed three times afterward, along with the
+typing and retained-state cases. Cold full UI remained 520/631/489 ms at load
+19–20 on 16 cores. Settings arrived at 128/248/191 ms, but the named request
+started at 219/348/253 ms, close to mounting: removing the React dependency has
+not established an overall timing improvement. Main-thread startup and provider
+probe latency remain open. An alternating six-load experiment delaying aggregate
+discovery until the selected request finished also showed no consistent benefit
+(normal 651/726/692 ms, delayed 716/614/822 ms, load 29–32); that scheduling
+change was not applied. Contributing-model: 6-astra.
+
 Local version discovery now starts while route modules load (2026-10-09),
 sharing the existing retained query with mounted consumers. A browser regression
 holds the New Session module: the previous entry never returned version data,

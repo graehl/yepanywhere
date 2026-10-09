@@ -120,6 +120,14 @@ work or reuses its accepted response. A failed primer does not mark settings
 ready and leaves retry/error presentation with the mounted owner. It neither
 populates settings from display storage nor relaxes launch or identity checks.
 
+After those current settings resolve, the local entry starts the named provider
+read for a recognized URL preference, otherwise the saved provider or ordinary
+Claude default. It shares the form's row cache and pending request instead of
+waiting for the form's seeding effect. Settings failure starts no provider read.
+This is an acquisition hint: the mounted form still reconciles current provider
+availability and principal locks, and Gateway selection still requires its own
+forced current probe. The primer does not select or authorize a launch.
+
 The provider chooser separates identity enumeration from dynamic readiness:
 
 - Capability-gated `GET /api/providers/descriptors` returns exposed `name` and

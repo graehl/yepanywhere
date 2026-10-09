@@ -35,6 +35,8 @@ export interface RecentsDeps {
   piReaderFactory?: (projectPath: string) => PiSessionReader;
 }
 
+const UNRESOLVED_RECENT_GRACE_MS = 10 * 60 * 1000;
+
 export function createRecentsRoutes(deps: RecentsDeps) {
   const routes = new Hono<{
     Variables: Record<typeof PRINCIPAL_VARIABLE, Principal>;
@@ -56,6 +58,7 @@ export function createRecentsRoutes(deps: RecentsDeps) {
 
     // Enrich each entry with session data
     const enriched: EnrichedRecentEntry[] = [];
+    const unresolved: string[] = [];
 
     for (const entry of recents) {
       // Cast to UrlProjectId - the recents service stores strings but they are valid UrlProjectIds
@@ -88,6 +91,7 @@ export function createRecentsRoutes(deps: RecentsDeps) {
         undefined,
       );
       if (!resolved) {
+        unresolved.push(entry.sessionId);
         continue;
       }
 
@@ -99,6 +103,17 @@ export function createRecentsRoutes(deps: RecentsDeps) {
         projectName,
         provider: resolved.summary.provider as ProviderName,
       });
+    }
+
+    // Missing every provider costs a full search of each (over a second with
+    // Codex), so an entry that never resolves would slow every listing for as
+    // long as it stays recent. Fresh visits are kept: a session just started
+    // may not have written its transcript yet.
+    if (unresolved.length > 0) {
+      await deps.recentsService.pruneUnresolved(
+        unresolved,
+        UNRESOLVED_RECENT_GRACE_MS,
+      );
     }
 
     return c.json({ recents: enriched });

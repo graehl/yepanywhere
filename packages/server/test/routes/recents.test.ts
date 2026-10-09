@@ -92,6 +92,36 @@ describe("Recents Routes", () => {
     );
   });
 
+  it("prunes entries that resolve to no session", async () => {
+    const pruneUnresolved = vi.fn(async () => {});
+    const reader = {
+      getSessionSummary: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+    const routes = createRecentsRoutes({
+      recentsService: {
+        getRecentsWithLimit: vi.fn(() => [
+          {
+            sessionId: "provisional-1",
+            projectId: "proj-1",
+            visitedAt: new Date("2026-03-10T09:47:00.000Z").toISOString(),
+          },
+        ]),
+        pruneUnresolved,
+      } as unknown as RecentsService,
+      scanner: {
+        listProjects: vi.fn(async () => [createProject()]),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(() => reader),
+    });
+
+    const response = await routes.request("/");
+    expect((await response.json()).recents).toEqual([]);
+    expect(pruneUnresolved).toHaveBeenCalledWith(
+      ["provisional-1"],
+      expect.any(Number),
+    );
+  });
+
   it("records the superuser's visit but not a limited user's", async () => {
     const recordVisit = vi.fn(async () => {});
     const visitAs = async (principal: Principal) => {

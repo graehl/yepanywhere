@@ -54,6 +54,30 @@ max 2.4 s, 103 s total) and 74 Codex scanner walks (mean 471 ms, max 4.6 s).
 Event-loop delay reached 1.5 s (p99 about 71 ms). Each serial link above
 waits behind that.
 
+## Measured on the live server (2026-10-09)
+
+Host at load average 16 on 16 cores. Headless Chromium, warm server:
+
+- `/api/recents` took 6.6–11.5 s on every call. Resolved entries cost
+  3–16 ms each; five entries that named no transcript cost 1–1.7 s each,
+  since a miss searches every provider, Codex by a full rollout scan. They
+  were provisional ids: a new session is opened, and its visit recorded,
+  under the id the server assigns before the provider reports the real one.
+  Fixed: recents follow `session-id-remapped`, and a listing prunes entries
+  that resolve to nothing once they are ten minutes old (0.15 s after).
+  Without a stored recent project the form shows No project until recents
+  returns, since the default project comes from it.
+- The form and sidebar commit together, when the lazy `NavigationLayout` and
+  `NewSessionPage` modules load; until then both show the route `Suspense`
+  fallback ("Loading…"). Holding `/api/sessions` 12 s delayed that by about
+  1.6 s, and `/api/agent-auth-router/selection` by about 2.2 s; no request
+  held it longer. My current model: on the unbundled dev origin, long-held
+  requests (recents, the drafts long poll) occupy the browser's six HTTP/1.1
+  connections that the hundreds of module requests need. This does not
+  apply to the hosted client over the relay, which was not measured.
+- A warmed browser profile showed the form at 1.6–2.5 s, with about 49 KB of
+  local storage, no IndexedDB, and no long tasks over 213 ms.
+
 ## Wanted
 
 - **Instant first paint from last-known state.** A new tab renders the

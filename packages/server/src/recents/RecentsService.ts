@@ -28,6 +28,8 @@ export interface RecentsState {
 
 const CURRENT_VERSION = 1;
 const MAX_ENTRIES = 100;
+/** Remaps remembered for visits that arrive late; one per new session. */
+const MAX_REMAPPED_IDS = 200;
 
 export interface RecentsServiceOptions {
   /** Directory to store recents state (defaults to ~/.yep-anywhere) */
@@ -42,6 +44,8 @@ export class RecentsService {
   private filePath: string;
   private maxEntries: number;
   private save = createCoalescingSaver(() => this.doSave()).save;
+  /** Provisional id to real id, oldest first. */
+  private remappedIds = new Map<string, string>();
 
   constructor(options: RecentsServiceOptions = {}) {
     this.dataDir =
@@ -99,7 +103,9 @@ export class RecentsService {
    * Record a session visit.
    * Moves existing entry to front or adds new entry, then prunes oldest.
    */
-  async recordVisit(sessionId: string, projectId: string): Promise<void> {
+  async recordVisit(visitedId: string, projectId: string): Promise<void> {
+    // A visit to a provisional id can arrive after the remap that retired it.
+    const sessionId = this.remappedIds.get(visitedId) ?? visitedId;
     // Remove existing entry if present
     const filtered = this.state.visits.filter((e) => e.sessionId !== sessionId);
 
@@ -128,6 +134,50 @@ export class RecentsService {
    */
   getRecentsWithLimit(limit: number): RecentEntry[] {
     return this.state.visits.slice(0, limit);
+  }
+
+  /**
+   * Replace a provisional session id with the real one the provider reported.
+   * The provisional id never names a transcript, so an entry left under it
+   * could never be resolved, and every listing would pay for searching all
+   * providers for it.
+   */
+  async remapSession(
+    oldSessionId: string,
+    newSessionId: string,
+  ): Promise<void> {
+    this.remappedIds.set(oldSessionId, newSessionId);
+    if (this.remappedIds.size > MAX_REMAPPED_IDS) {
+      const oldest = this.remappedIds.keys().next().value;
+      if (oldest !== undefined) this.remappedIds.delete(oldest);
+    }
+    const index = this.state.visits.findIndex(
+      (e) => e.sessionId === oldSessionId,
+    );
+    if (index === -1) return;
+    const hasNew = this.state.visits.some((e) => e.sessionId === newSessionId);
+    this.state.visits = hasNew
+      ? this.state.visits.filter((_, i) => i !== index)
+      : this.state.visits.map((e, i) =>
+          i === index ? { ...e, sessionId: newSessionId } : e,
+        );
+    await this.save();
+  }
+
+  /**
+   * Drop entries a listing could not resolve to any session, leaving visits
+   * newer than `minAgeMs` whose transcripts may not be written yet.
+   */
+  async pruneUnresolved(sessionIds: readonly string[], minAgeMs: number) {
+    const unresolved = new Set(sessionIds);
+    const cutoff = Date.now() - minAgeMs;
+    const before = this.state.visits.length;
+    this.state.visits = this.state.visits.filter(
+      (e) => !unresolved.has(e.sessionId) || Date.parse(e.visitedAt) > cutoff,
+    );
+    if (this.state.visits.length !== before) {
+      await this.save();
+    }
   }
 
   /**

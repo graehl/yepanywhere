@@ -641,6 +641,16 @@ const browserProfileService = new BrowserProfileService({
     Object.keys(pushService.getSubscriptions()),
 });
 const recentsService = new RecentsService({ dataDir: config.dataDir });
+// A new session is opened, and visited, under a provisional id before the
+// provider reports its real one.
+eventBus.subscribe((event) => {
+  if (event.type !== "session-id-remapped") return;
+  recentsService
+    .remapSession(event.oldSessionId, event.newSessionId)
+    .catch((error) => {
+      console.warn("[RecentsService] Failed to remap session:", error);
+    });
+});
 const authService = new AuthService({
   dataDir: config.dataDir,
   sessionTtlMs: config.authSessionTtlMs,

@@ -338,11 +338,12 @@ export class GeminiSessionScanner {
     const BATCH_SIZE = 20;
     for (let i = 0; i < projectDirNames.length; i += BATCH_SIZE) {
       const batch = projectDirNames.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         batch.map((dirName) => this.scanProjectDir(dirName)),
       );
       for (const result of results) {
-        sessions.push(...result);
+        if (result.status === "rejected") throw result.reason;
+        sessions.push(...result.value);
       }
     }
 
@@ -373,13 +374,14 @@ export class GeminiSessionScanner {
     }
 
     // Read session files in parallel
-    const results = await Promise.all(
+    const results = await Promise.allSettled(
       files.map((f) => this.readSessionMeta(join(chatsDir, f), dirName)),
     );
 
     for (const result of results) {
-      if (result) {
-        sessions.push(result);
+      if (result.status === "rejected") throw result.reason;
+      if (result.value) {
+        sessions.push(result.value);
       }
     }
 

@@ -979,6 +979,60 @@ describe("ProjectScanner cache", () => {
     expect(projects).toHaveLength(2);
   });
 
+  it("updates only the changed Codex rollout through watcher events", async () => {
+    const root = join(tmpdir(), `codex-incremental-${randomUUID()}`);
+    tempDirs.push(root);
+    const sessionsDir = join(root, "codex");
+    const eventBus = new EventBus();
+    const codexScanner = new CodexSessionScanner({ sessionsDir });
+    const files = ["08", "09"].map((day) =>
+      join(sessionsDir, "2026", "10", day, `rollout-${day}.jsonl`),
+    );
+    for (const [index, file] of files.entries()) {
+      await mkdir(join(sessionsDir, "2026", "10", index === 0 ? "08" : "09"), {
+        recursive: true,
+      });
+      await writeFile(
+        file,
+        `${JSON.stringify({ type: "session_meta", payload: { id: String(index), cwd: `/projects/${index}`, timestamp: "2026-10-09T00:00:00Z" } })}\n`,
+      );
+    }
+    const scanner = new ProjectScanner({
+      projectsDir: join(root, "claude"),
+      codexScanner,
+      enableCodex: true,
+      enableGemini: false,
+      eventBus,
+    });
+    try {
+      expect(await scanner.listProjects()).toHaveLength(2);
+      const changed = files[0]!;
+      await writeFile(
+        changed,
+        `${JSON.stringify({ type: "session_meta", payload: { id: "0", cwd: "/projects/1", timestamp: "2026-10-09T00:00:00Z" } })}\n`,
+      );
+      eventBus.emit({
+        type: "file-change",
+        provider: "codex",
+        path: changed,
+        relativePath: "2026/10/08/rollout-08.jsonl",
+        changeType: "modify",
+        timestamp: new Date().toISOString(),
+        fileType: "session",
+      });
+      expect(await scanner.listProjects()).toEqual([
+        expect.objectContaining({ path: "/projects/1", sessionCount: 2 }),
+      ]);
+      expect(codexScanner.getLastScanMetrics()).toMatchObject({
+        directoriesVisited: 0,
+        sessionsParsed: 1,
+        discovery: { firstLineReadsPlain: 1 },
+      });
+    } finally {
+      await scanner.dispose();
+    }
+  });
+
   it("updates only the changed Gemini file through watcher events", async () => {
     const root = join(tmpdir(), `gemini-incremental-${randomUUID()}`);
     tempDirs.push(root);

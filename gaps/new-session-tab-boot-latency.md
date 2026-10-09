@@ -138,8 +138,8 @@ workstream merge rules still own the final project rows. A real-file/EventBus
 regression read both directories before the change and only the changed one
 afterward; creation, deletion, changed cwd, new directories and failure retry
 preserve counts and membership in both supported directory layouts. Existing
-retained-refresh and shutdown cases also pass. Codex acquisition and
-cross-provider refresh work remain open. Ignoring file events is not an
+retained-refresh and shutdown cases also pass. Cross-provider refresh work
+remains open. Ignoring file events is not an
 acceptable fix because they can change project membership, counts and activity.
 Contributing-model: 6-astra.
 
@@ -151,6 +151,14 @@ read survives into the next scan. The focused scanner and shutdown checks pass
 (38 tests). Age-driven Gemini enumeration and cross-provider refresh remain;
 this is work-count evidence, not a new browser timing result.
 Contributing-model: 6-astra.
+
+Codex file-event discovery now updates only the affected rollout pair, preserving
+plain-over-compressed precedence. The real-file/EventBus regression changed
+five directory walks and two metadata reads into zero walks and one read.
+Compression, materialization, deletion, concurrent invalidation and failure
+retry are covered. Provider read batches drain before retry admission. The
+focused provider/scanner suite passes (61 passed, one runtime-specific skip).
+Unrelated-provider age-driven scans remain open. Contributing-model: 6-astra.
 
 New Session now reuses a current project collection row rather than requesting
 the same selected-project detail. It waits for collection completion before

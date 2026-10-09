@@ -5,7 +5,10 @@ import { join } from "node:path";
 import * as zlib from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
-import { CodexSessionScanner } from "../../src/projects/codex-scanner.js";
+import {
+  CodexSessionScanner,
+  type CodexScannerMetrics,
+} from "../../src/projects/codex-scanner.js";
 import { createCodexSessionDiscoveryIndex } from "../../src/sessions/codex-discovery.js";
 import { getCodexRolloutDiscoveryIdentity } from "../../src/utils/codexRolloutFiles.js";
 import { isZstdJsonlSupported } from "../../src/utils/jsonl.js";
@@ -58,6 +61,7 @@ describe("CodexSessionScanner", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(
       tempDirs
         .splice(0)
@@ -232,6 +236,190 @@ describe("CodexSessionScanner", () => {
     expect(metrics?.precedenceSkippedCompressed).toBe(1);
     expect(metrics?.plainRolloutFiles).toBe(1);
     expect(metrics?.compressedRolloutFiles).toBe(1);
+  });
+
+  itIfNativeZstd(
+    "reconciles compression, materialization and deletion without directory walks",
+    async () => {
+      const sessionsDir = join(tmpdir(), `codex-transitions-${randomUUID()}`);
+      tempDirs.push(sessionsDir);
+      await mkdir(sessionsDir, { recursive: true });
+      const plain = join(sessionsDir, "rollout-first.jsonl");
+      const compressed = `${plain}.zst`;
+      const other = join(sessionsDir, "rollout-other.jsonl");
+      const content = `${makeSessionMeta("first", "/projects/first")}\n`;
+      await writeFile(plain, content);
+      await writeFile(
+        other,
+        `${makeSessionMeta("other", "/projects/other")}\n`,
+      );
+      const scanner = new CodexSessionScanner({ sessionsDir });
+      expect(await scanner.listProjects()).toHaveLength(2);
+
+      await writeFile(compressed, zstdCompressed(content));
+      scanner.invalidateCache(compressed);
+      expect(await scanner.getSessionsForProject("/projects/first")).toEqual([
+        expect.objectContaining({ id: "first", filePath: plain }),
+      ]);
+      expect(scanner.getLastScanMetrics()).toMatchObject({
+        directoriesVisited: 0,
+        sessionsParsed: 1,
+        discovery: { firstLineReadsZstd: 0 },
+      });
+
+      await rm(plain);
+      scanner.invalidateCache(plain);
+      scanner.invalidateCache(compressed);
+      expect(await scanner.getSessionsForProject("/projects/first")).toEqual([
+        expect.objectContaining({ id: "first", filePath: compressed }),
+      ]);
+      expect(scanner.getLastScanMetrics()).toMatchObject({
+        directoriesVisited: 0,
+        sessionsParsed: 1,
+        discovery: { firstLineReadsZstd: 1 },
+      });
+
+      await writeFile(
+        plain,
+        `${makeSessionMeta("first", "/projects/moved")}\n`,
+      );
+      scanner.invalidateCache(plain);
+      expect(await scanner.getSessionsForProject("/projects/first")).toEqual(
+        [],
+      );
+      expect(await scanner.getSessionsForProject("/projects/moved")).toEqual([
+        expect.objectContaining({ id: "first", filePath: plain }),
+      ]);
+      await rm(compressed);
+      await rm(plain);
+      scanner.invalidateCache(compressed);
+      expect(await scanner.listProjects()).toEqual([
+        expect.objectContaining({ path: "/projects/other", sessionCount: 1 }),
+      ]);
+      expect(scanner.getLastScanMetrics()).toMatchObject({
+        directoriesVisited: 0,
+        sessionsParsed: 0,
+      });
+    },
+  );
+
+  it.each(["file", "full"])(
+    "preserves %s invalidation during shared discovery",
+    async (invalidation) => {
+      const sessionsDir = join(tmpdir(), `codex-race-${randomUUID()}`);
+      tempDirs.push(sessionsDir);
+      await mkdir(sessionsDir, { recursive: true });
+      const file = join(sessionsDir, "rollout-one.jsonl");
+      await writeFile(file, `${makeSessionMeta("before", "/projects/one")}\n`);
+      const scanner = new CodexSessionScanner({ sessionsDir });
+      const internals = scanner as unknown as {
+        readSessionMeta: (
+          file: string,
+          metrics: CodexScannerMetrics,
+        ) => Promise<unknown>;
+      };
+      const read = internals.readSessionMeta.bind(scanner);
+      let release!: () => void;
+      let signal!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const started = new Promise<void>((resolve) => {
+        signal = resolve;
+      });
+      const reads = vi
+        .spyOn(internals, "readSessionMeta")
+        .mockImplementationOnce(async (...args) => {
+          const result = await read(...args);
+          signal();
+          await gate;
+          return result;
+        });
+      const first = scanner.getSessionsForProject("/projects/one");
+      await started;
+      const followers = Array.from({ length: 10 }, () =>
+        scanner.getSessionsForProject("/projects/one"),
+      );
+      try {
+        expect(reads).toHaveBeenCalledTimes(1);
+        await writeFile(file, `${makeSessionMeta("after", "/projects/one")}\n`);
+        scanner.invalidateCache(invalidation === "file" ? file : undefined);
+      } finally {
+        release();
+        await first;
+      }
+      for (const sessions of await Promise.all(followers)) {
+        expect(sessions.map((session) => session.id)).toEqual(["after"]);
+      }
+      expect(reads).toHaveBeenCalledTimes(2);
+      reads.mockRejectedValueOnce(new Error("read failed"));
+      scanner.invalidateCache(file);
+      await expect(scanner.listProjects()).rejects.toThrow("read failed");
+      expect(await scanner.getSessionsForProject("/projects/one")).toEqual([
+        expect.objectContaining({ id: "after" }),
+      ]);
+      expect(scanner.getLastScanMetrics()).toMatchObject({
+        directoriesVisited: 0,
+        sessionsParsed: 1,
+      });
+    },
+  );
+
+  it("drains a failed read batch before releasing discovery ownership", async () => {
+    const sessionsDir = join(tmpdir(), `codex-drain-${randomUUID()}`);
+    tempDirs.push(sessionsDir);
+    await mkdir(sessionsDir, { recursive: true });
+    for (const id of ["first", "second"]) {
+      await writeFile(
+        join(sessionsDir, `rollout-${id}.jsonl`),
+        `${makeSessionMeta(id, "/projects/one")}\n`,
+      );
+    }
+    const scanner = new CodexSessionScanner({ sessionsDir });
+    const internals = scanner as unknown as {
+      readSessionMeta: (
+        file: string,
+        metrics: CodexScannerMetrics,
+      ) => Promise<unknown>;
+    };
+    const read = internals.readSessionMeta.bind(scanner);
+    let release!: () => void;
+    let signal!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    vi.spyOn(internals, "readSessionMeta")
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockImplementationOnce(async (...args) => {
+        signal();
+        await gate;
+        return read(...args);
+      });
+    let settled = false;
+    const result = scanner.listProjects().then(
+      () => {
+        settled = true;
+      },
+      (error: unknown) => {
+        settled = true;
+        return error;
+      },
+    );
+    try {
+      await started;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+    } finally {
+      release();
+      await result;
+    }
+    expect(await result).toEqual(new Error("read failed"));
+    expect(await scanner.listProjects()).toEqual([
+      expect.objectContaining({ sessionCount: 2 }),
+    ]);
   });
 
   it("deduplicates mixed-slash Windows cwd variants into one project", async () => {

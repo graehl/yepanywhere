@@ -201,11 +201,19 @@ retry. Invalid session JSON retains the existing skip behavior. Complete
 age-driven reconciliation and explicit full invalidation still enumerate the
 store; targeted refresh alone does not remove those paths.
 
+Codex file events likewise reconcile only the affected physical rollout and
+retain the other session contributions. Plain `.jsonl` and compressed
+`.jsonl.zst` siblings share one discovery key, with plain-file precedence.
+Compression, materialization and deletion therefore replace one contribution
+without enumerating unrelated date directories. Concurrent readers share
+acquisition, full invalidation fences publication, and pending file changes
+survive failures or an in-flight scan. Both provider scanners drain every
+admitted file read before releasing a failed acquisition for retry.
+
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail for an unknown directory still uses complete
-discovery, and Codex file events still invalidate its whole inventory. A Claude
-change can still trigger unrelated Codex/Gemini work through the existing
-age-driven provider refresh.
+discovery, and an unrelated provider's activity can still trigger Codex/Gemini
+enumeration through their existing age-driven refresh.
 The full New Session latency target remains open; the display-only browser
 snapshot below removes collection acquisition from returning-tab display.
 

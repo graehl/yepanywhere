@@ -13,7 +13,7 @@
 
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 import type { SessionDiscoveryIndex } from "../indexes/SessionDiscoveryIndex.js";
 import { getLogger } from "../logging/logger.js";
 import {
@@ -26,6 +26,7 @@ import type { Project } from "../supervisor/types.js";
 import {
   codexRolloutRepresentation,
   isCodexRolloutFileName,
+  plainCodexRolloutPath,
   preferPlainCodexRollouts,
 } from "../utils/codexRolloutFiles.js";
 import {
@@ -114,6 +115,9 @@ export class CodexSessionScanner {
   private cachedScan: { result: CodexSessionInfo[]; timestamp: number } | null =
     null;
   private lastScanMetrics: CodexScannerMetrics | null = null;
+  private changedFiles = new Set<string>();
+  private scanEpoch = 0;
+  private inFlightScan: Promise<CodexSessionInfo[]> | null = null;
 
   constructor(options: CodexScannerOptions = {}) {
     this.sessionsDir = options.sessionsDir ?? CODEX_SESSIONS_DIR;
@@ -126,8 +130,21 @@ export class CodexSessionScanner {
     );
   }
 
-  invalidateCache(): void {
+  invalidateCache(filePath?: string): void {
+    if (filePath) {
+      const relativePath = relative(this.sessionsDir, filePath);
+      if (
+        relativePath.split(sep)[0] !== ".." &&
+        !isAbsolute(relativePath) &&
+        isCodexRolloutFileName(filePath)
+      ) {
+        this.changedFiles.add(plainCodexRolloutPath(filePath));
+        return;
+      }
+    }
+    this.scanEpoch += 1;
     this.cachedScan = null;
+    this.changedFiles.clear();
   }
 
   getLastScanMetrics(): CodexScannerMetrics | null {
@@ -252,13 +269,60 @@ export class CodexSessionScanner {
    * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.
    */
   private async scanAllSessions(): Promise<CodexSessionInfo[]> {
+    if (this.inFlightScan) {
+      await this.inFlightScan;
+      return this.scanAllSessions();
+    }
     if (
       this.cachedScan &&
+      this.changedFiles.size === 0 &&
       Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL
     ) {
       return this.cachedScan.result;
     }
 
+    const epoch = this.scanEpoch;
+    const changed = [...this.changedFiles];
+    this.changedFiles.clear();
+    const accepted = this.cachedScan;
+    const scan = (async () => {
+      try {
+        const incremental = accepted && changed.length > 0;
+        const updates = await this.scanFiles(incremental ? changed : null);
+        let result = updates;
+        if (incremental) {
+          const sessions = new Map(
+            accepted.result.map((row) => [
+              plainCodexRolloutPath(row.filePath),
+              row,
+            ]),
+          );
+          for (const filePath of changed) sessions.delete(filePath);
+          for (const row of updates)
+            sessions.set(plainCodexRolloutPath(row.filePath), row);
+          result = [...sessions.values()];
+        }
+        if (epoch === this.scanEpoch)
+          this.cachedScan = { result, timestamp: Date.now() };
+        return result;
+      } catch (error) {
+        if (epoch === this.scanEpoch) {
+          for (const filePath of changed) this.changedFiles.add(filePath);
+        }
+        throw error;
+      }
+    })();
+    this.inFlightScan = scan;
+    try {
+      return await scan;
+    } finally {
+      if (this.inFlightScan === scan) this.inFlightScan = null;
+    }
+  }
+
+  private async scanFiles(
+    changed: string[] | null,
+  ): Promise<CodexSessionInfo[]> {
     const metrics = createCodexScannerMetrics(this.sessionsDir);
     const scanStartedAt = Date.now();
     const sessions: CodexSessionInfo[] = [];
@@ -266,9 +330,9 @@ export class CodexSessionScanner {
     try {
       await stat(this.sessionsDir);
       metrics.sessionsDirExists = true;
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       // Sessions directory doesn't exist
-      this.cachedScan = { result: [], timestamp: Date.now() };
       metrics.durationMs = Date.now() - scanStartedAt;
       this.lastScanMetrics = cloneCodexScannerMetrics(metrics);
       this.logScanMetrics(metrics);
@@ -277,7 +341,27 @@ export class CodexSessionScanner {
 
     // Recursively find all Codex rollout files. Codex may compress cold
     // rollouts from rollout-*.jsonl to rollout-*.jsonl.zst.
-    const files = await this.findJsonlFiles(this.sessionsDir, metrics);
+    const files = changed
+      ? []
+      : await this.findJsonlFiles(this.sessionsDir, metrics);
+    if (changed) {
+      for (const plainPath of changed) {
+        for (const filePath of [plainPath, `${plainPath}.zst`]) {
+          try {
+            if (!(await stat(filePath)).isFile()) continue;
+            files.push(filePath);
+            metrics.rolloutFilesFound += 1;
+            if (codexRolloutRepresentation(filePath) === "zstd")
+              metrics.compressedRolloutFiles += 1;
+            else metrics.plainRolloutFiles += 1;
+            break;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+        }
+      }
+      metrics.rolloutFilesAfterPrecedence = files.length;
+    }
 
     getLogger().debug(
       `[CodexScanner] Found ${files.length} .jsonl files in ${this.sessionsDir}`,
@@ -288,12 +372,13 @@ export class CodexSessionScanner {
     let failCount = 0;
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
       const batch = files.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         batch.map((f) => this.readSessionMeta(f, metrics)),
       );
       for (const result of results) {
-        if (result) {
-          sessions.push(result);
+        if (result.status === "rejected") throw result.reason;
+        if (result.value) {
+          sessions.push(result.value);
         } else {
           failCount++;
         }
@@ -311,7 +396,6 @@ export class CodexSessionScanner {
       );
     }
 
-    this.cachedScan = { result: sessions, timestamp: Date.now() };
     metrics.sessionsParsed = sessions.length;
     metrics.failedFiles = failCount;
     metrics.durationMs = Date.now() - scanStartedAt;
@@ -363,6 +447,7 @@ export class CodexSessionScanner {
       getLogger().debug(
         `[CodexScanner] Error scanning directory ${dir}: ${error instanceof Error ? error.message : error}`,
       );
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 
@@ -394,7 +479,8 @@ export class CodexSessionScanner {
       getLogger().debug(
         `[CodexScanner] Error reading ${filePath}: ${error instanceof Error ? error.message : error}`,
       );
-      return null;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   }
 

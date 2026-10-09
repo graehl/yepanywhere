@@ -71,6 +71,19 @@ removed after bootstrap. Without it, missing, malformed, non-JSON, mismatched,
 or unavailable prior metadata/assets fail the deployment. This does not
 complete direct/LAN static-server generation retention or static encoding.
 
+## Shared package initialization
+
+The shared package declares its library modules free of import-time effects
+outside their own exports. Bundlers can therefore omit unused modules reached
+through its root barrel and load provider schemas with their actual consumers.
+This preserves validation when a consumer imports a schema; it avoids eagerly
+constructing unrelated schemas merely to import a helper or constant.
+
+The frame-search agent is the explicit exception in both source and compiled
+paths: importing that entry installs browser listeners. Its package metadata
+preserves that installation. Build tests exercise a helper-only initial graph,
+a deferred validator with valid and invalid data, and the frame-agent installer.
+
 ## Development dependency graphs and manual reload
 
 Local and remote Vite development servers keep separate optimized-dependency

@@ -100,6 +100,16 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Shared-package import metadata now allows unused schema modules to stay out of
+startup (2026-10-09). The import-time frame-search installer remains an explicit
+exception; deferred validators still run when loaded. Three alternating cold
+pairs of previous/current built clients gave form times 297/293/279 versus
+244/212/230 ms, and controls 326/293/304 versus 271/227/267 ms. Both arms used
+the same browser interception and healthy isolated backend configuration;
+load was 15–17 on 16 cores. This is diagnostic evidence, not a calibrated
+ratchet. Current catalog labels arrived at 573/497/503 ms, so the full goal
+and broader acceptance remain open. Contributing-model: 6-astra.
+
 Browser CPU profiling (2026-10-09) identifies two startup costs worth separating:
 removing the focused preboot field forces pending layout (14–65 ms in the
 observed profiles), while eager Zod construction takes 10–27 ms of sampled

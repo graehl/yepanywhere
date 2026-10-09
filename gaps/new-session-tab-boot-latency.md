@@ -110,11 +110,11 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 ## Remaining
 
 Current audit (2026-10-09): measured New Session and Settings cases meet the
-revised three-second target. Incremental server project discovery is still
-incomplete: background refresh enumerates provider stores, and the detail
-lookup for directories absent from a complete collection retains its discovery
-path. The gap's server-work requirement below is therefore not closed merely
-because the display timings pass. Contributing-model: 6-astra.
+revised three-second target. File-event project discovery is now incremental
+across Claude, Codex and Gemini. Detail lookup for directories absent from a
+complete collection retains its discovery path, and complete-read acquisition
+still needs its final audit. The goal remains open pending those paths and
+renewed startup acceptance. Contributing-model: 6-astra.
 
 Native-data concurrent acceptance at 6c4ad0710 (2026-10-09): three fresh
 isolated servers each received three simultaneous new tabs, with authenticated
@@ -138,8 +138,7 @@ workstream merge rules still own the final project rows. A real-file/EventBus
 regression read both directories before the change and only the changed one
 afterward; creation, deletion, changed cwd, new directories and failure retry
 preserve counts and membership in both supported directory layouts. Existing
-retained-refresh and shutdown cases also pass. Cross-provider refresh work
-remains open. Ignoring file events is not an
+retained-refresh and shutdown cases also pass. Ignoring file events is not an
 acceptable fix because they can change project membership, counts and activity.
 Contributing-model: 6-astra.
 
@@ -148,7 +147,7 @@ real-file/EventBus regression reduced metadata reads from two files to one and
 checks project reassignment, deletion, creation and retry after a read error.
 Concurrent readers share acquisition, and file/full invalidation during a held
 read survives into the next scan. The focused scanner and shutdown checks pass
-(38 tests). Age-driven Gemini enumeration and cross-provider refresh remain;
+(38 tests). Standalone complete reads still have age-driven enumeration;
 this is work-count evidence, not a new browser timing result.
 Contributing-model: 6-astra.
 
@@ -158,7 +157,15 @@ five directory walks and two metadata reads into zero walks and one read.
 Compression, materialization, deletion, concurrent invalidation and failure
 retry are covered. Provider read batches drain before retry admission. The
 focused provider/scanner suite passes (61 passed, one runtime-specific skip).
-Unrelated-provider age-driven scans remain open. Contributing-model: 6-astra.
+Contributing-model: 6-astra.
+
+Event-driven refresh now reuses unrelated provider inputs after their request
+cache ages out. Real-files/EventBus cases cover events from all three providers
+after advancing the clock beyond that cache age: unaffected providers perform
+no scan, while explicit full invalidation still discovers removed sessions.
+The focused suite passes (64 passed, one runtime-specific skip). Standalone
+complete reads and unknown-directory detail remain for audit.
+Contributing-model: 6-astra.
 
 New Session now reuses a current project collection row rather than requesting
 the same selected-project detail. It waits for collection completion before

@@ -407,6 +407,8 @@ export class ProjectScanner {
    */
   invalidateCache(): void {
     this.resetClaudeDiscovery();
+    this.codexScanner?.invalidateCache();
+    this.geminiScanner?.invalidateCache();
     this.invalidateProjectSnapshot();
   }
 
@@ -475,8 +477,9 @@ export class ProjectScanner {
       }
     }
 
-    if (this.cleanRevision === scanRevision) this.resetClaudeDiscovery();
-    const projects = await this.scanProjects();
+    const reuseUnchangedProviders = this.cleanRevision !== scanRevision;
+    if (!reuseUnchangedProviders) this.resetClaudeDiscovery();
+    const projects = await this.scanProjects(reuseUnchangedProviders);
     const snapshot = this.buildSnapshot(projects);
     return { snapshot, shouldPersist: true };
   }
@@ -984,7 +987,9 @@ export class ProjectScanner {
     }
   }
 
-  private async scanProjects(): Promise<Project[]> {
+  private async scanProjects(
+    reuseUnchangedProviders = false,
+  ): Promise<Project[]> {
     const projects: Project[] = [];
     const seenPaths = new Set<string>();
     const seenIdentityKeys = new Set<string>();
@@ -1089,7 +1094,9 @@ export class ProjectScanner {
 
     // Merge Codex projects if enabled
     if (this.codexScanner) {
-      const codexProjects = await this.codexScanner.listProjects();
+      const codexProjects = await this.codexScanner.listProjects({
+        allowStaleSnapshot: reuseUnchangedProviders,
+      });
       for (const codexProject of codexProjects) {
         const projectPath = canonicalizeProjectPath(
           this.resolveProjectPathForKnownWorkstream(codexProject.path),
@@ -1129,7 +1136,9 @@ export class ProjectScanner {
       // Register known paths for hash resolution before scanning
       await this.geminiScanner.registerKnownPaths(Array.from(seenPaths));
 
-      const geminiProjects = await this.geminiScanner.listProjects();
+      const geminiProjects = await this.geminiScanner.listProjects({
+        allowStaleSnapshot: reuseUnchangedProviders,
+      });
       for (const geminiProject of geminiProjects) {
         const projectPath = canonicalizeProjectPath(
           this.resolveProjectPathForKnownWorkstream(geminiProject.path),

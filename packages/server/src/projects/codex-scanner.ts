@@ -157,8 +157,10 @@ export class CodexSessionScanner {
    * Scan all Codex sessions and group them by project (cwd).
    * Returns projects sorted by last activity (most recent first).
    */
-  async listProjects(): Promise<Project[]> {
-    const sessions = await this.scanAllSessions();
+  async listProjects(
+    options: { allowStaleSnapshot?: boolean } = {},
+  ): Promise<Project[]> {
+    const sessions = await this.scanAllSessions(options.allowStaleSnapshot);
 
     // Group sessions by cwd
     const projectMap = new Map<
@@ -268,15 +270,18 @@ export class CodexSessionScanner {
    * Scan all session files and extract metadata from the first line.
    * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.
    */
-  private async scanAllSessions(): Promise<CodexSessionInfo[]> {
+  private async scanAllSessions(
+    allowStaleSnapshot = false,
+  ): Promise<CodexSessionInfo[]> {
     if (this.inFlightScan) {
       await this.inFlightScan;
-      return this.scanAllSessions();
+      return this.scanAllSessions(allowStaleSnapshot);
     }
     if (
       this.cachedScan &&
       this.changedFiles.size === 0 &&
-      Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL
+      (allowStaleSnapshot ||
+        Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL)
     ) {
       return this.cachedScan.result;
     }

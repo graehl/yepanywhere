@@ -979,6 +979,105 @@ describe("ProjectScanner cache", () => {
     expect(projects).toHaveLength(2);
   });
 
+  it.each(["claude", "codex", "gemini"] as const)(
+    "does not rescan unrelated aged provider inputs for a %s event",
+    async (provider) => {
+      const root = join(tmpdir(), `provider-isolation-${randomUUID()}`);
+      tempDirs.push(root);
+      const projectsDir = join(root, "claude");
+      const codexDir = join(root, "codex");
+      const geminiDir = join(root, "gemini");
+      const claudeSuffix = await createClaudeProject(
+        projectsDir,
+        "localhost",
+        "/projects/claude",
+        "one",
+      );
+      await mkdir(codexDir, { recursive: true });
+      await mkdir(join(geminiDir, "project", "chats"), { recursive: true });
+      const codexFile = join(codexDir, "rollout-one.jsonl");
+      const geminiFile = join(
+        geminiDir,
+        "project",
+        "chats",
+        "session-one.json",
+      );
+      await writeFile(
+        codexFile,
+        `${JSON.stringify({ type: "session_meta", payload: { id: "one", cwd: "/projects/codex", timestamp: "2026-10-09T00:00:00Z" } })}\n`,
+      );
+      await writeFile(
+        geminiFile,
+        JSON.stringify({
+          sessionId: "one",
+          projectHash: "gemini-hash",
+          startTime: "2026-10-09T00:00:00Z",
+          lastUpdated: "2026-10-09T00:00:00Z",
+          messages: [],
+        }),
+      );
+      const codexScanner = new CodexSessionScanner({ sessionsDir: codexDir });
+      const geminiScanner = new GeminiSessionScanner({
+        sessionsDir: geminiDir,
+      });
+      const codexScans = vi.spyOn(
+        codexScanner as unknown as {
+          scanFiles: (...args: unknown[]) => Promise<unknown>;
+        },
+        "scanFiles",
+      );
+      const geminiScans = vi.spyOn(
+        geminiScanner as unknown as { scanFilesystem: () => Promise<unknown> },
+        "scanFilesystem",
+      );
+      const eventBus = new EventBus();
+      const scanner = new ProjectScanner({
+        projectsDir,
+        codexScanner,
+        geminiScanner,
+        eventBus,
+      });
+      try {
+        expect(await scanner.listProjects()).toHaveLength(3);
+        codexScans.mockClear();
+        geminiScans.mockClear();
+        vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+        const path =
+          provider === "claude"
+            ? join(projectsDir, claudeSuffix, "one.jsonl")
+            : provider === "codex"
+              ? codexFile
+              : geminiFile;
+        eventBus.emit({
+          type: "file-change",
+          provider,
+          path,
+          relativePath: `${claudeSuffix}/one.jsonl`,
+          changeType: "modify",
+          timestamp: new Date().toISOString(),
+          fileType: "session",
+        });
+        expect(await scanner.listProjects()).toHaveLength(3);
+        if (provider === "codex")
+          expect(codexScans).toHaveBeenCalledWith([codexFile]);
+        else expect(codexScans).not.toHaveBeenCalled();
+        expect(geminiScans).not.toHaveBeenCalled();
+
+        codexScans.mockClear();
+        await rm(codexFile);
+        await rm(geminiFile);
+        scanner.invalidateCache();
+        expect(await scanner.listProjects()).toEqual([
+          expect.objectContaining({ path: "/projects/claude" }),
+        ]);
+        expect(codexScans).toHaveBeenCalledTimes(1);
+        expect(geminiScans).toHaveBeenCalledTimes(1);
+      } finally {
+        await scanner.dispose();
+      }
+    },
+  );
+
   it("updates only the changed Codex rollout through watcher events", async () => {
     const root = join(tmpdir(), `codex-incremental-${randomUUID()}`);
     tempDirs.push(root);

@@ -126,8 +126,10 @@ export class GeminiSessionScanner {
    * Scan all Gemini sessions and group them by project (cwd or hash).
    * Returns projects sorted by last activity (most recent first).
    */
-  async listProjects(): Promise<Project[]> {
-    const sessions = await this.scanAllSessions();
+  async listProjects(
+    options: { allowStaleSnapshot?: boolean } = {},
+  ): Promise<Project[]> {
+    const sessions = await this.scanAllSessions(options.allowStaleSnapshot);
     await geminiProjectMap.load();
 
     // Group sessions by cwd (if known) or projectHash
@@ -266,15 +268,18 @@ export class GeminiSessionScanner {
    * Scan all session files and extract metadata.
    * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.
    */
-  private async scanAllSessions(): Promise<GeminiSessionInfo[]> {
+  private async scanAllSessions(
+    allowStaleSnapshot = false,
+  ): Promise<GeminiSessionInfo[]> {
     if (this.inFlightScan) {
       await this.inFlightScan;
-      return this.scanAllSessions();
+      return this.scanAllSessions(allowStaleSnapshot);
     }
     if (
       this.cachedScan &&
       this.changedFiles.size === 0 &&
-      Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL
+      (allowStaleSnapshot ||
+        Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL)
     ) {
       return this.cachedScan.result;
     }

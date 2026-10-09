@@ -210,10 +210,15 @@ acquisition, full invalidation fences publication, and pending file changes
 survive failures or an in-flight scan. Both provider scanners drain every
 admitted file read before releasing a failed acquisition for retry.
 
+An event-driven project refresh reuses unchanged Codex/Gemini inputs even when
+their short request cache has aged out. Pending file changes still reconcile
+before grouping; a provider event never renews another provider by walking its
+store. Explicit project-cache invalidation also invalidates provider inputs,
+and complete-read age reconciliation keeps the existing discovery behavior.
+
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail for an unknown directory still uses complete
-discovery, and an unrelated provider's activity can still trigger Codex/Gemini
-enumeration through their existing age-driven refresh.
+discovery, and standalone complete provider reads retain age-driven enumeration.
 The full New Session latency target remains open; the display-only browser
 snapshot below removes collection acquisition from returning-tab display.
 

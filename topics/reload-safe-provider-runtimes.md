@@ -814,6 +814,43 @@ loops. One idle control socket for the wrapper lifetime is permitted.
 
 ## Runtime Generations And Fresh Code
 
+### Built client for everyday source-checkout use
+
+`pnpm dev --built-client` serves production client chunks directly from Hono,
+without a Vite development server. Ordinary `pnpm dev` retains HMR. The built
+mode still runs the backend from source, keeps the manual reload API and source
+change notification, and preserves the provider-host lifecycle above. Hono uses
+`NODE_ENV=production` in this mode, so development-only debug routes are absent.
+
+Startup builds before admitting the backend. Each requested reload builds into
+a separate directory while the incumbent backend remains available, then
+replaces Hono only after that build succeeds. A failed build keeps the incumbent
+backend and client. Source client edits therefore appear after a successful
+reload and browser refresh, rather than on each file save. Builds are rebuilt
+on each reload; there is no source-fingerprint build cache.
+
+The static server revalidates HTML and gives hashed assets immutable browser
+cache headers. Each generation also carries its predecessor's original assets
+so an already-open tab can load a previous lazy chunk across one reload.
+Retention is bounded to those two asset generations; older tabs may need a
+refresh after further reloads. Build directories belong to the wrapper under
+`node_modules/.cache/ya-client/`; replaced directories and normal-shutdown
+builds are removed. Separate wrappers never write the same directory.
+
+**Design decision:** use the existing production build and static server rather
+than optimizing the development module waterfall or adding local HTTP/2/TLS.
+This trades client HMR for fewer requests and browser caching, without changing
+API contracts or requiring certificate setup.
+
+An isolated Linux Chromium check on 2026-10-09 used fresh browser contexts and
+mock provider data. Development mode requested 703 scripts, versus 68 for the
+built client. Form readiness was 5010/1907/1986 ms versus 981/522/582 ms over
+three loads; the build took 17 seconds. These are diagnostic observations on a
+contended host, not a production latency guarantee. Sequential typing and
+immutable asset headers passed; wrapper/browser cleanup left no probe processes.
+
+### Provider code generations
+
 The app-server necessarily finishes an active turn using the Codex binary,
 environment, outer sandbox, and launch configuration under which it started. The
 replacement Hono generation may change YA normalization or fan-out code, but it

@@ -17,6 +17,7 @@
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +38,7 @@ import {
   providerHostEnabled,
 } from "./provider-process-identity.mjs";
 import { exitIfUnsafeHome } from "./safe-home.js";
+import { prepareBuiltClient } from "./dev-built-client.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
@@ -124,6 +126,7 @@ if (args.includes("--help") || args.includes("-h")) {
 Options:
   --watch              Enable backend auto-reload (tsx watch mode)
   --no-frontend-reload Frontend watches but doesn't HMR
+  --built-client       Build and serve cached chunks; refresh source on reload
   -h, --help           Show this help message
 `);
   process.exit(0);
@@ -133,6 +136,7 @@ Options:
 // Use --watch to enable tsx watch mode
 const backendWatch = args.includes("--watch");
 const noFrontendReload = args.includes("--no-frontend-reload");
+const builtClient = args.includes("--built-client");
 const providerHostPolicyEnabled = providerHostEnabled();
 
 // Port configuration: PORT + 0 = server, PORT + 1 = maintenance, PORT + 2 = vite
@@ -161,14 +165,16 @@ const devInstanceProvenance = createDevInstanceProvenance({
 console.log("Starting dev server...");
 console.log(`  Access at: ${protocol}://${displayHost}:${basePort}`);
 console.log(
-  `  Ports: server=${basePort}, maintenance=${basePort + 1}, vite=${vitePort}`,
+  `  Ports: server=${basePort}, maintenance=${basePort + 1}${builtClient ? "" : `, vite=${vitePort}`}`,
 );
-console.log(
-  `  Note: Vite output on :${vitePort} is internal HMR only; browse ${protocol}://${displayHost}:${basePort}`,
-);
+if (!builtClient)
+  console.log(
+    `  Note: Vite output on :${vitePort} is internal HMR only; browse ${protocol}://${displayHost}:${basePort}`,
+  );
 if (backendWatch) console.log("  Backend auto-reload: ENABLED (--watch)");
 if (noFrontendReload) console.log("  Frontend HMR: DISABLED");
-if (!backendWatch && !noFrontendReload)
+if (builtClient) console.log("  Frontend: built client, rebuilt on reload");
+if (!backendWatch && !noFrontendReload && !builtClient)
   console.log("  Frontend HMR: ENABLED, Backend: manual restart only");
 console.log(
   `  Provider host: ${providerHostPolicyEnabled ? "ENABLED" : "DISABLED"}`,
@@ -216,6 +222,9 @@ const wrapperToken = randomBytes(32).toString("base64url");
 let wrapperState = "starting";
 let serverChild = null;
 let clientChild = null;
+let clientBuild = null;
+let clientBuildPromise = null;
+const retiredClientBuilds = [];
 let providerRuntimeHostChild = null;
 let wrapperControlServer = null;
 const wrapperControlSockets = new Set();
@@ -744,7 +753,22 @@ async function requestServerReload(source) {
     return;
   }
   wrapperState = "reloading";
-  console.log(`[Reload] Replacing backend and Vite after ${source}...`);
+  if (builtClient) {
+    try {
+      clientBuildPromise = buildClient();
+      await clientBuildPromise;
+    } catch (error) {
+      console.error(
+        `[Reload] Client build failed; keeping the running backend: ${errorMessage(error)}`,
+      );
+      if (wrapperState !== "shutting-down") wrapperState = "running";
+      return;
+    }
+    if (wrapperState === "shutting-down") return;
+  }
+  console.log(
+    `[Reload] Replacing ${builtClient ? "backend" : "backend and Vite"} after ${source}...`,
+  );
   if (!isWindows) signalManagedChild(server, "SIGHUP");
   void completeServerReload(server);
 }
@@ -772,10 +796,13 @@ async function completeServerReload(server) {
   if (wrapperState !== "reloading") return;
   if (serverChild === server) serverChild = null;
   if (clientChild === client) clientChild = null;
-  console.log("[Reload] Starting replacement Vite and backend");
+  console.log(
+    `[Reload] Starting replacement ${builtClient ? "backend" : "Vite and backend"}`,
+  );
   startClient();
   startServer();
   wrapperState = "running";
+  await removeRetiredClientBuilds();
 }
 
 async function recoverUnexpectedServer(server, code) {
@@ -807,6 +834,14 @@ async function shutdownWrapper(reason, exitCode = 0) {
     await stopManagedChild(clientChild, "Vite").catch((error) =>
       failures.push(error),
     );
+    // Join filesystem cleanup after a cancelled build before exiting.
+    await clientBuildPromise?.catch(() => {});
+    if (clientBuild) {
+      await rm(clientBuild.directory, { recursive: true }).catch((error) =>
+        failures.push(error),
+      );
+    }
+    await removeRetiredClientBuilds().catch((error) => failures.push(error));
 
     for (const failure of failures) {
       console.error(`[Shutdown] ${errorMessage(failure)}`);
@@ -848,7 +883,13 @@ function startServer() {
     ["--filter", "@yep-anywhere/server", serverScript],
     {
       cwd: rootDir,
-      env: { ...env, YEP_SERVER_GENERATION: generation },
+      env: {
+        ...env,
+        ...(builtClient
+          ? { NODE_ENV: "production", CLIENT_DIST_PATH: clientBuild.directory }
+          : {}),
+        YEP_SERVER_GENERATION: generation,
+      },
       stdio: "inherit",
       ...shellOption,
     },
@@ -882,6 +923,7 @@ function startServer() {
  * Start the client dev server
  */
 function startClient() {
+  if (builtClient) return;
   const client = spawnManaged(
     pnpmBin,
     ["--filter", "@yep-anywhere/client", "dev"],
@@ -921,7 +963,62 @@ function startClient() {
   return client;
 }
 
+async function buildClient() {
+  console.log(
+    "[ClientBuild] Building bundled client before backend replacement",
+  );
+  const previous = clientBuild;
+  clientBuild = await prepareBuiltClient(
+    rootDir,
+    async (directory) => {
+      const child = spawnManaged(
+        pnpmBin,
+        [
+          "--filter",
+          "@yep-anywhere/client",
+          "exec",
+          "vite",
+          "build",
+          "--outDir",
+          directory,
+          "--emptyOutDir",
+        ],
+        { cwd: rootDir, env, stdio: "inherit", ...shellOption },
+      );
+      clientChild = child;
+      await new Promise((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", (code, signal) => {
+          if (code === 0) resolve();
+          else
+            reject(
+              new Error(`Client build exited (code=${code}, signal=${signal})`),
+            );
+        });
+      });
+      if (clientChild === child) clientChild = null;
+    },
+    previous,
+  );
+  // The old backend still serves its own directory until replacement finishes.
+  if (previous) retiredClientBuilds.push(previous.directory);
+}
+
+async function removeRetiredClientBuilds() {
+  for (const directory of retiredClientBuilds) {
+    await rm(directory, { recursive: true });
+  }
+  retiredClientBuilds.length = 0;
+}
+
 try {
+  if (builtClient) {
+    clientBuildPromise = buildClient();
+    await clientBuildPromise;
+  }
+  if (wrapperState === "shutting-down") {
+    await shutdownPromise;
+  }
   await startProviderRuntimeHost();
   await startWrapperControlServer();
   startServer();

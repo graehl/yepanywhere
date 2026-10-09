@@ -86,7 +86,19 @@ Host at load average 16 on 16 cores. Headless Chromium, warm server:
 - A warmed browser profile showed the form at 1.6–2.5 s, with about 49 KB of
   local storage, no IndexedDB, and no long tasks over 213 ms.
 
-## Wanted
+## Client delivery fixed (2026-10-09)
+
+`pnpm dev --built-client` removes the unbundled module waterfall while keeping
+the source backend and provider-host reload lifecycle. The maintainer's local
+`reyep` defaults to this mode on its next full wrapper restart. The live server
+was not restarted by the agent. Build lifecycle and diagnostic measurements are
+recorded in [reload-safe provider runtimes](../topics/reload-safe-provider-runtimes.md#built-client-for-everyday-source-checkout-use).
+
+An isolated paired browser check reduced scripts from 703 to 68 and first-load
+form readiness from 5.01 s to 0.98 s. This fixes the measured delivery bottleneck;
+the state/bootstrap requests below remain open. Contributing-model: 6-astra.
+
+## Remaining
 
 - **Instant first paint from last-known state.** A new tab renders the
   composer, current provider/model/effort, and project selector from a

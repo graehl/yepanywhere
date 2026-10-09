@@ -6,6 +6,8 @@ import {
   mkdtemp,
   readFile,
   rm,
+  writeFile,
+  readdir,
 } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -55,6 +57,106 @@ function reload({ port, token }) {
 describe.skipIf(process.platform !== "linux" && process.platform !== "darwin")(
   "development wrapper reload",
   () => {
+    it("builds before replacing the backend and retains the last client on failure", async () => {
+      const directory = await mkdtemp(join(tmpdir(), "ya-built-client-test-"));
+      const bin = join(directory, "bin");
+      const eventsFile = join(directory, "events.jsonl");
+      await mkdir(bin);
+      await copyFile(
+        join(here, "fixtures/dev-wrapper-child.mjs"),
+        join(bin, "pnpm"),
+      );
+      await chmod(join(bin, "pnpm"), 0o755);
+      const wrapper = spawn(
+        process.execPath,
+        [join(root, "scripts/dev.js"), "--built-client"],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            PATH: `${bin}${delimiter}${process.env.PATH}`,
+            PORT: "3497",
+            YA_TEST_WRAPPER_EVENTS: eventsFile,
+            YEP_PROVIDER_HOST_ENABLED: "false",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let output = "";
+      wrapper.stdout.on("data", (chunk) => {
+        output += chunk;
+      });
+      wrapper.stderr.on("data", (chunk) => {
+        output += chunk;
+      });
+      const servers = async () =>
+        (await readEvents(eventsFile)).filter(
+          (event) => event.role === "server",
+        );
+      try {
+        await expect
+          .poll(async () => (await servers()).length, { timeout: 10000 })
+          .toBe(1);
+        const first = (await servers())[0];
+        expect(first.nodeEnv).toBe("production");
+        expect(
+          await readFile(join(first.distPath, "index.html"), "utf8"),
+        ).toContain("built");
+        const firstAssets = await readdir(join(first.distPath, "assets"));
+        await writeFile(`${eventsFile}.fail`, "fail build");
+        await reload(first);
+        await expect
+          .poll(() => output, { timeout: 10000 })
+          .toContain("Client build failed; keeping the running backend");
+        expect(await servers()).toHaveLength(1);
+        expect(() => process.kill(first.pid, 0)).not.toThrow();
+        await rm(`${eventsFile}.fail`);
+        await reload(first);
+        await expect
+          .poll(async () => (await servers()).length, { timeout: 10000 })
+          .toBe(2);
+        const second = (await servers())[1];
+        expect(second.distPath).not.toBe(first.distPath);
+        expect(await readdir(join(second.distPath, "assets"))).toEqual(
+          expect.arrayContaining(firstAssets),
+        );
+        expect(() => process.kill(first.pid, 0)).toThrow();
+        expect(
+          (await readEvents(eventsFile)).some(
+            (event) => event.role === "client",
+          ),
+        ).toBe(false);
+        await expect
+          .poll(async () => {
+            try {
+              await readdir(first.distPath);
+              return true;
+            } catch (error) {
+              if (error.code === "ENOENT") return false;
+              throw error;
+            }
+          })
+          .toBe(false);
+      } catch (error) {
+        throw new Error(`${error.message}\n${output}`, { cause: error });
+      } finally {
+        wrapper.kill("SIGTERM");
+        await expect
+          .poll(() => wrapper.exitCode ?? wrapper.signalCode, {
+            timeout: 10000,
+          })
+          .not.toBeNull();
+        for (const event of await readEvents(eventsFile)) {
+          expect(() => process.kill(event.pid, 0)).toThrow();
+          if (event.distPath)
+            await expect(readdir(event.distPath)).rejects.toMatchObject({
+              code: "ENOENT",
+            });
+        }
+        await rm(directory, { recursive: true });
+      }
+    }, 30000);
+
     it("keeps provider hosting disabled when explicitly configured", async () => {
       const directory = await mkdtemp(
         join(

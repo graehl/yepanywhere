@@ -109,6 +109,26 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Current audit (2026-10-09): measured New Session and Settings cases meet the
+revised three-second target. Incremental server project discovery is still
+incomplete: background refresh enumerates provider stores, and the detail
+lookup for directories absent from a complete collection retains its discovery
+path. The gap's server-work requirement below is therefore not closed merely
+because the display timings pass. Contributing-model: 6-astra.
+
+New Session now reuses a current project collection row rather than requesting
+the same selected-project detail. It waits for collection completion before
+checking a missing directory; collection failure permits the independent detail
+lookup. This removes the foreground complete-scan request from ordinary tab
+startup without synthesizing project records or dropping inventory rows.
+The browser regression fails before the change with the extra request and
+passes afterward. All eleven startup browser cases and fifteen page tests pass.
+Three fresh native-data servers show full UI at 2,865/1,199/790 ms; six returning
+tabs take 351–627 ms, at initial load 20.24 on sixteen cores with 92 GB available
+RAM. These are contended-host observations, not a paired speedup claim.
+Desktop and phone captures were inspected; process cleanup passed.
+Contributing-model: 6-astra.
+
 Latest slice (2026-10-09): settings and version now start from a lightweight
 local entry, followed by the selected provider as soon as settings resolve.
 A real browser regression holds the React runtime download and requires all

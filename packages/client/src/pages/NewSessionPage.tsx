@@ -132,9 +132,23 @@ export function NewSessionPage() {
         ) ?? undefined;
     }
   }
-  const { project, loading: projectLoading, error } = useProject(projectId);
-  const confirmedSelectedProject =
-    liveProjects.find((candidate) => candidate.id === projectId) ?? project;
+  const collectionProject = liveProjects.find(
+    (candidate) => candidate.id === projectId,
+  );
+  // A missing row is meaningful only after discovery finishes. Detail reads
+  // then support existing directories that have never hosted a session.
+  const needsProjectDetail =
+    !collectionProject && (projectCollectionConfirmed || !!projectsError);
+  const {
+    project,
+    loading: detailLoading,
+    error,
+  } = useProject(needsProjectDetail ? projectId : undefined);
+  const confirmedSelectedProject = collectionProject ?? project;
+  const projectLoading =
+    Boolean(projectId) &&
+    !confirmedSelectedProject &&
+    (!needsProjectDetail || detailLoading);
   const selectedProject =
     confirmedSelectedProject ??
     (projectId

@@ -174,9 +174,17 @@ Response metadata determines completeness, not the requested preference.
 External activity counts resolve directory identity from the retained scanner
 index, avoiding an indirect foreground scan through the session tracker.
 
+New Session uses its current collection row as the selected project's server
+record. It does not request selected-project detail while discovery is pending
+or when that row is already present. After a complete collection omits the
+requested project, the existing detail route validates directories without
+sessions; a collection request failure also permits that independent lookup.
+Browser display snapshots remain non-authoritative and cannot enable launch.
+
 **Remaining:** captions and code names still use their existing request-time
-enrichment, selected-project detail still uses complete discovery, and refresh
-still enumerates the provider stores rather than applying targeted updates.
+enrichment, selected-project detail for an unknown directory still uses complete
+discovery, and refresh still enumerates the provider stores rather than applying
+targeted updates.
 The full New Session latency target remains open; the display-only browser
 snapshot below removes collection acquisition from returning-tab display.
 

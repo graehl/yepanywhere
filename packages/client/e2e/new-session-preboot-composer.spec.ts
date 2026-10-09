@@ -275,6 +275,12 @@ test("route data arrives before the New Session module executes", async ({
   const held: Route[] = [];
   const expectedProjectPath = join(e2ePaths.tempDir, "mockproject");
   const projectId = Buffer.from(expectedProjectPath).toString("base64url");
+  const projectDetailRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === `/api/projects/${projectId}`) {
+      projectDetailRequests.push(request.url());
+    }
+  });
   let releasing = false;
   await page.route("**/assets/NewSessionPage-*.js", (route) => {
     if (releasing) return route.continue();
@@ -309,6 +315,8 @@ test("route data arrives before the New Session module executes", async ({
     await Promise.all(held.map((route) => route.continue()));
   }
   await expect(page.locator(".new-session-form textarea")).toBeVisible();
+  await page.locator(".new-session-form textarea").pressSequentially("ready");
+  expect(projectDetailRequests).toEqual([]);
   expect(mathRequests).toEqual([]);
   expect(
     await page.evaluate(

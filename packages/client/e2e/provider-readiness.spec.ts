@@ -143,7 +143,7 @@ test.describe("New Session provider readiness", () => {
     await expect(providerPicker).toContainText("Authentication needed");
     await providerPicker.click();
     await expect(
-      page.getByRole("dialog").getByRole("button", { name: /Codex/ }),
+      page.getByRole("dialog").getByRole("button", { name: /^Codex OpenAI/ }),
     ).toContainText("Authentication needed");
     await page.keyboard.press("Escape");
     await page
@@ -166,6 +166,18 @@ test.describe("New Session provider readiness", () => {
     const aggregateGate = gate();
     const firstNamedGate = gate();
     const retryGate = gate();
+    // Persisted rows paint immediately but cannot authorize a launch. A
+    // current aggregate response, unlike this snapshot, can authorize it.
+    await page.addInitScript((provider) => {
+      localStorage.setItem(
+        "ya:providers:local",
+        JSON.stringify({
+          version: 1,
+          savedAt: Date.now(),
+          providers: [provider],
+        }),
+      );
+    }, staleGateway);
     let aggregateRequests = 0;
     let namedRequests = 0;
     let usageRequests = 0;
@@ -191,7 +203,7 @@ test.describe("New Session provider readiness", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ providers: [staleGateway] }),
+          body: JSON.stringify({ providers: [currentGateway] }),
         });
       },
     );
@@ -244,7 +256,6 @@ test.describe("New Session provider readiness", () => {
       await expect.poll(() => namedRequests).toBe(1);
       expectNoUsageAheadOfRouteWork();
 
-      aggregateGate.open();
       await expect(page.getByText("Saved Gateway").first()).toBeVisible();
       await expect(
         page.getByText("Checking the configured gateway for models…"),
@@ -301,7 +312,9 @@ test.describe("New Session provider readiness", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ providers: [staleGateway] }),
+          body: JSON.stringify({
+            providers: [{ ...currentGateway, models: [] }],
+          }),
         });
       },
     );

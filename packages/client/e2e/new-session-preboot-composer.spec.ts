@@ -1,10 +1,33 @@
+import { join } from "node:path";
 import type { Page, Route } from "@playwright/test";
-import { expect, test } from "./fixtures.js";
+import { e2ePaths, expect, test } from "./fixtures.js";
 import { recordUiCapture } from "./support/ui-capture.js";
 
 // These cases own no seeded session draft.
 test.use({ draftSessionIds: [] });
 test.use({ serviceWorkers: "block" });
+
+// A fresh browser context still shares the worker's server-side composer.
+test.beforeEach(async ({ page, baseURL }) => {
+  const slot = { kind: "new-session" };
+  const headers = { "X-Yep-Anywhere": "true" };
+  const read = await page.request.post(`${baseURL}/api/drafts/read`, {
+    headers,
+    data: { slot },
+  });
+  expect(read.ok()).toBe(true);
+  const draftState = await read.json();
+  const cleared = await page.request.post(`${baseURL}/api/drafts/clear`, {
+    headers,
+    data: {
+      slot,
+      baseRevision: draftState.snapshot.revision,
+      ticket: draftState.ticket,
+      operationId: crypto.randomUUID(),
+    },
+  });
+  expect(cleared.ok()).toBe(true);
+});
 
 /** Hold every script request until released, so only inline code runs. */
 async function holdScripts(page: Page): Promise<() => Promise<void>> {
@@ -214,7 +237,8 @@ test("route data arrives before the New Session module executes", async ({
     observer.observe(document, { childList: true, subtree: true });
   });
   const held: Route[] = [];
-  let expectedProjectPath = "";
+  const expectedProjectPath = join(e2ePaths.tempDir, "mockproject");
+  const projectId = Buffer.from(expectedProjectPath).toString("base64url");
   let releasing = false;
   await page.route("**/assets/NewSessionPage-*.js", (route) => {
     if (releasing) return route.continue();
@@ -232,10 +256,16 @@ test("route data arrives before the New Session module executes", async ({
     ),
   );
   try {
-    await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });
+    await page.goto(`${baseURL}/new-session?projectId=${projectId}`, {
+      waitUntil: "commit",
+    });
     const [, projectsResponse] = await Promise.all(responses);
     const { projects } = await projectsResponse!.json();
-    expectedProjectPath = projects[0].path;
+    expect(projects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: expectedProjectPath }),
+      ]),
+    );
     expect(held.length).toBeGreaterThan(0);
     await expect(page.locator(".new-session-form textarea")).toHaveCount(0);
   } finally {
@@ -277,26 +307,6 @@ for (const viewport of [
     baseURL,
   }) => {
     await page.setViewportSize(viewport);
-    // Earlier cases share this worker's server and leave a New Session draft.
-    // This case owns a fresh draft, not a cross-device edit conflict.
-    const slot = { kind: "new-session" };
-    const headers = { "X-Yep-Anywhere": "true" };
-    const read = await page.request.post(`${baseURL}/api/drafts/read`, {
-      headers,
-      data: { slot },
-    });
-    expect(read.ok()).toBe(true);
-    const draftState = await read.json();
-    const cleared = await page.request.post(`${baseURL}/api/drafts/clear`, {
-      headers,
-      data: {
-        slot,
-        baseRevision: draftState.snapshot.revision,
-        ticket: draftState.ticket,
-        operationId: crypto.randomUUID(),
-      },
-    });
-    expect(cleared.ok()).toBe(true);
     const releases = new Map<string, () => void>();
     for (const path of [
       "/api/settings",

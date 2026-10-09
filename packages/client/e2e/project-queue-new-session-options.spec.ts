@@ -38,31 +38,34 @@ test("right-click queues the draft as a new session in another project", async (
     );
   });
   // Exercise the chooser with a realistic large project/model catalog.
-  await page.route("**/api/projects", async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
-    const response = await route.fetch();
-    const body = (await response.json()) as {
-      projects: Record<string, unknown>[];
-    };
-    const template = body.projects[0] ?? {};
-    body.projects.push({
-      ...template,
-      id: otherProjectId,
-      name: "otherproject",
-      path: otherProjectPath,
-      lastActivity: null,
-    });
-    body.projects.push(
-      ...Array.from({ length: 200 }, (_, index) => ({
+  await page.route(
+    (url) => url.pathname === "/api/projects",
+    async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const response = await route.fetch();
+      const body = (await response.json()) as {
+        projects: Record<string, unknown>[];
+      };
+      const template = body.projects[0] ?? {};
+      body.projects.push({
         ...template,
-        id: `extra-project-${index}`,
-        name: `Project ${index}`,
-        path: `/work/project-${index}`,
+        id: otherProjectId,
+        name: "otherproject",
+        path: otherProjectPath,
         lastActivity: null,
-      })),
-    );
-    await route.fulfill({ response, json: body });
-  });
+      });
+      body.projects.push(
+        ...Array.from({ length: 200 }, (_, index) => ({
+          ...template,
+          id: `extra-project-${index}`,
+          name: `Project ${index}`,
+          path: `/work/project-${index}`,
+          lastActivity: null,
+        })),
+      );
+      await route.fulfill({ response, json: body });
+    },
+  );
   // The fixture reports no launchable provider (and answers slowly); offer
   // Claude with two models.
   await page.route(

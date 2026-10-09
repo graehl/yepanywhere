@@ -10,6 +10,7 @@ import {
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
 import {
+  primeLocalServerSettings,
   resetServerSettingsForTests,
   useServerSettings,
 } from "../useServerSettings";
@@ -151,6 +152,57 @@ afterEach(() => {
 });
 
 describe("useServerSettings", () => {
+  it("retries a failed primer through the mounted query owner", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+      mocks.getServerSettings.mockRejectedValueOnce(new Error("unavailable"));
+      await expect(primeLocalServerSettings()).rejects.toThrow("unavailable");
+      const hook = renderHook(() => useServerSettings());
+      await settle();
+      expect(mocks.getServerSettings).toHaveBeenCalledTimes(2);
+      expect(hook.result.current.settings).toEqual(settings());
+      expect(hook.result.current.error).toBeNull();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it.each([false, true])(
+    "joins the pre-mount local settings read (resolved=%s)",
+    async (resolved) => {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+      const pending = deferred<{ settings: ServerSettings }>();
+      const value = settings({ newSessionDefaults: { provider: "claude" } });
+      mocks.getServerSettings.mockReturnValueOnce(pending.promise);
+      const priming = primeLocalServerSettings();
+      await settle();
+      expect(mocks.sourceFetch).toHaveBeenCalledExactlyOnceWith(
+        LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+        "/settings",
+        undefined,
+      );
+      if (resolved) {
+        pending.resolve({ settings: value });
+        await priming;
+      }
+      const hook = renderHook(() => useServerSettings());
+      await settle();
+      expect(mocks.getServerSettings).toHaveBeenCalledTimes(1);
+      if (!resolved) {
+        expect(hook.result.current.settings).toBeNull();
+        expect(hook.result.current.isLoading).toBe(true);
+        await act(async () => {
+          pending.resolve({ settings: value });
+          await priming;
+        });
+      }
+      await settle();
+      expect(hook.result.current.settings).toEqual(value);
+      expect(hook.result.current.isLoading).toBe(false);
+    },
+  );
+
   it("restores display defaults in a new tab without treating them as settings", async () => {
     mocks.getServerSettings.mockResolvedValueOnce({
       settings: settings({

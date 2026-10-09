@@ -518,6 +518,14 @@ subscriptions, timers, invalidations, or requests. Query responses retain the
 server catalog epoch/generation so later consumers can reuse accepted state or
 conditionally reconcile it.
 
+The local New Session entry primes project and recent collections while route
+modules load, alongside settings. These reads use the same source-bound query
+definitions as the mounted hooks, including version/preference selection,
+generation fencing and snapshot publication. Pending and completed reads are
+shared even for an empty complete collection. This moves acquisition before
+form mounting; it adds no second cache and does not bypass server filtering or
+the confirmed-identity requirement for browser project snapshots.
+
 Browser persistence is an optional accelerator, never a correctness
 precondition. A source/auth-scoped, schema-versioned compact snapshot may live
 in IndexedDB; a small `localStorage`/`BroadcastChannel` notice may advertise the

@@ -14,13 +14,19 @@ import {
 } from "../lib/activityBus";
 import {
   createClientQueryKey,
+  ensureClientQuery,
   type ClientQueryRequestContext,
 } from "../lib/clientQueryController";
 import {
   useProjectCollectionRecord,
   useProjectCollectionRecords,
   useProjectCollectionCatalog,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
 } from "../lib/clientSummaryStore";
+import {
+  getSourceRuntimeRegistry,
+  type YaSourceRuntime,
+} from "../lib/sourceRuntime";
 import { isRemoteClient } from "../lib/connection";
 import type { ClientQueryBootstrapTier } from "../lib/clientQueryBootstrap";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
@@ -162,29 +168,14 @@ export function useProject(projectId: string | undefined) {
   );
 }
 
-export function useProjects({
-  bootstrapTier = "navigation",
-}: {
-  bootstrapTier?: ClientQueryBootstrapTier;
-} = {}) {
-  const runtime = useCurrentSourceRuntime();
-  const sourceKey = runtime.sourceKey;
-  const sourceSummary = runtime.summary;
-  const projects = useProjectCollectionRecords();
-  const catalog = useProjectCollectionCatalog();
-  const projectsApi = useMemo(
-    () => createProjectsApi(runtime.transport.fetch.bind(runtime.transport)),
-    [runtime],
+function createProjectsQuery(runtime: YaSourceRuntime) {
+  const projectsApi = createProjectsApi(
+    runtime.transport.fetch.bind(runtime.transport),
   );
-  const ready = useRemoteReady();
-  const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
-    sourceKey,
+  return {
+    sourceKey: runtime.sourceKey,
     key: PROJECTS_QUERY_KEY,
-    bootstrapTier,
-    ready,
-    hasData: projects.length > 0,
-    revalidateOn: PROJECTS_REVALIDATE_EVENTS,
-    fetcher: (context) => {
+    fetcher: (context: ClientQueryRequestContext) => {
       const version = readVersionInfo(context.sourceKey);
       // Older servers ignore this preference and return a complete collection.
       // Honor known capability withdrawals without delaying the cold read.
@@ -198,12 +189,44 @@ export function useProjects({
           : undefined,
       );
     },
-    applySnapshot: (data, context: ClientQueryRequestContext) => {
-      sourceSummary.reportProjectsCollectionSnapshot(
+    applySnapshot: (
+      data: ProjectsResponse,
+      context: ClientQueryRequestContext,
+    ) => {
+      runtime.summary.reportProjectsCollectionSnapshot(
         { projects: data.projects, catalog: data.catalog },
         context.requestStartedAt,
       );
     },
+  };
+}
+
+export function primeLocalProjects() {
+  return ensureClientQuery(
+    createProjectsQuery(
+      getSourceRuntimeRegistry().getOrCreateSourceRuntime(
+        LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      ),
+    ),
+  );
+}
+
+export function useProjects({
+  bootstrapTier = "navigation",
+}: {
+  bootstrapTier?: ClientQueryBootstrapTier;
+} = {}) {
+  const runtime = useCurrentSourceRuntime();
+  const query = useMemo(() => createProjectsQuery(runtime), [runtime]);
+  const projects = useProjectCollectionRecords();
+  const catalog = useProjectCollectionCatalog();
+  const ready = useRemoteReady();
+  const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
+    ...query,
+    bootstrapTier,
+    ready,
+    hasData: projects.length > 0,
+    revalidateOn: PROJECTS_REVALIDATE_EVENTS,
   });
 
   const status = catalogLoadState(catalog, projects.length);

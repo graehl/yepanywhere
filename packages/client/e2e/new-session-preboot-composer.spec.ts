@@ -153,6 +153,35 @@ test("a reload before the app adopts the composer keeps what was typed", async (
   ).toBeNull();
 });
 
+test("route data arrives before the New Session module executes", async ({
+  page,
+  baseURL,
+}) => {
+  const held: Route[] = [];
+  let releasing = false;
+  await page.route("**/assets/NewSessionPage-*.js", (route) => {
+    if (releasing) return route.continue();
+    held.push(route);
+  });
+  const responses = ["/api/settings", "/api/projects", "/api/recents"].map(
+    (path) =>
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === path && response.ok(),
+      ),
+  );
+  try {
+    await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });
+    await Promise.all(responses);
+    expect(held.length).toBeGreaterThan(0);
+    await expect(page.locator(".new-session-form textarea")).toHaveCount(0);
+  } finally {
+    releasing = true;
+    await Promise.all(held.map((route) => route.continue()));
+  }
+  await expect(page.locator(".new-session-form textarea")).toBeVisible();
+});
+
 test("other routes never show the pre-boot composer", async ({
   page,
   baseURL,

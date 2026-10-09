@@ -100,6 +100,23 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Local New Session now starts settings, project and recent reads through their
+existing query owners while route code loads (2026-10-09). A held-route browser
+regression verifies all three responses arrive before the page module executes.
+Priming settings alone did not establish an overall gain; all three reads are
+needed to remove the post-mount dependency. In six paired healthy cold loads,
+holding these requests until form mount gave controls at 470/685/563 ms; early
+reads gave 389/299/297 ms. Early requests completed in 4–6 ms before provider
+probing competed with them. The model's catalog labels arrived at 609/567/480
+ms; the selected provider/model/effort controls were already visible.
+
+A subsequent run without interception gave fresh controls at 488/341/300 ms.
+Eighteen returning tabs ranged from 236 to 552 ms, with two above 500 ms
+(552/513). These are diagnostic observations at load 15–22 on 16 cores,
+using healthy isolated runtimes and warmed project discovery. The full target
+is still open, including returning-tab variance, larger catalogs and hosted
+paths. Contributing-model: 6-astra.
+
 Built local New Session now preloads its route's static chunk graph during
 HTML parsing (2026-10-09), before the main module can discover it. Other routes
 and deferred dynamic imports keep their existing loading behavior. In six

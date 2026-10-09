@@ -12,9 +12,15 @@ import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext
 import { isRemoteClient } from "../lib/connection";
 import {
   createClientQueryKey,
+  ensureClientQuery,
+  type ClientQueryRequestContext,
   invalidateClientQuery,
 } from "../lib/clientQueryController";
-import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  type ClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+} from "../lib/clientSummaryStore";
+import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
 import { catalogLoadState } from "../lib/clientSummaryCollections";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
 import { readVersionInfo } from "./useVersion";
@@ -118,6 +124,43 @@ export function resetRecentSessionsForTests() {
   consumers.clear();
 }
 
+function createRecentsQuery(
+  sourceKey: ClientSummarySourceKey,
+  recentsApi: ReturnType<typeof createRecentsApi>,
+) {
+  return {
+    sourceKey,
+    key: RECENTS_QUERY_KEY,
+    fetcher: (context: ClientQueryRequestContext) => {
+      const version = readVersionInfo(context.sourceKey);
+      // The legacy response remains complete when this preference is ignored.
+      return recentsApi.getRecents(
+        100,
+        version === null ||
+          serverHasCapability(version, SERVER_CAPABILITIES.retainedRecents.name)
+          ? "retained"
+          : undefined,
+      );
+    },
+    applySnapshot: (
+      response: RecentSessionsResponse,
+      context: ClientQueryRequestContext,
+    ) => acceptSnapshot(context.sourceKey, response),
+  };
+}
+
+export function primeLocalRecentSessions() {
+  const runtime = getSourceRuntimeRegistry().getOrCreateSourceRuntime(
+    LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  );
+  return ensureClientQuery(
+    createRecentsQuery(
+      runtime.sourceKey,
+      createRecentsApi(runtime.transport.fetch.bind(runtime.transport)),
+    ),
+  );
+}
+
 /**
  * Record a session visit (fire-and-forget).
  * Can be called from outside React components.
@@ -170,25 +213,11 @@ export function useRecentSessions(options: UseRecentSessionsOptions = {}): {
     () => EMPTY_SNAPSHOT,
   );
   const { loading, error, refetch } = useRetainedClientQuery({
-    sourceKey,
-    key: RECENTS_QUERY_KEY,
+    ...createRecentsQuery(sourceKey, recentsApi),
     bootstrapTier: "route",
     ready,
     hasData: snapshot.loaded,
     revalidateOn: REVALIDATE_EVENTS,
-    fetcher: (context) => {
-      const version = readVersionInfo(context.sourceKey);
-      // The legacy response remains complete when this preference is ignored.
-      return recentsApi.getRecents(
-        100,
-        version === null ||
-          serverHasCapability(version, SERVER_CAPABILITIES.retainedRecents.name)
-          ? "retained"
-          : undefined,
-      );
-    },
-    applySnapshot: (response, context) =>
-      acceptSnapshot(context.sourceKey, response),
   });
   const fetchRecents = useCallback(() => {
     if (consumers.has(sourceKey)) void refetch({ force: true });

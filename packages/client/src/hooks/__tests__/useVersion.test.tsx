@@ -7,14 +7,16 @@ import {
 } from "@yep-anywhere/shared";
 import { getSourceRuntimeRegistry } from "../../lib/sourceRuntime";
 import { resetClientQueryBootstrapForTests } from "../../lib/clientQueryBootstrap";
-import { useProjects } from "../useProjects";
+import { primeLocalProjects, useProjects } from "../useProjects";
 import {
   resetRecentSessionsForTests,
+  primeLocalRecentSessions,
   useRecentSessions,
 } from "../useRecentSessions";
 import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import {
   asClientSummarySourceKey,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
@@ -135,6 +137,58 @@ afterEach(() => {
 });
 
 describe("useVersion", () => {
+  it.each([false, true])(
+    "shares pre-mount collection reads (resolved=%s)",
+    async (resolved) => {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const fetch = vi
+        .spyOn(
+          getSourceRuntimeRegistry().getOrCreateSourceRuntime(
+            LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          ).transport,
+          "fetch",
+        )
+        .mockImplementation(async (url) => {
+          await pending;
+          if (url === "/projects?summaryMode=retained") return { projects: [] };
+          if (url === "/recents?limit=100&summaryMode=retained")
+            return { recents: [] };
+          throw new Error(`Unexpected collection request: ${url}`);
+        });
+      const priming = Promise.all([
+        primeLocalProjects(),
+        primeLocalRecentSessions(),
+      ]);
+      await settle();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      if (resolved) {
+        release();
+        await priming;
+      }
+      const projects = renderHook(() =>
+        useProjects({ bootstrapTier: "route" }),
+      );
+      const recents = renderHook(() => useRecentSessions());
+      await settle();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      if (!resolved)
+        await act(async () => {
+          release();
+          await priming;
+        });
+      await settle();
+      expect(projects.result.current.complete).toBe(true);
+      expect(projects.result.current.error).toBeNull();
+      expect(recents.result.current.isLoadingVisits).toBe(false);
+      expect(recents.result.current.error).toBeNull();
+      expect(mocks.getVersion).not.toHaveBeenCalled();
+    },
+  );
+
   it("loads projects and recent visits while version acquisition is unresolved", async () => {
     let resolveVersion!: (version: VersionInfo) => void;
     mocks.getVersion.mockImplementationOnce(

@@ -113,6 +113,13 @@ available. Current settings reconcile untouched controls; an explicit user
 selection survives. A failed settings read retains the display and offers a
 retry. Missing, malformed or expired storage falls back to normal acquisition.
 
+The local `/new-session` entry starts current settings acquisition while its
+route modules load. It uses the same source transport, query identity and
+snapshot publication as `useServerSettings`; a mounted consumer joins pending
+work or reuses its accepted response. A failed primer does not mark settings
+ready and leaves retry/error presentation with the mounted owner. It neither
+populates settings from display storage nor relaxes launch or identity checks.
+
 The dynamic catalog keeps the existing two request shapes:
 
 - `GET /api/providers` returns the exposed provider-card collection and remains

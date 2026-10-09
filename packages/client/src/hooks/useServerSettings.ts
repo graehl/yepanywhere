@@ -6,7 +6,11 @@ import {
   writeNewSessionDisplayDefaults,
 } from "../lib/newSessionDisplayDefaults";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
-import { createClientQueryKey } from "../lib/clientQueryController";
+import {
+  createClientQueryKey,
+  ensureClientQuery,
+  type ClientQueryRequestContext,
+} from "../lib/clientQueryController";
 import {
   type ClientSummarySourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
@@ -118,6 +122,36 @@ function fetchServerSettingsForSource(
   );
 }
 
+async function fetchSettingsQuery(context: ClientQueryRequestContext) {
+  try {
+    return await fetchServerSettingsForSource(context.sourceKey);
+  } catch (err) {
+    console.error("[useServerSettings] Failed to fetch settings:", err);
+    throw err;
+  }
+}
+
+function applySettingsQuerySnapshot(
+  response: ServerSettingsResponse,
+  context: ClientQueryRequestContext,
+) {
+  acceptServerSettingsSnapshot(
+    context.sourceKey,
+    response.settings,
+    context.requestStartedAt,
+  );
+}
+
+/** Local entrypoint hint; mounted consumers join the same source-owned read. */
+export function primeLocalServerSettings() {
+  return ensureClientQuery({
+    sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+    key: SERVER_SETTINGS_QUERY_KEY,
+    fetcher: fetchSettingsQuery,
+    applySnapshot: applySettingsQuerySnapshot,
+  });
+}
+
 function updateServerSettingsForSource(
   sourceKey: ClientSummarySourceKey,
   updates: Partial<ServerSettings>,
@@ -178,21 +212,8 @@ export function useServerSettings(): UseServerSettingsResult {
     ready,
     hasData: snapshot.observedAt !== undefined,
     revalidateOn: SERVER_SETTINGS_REVALIDATE_EVENTS,
-    fetcher: async (context) => {
-      try {
-        return await fetchServerSettingsForSource(context.sourceKey);
-      } catch (err) {
-        console.error("[useServerSettings] Failed to fetch settings:", err);
-        throw err;
-      }
-    },
-    applySnapshot: (response, context) => {
-      acceptServerSettingsSnapshot(
-        context.sourceKey,
-        response.settings,
-        context.requestStartedAt,
-      );
-    },
+    fetcher: fetchSettingsQuery,
+    applySnapshot: applySettingsQuerySnapshot,
   });
 
   useEffect(() => {

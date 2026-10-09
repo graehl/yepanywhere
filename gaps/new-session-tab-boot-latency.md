@@ -100,6 +100,13 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Claude catalog requests no longer launch duplicate authentication commands
+(2026-10-09). A route-level regression reproduced two `claude auth status`
+subprocesses for one cold request and now requires one. Completed and failed
+checks are released, so later requests observe current sign-in state. This
+reduces duplicate discovery work; it does not remove the remaining SDK model
+probe or establish the 500 ms target. Contributing-model: 6-astra.
+
 Returning tabs now restore provider/model/thinking/effort display defaults
 without waiting for settings (2026-10-09). A real sibling-tab check holds its
 settings response indefinitely and verifies Sonnet/High plus sequential typing.

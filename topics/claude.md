@@ -17,6 +17,10 @@ shell-startup and test-hermeticity rules for the local `BASH_ENV` bridge.
 
 ## Contracts
 
+- Concurrent local Claude authentication reads share one pending CLI status
+  command per provider instance, including the status and model-discovery
+  branches of a catalog request. Completion or failure releases that command;
+  the next read checks authentication again rather than reusing an auth cache.
 - In-session Claude model switching is a YA-owned-process capability, not a
   property of a Claude JSONL transcript. YA can switch a live Claude model only
   when it owns the active provider process and has the SDK `Query` control

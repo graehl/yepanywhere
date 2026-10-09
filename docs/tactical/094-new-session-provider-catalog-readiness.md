@@ -184,15 +184,16 @@ therefore crosses the 2 s descriptor/refresh reconsideration threshold.
 
 The aggregate route calls every exposed provider through `Promise.all` and,
 within each row, calls authentication and model discovery concurrently. This
-still has four undesirable consequences:
+still has three undesirable consequences:
 
 - an unselected OpenCode catalog delays first-visit provider cards and the
   aggregate correction, though it no longer delays selected Codex controls;
-- providers such as Claude may repeat authentication work because their model
-  method checks authentication again internally;
 - Codex OSS may run `ollama list` independently for auth and models; and
 - one uncaught provider failure rejects the complete provider response rather
   than leaving other providers usable from their last successful rows.
+
+Claude shares an in-flight authentication command between status and model
+discovery; later requests check authentication again after it settles.
 
 The configured Claude Gateway path still has an additional side effect.
 `getAvailableModels()` calls `gatewayLauncher.ensureReady()`, so server startup

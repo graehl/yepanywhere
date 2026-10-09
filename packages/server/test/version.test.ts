@@ -504,8 +504,8 @@ describe("GET /version", () => {
       [0, 1],
       // Current optional bits remain; retired IDs 70 and 71 are absent.
       [2, 12288],
-      // Bits 109 and 110 enable file-address replacement and app deletion.
-      [3, 24576],
+      // Bits 109, 110 and 126: file replacement, app deletion, vhost OAuth.
+      [3, 1073766400],
     ]);
     expect(
       serverHasCapability(

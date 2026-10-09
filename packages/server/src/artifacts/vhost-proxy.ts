@@ -59,6 +59,7 @@ export function proxyLoopbackVhost(
   port: number,
   clientAddress?: string,
   brokerSocket?: string,
+  _expiresAt?: number,
 ): Promise<Response> {
   if (incoming.headers.get("upgrade"))
     return Promise.resolve(

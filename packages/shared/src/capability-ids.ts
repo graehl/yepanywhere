@@ -774,6 +774,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "provider-descriptors",
     introducedIn: "0.9.4",
   },
+  vhostOauthAccess: {
+    id: 126,
+    direction: "server",
+    name: "vhost-oauth-access",
+    introducedIn: "0.9.4",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

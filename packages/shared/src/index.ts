@@ -8,6 +8,7 @@ export type {
   ArtifactViewerGrant,
   ArtifactTabRequest,
 } from "./artifact-viewer.js";
+export * from "./vhost-oauth.js";
 export {
   ARTIFACT_SANDBOX,
   ARTIFACT_TAB_PROTOCOL,

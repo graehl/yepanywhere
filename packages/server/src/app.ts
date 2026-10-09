@@ -28,6 +28,7 @@ import { createArtifactRoutes } from "./routes/artifacts.js";
 import { createVhostSiteRoutes } from "./routes/vhostSites.js";
 import { createVhostAppRoutes } from "./routes/vhostApps.js";
 import { createVhostAccessRoutes } from "./routes/vhostAccess.js";
+import { createVhostOauthRoutes } from "./routes/vhostOauth.js";
 import {
   createSessionAppRoutes,
   sessionAppBrokerSocket,
@@ -1369,6 +1370,7 @@ export function createApp(options: AppOptions): AppResult {
   );
   app.route("/api", createVhostAppRoutes(vhostAppControl));
   app.route("/api", createVhostAccessRoutes(artifactServer));
+  app.route("/api", createVhostOauthRoutes(artifactServer));
   // Sandboxed sessions' loopback servers, through their port brokers. The
   // supervisor is assigned later; both callbacks run only at request time.
   artifactServer.setSessionAppUpstream((sessionId) =>

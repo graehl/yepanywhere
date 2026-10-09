@@ -8,6 +8,10 @@ import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomically } from "../utils/writeFileAtomically.js";
 import {
+  VHOST_OAUTH_FLOW_COOKIE,
+  VHOST_OAUTH_SESSION_COOKIE,
+} from "./VhostOauth.js";
+import {
   vhostExternalProtocol,
   vhostPasswordMatches,
   type ArtifactVhost,
@@ -163,6 +167,7 @@ export class VhostAccess {
     request: Request,
     row: AppAccessTarget,
     passwordVerified = false,
+    identityAdmitted = false,
   ): { request: Request; cookie?: string } | null {
     const url = new URL(request.url);
     const bearer = url.searchParams.get(APP_ACCESS_QUERY);
@@ -183,7 +188,7 @@ export class VhostAccess {
     // (`passwordAdmits`), which is slow by design.
     const passwordHash = "passwordHash" in row ? row.passwordHash : undefined;
     const open = row.public === true && (!passwordHash || passwordVerified);
-    if (!linked && !open) return null;
+    if (!linked && !open && !identityAdmitted) return null;
     const browserOrigin = `${vhostExternalProtocol(url.hostname)}://${url.host}`;
     if (
       !open &&
@@ -198,9 +203,13 @@ export class VhostAccess {
     const otherCookies = cookies.filter(
       (part) =>
         part &&
-        ![COOKIE, "yep-anywhere-session", "yep-anywhere-desktop-session"].some(
-          (name) => part.startsWith(`${name}=`),
-        ),
+        ![
+          COOKIE,
+          VHOST_OAUTH_FLOW_COOKIE,
+          VHOST_OAUTH_SESSION_COOKIE,
+          "yep-anywhere-session",
+          "yep-anywhere-desktop-session",
+        ].some((name) => part.startsWith(`${name}=`)),
     );
     if (otherCookies.length) headers.set("cookie", otherCookies.join("; "));
     else headers.delete("cookie");
@@ -215,7 +224,9 @@ export class VhostAccess {
         ...(request.body ? { duplex: "half" } : {}),
       }),
       // The cookie spares a password visitor a check on every asset.
-      ...((bearer || passwordVerified) && !(row.public && !passwordHash)
+      ...(!identityAdmitted &&
+      (bearer || passwordVerified) &&
+      !(row.public && !passwordHash)
         ? {
             cookie: `${COOKIE}=${expected}; Path=/; HttpOnly; SameSite=None; Secure`,
           }

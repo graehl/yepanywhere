@@ -34,6 +34,7 @@ export class AppWebSocketProxy {
     let upstream: Duplex | undefined;
     let pending: ReturnType<typeof request> | undefined;
     let handedOff = false;
+    let expiresAt = Number.POSITIVE_INFINITY;
     const close = () => {
       clearTimeout(timer);
       pending?.destroy();
@@ -44,7 +45,10 @@ export class AppWebSocketProxy {
     let timer = setTimeout(close, 10_000);
     const touch = () => {
       clearTimeout(timer);
-      timer = setTimeout(close, 5 * 60_000);
+      timer = setTimeout(
+        close,
+        Math.max(0, Math.min(5 * 60_000, expiresAt - Date.now())),
+      );
       timer.unref();
     };
     this.connections.set(
@@ -79,7 +83,14 @@ export class AppWebSocketProxy {
       );
       const response = await dispatch(
         raw,
-        async (authorized, port, clientAddress, brokerSocket) => {
+        async (
+          authorized,
+          port,
+          clientAddress,
+          brokerSocket,
+          authExpiresAt,
+        ) => {
+          expiresAt = authExpiresAt ?? Number.POSITIVE_INFINITY;
           if (socket.destroyed) return new Response(null, { status: 499 });
           handedOff = true;
           const url = new URL(authorized.url);

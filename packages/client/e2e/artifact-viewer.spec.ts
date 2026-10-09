@@ -61,6 +61,7 @@ test.beforeAll(async () => {
   process.env.VITE_DISABLE_CLI_UPDATE_NOTIFICATIONS = "true";
   vite = await createViteServer({
     root: clientRoot,
+    optimizeDeps: { entries: ["e2e/fixtures/artifact-viewer.html"] },
     server: { port: 0, host: "127.0.0.1" },
   });
   await vite.listen();
@@ -1124,4 +1125,93 @@ test("omits expiry controls and writes when older metadata lacks the field", asy
   expect((await write).postDataJSON()).not.toHaveProperty("expiryDays");
   await expect(page.getByRole("status")).toHaveText("Artifact settings saved");
   expect(instance.artifactServer.config.expiryDays).toBe(2);
+});
+
+test("edits OAuth email rows without losing sequential input during updates", async ({
+  page,
+}) => {
+  await instance.artifactServer.configure({
+    ...instance.artifactServer.config,
+    publicOrigin: "https://files.example.net",
+    vhostPublicRoot: "example.net",
+    vhosts: [{ name: "memo", port: 19432 }],
+    vhostSites: [],
+  });
+  await instance.artifactServer.vhostOauth.configure({
+    provider: {
+      kind: "entra",
+      tenantId: "common",
+      issuer: "",
+      clientId: "test-client",
+      callbackUrl: "https://auth.example.net/callback",
+      visitorIp: "peer",
+    },
+    secret: "test-only",
+  });
+  await instance.artifactServer.vhostOauth.setPolicy("memo", ["*@*"]);
+  await page.goto(`${base}/e2e/fixtures/artifact-viewer.html?settings`);
+  await page
+    .getByRole("button", { name: "Sign-in required", exact: true })
+    .click();
+  const email = page.getByRole("textbox", {
+    name: "Allowed email or domain 1",
+    exact: true,
+  });
+  await expect(email).toBeFocused();
+  expect(
+    await email.evaluate((input: HTMLInputElement) => [
+      input.selectionStart,
+      input.selectionEnd,
+    ]),
+  ).toEqual([0, 3]);
+  const before = await page
+    .getByTestId("background-updates")
+    .getAttribute("data-updates");
+  let expected = "";
+  for (const character of "*@rws.com") {
+    expected += character;
+    await page.keyboard.type(character);
+    await expect(email).toHaveValue(expected, { timeout: 100 });
+  }
+  await expect(page.getByTestId("background-updates")).not.toHaveAttribute(
+    "data-updates",
+    before!,
+  );
+  await email.press("Tab");
+  await expect
+    .poll(() => instance.artifactServer.vhostOauth.status().policies.memo)
+    .toEqual(["*@rws.com"]);
+  await page
+    .getByRole("button", {
+      name: "+ Allow another email or domain",
+      exact: true,
+    })
+    .click();
+  const second = page.getByRole("textbox", {
+    name: "Allowed email or domain 2",
+    exact: true,
+  });
+  await second.pressSequentially("person@rws.com");
+  await second.press("Tab");
+  await expect(page.getByText("Already allowed by *@rws.com")).toBeVisible();
+  for (const viewport of [
+    { width: 1000, height: 600 },
+    { width: 375, height: 812 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page
+      .getByText("Already allowed by *@rws.com")
+      .scrollIntoViewIfNeeded();
+    await recordUiCapture(page, `vhost-oauth-${viewport.width}`, viewport);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
+  await page
+    .getByRole("button", { name: "All access logs", exact: true })
+    .click();
+  await expect(page.getByText("No sign-in checks recorded yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
 });

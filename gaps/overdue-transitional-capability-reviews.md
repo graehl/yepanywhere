@@ -11,3 +11,7 @@ also have concurrent edits during native push work. They are outside native
 push enrollment/delivery and cannot safely be resolved as formatter cleanup.
 
 Found 2026-10-02 while validating native-push capability ownership.
+
+Confirmed 2026-10-09 while validating hosted-vhost OAuth: zero contract
+errors and the same two advisory warnings. No review dates were advanced.
+Contributing-model: 6-Astra

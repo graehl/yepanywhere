@@ -621,6 +621,86 @@ Browsers that prohibit embedded cookies may require opening the signed link
 in a new tab; broader browser verification remains tracked in the access gap.
 WebSocket upgrades use the same app gate, as described below.
 
+### Hosted vhost sign-in
+
+Hosted vhosts can opt into **Sign-in required** in Apps. This is a visitor
+principal scoped to the configured public hostname, not a YA operator account
+or a project/session grant. Localhost, session sandbox apps, project apps and
+artifact grant URLs keep their existing access rules. OAuth admission runs
+before file serving and proxying: a private bearer link, public flag or file
+password cannot bypass an enabled sign-in policy. Apps copies the public URL
+without a bearer for these hosts. Forwarding the visitor identity to served
+content is not implemented; authentication cookies and credentials are stripped
+before proxying.
+
+One confidential OpenID Connect registration serves all configured hosts.
+The separate HTTPS callback host must route to this YA server (either its main
+listener or artifact listener); a static Pages site cannot exchange codes.
+The callback uses authorization code flow, PKCE, state and nonce, verifies
+signed ID tokens, then issues a one-use, one-minute handoff bound to the
+initiating host and browser cookie. The return address is stored server-side
+and must be relative. Host-only `__Host-` cookies are Secure, HttpOnly and
+SameSite=Lax; no parent-domain cookie is used. App sessions last one hour and
+are memory-only. Restart requires sign-in again. Access changes, provider
+changes and app link revocation reject old sessions; configuration changes
+close app sockets. OAuth WebSockets require the same app Origin and close no
+later than session expiry.
+
+The initial allow-list is explicitly `*@*`: any authenticated account, not
+anonymous access. Rows contain case-insensitive email globs, with `*` as the
+only wildcard; an empty list denies everyone. The editor highlights rows
+covered by an exact duplicate or a simple full-side wildcard. Opening the
+sign-in region selects the first row for replacement. Up to 32 rows per host
+and 1024 host policies are retained separately from legacy vhost configuration,
+so old clients cannot silently remove protection.
+
+Entra defaults to the `common` authority. Work-account domain authorization
+uses Microsoft Graph's tenant-managed member `userPrincipalName`, with `oid`
+and tenant issuer validation; it requests `openid profile email` and delegated
+`https://graph.microsoft.com/User.Read`. Guests are not accepted as company
+domain members. Personal Microsoft accounts can use the unrestricted `*@*`
+policy, but their email claims do not establish work-domain membership and do
+not satisfy narrower rows. Generic OIDC requires a verified email in the
+signed ID token or subject-checked UserInfo response. Provider consent policy
+and publisher verification remain external prerequisites.
+
+Without environment configuration, the owner configures the provider and a
+write-only secret in Apps. Settings persist owner-only under
+`{dataDir}/artifacts/vhost-oauth.json`. For environment-managed deployments,
+set all three required variables:
+
+- `YEP_VHOST_OAUTH_CLIENT_ID`
+- `YEP_VHOST_OAUTH_CLIENT_SECRET` (the secret value, not its registration ID)
+- `YEP_VHOST_OAUTH_CALLBACK_URL` (the registered exact HTTPS callback URL)
+
+Optional variables are `YEP_VHOST_OAUTH_PROVIDER` (`entra` by default, or
+`oidc`), `YEP_VHOST_OAUTH_TENANT_ID` (`common`, `organizations`, or a directory
+UUID), `YEP_VHOST_OAUTH_ISSUER` (required for generic OIDC), and
+`YEP_VHOST_OAUTH_VISITOR_IP` (`peer`, `cloudflare`, or `x-real-ip`). Any OAuth
+environment variable activates this authoritative mode: incomplete/invalid
+configuration fails explicitly. Provider settings become read-only in Apps;
+the environment secret is neither returned nor copied into persisted settings.
+Host allow-lists remain editable. Provider configuration never enables a host
+implicitly. Restart after changing environment variables.
+
+Only completed browser-bound OAuth checks are logged, with UTC timestamp,
+hostname, account address when available, outcome and optional IP. Ordinary paths,
+asset requests, authorization codes and tokens are not logged. Apps provides
+per-host history icons after first access, an overall log view, manual refresh
+and a download of the latest 500 checks. The owner-only JSONL journal is
+`{dataDir}/artifacts/logs/vhost-oauth-access.jsonl`; it rotates at one MiB into
+compressed archives. The default IP source is the TCP peer, excluding loopback.
+Explicit tunnel modes accept the selected header only from a loopback peer;
+the operator must ensure the tunnel overwrites that header. Raw forwarded
+headers are not trusted by default.
+
+The optional `vhost-oauth-access` capability gates the new controls and API
+requests. The reviewed v0.9.0–v0.9.2 release corpus lacks it; older servers keep
+their existing Apps behavior without OAuth requests. Provider and log routes
+remain behind YA owner authentication. Tests exercise signed-token rejection,
+browser/host binding, expiry, revocation, credential stripping and sequential
+email entry under concurrent browser updates.
+
 ### App WebSocket access
 
 The Node main listener and separate artifact listener route app upgrades to

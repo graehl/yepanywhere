@@ -30,6 +30,10 @@ it("keeps app-link issuance and revocation behind YA authentication", async () =
     for (const [path, method] of [
       ["links", "GET"],
       ["plan/revoke", "POST"],
+      ["oauth", "GET"],
+      ["oauth", "PUT"],
+      ["oauth/log", "GET"],
+      ["plan/oauth", "PUT"],
     ]) {
       const response = await instance.app.request(
         `http://localhost/api/artifacts/vhosts/${path}`,

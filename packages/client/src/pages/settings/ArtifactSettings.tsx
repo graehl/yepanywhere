@@ -6,6 +6,7 @@ import type {
   ArtifactViewerStatus,
 } from "@yep-anywhere/shared";
 import { useEffect, useId, useRef, useState } from "react";
+import { vhostOauthPolicy } from "@yep-anywhere/shared";
 import { CommittedRangeNumberInput } from "../../components/ui/CommittedRangeNumberInput";
 import { useCurrentSourceRuntime } from "../../contexts/SourceRuntimeContext";
 import { useVersion } from "../../hooks/useVersion";
@@ -22,6 +23,12 @@ import { SettingsSortHeader, useSettingsTableSort } from "./SettingsTableSort";
 import { ResourceContextMenu } from "../../components/FileResourceActions";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { toBrowserAppHref } from "../../lib/appHref";
+import { useVhostOauth } from "../../hooks/useVhostOauth";
+import {
+  VhostOauthEmails,
+  VhostOauthLogs,
+  VhostOauthProviderSettings,
+} from "./VhostOauthSettings";
 
 /**
  * One row of the vhost table. Port and file rows are saved to separate lists,
@@ -224,6 +231,9 @@ function ArtifactSettingsForm({
   const { t } = useI18n();
   const { transport } = useCurrentSourceRuntime();
   const access = useVhostAccess(status);
+  const oauth = useVhostOauth();
+  const [logHost, setLogHost] = useState<string | null>(null);
+  const [oauthFocus, setOauthFocus] = useState(0);
   const expiryId = useId();
   const [localEnabled, setLocalEnabled] = useState(!!status.localOrigin);
   const [localOrigin, setLocalOrigin] = useState(
@@ -248,11 +258,13 @@ function ArtifactSettingsForm({
   const tableSort = useSettingsTableSort<"domain" | "serves" | "access">();
   const accessLabel = (row: VhostDraft) =>
     t(
-      row.public
-        ? row.kind === "files" && (row.passwordProtected || row.password)
-          ? "settingsCollectionPassword"
-          : "settingsCollectionPublic"
-        : "settingsCollectionPrivate",
+      vhostOauthPolicy(oauth.status?.policies, row.name) !== undefined
+        ? "vhostOauthRequired"
+        : row.public
+          ? row.kind === "files" && (row.passwordProtected || row.password)
+            ? "settingsCollectionPassword"
+            : "settingsCollectionPublic"
+          : "settingsCollectionPrivate",
     );
   const displayedVhosts = tableSort.sortedRows(vhosts, (row, column) => {
     if (column === "domain") return row.name;
@@ -269,14 +281,17 @@ function ArtifactSettingsForm({
   const rowUrl = (row: VhostDraft) =>
     !savedRow(status, row)
       ? undefined
-      : row.kind === "files"
-        ? vhostSiteUrl(row, status, access.config?.accessTokens)
-        : sessionVhostApp(
-            `http://localhost:${row.port}/`,
-            access.config,
-            window.location.href,
-            status.vhostPublicRoot ? "public" : undefined,
-          )?.url;
+      : vhostOauthPolicy(oauth.status?.policies, row.name) !== undefined &&
+          status.vhostPublicRoot
+        ? `https://${row.name}.${status.vhostPublicRoot}/`
+        : row.kind === "files"
+          ? vhostSiteUrl(row, status, access.config?.accessTokens)
+          : sessionVhostApp(
+              `http://localhost:${row.port}/`,
+              access.config,
+              window.location.href,
+              status.vhostPublicRoot ? "public" : undefined,
+            )?.url;
   /** A saved file row's viewer link, for a row serving one existing file. */
   const viewerUrl = (row: VhostDraft) =>
     row.kind === "files" &&
@@ -536,12 +551,33 @@ function ArtifactSettingsForm({
           </>
         )}
       </fieldset>
+      {oauth.supported && oauth.status && (
+        <details>
+          <summary>{t("vhostOauthProvider")}</summary>
+          <VhostOauthProviderSettings
+            status={oauth.status}
+            update={oauth.update}
+          />
+        </details>
+      )}
+      {oauth.error && <p role="alert">{oauth.error}</p>}
+      {logHost !== null && (
+        <VhostOauthLogs
+          host={logHost || undefined}
+          onClose={() => setLogHost(null)}
+        />
+      )}
       {vhostsSupported && (
         <div className={styles.fields}>
           <div className={styles.vhosts}>
             <span className={styles.vhostHeading}>
               {t("artifactVhostTableTitle")}
             </span>
+            {oauth.status && (
+              <button type="button" onClick={() => setLogHost("")}>
+                {t("vhostOauthAllLogs")}
+              </button>
+            )}
             <p>{t("artifactVhostTableHint")}</p>
             {sitesSupported && <p>{t("artifactVhostFilesHint")}</p>}
             <p>
@@ -702,12 +738,32 @@ function ArtifactSettingsForm({
                       >
                         {t("artifactVhostRemove")}
                       </button>
+                      {oauth.status && savedRow(status, row) && (
+                        <VhostOauthEmails
+                          key={row.name}
+                          name={row.name}
+                          status={oauth.status}
+                          update={oauth.update}
+                          disabled={
+                            status.locked ||
+                            !status.vhostPublicRoot ||
+                            !status.publicOrigin
+                          }
+                          focusRequest={oauthFocus}
+                        />
+                      )}
                       {access.supported && (
                         <div className={styles.access}>
                           <label className={styles.toggle}>
                             <input
                               type="checkbox"
                               checked={row.public === true}
+                              disabled={
+                                vhostOauthPolicy(
+                                  oauth.status?.policies,
+                                  row.name,
+                                ) !== undefined
+                              }
                               onChange={(event) => {
                                 const next = vhosts.map((item, i) =>
                                   i === index
@@ -894,6 +950,26 @@ function ArtifactSettingsForm({
                                 onCopied={reportCopy}
                               />
                             )}
+                            {oauth.status?.accessedHosts.includes(
+                              `${row.name}.${status.vhostPublicRoot}`,
+                            ) && (
+                              <button
+                                type="button"
+                                title={t("vhostOauthHostLogs", {
+                                  name: row.name,
+                                })}
+                                aria-label={t("vhostOauthHostLogs", {
+                                  name: row.name,
+                                })}
+                                onClick={() =>
+                                  setLogHost(
+                                    `${row.name}.${status.vhostPublicRoot}`,
+                                  )
+                                }
+                              >
+                                ◷
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td>
@@ -920,7 +996,19 @@ function ArtifactSettingsForm({
                             </small>
                           )}
                         </td>
-                        {access.supported && <td>{accessLabel(row)}</td>}
+                        {access.supported && (
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedId(row.id);
+                                setOauthFocus((value) => value + 1);
+                              }}
+                            >
+                              {accessLabel(row)}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}

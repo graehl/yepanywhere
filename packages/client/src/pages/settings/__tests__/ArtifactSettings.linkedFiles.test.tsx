@@ -15,6 +15,7 @@ const mock = vi.hoisted(() => ({
   fetch: vi.fn(),
 }));
 vi.mock("../../../hooks/useVersion", () => ({
+  useRetainedVersionInfo: () => ({ artifactViewer: mock.status }),
   useVersion: () => ({
     version: { artifactViewer: mock.status },
     refetch: async () => {},

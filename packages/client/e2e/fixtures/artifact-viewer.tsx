@@ -54,7 +54,12 @@ function Fixture() {
   );
   useEffect(() => {
     const query = new URLSearchParams(location.search);
-    if (!query.has("editor") && !query.has("file-vhost")) return;
+    if (
+      !query.has("editor") &&
+      !query.has("file-vhost") &&
+      !query.has("settings")
+    )
+      return;
     const timer = window.setInterval(
       () => setUpdates((value) => value + 1),
       25,
@@ -104,7 +109,11 @@ function Fixture() {
       onOpen={() => {}}
     />
   ) : query.has("settings") ? (
-    <div style={{ padding: 20, maxWidth: 700 }}>
+    <div
+      style={{ padding: 20, maxWidth: 1000 }}
+      data-testid="background-updates"
+      data-updates={updates}
+    >
       <ArtifactSettings />
     </div>
   ) : (

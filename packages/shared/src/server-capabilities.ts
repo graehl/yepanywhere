@@ -72,6 +72,11 @@ export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
     index: CAPABILITY_ID_ALLOCATIONS.vhostBearerAccess.id,
     introducedIn: "0.8.2",
   },
+  vhostOauthAccess: {
+    name: "vhost-oauth-access",
+    index: CAPABILITY_ID_ALLOCATIONS.vhostOauthAccess.id,
+    introducedIn: "0.9.4",
+  },
   vhostAppControl: {
     name: "vhost-app-control",
     index: CAPABILITY_ID_ALLOCATIONS.vhostAppControl.id,
@@ -1719,6 +1724,35 @@ export const SERVER_CAPABILITIES = {
     lifecycle: {
       kind: "permanent",
       reason: "Bearer enforcement and management must roll out together.",
+    },
+  },
+  vhostOauthAccess: {
+    id: CAPABILITY_ID_ALLOCATIONS.vhostOauthAccess.id,
+    name: "vhost-oauth-access",
+    kind: "permanent",
+    area: "remoteAccess",
+    introducedIn: "0.9.4",
+    advertisement: {
+      kind: "optional-bit",
+      index: CAPABILITY_ID_ALLOCATIONS.vhostOauthAccess.id,
+    },
+    description:
+      "Public vhost OAuth admission with one shared provider, email allowlists and access logs.",
+    clientFallback:
+      "Hide OAuth controls and logs; make no OAuth management requests.",
+    serverContract: {
+      routes: [
+        "GET /api/artifacts/vhosts/oauth",
+        "PUT /api/artifacts/vhosts/oauth",
+        "PUT /api/artifacts/vhosts/:name/oauth",
+        "GET /api/artifacts/vhosts/oauth/log",
+      ],
+      routeModules: ["packages/server/src/routes/vhostOauth.ts"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Sign-in enforcement and its settings must be available together.",
     },
   },
   vhostAppControl: {

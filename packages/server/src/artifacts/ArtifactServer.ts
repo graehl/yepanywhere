@@ -47,6 +47,7 @@ import {
   vhostHostnames,
 } from "./vhosts.js";
 import { VhostAccess } from "./VhostAccess.js";
+import { VhostOauth } from "./VhostOauth.js";
 import type { ProjectAppDelivery } from "./ProjectAppDelivery.js";
 import { hostnameFromHostHeader } from "./vhosts.js";
 
@@ -143,6 +144,7 @@ const MAX_SESSION_APPS = 256;
 
 export class ArtifactServer {
   readonly vhostAccess: VhostAccess;
+  readonly vhostOauth: VhostOauth;
   readonly app = new Hono();
   /** Expired grants are deleted on access and on each new grant; revoked ones at once. */
   private readonly grants = new Map<string, Grant>();
@@ -184,9 +186,17 @@ export class ArtifactServer {
     this.vhostAccess = new VhostAccess(options.stateDir, (row) =>
       this.appSockets.revokeApp(row.name),
     );
-    this.ready = Promise.all([this.restore(), this.vhostAccess.ready]).then(
-      () => {},
+    this.vhostOauth = new VhostOauth(
+      options.stateDir,
+      () => this.config,
+      (row) => this.vhostAccess.token(row),
+      () => this.appSockets.close(),
     );
+    this.ready = Promise.all([
+      this.restore(),
+      this.vhostAccess.ready,
+      this.vhostOauth.ready,
+    ]).then(() => {});
     // Startup restores and saves before any caller awaits readiness, so a
     // failed state write would otherwise reject with no handler attached and
     // take down the process. Report it here; `ready` still rejects for the
@@ -511,6 +521,8 @@ export class ArtifactServer {
     proxy = proxyLoopbackVhost,
   ): Promise<Response | null> {
     const host = request.headers.get("host") ?? new URL(request.url).host;
+    const callback = await this.vhostOauth.callback(request);
+    if (callback) return callback;
     if (this.projectAppDelivery) {
       await this.projectAppDelivery.ready;
       if (this.projectHosts.has(hostnameFromHostHeader(host) ?? ""))
@@ -529,10 +541,19 @@ export class ArtifactServer {
       await this.ready;
       if (!this.fileSiteAdmitted(site))
         return new Response("File address is not allowed", { status: 403 });
+      const admission = await this.vhostOauth.admit(
+        request,
+        site,
+        clientAddress,
+      );
+      if (admission instanceof Response) return admission;
       const authorized = this.vhostAccess.authorize(
         request,
         site,
-        await this.vhostAccess.passwordAdmits(request, site),
+        admission
+          ? false
+          : await this.vhostAccess.passwordAdmits(request, site),
+        !!admission,
       );
       const response = authorized
         ? await serveVhostSite(authorized.request, site, this.policy)
@@ -558,7 +579,18 @@ export class ArtifactServer {
       (sessionApp && { name: sessionApp.name, port: sessionApp.port });
     if (vhost) {
       await this.ready;
-      const authorized = this.vhostAccess.authorize(request, vhost);
+      const admission = await this.vhostOauth.admit(
+        request,
+        vhost,
+        clientAddress,
+      );
+      if (admission instanceof Response) return admission;
+      const authorized = this.vhostAccess.authorize(
+        request,
+        vhost,
+        false,
+        !!admission,
+      );
       if (!authorized)
         return new Response("App link required", {
           status: 401,
@@ -588,6 +620,7 @@ export class ArtifactServer {
         vhost.port,
         clientAddress,
         brokerSocket,
+        admission?.expiresAt,
       );
       response.headers.set("Cache-Control", "no-store");
       response.headers.set("Referrer-Policy", "no-referrer");
@@ -623,6 +656,8 @@ export class ArtifactServer {
     });
     const previous = this.config;
     await this.projectAppDelivery?.validateConfig(config);
+    this.vhostOauth.validateConfig(config);
+    this.vhostOauth.invalidate();
     this.appSockets.close();
     const deliveryChanged =
       config.port !== previous.port ||
@@ -688,6 +723,8 @@ export class ArtifactServer {
     // settles lets a caller remove the directory mid-write. Its failure is
     // already reported by the constructor.
     await this.ready.catch(() => {});
+    this.vhostOauth.invalidate();
+    await this.vhostOauth.settled();
     this.listening = false;
     // Persisted grants outlive the process; only this listener stops here.
     clearInterval(this.sweepTimer);

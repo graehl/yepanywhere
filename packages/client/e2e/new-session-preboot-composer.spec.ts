@@ -90,7 +90,7 @@ test("keys typed before the app loads reach the new-session composer", async ({
     "Claude",
   );
   await expect(
-    page.getByRole("link", { name: "Show project app while composing" }),
+    page.locator('a[title="Show project app while composing"]'),
   ).toHaveCount(0);
   await recordUiCapture(page, "new-session-expanded-1400");
   for (const viewport of [

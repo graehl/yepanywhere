@@ -48,6 +48,17 @@ const { projectFetch, projectsState, recentSessionsState, versionState } =
     },
   }));
 
+const { projectAppInfo } = vi.hoisted(() => ({
+  projectAppInfo: vi.fn(async (_projectId: string) => ({
+    declaration: { name: "app" },
+    state: "running",
+  })),
+}));
+
+vi.mock("../../api/projectApp", () => ({
+  projectAppApi: { info: projectAppInfo },
+}));
+
 vi.mock("../../components/NewSessionForm", () => ({
   NewSessionForm: ({
     incomingShareFiles,
@@ -79,7 +90,12 @@ vi.mock("../../components/NewSessionForm", () => ({
 }));
 
 vi.mock("../../components/PageHeader", () => ({
-  PageHeader: ({ title }: { title: string }) => <div>{title}</div>,
+  PageHeader: ({ title, actions }: { title: string; actions?: ReactNode }) => (
+    <div>
+      {title}
+      {actions}
+    </div>
+  ),
 }));
 
 vi.mock("../../contexts/ToastContext", () => ({
@@ -205,28 +221,38 @@ describe("NewSessionPage", () => {
     versionState.capabilities = ["project-service"];
     localStorage.setItem(UI_KEYS.sessionRightPane, "true");
     renderPage("/new-session?projectId=project-1");
-    expect(
-      screen.queryByRole("link", { name: "projectAppWhileComposing" }),
-    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "projectAppLabel" })).toBeNull();
   });
 
-  it("shows app composing only after opting into app composing", () => {
+  it("offers the App button only after opting into app composing", async () => {
     versionState.capabilities = ["project-service"];
     localStorage.setItem(UI_KEYS.projectAppComposing, "true");
     renderPage("/new-session?projectId=project-1");
     expect(
-      screen
-        .getByRole("link", { name: "projectAppWhileComposing" })
-        .getAttribute("href"),
+      (
+        await screen.findByRole("link", { name: "projectAppLabel" })
+      ).getAttribute("href"),
     ).toBe("/projects/project-1/app?compose=1");
+    expect(projectAppInfo).toHaveBeenCalledWith("project-1");
+  });
+
+  it("hides the App button for a project without an app", async () => {
+    versionState.capabilities = ["project-service"];
+    localStorage.setItem(UI_KEYS.projectAppComposing, "true");
+    projectAppInfo.mockResolvedValueOnce({
+      declaration: undefined,
+      state: "missing",
+    } as never);
+    renderPage("/new-session?projectId=project-1");
+    await waitFor(() => expect(projectAppInfo).toHaveBeenCalled());
+    expect(screen.queryByRole("link", { name: "projectAppLabel" })).toBeNull();
   });
 
   it("keeps app composing hidden when the server lacks support", () => {
     localStorage.setItem(UI_KEYS.projectAppComposing, "true");
     renderPage("/new-session?projectId=project-1");
-    expect(
-      screen.queryByRole("link", { name: "projectAppWhileComposing" }),
-    ).toBeNull();
+    expect(screen.queryByRole("link", { name: "projectAppLabel" })).toBeNull();
+    expect(projectAppInfo).not.toHaveBeenCalled();
   });
 
   it("uses the stored recent project when opened without a project", async () => {

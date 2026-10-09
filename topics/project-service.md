@@ -22,12 +22,14 @@ direction; the interactive fixture is `packages/client/mockups/project-service/`
 
 ## Project App and Settings
 
-The ordinary New Session page shows **Show project app while composing** only
-when the browser-local **Appearance → Show project app while composing** setting
-is enabled and the server advertises `project-service`. The setting defaults
+The ordinary New Session page shows an **App** button in its header, opening
+the selected project's app beside the composer, only when the browser-local
+**Appearance → Show project app while composing** setting is enabled, the
+server advertises `project-service`, and the selected project declares a
+usable app (the same check as the session's App button). The setting defaults
 off for all principals, independently of the Session right pane setting.
 Project App navigation remains available independently through an explicit App
-entry; server capability alone does not reveal the composing link.
+entry; server capability alone does not reveal the composing button.
 
 Projects offers **Open app**, opening the main content pane with the same
 isolated rendering and viewer controls as the session's right App pane. It

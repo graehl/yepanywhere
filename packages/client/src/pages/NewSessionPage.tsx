@@ -28,6 +28,10 @@ import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { useToastContext } from "../contexts/ToastContext";
 import { useProjectAppComposing } from "../hooks/useProjectAppComposing";
+import { useProjectAppUpdates } from "../hooks/useProjectAppUpdates";
+import styles from "./NewSessionPage.module.css";
+
+const ignoreProjectAppUpdate = () => {};
 
 const RECENT_PROJECT_SESSION_LIMIT = 30;
 const DETACHED_PROJECT_PARAM = "detached";
@@ -84,6 +88,24 @@ export function NewSessionPage() {
     version,
     PROJECT_CODE_NAMES_CAPABILITY,
   );
+  // Offered only for a project that declares a usable app; there is no turn
+  // here to open it after, so updates need no action.
+  const projectHasApp = useProjectAppUpdates(
+    projectId,
+    projectAppComposingEnabled &&
+      serverHasCapability(version, SERVER_CAPABILITIES.projectService.name),
+    false,
+    ignoreProjectAppUpdate,
+  );
+  const projectAppButton = projectHasApp ? (
+    <Link
+      className={`btn-secondary ${styles.appButton}`}
+      to={`${basePath}/projects/${projectId}/app?compose=1`}
+      title={t("projectAppWhileComposing")}
+    >
+      {t("projectAppLabel")}
+    </Link>
+  ) : undefined;
   const { recentSessions, isLoading: recentSessionsLoading } =
     useRecentSessions({
       limit: RECENT_PROJECT_SESSION_LIMIT,
@@ -196,20 +218,11 @@ export function NewSessionPage() {
         title={t("newSessionTitle")}
         onOpenSidebar={openSidebar}
         isWideScreen={isWideScreen}
+        actions={projectAppButton}
       />
 
       <main className="page-scroll-container">
         <div className="page-content-inner new-session-page-shell">
-          {projectAppComposingEnabled &&
-            projectId &&
-            serverHasCapability(
-              version,
-              SERVER_CAPABILITIES.projectService.name,
-            ) && (
-              <Link to={`${basePath}/projects/${projectId}/app?compose=1`}>
-                {t("projectAppWhileComposing")}
-              </Link>
-            )}
           <NewSessionForm
             incomingShareFiles={incomingShareFiles}
             projectId={projectId}

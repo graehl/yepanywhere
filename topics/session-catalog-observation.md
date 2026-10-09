@@ -181,10 +181,22 @@ requested project, the existing detail route validates directories without
 sessions; a collection request failure also permits that independent lookup.
 Browser display snapshots remain non-authoritative and cannot enable launch.
 
+Claude discovery retains the unmerged result for each native project directory.
+File events reconcile only their owning directory, including nested agent files,
+then rerun the existing in-memory identity/workstream merge. Creating or removing
+the last session can add or remove a directory contribution; changing its native
+cwd can merge it into another project. Unaffected contributions remain intact.
+Events arriving during acquisition stay pending for the trailing refresh.
+Explicit invalidation and a complete read's age-driven reconciliation rebuild
+the directory inventory; source input retention does not certify a stale full
+project snapshot as fresh. Failed directory reads preserve accepted inputs and
+retain the affected directories for retry. Shutdown drains acquisition.
+
 **Remaining:** captions and code names still use their existing request-time
 enrichment, selected-project detail for an unknown directory still uses complete
-discovery, and refresh still enumerates the provider stores rather than applying
-targeted updates.
+discovery, and Codex/Gemini refresh still enumerates their stores rather than
+applying targeted updates. A Claude change can still trigger that unrelated
+provider work through the existing merged refresh.
 The full New Session latency target remains open; the display-only browser
 snapshot below removes collection acquisition from returning-tab display.
 

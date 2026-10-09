@@ -126,13 +126,22 @@ universal latency guarantee. No project discovery warm-up preceded navigation.
 The provider host and local SQLite checks passed and all spawned processes
 were removed. Contributing-model: 6-astra.
 
-The scanner audit distinguishes tab reads from file events:
+The initial scanner audit distinguished tab reads from file events:
 `readRetainedProjects` reuses a clean accepted snapshot without an age-driven
 refresh, but `handleFileChange` invalidates the entire project snapshot for
 every session or agent-session file change. The retained owner can then
-schedule a complete refresh after 300 ms. Targeted file-event updates remain
-unimplemented; ignoring these events is not an acceptable fix because they
-can change project membership, counts and activity.
+schedule a complete refresh after 300 ms.
+
+Claude directory discovery now reconciles the affected native directory and
+retains the other unmerged directory contributions. Existing identity and
+workstream merge rules still own the final project rows. A real-file/EventBus
+regression read both directories before the change and only the changed one
+afterward; creation, deletion, changed cwd, new directories and failure retry
+preserve counts and membership in both supported directory layouts. Existing
+retained-refresh and shutdown cases also pass. Codex/Gemini acquisition and
+cross-provider refresh work remain open. Ignoring file events is not an
+acceptable fix because they can change project membership, counts and activity.
+Contributing-model: 6-astra.
 
 New Session now reuses a current project collection row rather than requesting
 the same selected-project detail. It waits for collection completion before

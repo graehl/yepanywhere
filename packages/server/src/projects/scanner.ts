@@ -1,5 +1,5 @@
+import type { Dirent } from "node:fs";
 import {
-  access,
   mkdir,
   readFile,
   readdir,
@@ -9,7 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import {
   DEFAULT_PROVIDER,
   isClaudeProviderName,
@@ -105,6 +105,12 @@ interface ProjectSnapshot {
   timestamp: number;
 }
 
+interface ClaudeProjectDirectory {
+  projectPath: string;
+  sessionCount: number;
+  lastActivity: string | null;
+}
+
 function cloneSessionCountsByProvider(
   counts: Project["sessionCountsByProvider"],
 ): Project["sessionCountsByProvider"] {
@@ -164,6 +170,11 @@ export class ProjectScanner {
   private cacheRevision = 0;
   private cleanRevision = 0;
   private snapshot: ProjectSnapshot | null = null;
+  private claudeDirectories: Map<string, ClaudeProjectDirectory> | null = null;
+  private changedClaudeDirectories = new Set<string>();
+  private claudeDiscoveryEpoch = 0;
+  private claudeDiscovery: Promise<Map<string, ClaudeProjectDirectory>> | null =
+    null;
   private inFlightScan: {
     promise: Promise<ProjectSnapshot>;
     revision: number;
@@ -395,6 +406,17 @@ export class ProjectScanner {
    * Mark the project snapshot stale so next read triggers a rescan.
    */
   invalidateCache(): void {
+    this.resetClaudeDiscovery();
+    this.invalidateProjectSnapshot();
+  }
+
+  private resetClaudeDiscovery(): void {
+    this.claudeDiscoveryEpoch += 1;
+    this.claudeDirectories = null;
+    this.changedClaudeDirectories.clear();
+  }
+
+  private invalidateProjectSnapshot(): void {
     this.cacheRevision += 1;
     this.scheduleRetainedRefresh();
   }
@@ -453,6 +475,7 @@ export class ProjectScanner {
       }
     }
 
+    if (this.cleanRevision === scanRevision) this.resetClaudeDiscovery();
     const projects = await this.scanProjects();
     const snapshot = this.buildSnapshot(projects);
     return { snapshot, shouldPersist: true };
@@ -931,8 +954,19 @@ export class ProjectScanner {
       return;
     }
 
-    // Any session file delta can affect project existence/count/lastActivity.
-    this.invalidateCache();
+    if (event.provider === "claude") {
+      const parts = relative(this.projectsDir, event.path).split(sep);
+      const first = parts[0] ?? "";
+      const depth = first.startsWith("-") || /^[a-zA-Z]--/.test(first) ? 1 : 2;
+      if (first === ".." || parts.length <= depth) {
+        this.resetClaudeDiscovery();
+      } else {
+        this.changedClaudeDirectories.add(
+          join(this.projectsDir, ...parts.slice(0, depth)),
+        );
+      }
+    }
+    this.invalidateProjectSnapshot();
     if (event.provider === "codex") {
       this.codexScanner?.invalidateCache();
     } else if (event.provider === "gemini") {
@@ -963,19 +997,6 @@ export class ProjectScanner {
           getProjectIdentityKey(project.path) ===
           getProjectIdentityKey(projectPath),
       );
-
-    // ~/.claude/projects/ can have two structures:
-    // 1. Projects directly as -home-user-project/
-    // 2. Projects under hostname/ as hostname/-home-user-project/
-    let dirs: string[] = [];
-    try {
-      await access(this.projectsDir);
-      const entries = await readdir(this.projectsDir, { withFileTypes: true });
-      dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
-    } catch {
-      // Directory doesn't exist or unreadable — skip Claude project scanning
-      // but continue to Codex/Gemini/metadata merge below
-    }
 
     // Helper to add a Claude project, merging cross-machine duplicates
     const addOrMerge = (
@@ -1062,65 +1083,8 @@ export class ProjectScanner {
       }
     };
 
-    for (const dir of dirs) {
-      const dirPath = join(this.projectsDir, dir);
-
-      // Check if this is a project directory
-      // On Unix/macOS: /home/user/project → -home-user-project (starts with -)
-      // On Windows: C:\Users\kaa\project → c--Users-kaa-project (drive letter + --)
-      if (dir.startsWith("-") || /^[a-zA-Z]--/.test(dir)) {
-        const info = await this.getProjectDirInfo(dirPath);
-        if (info) {
-          addOrMerge(
-            info.projectPath,
-            dirPath,
-            info.sessionCount,
-            info.lastActivity,
-          );
-        }
-        continue;
-      }
-
-      // Otherwise, treat as hostname directory
-      // Format: ~/.claude/projects/hostname/-project-path/
-      let projectDirNames: string[];
-      try {
-        const subEntries = await readdir(dirPath, { withFileTypes: true });
-        projectDirNames = subEntries
-          .filter((e) => e.isDirectory())
-          .map((e) => e.name);
-      } catch {
-        continue;
-      }
-
-      const projectDirPaths = projectDirNames.map((projectDir) =>
-        join(dirPath, projectDir),
-      );
-      for (
-        let i = 0;
-        i < projectDirPaths.length;
-        i += CLAUDE_PROJECT_SCAN_BATCH_SIZE
-      ) {
-        const batch = projectDirPaths.slice(
-          i,
-          i + CLAUDE_PROJECT_SCAN_BATCH_SIZE,
-        );
-        const batchInfos = await Promise.all(
-          batch.map((projectDirPath) => this.getProjectDirInfo(projectDirPath)),
-        );
-
-        for (let j = 0; j < batchInfos.length; j++) {
-          const info = batchInfos[j];
-          if (!info) continue;
-
-          addOrMerge(
-            info.projectPath,
-            batch[j] ?? "",
-            info.sessionCount,
-            info.lastActivity,
-          );
-        }
-      }
+    for (const [dir, info] of await this.readClaudeDirectories()) {
+      addOrMerge(info.projectPath, dir, info.sessionCount, info.lastActivity);
     }
 
     // Merge Codex projects if enabled
@@ -1425,20 +1389,103 @@ export class ProjectScanner {
     this.unsubscribeEventBus?.();
     this.unsubscribeEventBus = null;
     await this.retainedRefresh;
+    await Promise.allSettled([
+      this.inFlightScan?.promise,
+      this.claudeDiscovery,
+    ]);
+    this.claudeDirectories = null;
+    this.changedClaudeDirectories.clear();
     this.pendingSnapshotSave = null;
     await this.snapshotSavePromise;
   }
 
-  /**
-   * Get project info from a session directory in a single readdir pass.
-   * Uses directory mtime as a cheap proxy for lastActivity (one stat
-   * on the dir itself instead of stat-ing every session file).
-   */
-  private async getProjectDirInfo(projectDirPath: string): Promise<{
-    projectPath: string;
-    sessionCount: number;
-    lastActivity: string | null;
-  } | null> {
+  /** Reconcile changed Claude directories without rereading unrelated projects. */
+  private async readClaudeDirectories(): Promise<
+    Map<string, ClaudeProjectDirectory>
+  > {
+    if (this.disposed) throw new Error("Project scanner is disposed");
+    if (this.claudeDiscovery) {
+      await this.claudeDiscovery;
+      return this.readClaudeDirectories();
+    }
+    if (this.claudeDirectories && this.changedClaudeDirectories.size === 0) {
+      return this.claudeDirectories;
+    }
+    const epoch = this.claudeDiscoveryEpoch;
+    const accepted = this.claudeDirectories;
+    const changed = [...this.changedClaudeDirectories];
+    this.changedClaudeDirectories.clear();
+    const work = (async () => {
+      const next = new Map(accepted);
+      const directories = accepted
+        ? changed
+        : await this.listClaudeDirectories();
+      for (
+        let i = 0;
+        i < directories.length;
+        i += CLAUDE_PROJECT_SCAN_BATCH_SIZE
+      ) {
+        const batch = directories.slice(i, i + CLAUDE_PROJECT_SCAN_BATCH_SIZE);
+        const rows = await Promise.all(
+          batch.map(async (dir) => ({
+            dir,
+            info: await this.getProjectDirInfo(dir),
+          })),
+        );
+        for (const { dir, info } of rows) {
+          if (info) next.set(dir, info);
+          else next.delete(dir);
+        }
+      }
+      if (!this.disposed && this.claudeDiscoveryEpoch === epoch) {
+        this.claudeDirectories = next;
+      }
+      return next;
+    })();
+    this.claudeDiscovery = work;
+    try {
+      return await work;
+    } catch (error) {
+      if (this.claudeDiscoveryEpoch === epoch) {
+        for (const dir of changed) this.changedClaudeDirectories.add(dir);
+      }
+      throw error;
+    } finally {
+      if (this.claudeDiscovery === work) this.claudeDiscovery = null;
+    }
+  }
+
+  private async listClaudeDirectories(): Promise<string[]> {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(this.projectsDir, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const directories: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = join(this.projectsDir, entry.name);
+      if (entry.name.startsWith("-") || /^[a-zA-Z]--/.test(entry.name)) {
+        directories.push(dir);
+      } else {
+        try {
+          const children = await readdir(dir, { withFileTypes: true });
+          for (const child of children) {
+            if (child.isDirectory()) directories.push(join(dir, child.name));
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
+    }
+    return directories;
+  }
+
+  private async getProjectDirInfo(
+    projectDirPath: string,
+  ): Promise<ClaudeProjectDirectory | null> {
     try {
       const entries = await readdir(projectDirPath, { withFileTypes: true });
       const jsonlFiles = entries
@@ -1485,8 +1532,10 @@ export class ProjectScanner {
       }
 
       return null;
-    } catch {
-      return null;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return null;
+      throw error;
     }
   }
 }

@@ -187,6 +187,154 @@ describe("ProjectScanner cache", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["localhost", ""])(
+    "refreshes only the changed Claude directory under %s",
+    async (host) => {
+      const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+      tempDirs.push(projectsDir);
+      const eventBus = new EventBus();
+      const first = await createClaudeProject(
+        projectsDir,
+        host,
+        "/home/user/one",
+        "one",
+      );
+      await createClaudeProject(projectsDir, host, "/home/user/two", "two");
+      const scanner = new ProjectScanner({
+        projectsDir,
+        enableCodex: false,
+        enableGemini: false,
+        eventBus,
+      });
+      try {
+        await scanner.listProjects();
+        const read = vi.spyOn(
+          scanner as unknown as {
+            getProjectDirInfo: (path: string) => Promise<unknown>;
+          },
+          "getProjectDirInfo",
+        );
+        await createClaudeProject(projectsDir, host, "/home/user/one", "added");
+        eventBus.emit({
+          type: "file-change",
+          provider: "claude",
+          fileType: "session",
+          path: join(projectsDir, first, "added.jsonl"),
+          relativePath: join(first, "added.jsonl"),
+          changeType: "create",
+          timestamp: new Date().toISOString(),
+        });
+        const projects = await scanner.listProjects();
+        expect(
+          projects.find((p) => p.path === "/home/user/one")?.sessionCount,
+        ).toBe(2);
+        expect(
+          projects.find((p) => p.path === "/home/user/two")?.sessionCount,
+        ).toBe(1);
+        expect(read.mock.calls).toEqual([[join(projectsDir, first)]]);
+
+        read.mockClear();
+        await rm(join(projectsDir, first, "added.jsonl"));
+        eventBus.emit({
+          type: "file-change",
+          provider: "claude",
+          fileType: "session",
+          path: join(projectsDir, first, "added.jsonl"),
+          relativePath: join(first, "added.jsonl"),
+          changeType: "delete",
+          timestamp: new Date().toISOString(),
+        });
+        expect(
+          (await scanner.listProjects()).map((p) => p.sessionCount),
+        ).toEqual([1, 1]);
+        expect(read.mock.calls).toEqual([[join(projectsDir, first)]]);
+
+        read.mockClear();
+        await writeFile(
+          join(projectsDir, first, "one.jsonl"),
+          `${JSON.stringify({ type: "user", cwd: "/home/user/two" })}\n`,
+        );
+        eventBus.emit({
+          type: "file-change",
+          provider: "claude",
+          fileType: "session",
+          path: join(projectsDir, first, "one.jsonl"),
+          relativePath: join(first, "one.jsonl"),
+          changeType: "modify",
+          timestamp: new Date().toISOString(),
+        });
+        expect(await scanner.listProjects()).toEqual([
+          expect.objectContaining({ path: "/home/user/two", sessionCount: 2 }),
+        ]);
+        expect(read.mock.calls).toEqual([[join(projectsDir, first)]]);
+
+        read.mockClear();
+        const third = await createClaudeProject(
+          projectsDir,
+          host,
+          "/home/user/three",
+          "three",
+        );
+        eventBus.emit({
+          type: "file-change",
+          provider: "claude",
+          fileType: "session",
+          path: join(projectsDir, third, "three.jsonl"),
+          relativePath: join(third, "three.jsonl"),
+          changeType: "create",
+          timestamp: new Date().toISOString(),
+        });
+        expect(await scanner.listProjects()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: "/home/user/two",
+              sessionCount: 2,
+            }),
+            expect.objectContaining({
+              path: "/home/user/three",
+              sessionCount: 1,
+            }),
+          ]),
+        );
+        expect(read.mock.calls).toEqual([[join(projectsDir, third)]]);
+
+        read.mockClear();
+        await createClaudeProject(
+          projectsDir,
+          host,
+          "/home/user/three",
+          "four",
+        );
+        eventBus.emit({
+          type: "file-change",
+          provider: "claude",
+          fileType: "session",
+          path: join(projectsDir, third, "four.jsonl"),
+          relativePath: join(third, "four.jsonl"),
+          changeType: "create",
+          timestamp: new Date().toISOString(),
+        });
+        read.mockRejectedValueOnce(
+          new Error("injected directory read failure"),
+        );
+        await expect(scanner.listProjects()).rejects.toThrow(
+          "injected directory read failure",
+        );
+        expect(
+          (await scanner.listProjects()).find(
+            (p) => p.path === "/home/user/three",
+          )?.sessionCount,
+        ).toBe(2);
+        expect(read.mock.calls).toEqual([
+          [join(projectsDir, third)],
+          [join(projectsDir, third)],
+        ]);
+      } finally {
+        await scanner.dispose();
+      }
+    },
+  );
+
   it("serves retained projects while discovery is blocked", async () => {
     const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
     tempDirs.push(projectsDir);

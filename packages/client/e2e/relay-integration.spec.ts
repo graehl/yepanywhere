@@ -306,6 +306,104 @@ test.describe("Full Relay Integration", () => {
     }
   });
 
+  test("new-session tabs mount ready route modules without loading fallbacks", async ({
+    page,
+    context,
+    remotePreviewURL,
+    relayWsURL,
+  }) => {
+    await loginViaRelay(page, remotePreviewURL, relayWsURL);
+    const tab = await context.newPage();
+    await tab.addInitScript(() => {
+      const typingSamples: Array<{ ms: number; retained: boolean }> = [];
+      Object.assign(window, { sawModuleFallback: false, typingSamples });
+      let keyStarted = 0;
+      document.addEventListener("keydown", (event) => {
+        if (event.target instanceof HTMLTextAreaElement)
+          keyStarted = performance.now();
+      });
+      document.addEventListener("input", (event) => {
+        if (!(event.target instanceof HTMLTextAreaElement)) return;
+        const target = event.target;
+        const expected = target.value;
+        const started = keyStarted;
+        requestAnimationFrame(() => {
+          const field =
+            document.querySelector<HTMLTextAreaElement>(
+              ".new-session-form textarea",
+            ) ?? target;
+          typingSamples.push({
+            ms: performance.now() - started,
+            retained: field.value.startsWith(expected),
+          });
+        });
+      });
+      new MutationObserver(() => {
+        if (document.querySelector('[data-startup-phase="module"]')) {
+          Object.assign(window, { sawModuleFallback: true });
+        }
+      }).observe(document, { childList: true, subtree: true });
+    });
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let held = false;
+    await tab.route("**/assets/NewSessionPage-*.js", async (route) => {
+      held = true;
+      await ready;
+      await route.continue();
+    });
+    try {
+      await tab.goto(remoteRelayUrl(remotePreviewURL, "new-session"), {
+        waitUntil: "commit",
+      });
+      await expect.poll(() => held).toBe(true);
+      await expect(tab.locator("#yep-preboot-composer textarea")).toBeVisible();
+      const initialText = await tab
+        .locator("#yep-preboot-composer textarea")
+        .inputValue();
+      const text = " across startup";
+      const typing = tab.keyboard.type(text, { delay: 25 });
+      release();
+      await typing;
+      await expect(tab.locator(".new-session-form textarea")).toBeVisible();
+      await expect(tab.locator(".new-session-form textarea")).toHaveValue(
+        initialText + text,
+      );
+      await expect
+        .poll(() =>
+          tab.evaluate(
+            () =>
+              (window as unknown as { typingSamples: unknown[] }).typingSamples
+                .length,
+          ),
+        )
+        .toBe(text.length);
+      const samples = await tab.evaluate(
+        () =>
+          (
+            window as unknown as {
+              typingSamples: Array<{ ms: number; retained: boolean }>;
+            }
+          ).typingSamples,
+      );
+      expect(
+        samples.every((sample) => sample.retained && sample.ms <= 100),
+      ).toBe(true);
+      expect(
+        await tab.evaluate(
+          () =>
+            (window as unknown as { sawModuleFallback: boolean })
+              .sawModuleFallback,
+        ),
+      ).toBe(false);
+    } finally {
+      release();
+      await tab.close();
+    }
+  });
+
   test("development settings links to the configured relay monitor", async ({
     page,
     remotePreviewURL,

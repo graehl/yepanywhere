@@ -39,6 +39,28 @@ describe("initial remote route preloading", () => {
     ]);
   });
 
+  it.each(["/", "/remote/"])(
+    "selects New Session's complete startup path under base %s",
+    (base) => {
+      for (const suffix of ["new-session", "new-session/"]) {
+        expect(
+          getInitialRemoteRouteModuleKeys(`${base}${suffix}`, base),
+        ).toEqual(["remoteApp", "layouts", "newSessionPage"]);
+        expect(
+          getInitialRemoteRouteModuleKeys(
+            `${base}-/relay/host/${suffix}`,
+            base,
+          ),
+        ).toEqual([
+          "remoteApp",
+          "relayConnectionGate",
+          "layouts",
+          "newSessionPage",
+        ]);
+      }
+    },
+  );
+
   it("selects ordinary authenticated leaf pages with the shared layout", () => {
     expect(
       getInitialRemoteRouteModuleKeys("/settings/appearance", "/"),

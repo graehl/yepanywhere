@@ -44,6 +44,7 @@ import {
 } from "./lib/remoteRoutePreload";
 import { installModifierChordTracking } from "./lib/modifierChords";
 import { loadSessionCoreModules } from "./lib/sessionRouteModules";
+import { preloadableComponent } from "./lib/preloadableComponent";
 import "./styles/index.css";
 
 function cachedModule<T>(load: () => Promise<T>): () => Promise<T> {
@@ -126,24 +127,20 @@ const loadWorkstreamsPageModule = cachedModule(
   () => import("./pages/WorkstreamsPage"),
 );
 
-const ConnectionGate = lazy(() =>
-  loadRemoteAppModule().then(({ ConnectionGate }) => ({
-    default: ConnectionGate,
-  })),
-);
-const RemoteApp = lazy(() =>
-  loadRemoteAppModule().then(({ RemoteApp }) => ({ default: RemoteApp })),
-);
+const ConnectionGate = preloadableComponent(async () => ({
+  default: (await loadRemoteAppModule()).ConnectionGate,
+}));
+const RemoteApp = preloadableComponent(async () => ({
+  default: (await loadRemoteAppModule()).RemoteApp,
+}));
 const UnauthenticatedGate = lazy(() =>
   loadRemoteAppModule().then(({ UnauthenticatedGate }) => ({
     default: UnauthenticatedGate,
   })),
 );
-const NavigationLayout = lazy(() =>
-  loadLayoutsModule().then(({ NavigationLayout }) => ({
-    default: NavigationLayout,
-  })),
-);
+const NavigationLayout = preloadableComponent(async () => ({
+  default: (await loadLayoutsModule()).NavigationLayout,
+}));
 const SessionDomLingerRouteMarker = lazy(() =>
   loadLayoutsModule().then(({ SessionDomLingerRouteMarker }) => ({
     default: SessionDomLingerRouteMarker,
@@ -231,11 +228,9 @@ const ProjectSessionsRedirect = lazy(() =>
     default: ProjectSessionsRedirect,
   })),
 );
-const NewSessionPage = lazy(() =>
-  loadNewSessionPageModule().then(({ NewSessionPage }) => ({
-    default: NewSessionPage,
-  })),
-);
+const NewSessionPage = preloadableComponent(async () => ({
+  default: (await loadNewSessionPageModule()).NewSessionPage,
+}));
 const ProjectAppPage = lazy(() =>
   import("./pages/ProjectAppPage").then(({ ProjectAppPage }) => ({
     default: ProjectAppPage,
@@ -256,11 +251,9 @@ const PublicSharePage = lazy(() =>
     default: PublicSharePage,
   })),
 );
-const RelayConnectionGate = lazy(() =>
-  loadRelayConnectionGateModule().then(({ RelayConnectionGate }) => ({
-    default: RelayConnectionGate,
-  })),
-);
+const RelayConnectionGate = preloadableComponent(async () => ({
+  default: (await loadRelayConnectionGateModule()).RelayConnectionGate,
+}));
 const RelayLoginPage = lazy(() =>
   loadRelayLoginPageModule().then(({ RelayLoginPage }) => ({
     default: RelayLoginPage,
@@ -328,6 +321,19 @@ const initialRouteModuleKeys = getInitialRemoteRouteModuleKeys(
 void Promise.allSettled(
   initialRouteModuleKeys.map((key) => initialRemoteModuleLoaders[key]()),
 );
+// Downloading a module does not resolve React.lazy's component wrapper.
+// The inline composer holds typing until the entire initial New Session path
+// can mount without committing module fallbacks and their minimum duration.
+const initialModules = initialRouteModuleKeys.includes("newSessionPage")
+  ? Promise.all([
+      RemoteApp.preload(),
+      NavigationLayout.preload(),
+      NewSessionPage.preload(),
+      initialRouteModuleKeys.includes("relayConnectionGate")
+        ? RelayConnectionGate.preload()
+        : ConnectionGate.preload(),
+    ])
+  : undefined;
 
 installModifierChordTracking();
 // Apply saved preferences before React renders to avoid flash
@@ -441,7 +447,7 @@ if (!rootElement) {
   throw new Error("Root element not found");
 }
 
-createRoot(rootElement).render(
+const app = (
   <Wrapper>
     <TooltipLayer />
     <BrowserRouter basename={basename}>
@@ -520,5 +526,8 @@ createRoot(rootElement).render(
         </Routes>
       </I18nProvider>
     </BrowserRouter>
-  </Wrapper>,
+  </Wrapper>
 );
+const renderApp = () => createRoot(rootElement).render(app);
+if (initialModules) void initialModules.then(renderApp, renderApp);
+else renderApp();

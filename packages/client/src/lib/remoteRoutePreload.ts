@@ -76,7 +76,8 @@ function selectedAppPageModules(pathname: string): RemoteRouteModuleKey[] {
   if (pathname === "/settings" || pathname.startsWith("/settings/")) {
     return [...modules, "settings"];
   }
-  if (pathname === "/new-session") return [...modules, "newSessionPage"];
+  if (/^\/new-session\/?$/.test(pathname))
+    return [...modules, "newSessionPage"];
   return [...modules, "projectsPage"];
 }
 

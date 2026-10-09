@@ -100,6 +100,26 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Readiness measurement correction (2026-10-09): the earlier diagnostic
+`controlsMs` checked the provider badge inside the model field, not the separate
+provider selector. Those numbers do not establish the complete requested UI.
+The corrected hosted check requires the real project field, Claude provider
+selector, Sonnet model and High effort. With a fresh browser catalog it observed
+5013 ms; subsequent tabs observed 226 and 340 ms. The server exposed eight
+providers, and the browser had no aggregate provider snapshot while the
+selector was missing. The aggregate `/api/providers` response waits for every
+provider's auth and model probes. Cold aggregate acquisition remains open;
+it must not be hidden by prewarming the catalog in acceptance setup.
+
+Hosted New Session now resolves its app/layout/page and connection-gate
+component wrappers before mounting, as the local entry already does. A held
+page-module regression failed on the old implementation and now verifies no
+module loading fallback, preservation of sequential typing across handoff and
+input acknowledgement within 100 ms. Three diagnostic runs reduced the older,
+incomplete controls metric from 735–1007 ms to 224–631 ms. This establishes a
+module-loading improvement, not completion of the 500 ms full-UI target.
+Contributing-model: 6-astra.
+
 Shared-package import metadata now allows unused schema modules to stay out of
 startup (2026-10-09). The import-time frame-search installer remains an explicit
 exception; deferred validators still run when loaded. Three alternating cold

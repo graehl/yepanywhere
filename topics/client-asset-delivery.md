@@ -71,6 +71,14 @@ removed after bootstrap. Without it, missing, malformed, non-JSON, mismatched,
 or unavailable prior metadata/assets fail the deployment. This does not
 complete direct/LAN static-server generation retention or static encoding.
 
+For an initial New Session URL, both browser entrypoints resolve the app,
+layout and page component wrappers before mounting React. The hosted entry
+also resolves the applicable direct or relay connection gate. Downloaded
+modules must not introduce another series of loading fallbacks merely because
+their component wrappers have not yet observed the resolved imports. Connection
+and data readiness keep their existing boundaries; the preboot composer retains
+typing until the real form adopts it. Other initial routes remain lazy.
+
 ## Shared package initialization
 
 The shared package declares its library modules free of import-time effects

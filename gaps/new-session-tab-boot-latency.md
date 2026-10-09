@@ -126,14 +126,23 @@ Browser provider display snapshots also have no age expiry. Gateway no longer
 forces a probe just because a New Session form mounts; launch-time validation
 remains separate. Contributing-model: 6-astra.
 
-Still required: stable reserved control positions as independent data arrives,
-an accessible subtle refresh action even without a live catalog, complete
-<=1,500 ms cold/returning/concurrent/hosted verification, and final broader
-checks. A manual-mode Vite guard was found to force document reloads after
+Control positions now reserve hidden, inert provider/model/effort geometry,
+with catalog status in a separate reserved row. Refresh remains available for
+static lists and when no provider is installed. Desktop and phone browser
+cases release settings, projects, recents, provider identities and the selected
+provider independently: control positions remain within 2 px and individual
+keystrokes appear within 100 ms throughout. All ten startup browser cases and
+106 form tests pass; final captures were inspected at 1000×600 and 375×812.
+Lint, formatting, console checks and typechecking pass. Contributing-model:
+6-astra.
+
+Still required: complete <=1,500 ms cold/returning/concurrent/hosted
+verification and final broader checks. A manual-mode Vite guard was found to force document reloads after
 source edits. Its opt-in correction is being verified separately without
 restarting the live development server.
 
-Cold acquisition still loads unnecessary prerequisites (2026-10-09). The five
+Earlier acquisition investigation (2026-10-09), before the pure owners above:
+the five
 startup query modules' static chunk graph includes about 1.54 MB of unminified
 code: React DOM, relay protocol validation and encryption are among the
 dependencies of local HTTP reads. Moving those same modules to an earlier

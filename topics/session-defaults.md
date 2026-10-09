@@ -96,6 +96,16 @@ exact saved provider and provider-local model in its final control region, then
 revalidates installation, authentication, alternatives, and capabilities in
 place. An unselected provider's discovery does not delay or clear that choice.
 
+Provider, model and effort positions exist before their data arrives. Hidden,
+inert copies of the controls reserve their dimensions; they expose no choices
+or launch authority. Each populated control replaces its own placeholder
+independently. Authentication copy reserves a second provider-label line, and
+the model placeholder includes the badge's geometry. Catalog status occupies
+a separate row below all three controls and reserves its wrapping height before
+the response, so it cannot push the effort picker or advanced-options button.
+Refresh remains available for static or unavailable model lists, using the
+same explicit selected-provider discovery action.
+
 New tabs restore a seven-day, source-scoped browser snapshot of provider,
 provider-local model, thinking mode and effort while settings load. Only these
 display fields are retained; permissions, sandbox policy, paid tiers, helper

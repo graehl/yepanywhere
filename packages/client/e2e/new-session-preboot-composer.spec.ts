@@ -268,6 +268,122 @@ test("other routes never show the pre-boot composer", async ({
   await expect(page.locator("#yep-preboot-composer")).toHaveCount(0);
 });
 
+for (const viewport of [
+  { width: 1000, height: 600 },
+  { width: 375, height: 812 },
+]) {
+  test(`startup controls keep their positions as data arrives at ${viewport.width}px`, async ({
+    page,
+    baseURL,
+  }) => {
+    await page.setViewportSize(viewport);
+    // Earlier cases share this worker's server and leave a New Session draft.
+    // This case owns a fresh draft, not a cross-device edit conflict.
+    const slot = { kind: "new-session" };
+    const headers = { "X-Yep-Anywhere": "true" };
+    const read = await page.request.post(`${baseURL}/api/drafts/read`, {
+      headers,
+      data: { slot },
+    });
+    expect(read.ok()).toBe(true);
+    const draftState = await read.json();
+    const cleared = await page.request.post(`${baseURL}/api/drafts/clear`, {
+      headers,
+      data: {
+        slot,
+        baseRevision: draftState.snapshot.revision,
+        ticket: draftState.ticket,
+        operationId: crypto.randomUUID(),
+      },
+    });
+    expect(cleared.ok()).toBe(true);
+    const releases = new Map<string, () => void>();
+    for (const path of [
+      "/api/settings",
+      "/api/projects",
+      "/api/recents",
+      "/api/providers/descriptors",
+      "/api/providers/claude",
+      "/api/providers",
+    ]) {
+      const gate = new Promise<void>((resolve) => releases.set(path, resolve));
+      await page.route(
+        (url) => url.pathname === path,
+        async (route) => {
+          await gate;
+          await route.continue();
+        },
+      );
+    }
+    const positions = () =>
+      page.evaluate(() => {
+        const selectors = [
+          ".new-session-provider-section",
+          ".new-session-model-section",
+          ".new-session-provider-slot > .new-session-helper-section",
+          '[aria-controls="new-session-advanced-options"]',
+        ];
+        return selectors.map((selector) => {
+          const element = document.querySelector(selector);
+          if (!element) throw new Error(`Missing option slot: ${selector}`);
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        });
+      });
+    try {
+      await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });
+      await expect(page.locator(".new-session-provider-slot")).toBeAttached();
+      const before = await positions();
+      const composer = page.locator("textarea.new-session-form-textarea");
+      let draft = await composer.inputValue();
+      await composer.press("ControlOrMeta+End");
+      for (const path of releases.keys()) {
+        // Unrelated provider discovery stays held throughout first render.
+        if (path === "/api/providers") continue;
+        const response = page.waitForResponse(
+          (result) => new URL(result.url()).pathname === path,
+        );
+        releases.get(path)!();
+        for (const character of "abc") {
+          await page.keyboard.type(character);
+          draft += character;
+          await expect(composer).toHaveValue(draft, { timeout: 100 });
+        }
+        await response;
+        // Allow the response's React update and resulting layout to paint.
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve()),
+              ),
+            ),
+        );
+        const after = await positions();
+        for (let index = 0; index < before.length; index++) {
+          expect(
+            Math.abs(after[index]!.x - before[index]!.x),
+            `${path} slot ${index} x`,
+          ).toBeLessThan(2);
+          expect(
+            Math.abs(after[index]!.y - before[index]!.y),
+            `${path} slot ${index} y`,
+          ).toBeLessThan(2);
+        }
+      }
+      await expect(
+        page.locator(".new-session-model-field button").first(),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Refresh", exact: true }),
+      ).toBeVisible();
+      await recordUiCapture(page, `stable-startup-controls-${viewport.width}`);
+    } finally {
+      for (const release of releases.values()) release();
+    }
+  });
+}
+
 test("refresh preserves saved sidebar modes on New Session", async ({
   page,
   baseURL,

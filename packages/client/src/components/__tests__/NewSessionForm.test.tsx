@@ -1035,9 +1035,26 @@ describe("NewSessionForm", () => {
 
     claude.modelCatalog = { source: "static" };
     rerender(<NewSessionForm projectId="project-1" />);
-    expect(
-      screen.queryByRole("button", { name: "newSessionModelCatalogRefresh" }),
-    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionModelCatalogRefresh" }),
+    );
+    expect(mockRefreshProviderRow).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers explicit discovery when no provider is installed", () => {
+    providersState.providers = providersState.providers.map((provider) => ({
+      ...provider,
+      installed: false,
+      authenticated: false,
+      enabled: false,
+      models: [],
+    }));
+    render(<NewSessionForm projectId="project-1" />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionModelCatalogRefresh" }),
+    );
+    expect(mockRefetchProviders).toHaveBeenCalledTimes(1);
+    expect(mockRefreshProviderRow).not.toHaveBeenCalled();
   });
 
   it("keeps an explicit Claude selection when saved Codex defaults load later", async () => {

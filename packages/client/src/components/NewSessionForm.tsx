@@ -404,6 +404,7 @@ interface NewSessionOptionSectionProps {
   className: string;
   showCaption: boolean;
   title: string;
+  placeholder?: boolean;
 }
 
 function NewSessionOptionSection({
@@ -412,9 +413,15 @@ function NewSessionOptionSection({
   className,
   showCaption,
   title,
+  placeholder = false,
 }: NewSessionOptionSectionProps) {
   return (
-    <div className={className} title={showCaption ? undefined : caption}>
+    <div
+      className={`${className}${placeholder ? ` ${styles.optionPlaceholder}` : ""}`}
+      title={showCaption ? undefined : caption}
+      aria-hidden={placeholder || undefined}
+      inert={placeholder || undefined}
+    >
       <h3>{title}</h3>
       {children}
       {showCaption && caption && (
@@ -1152,6 +1159,7 @@ export function NewSessionForm({
     providers,
     loading: providersLoading,
     stale: providersStale,
+    refetch: refetchProviders,
   } = useProviders();
   const { providers: providerDescriptors } = useProviderDescriptors(
     serverHasCapability(
@@ -4560,6 +4568,31 @@ export function NewSessionForm({
       </label>
     ) : null;
 
+  const optionPlaceholder = (
+    className: string,
+    title: string,
+    caption: string | undefined,
+    triggerClassName?: string,
+    triggerContent?: ReactNode,
+  ) => (
+    <NewSessionOptionSection
+      className={className}
+      title={title}
+      caption={caption}
+      showCaption={showOptionCaptions}
+      placeholder
+    >
+      <FilterDropdown
+        label={title}
+        options={[]}
+        selected={[]}
+        onChange={() => {}}
+        fullWidth
+        triggerClassName={triggerClassName}
+        triggerContent={triggerContent}
+      />
+    </NewSessionOptionSection>
+  );
   const providerSection =
     providerChoices.length > 1 ? (
       <NewSessionOptionSection
@@ -4575,6 +4608,7 @@ export function NewSessionForm({
         >
           <FilterDropdown<ProviderName>
             label={sessionDefaultCopy.provider.title}
+            triggerClassName={styles.providerTrigger}
             options={providerChoices.map((provider) => ({
               value: provider.name,
               label: provider.displayName,
@@ -4630,7 +4664,14 @@ export function NewSessionForm({
           />
         </div>
       </NewSessionOptionSection>
-    ) : null;
+    ) : (
+      optionPlaceholder(
+        `new-session-provider-section ${styles.compactProviderSection}`,
+        sessionDefaultCopy.provider.title,
+        sessionDefaultCopy.provider.description,
+        styles.providerTrigger,
+      )
+    );
   const modelField =
     selectedProvider && modelOptions.length > 0 ? (
       <NewSessionOptionSection
@@ -4665,7 +4706,18 @@ export function NewSessionForm({
           }
         />
       </NewSessionOptionSection>
-    ) : null;
+    ) : (
+      optionPlaceholder(
+        "new-session-model-field",
+        sessionDefaultCopy.model.title,
+        sessionDefaultCopy.model.description,
+        undefined,
+        <span className={styles.selectedChoice}>
+          <ProviderBadge provider={selectedProvider ?? "claude"} />
+          <span>{sessionDefaultCopy.model.title}</span>
+        </span>,
+      )
+    );
   const gatewayCatalogUnavailable =
     selectedProvider === "claude-gateway" &&
     (!selectedProviderQuery.fresh || availableModels.length === 0);
@@ -4733,48 +4785,49 @@ export function NewSessionForm({
               action: t("newSessionModelCatalogRefresh"),
             };
   const catalogNotice = routerCatalogNotice ?? modelCatalogNotice;
-  const modelCatalogStatus = catalogNotice ? (
+  const modelCatalogStatus = (
     <div
       className={
-        catalogNotice.warning ? styles.catalogStatus : styles.catalogStatusMuted
+        catalogNotice?.warning
+          ? styles.catalogStatus
+          : styles.catalogStatusMuted
       }
       role="status"
       aria-live="polite"
       title={routerCatalogNotice ? undefined : modelCatalog?.error}
     >
-      <span>{catalogNotice.message}</span>
+      <span
+        className={styles.catalogMessage}
+        data-sizing-text={t("newSessionGatewayCatalogUnavailable")}
+        title={routerSelection ? undefined : modelCatalog?.error}
+      >
+        <span>{catalogNotice?.message}</span>
+      </span>
       <button
         type="button"
         className={styles.catalogAction}
         disabled={
-          routerCatalogNotice
+          routerSelection
             ? routerCatalogRefresh === "refreshing"
-            : selectedProviderQuery.refreshing
+            : selectedProvider
+              ? selectedProviderQuery.refreshing
+              : providersLoading
         }
         onClick={() =>
-          void (routerCatalogNotice
+          void (routerSelection
             ? refreshRouterCatalog()
-            : selectedProviderQuery.refresh())
+            : selectedProvider
+              ? selectedProviderQuery.refresh()
+              : refetchProviders())
         }
       >
-        {catalogNotice.action}
+        {catalogNotice?.action ?? t("newSessionModelCatalogRefresh")}
       </button>
     </div>
-  ) : null;
-  const gatewayCatalogStatus =
-    gatewayCatalogUnavailable && !modelField ? (
-      <div className="new-session-model-field">
-        <h3>{sessionDefaultCopy.model.title}</h3>
-        {modelCatalogStatus}
-      </div>
-    ) : null;
-  const modelSection =
-    modelField || gatewayCatalogStatus ? (
-      <div className="new-session-model-section">
-        {modelField}
-        {gatewayCatalogStatus ?? modelCatalogStatus}
-      </div>
-    ) : null;
+  );
+  const modelSection = (
+    <div className="new-session-model-section">{modelField}</div>
+  );
   const showThinkingSection = (
     <NewSessionOptionSection
       className="new-session-helper-section new-session-show-thinking-section"
@@ -4910,6 +4963,15 @@ export function NewSessionForm({
       />
     </NewSessionOptionSection>
   ) : null;
+  const effortSlot =
+    effortSection ??
+    (!launchLock.effort
+      ? optionPlaceholder(
+          `new-session-helper-section ${styles.effortSection}`,
+          t("newSessionThinkingEffortTitle"),
+          sessionDefaultCopy.thinking.description,
+        )
+      : null);
   const recapSection = selectedProvider ? (
     <NewSessionOptionSection
       className="new-session-helper-section"
@@ -5191,7 +5253,7 @@ export function NewSessionForm({
     fixedLaunchSection ||
       (showProviderPicker && providerSection) ||
       (showModelPicker && modelSection) ||
-      effortSection,
+      effortSlot,
   );
   const activeAdvancedOptions = [
     effectivePermissionMode !== "default"
@@ -5400,7 +5462,8 @@ export function NewSessionForm({
             {fixedLaunchSection}
             {showProviderPicker && providerSection}
             {showModelPicker && modelSection}
-            {effortSection}
+            {effortSlot}
+            {showModelPicker && modelCatalogStatus}
           </div>
         )}
         <div className={styles.advancedSection}>

@@ -157,7 +157,19 @@ test("route data arrives before the New Session module executes", async ({
   page,
   baseURL,
 }) => {
+  await page.addInitScript(() => {
+    const observer = new MutationObserver(() => {
+      const input = document.querySelector<HTMLInputElement>(
+        ".new-session-project-input",
+      );
+      if (!input) return;
+      Object.assign(window, { firstNewSessionProjectValue: input.value });
+      observer.disconnect();
+    });
+    observer.observe(document, { childList: true, subtree: true });
+  });
   const held: Route[] = [];
+  let expectedProjectPath = "";
   let releasing = false;
   await page.route("**/assets/NewSessionPage-*.js", (route) => {
     if (releasing) return route.continue();
@@ -172,7 +184,9 @@ test("route data arrives before the New Session module executes", async ({
   );
   try {
     await page.goto(`${baseURL}/new-session`, { waitUntil: "commit" });
-    await Promise.all(responses);
+    const [, projectsResponse] = await Promise.all(responses);
+    const { projects } = await projectsResponse!.json();
+    expectedProjectPath = projects[0].path;
     expect(held.length).toBeGreaterThan(0);
     await expect(page.locator(".new-session-form textarea")).toHaveCount(0);
   } finally {
@@ -180,6 +194,20 @@ test("route data arrives before the New Session module executes", async ({
     await Promise.all(held.map((route) => route.continue()));
   }
   await expect(page.locator(".new-session-form textarea")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { firstNewSessionProjectValue: string })
+          .firstNewSessionProjectValue,
+    ),
+  ).toBe(expectedProjectPath);
+  for (const viewport of [
+    { width: 1000, height: 600 },
+    { width: 375, height: 812 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await recordUiCapture(page, `initial-project-${viewport.width}`);
+  }
 });
 
 test("other routes never show the pre-boot composer", async ({

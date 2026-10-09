@@ -100,6 +100,21 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Initial project selection no longer waits for a router update (2026-10-09).
+Two slow returning-tab traces already had route facts by 164/211 ms, but the
+form remained unselected until URL normalization committed. New Session now
+derives the same preferred project during render, preserving explicit and
+detached choices and incomplete-collection rules. A browser observer verifies
+the correct project path in the input's first render after held code releases.
+
+Across eighteen returning tabs, the form-to-controls gap was a median 21 ms
+(maximum 48), versus 80 ms (maximum 271) in the preceding run. These are
+separate diagnostic runs under differing contention, not a controlled speedup
+claim. One returning sample still took 536 ms overall because the form itself
+mounted at 498 ms; one cold sample mounted at 496 ms and showed controls at
+576 ms. Initial module/render work now needs profiling. The full 500 ms target
+and broader acceptance remain open. Contributing-model: 6-astra.
+
 Local New Session now starts settings, project and recent reads through their
 existing query owners while route code loads (2026-10-09). A held-route browser
 regression verifies all three responses arrive before the page module executes.

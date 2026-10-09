@@ -64,7 +64,7 @@ export function NewSessionPage() {
     [],
   );
   const [searchParams, setSearchParams] = useSearchParams();
-  const projectId = searchParams.get("projectId") ?? undefined;
+  const requestedProjectId = searchParams.get("projectId") ?? undefined;
   const preferredProvider = searchParams.get("provider") ?? undefined;
   const preferredModel = searchParams.get("model") ?? undefined;
   const preferredThinking = parsePreferredThinking(
@@ -75,7 +75,7 @@ export function NewSessionPage() {
   );
   const preferredExecutor = searchParams.get("executor") ?? undefined;
   const requestedDetached =
-    !projectId && searchParams.get(DETACHED_PROJECT_PARAM) === "1";
+    !requestedProjectId && searchParams.get(DETACHED_PROJECT_PARAM) === "1";
   const { openSidebar, isWideScreen } = useNavigationLayout();
   const { projectAppComposingEnabled } = useProjectAppComposing();
 
@@ -97,6 +97,53 @@ export function NewSessionPage() {
     version,
     PROJECT_CODE_NAMES_CAPABILITY,
   );
+  const {
+    recentProjectIds: liveRecentProjectIds,
+    isLoadingVisits: recentSessionsLoading,
+  } = useRecentSessions({
+    limit: RECENT_PROJECT_SESSION_LIMIT,
+  });
+  const { projects, cachedProjects, recentProjectIds, unconfirmedProjectIds } =
+    useNewSessionProjectSnapshot({
+      projects: liveProjects,
+      complete: projectCollectionConfirmed,
+      recentProjectIds: liveRecentProjectIds,
+      visitsLoading: recentSessionsLoading,
+      projectId: requestedProjectId,
+    });
+  // The initial selection is already determined by these facts. Rendering it
+  // must not wait for the router to commit the URL normalization below.
+  let projectId = requestedProjectId;
+  if (!projectId && !requestedDetached && projects.length > 0) {
+    const storedRecentProjectId = getRecentProjectId();
+    const hasValidStoredRecentProject = projects.some(
+      (candidate) => candidate.id === storedRecentProjectId,
+    );
+    if (
+      !recentSessionsLoading ||
+      hasValidStoredRecentProject ||
+      recentProjectIds.length > 0
+    ) {
+      projectId =
+        resolvePreferredProjectId(
+          projects,
+          recentProjectIds[0],
+          projectCollectionConfirmed,
+        ) ?? undefined;
+    }
+  }
+  const { project, loading: projectLoading, error } = useProject(projectId);
+  const confirmedSelectedProject =
+    liveProjects.find((candidate) => candidate.id === projectId) ?? project;
+  const selectedProject =
+    confirmedSelectedProject ??
+    (projectId
+      ? projects.find((candidate) => candidate.id === projectId)
+      : null) ??
+    (projectLoading
+      ? cachedProjects.find((candidate) => candidate.id === projectId)
+      : null);
+
   // Offered only for a project that declares a usable app; there is no turn
   // here to open it after, so updates need no action.
   const projectHasApp = useProjectAppUpdates(
@@ -115,31 +162,6 @@ export function NewSessionPage() {
       {t("projectAppLabel")}
     </Link>
   ) : undefined;
-  const {
-    recentProjectIds: liveRecentProjectIds,
-    isLoadingVisits: recentSessionsLoading,
-  } = useRecentSessions({
-    limit: RECENT_PROJECT_SESSION_LIMIT,
-  });
-  const { project, loading: projectLoading, error } = useProject(projectId);
-  const { projects, cachedProjects, recentProjectIds, unconfirmedProjectIds } =
-    useNewSessionProjectSnapshot({
-      projects: liveProjects,
-      complete: projectCollectionConfirmed,
-      recentProjectIds: liveRecentProjectIds,
-      visitsLoading: recentSessionsLoading,
-      projectId,
-    });
-  const confirmedSelectedProject =
-    liveProjects.find((candidate) => candidate.id === projectId) ?? project;
-  const selectedProject =
-    confirmedSelectedProject ??
-    (projectId
-      ? projects.find((candidate) => candidate.id === projectId)
-      : null) ??
-    (projectLoading
-      ? cachedProjects.find((candidate) => candidate.id === projectId)
-      : null);
 
   // Update browser tab title (must be called unconditionally before any early returns)
   useDocumentTitle(
@@ -154,42 +176,17 @@ export function NewSessionPage() {
   }, [projectId, confirmedSelectedProject]);
 
   useEffect(() => {
-    if (projectId || requestedDetached || projects.length === 0) {
-      return;
-    }
-
-    const storedRecentProjectId = getRecentProjectId();
-    const hasValidStoredRecentProject = Boolean(
-      storedRecentProjectId &&
-        projects.some((project) => project.id === storedRecentProjectId),
-    );
-    if (
-      recentSessionsLoading &&
-      !hasValidStoredRecentProject &&
-      recentProjectIds.length === 0
-    ) {
-      return;
-    }
-
-    const preferredProjectId = resolvePreferredProjectId(
-      projects,
-      recentProjectIds[0],
-      projectCollectionConfirmed,
-    );
-    if (!preferredProjectId) {
+    if (requestedProjectId || requestedDetached || !projectId) {
       return;
     }
 
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("projectId", preferredProjectId);
+    nextParams.set("projectId", projectId);
     nextParams.delete(DETACHED_PROJECT_PARAM);
     setSearchParams(nextParams, { replace: true });
   }, [
     projectId,
-    projects,
-    projectCollectionConfirmed,
-    recentProjectIds,
-    recentSessionsLoading,
+    requestedProjectId,
     requestedDetached,
     searchParams,
     setSearchParams,

@@ -526,6 +526,14 @@ shared even for an empty complete collection. This moves acquisition before
 form mounting; it adds no second cache and does not bypass server filtering or
 the confirmed-identity requirement for browser project snapshots.
 
+Once project and visit facts determine New Session's initial project, the form
+renders that selection immediately; replacing the URL with its `projectId`
+is subsequent bookkeeping, not a display dependency. An explicit query project
+or detached selection takes precedence. Stored recent preference, visit order
+and complete-list fallback keep their existing priority, and an incomplete
+collection cannot disprove an undiscovered preference. Cached choices retain
+the confirmation restrictions below.
+
 Browser persistence is an optional accelerator, never a correctness
 precondition. A source/auth-scoped, schema-versioned compact snapshot may live
 in IndexedDB; a small `localStorage`/`BroadcastChannel` notice may advertise the

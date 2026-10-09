@@ -12,6 +12,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BROWSER_LOCAL_KEYS, UI_KEYS } from "../../lib/storageKeys";
 import { NewSessionPage } from "../NewSessionPage";
+import { NewSessionForm } from "../../components/NewSessionForm";
 import type { ActingPrincipal } from "@yep-anywhere/shared";
 import { writeNewSessionProjectSnapshot } from "../../lib/newSessionProjectSnapshot";
 
@@ -70,32 +71,34 @@ vi.mock("../../api/projectApp", () => ({
 }));
 
 vi.mock("../../components/NewSessionForm", () => ({
-  NewSessionForm: ({
-    incomingShareFiles,
-    projectId,
-    selectedProject,
-    onProjectChange,
-  }: {
-    incomingShareFiles?: readonly File[];
-    projectId?: string;
-    selectedProject?: { name: string } | null;
-    onProjectChange?: (projectId: string | null) => void;
-  }) => (
-    <div>
-      <div data-testid="incoming-share-files">
-        {incomingShareFiles?.length ?? 0}
+  NewSessionForm: vi.fn(
+    ({
+      incomingShareFiles,
+      projectId,
+      selectedProject,
+      onProjectChange,
+    }: {
+      incomingShareFiles?: readonly File[];
+      projectId?: string;
+      selectedProject?: { name: string } | null;
+      onProjectChange?: (projectId: string | null) => void;
+    }) => (
+      <div>
+        <div data-testid="incoming-share-files">
+          {incomingShareFiles?.length ?? 0}
+        </div>
+        <div data-testid="form-project-id">{projectId ?? "none"}</div>
+        <div data-testid="form-project-name">
+          {selectedProject?.name ?? "none"}
+        </div>
+        <button type="button" onClick={() => onProjectChange?.("project-2")}>
+          Select Beta
+        </button>
+        <button type="button" onClick={() => onProjectChange?.(null)}>
+          Select No Project
+        </button>
       </div>
-      <div data-testid="form-project-id">{projectId ?? "none"}</div>
-      <div data-testid="form-project-name">
-        {selectedProject?.name ?? "none"}
-      </div>
-      <button type="button" onClick={() => onProjectChange?.("project-2")}>
-        Select Beta
-      </button>
-      <button type="button" onClick={() => onProjectChange?.(null)}>
-        Select No Project
-      </button>
-    </div>
+    ),
   ),
 }));
 
@@ -278,6 +281,11 @@ describe("NewSessionPage", () => {
 
     renderPage("/new-session");
 
+    expect(vi.mocked(NewSessionForm).mock.calls[0]?.[0]).toMatchObject({
+      projectId: "project-2",
+      selectedProject: { name: "Beta" },
+    });
+
     await waitFor(() => {
       expect(screen.getByTestId("location").textContent).toBe(
         "/new-session?projectId=project-2",
@@ -295,6 +303,26 @@ describe("NewSessionPage", () => {
         window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject),
       ).toBe("project-1");
     });
+  });
+
+  it("keeps the first render detached when explicitly requested", () => {
+    localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "project-2");
+    renderPage("/new-session?detached=1");
+    expect(
+      vi.mocked(NewSessionForm).mock.calls[0]?.[0].projectId,
+    ).toBeUndefined();
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/new-session?detached=1",
+    );
+  });
+
+  it("does not choose an arbitrary first project before visits arrive", () => {
+    recentSessionsState.isLoadingVisits = true;
+    renderPage("/new-session");
+    expect(
+      vi.mocked(NewSessionForm).mock.calls[0]?.[0].projectId,
+    ).toBeUndefined();
+    expect(screen.getByTestId("location").textContent).toBe("/new-session");
   });
 
   it("waits for collection completion before replacing an undiscovered preference", async () => {

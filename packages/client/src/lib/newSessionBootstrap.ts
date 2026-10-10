@@ -9,6 +9,7 @@ import { fetchPlainResponse, readPlainJSONResponse } from "../api/plainFetch";
 /** One finite route bundle; older servers return their ordinary settings JSON. */
 export function createNewSessionBootstrap(
   preferredProvider: string | undefined,
+  fetchResponse: typeof fetchPlainResponse = fetchPlainResponse,
 ) {
   const path = `/settings?bootstrap=${NEW_SESSION_BOOTSTRAP}${preferredProvider ? `&provider=${encodeURIComponent(preferredProvider)}` : ""}`;
   const pending = new Map(
@@ -25,7 +26,7 @@ export function createNewSessionBootstrap(
     }),
   );
   const negotiate = () =>
-    fetchPlainResponse(path, { headers: { Accept: "text/event-stream" } }).then(
+    fetchResponse(path, { headers: { Accept: "text/event-stream" } }).then(
       async (result) => {
         if (result.headers.get("Content-Type")?.includes("application/json")) {
           return {
@@ -100,7 +101,8 @@ export function createNewSessionBootstrap(
       part: NewSessionBootstrapPart,
       legacy: () => Promise<T>,
     ): Promise<T> {
-      const protocol = await (response ??= negotiate());
+      response ??= negotiate();
+      const protocol = await response;
       if (protocol.kind === "legacy")
         return part === "settings" ? (protocol.settings as T) : legacy();
       const frame = await pending.get(part)!.promise;

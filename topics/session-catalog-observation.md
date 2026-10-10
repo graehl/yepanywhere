@@ -204,9 +204,16 @@ named endpoint.
 Older servers ignore the negotiation and return ordinary settings JSON; the
 client accepts it and obtains the other parts through existing endpoints. See
 [bundle negotiation](server-capabilities.md#new-session-bundle-negotiation).
-The local entrypoint uses the bundle. Hosted/relay startup and Settings still
-use their existing independent acquisitions; extending the route contract to
-those paths remains open.
+The local entrypoint starts the bundle before loading React. Hosted direct and
+relay clients start the same source-bound route owner when their authenticated
+transport attaches, before publishing the connection to mounted consumers.
+Streamed GET requests preserve content-negotiation headers. The relay carries
+this finite bundle incrementally through its existing encrypted response
+stream, with the same byte acknowledgement and cancellation ownership as file
+downloads. Cancelling a quiet stream interrupts its pending body read.
+Transports without streaming retain the existing independent requests.
+Settings declares only settings and version in the same route owner; it does
+not acquire New Session collections or providers.
 
 New Session uses its current collection row as the selected project's server
 record. It does not request selected-project detail while discovery is pending

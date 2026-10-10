@@ -40,6 +40,26 @@ function acks(sent: RemoteClientMessage[]): number[] {
 const piece = (size: number, fill: number) => new Uint8Array(size).fill(fill);
 
 describe("RelayProtocol streamed responses", () => {
+  it("preserves bootstrap negotiation headers and ordinary JSON from older servers", async () => {
+    const { sent, protocol } = harness();
+    const pending = protocol.fetchStream("/settings?bootstrap=new-session-v1", {
+      headers: new Headers({ Accept: "text/event-stream" }),
+    });
+    const request = await sentRequest(sent);
+    expect(new Headers(request.headers).get("Accept")).toBe(
+      "text/event-stream",
+    );
+    expect(new Headers(request.headers).get("X-Yep-Anywhere")).toBe("true");
+    protocol.routeMessage({
+      type: "response",
+      id: request.id,
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: { settings: {} },
+    });
+    expect(await (await pending).json()).toEqual({ settings: {} });
+  });
+
   it("asks to stream and delivers the body as it arrives", async () => {
     const { sent, protocol } = harness();
     const pending = protocol.fetchStream("/projects/p/files/raw?path=a.bin");

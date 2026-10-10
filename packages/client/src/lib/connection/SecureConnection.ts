@@ -1600,7 +1600,7 @@ export class SecureConnection implements Connection {
 
   async fetchStream(
     path: string,
-    init?: { signal?: AbortSignal },
+    init?: { signal?: AbortSignal | null; headers?: HeadersInit },
   ): Promise<Response> {
     return this.protocol.fetchStream(path, init);
   }

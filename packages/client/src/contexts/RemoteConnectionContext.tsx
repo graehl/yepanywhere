@@ -45,6 +45,7 @@ import {
   resolveSourceKeyForSavedHost,
 } from "../lib/sourceIdentity";
 import { getSourceRuntimeRegistry } from "../lib/sourceRuntime";
+import { primeRemoteRoute } from "../lib/remoteRouteBootstrap";
 import { consumeSwitchHostReload } from "../lib/switchHostReload";
 
 import { getResumeError } from "../lib/connection/resumeErrors";
@@ -431,6 +432,12 @@ export function RemoteConnectionProvider({ children }: Props) {
       }
       transport.attach(conn);
       activeSecureTransportRef.current = transport;
+      void primeRemoteRoute(
+        sourceKey,
+        transport,
+        window.location,
+        import.meta.env.BASE_URL,
+      );
       return transport;
     },
     [clearTransportStatusSubscription],

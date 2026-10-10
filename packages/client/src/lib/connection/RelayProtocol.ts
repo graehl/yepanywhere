@@ -853,30 +853,33 @@ export class RelayProtocol {
    */
   async fetchStream(
     path: string,
-    init?: { signal?: AbortSignal },
+    init?: { signal?: AbortSignal | null; headers?: HeadersInit },
   ): Promise<Response> {
     if (!this.transport.supportsStreamedResponses) {
       return this.fetchResponse(path, init);
     }
     return this.retryReadThroughReconnect(
-      () => this.fetchStreamOnce(path, init?.signal),
-      init?.signal,
+      () => this.fetchStreamOnce(path, init),
+      init?.signal ?? undefined,
     );
   }
 
   private async fetchStreamOnce(
     path: string,
-    signal?: AbortSignal,
+    init?: { signal?: AbortSignal | null; headers?: HeadersInit },
   ): Promise<Response> {
     await this.transport.ensureConnected();
 
+    const signal = init?.signal ?? undefined;
+    const headers = new Headers(init?.headers);
+    headers.set("X-Yep-Anywhere", "true");
     const id = generateId();
     const request: RelayRequest = {
       type: "request",
       id,
       method: "GET",
       path: path.startsWith("/api") ? path : `/api${path}`,
-      headers: { "X-Yep-Anywhere": "true" },
+      headers: Object.fromEntries(headers),
       stream: true,
     };
     const startTime = Date.now();

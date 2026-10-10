@@ -253,7 +253,7 @@ abstract class MultiplexSourceTransport<TConnection extends MultiplexConnection>
 
   fetchStream(
     path: string,
-    init?: { signal?: AbortSignal },
+    init?: { signal?: AbortSignal | null; headers?: HeadersInit },
   ): Promise<Response> {
     this.assertNotDisposed();
     return this.withConnection((connection) =>

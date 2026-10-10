@@ -314,6 +314,13 @@ binary contract; it adds no client dependency, capability, or protocol version.
 
 ## Request Semantics When Not Ready
 
+Streamed GET requests preserve caller headers, including content negotiation.
+The finite New Session startup bundle uses the existing encrypted response
+stream, independently delivering ready parts. Ordinary live event subscriptions
+remain on their subscription protocol. Cancelling a response or closing the
+connection interrupts a pending body read as well as a sender waiting for byte
+acknowledgements, so a quiet producer cannot retain a closed tab's stream.
+
 The contract splits by traffic type. The transport is the single readiness
 arbiter for demand traffic; callers only opt *optional* work out.
 

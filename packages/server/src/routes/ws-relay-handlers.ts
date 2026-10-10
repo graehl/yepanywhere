@@ -33,6 +33,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   BinaryFormat,
+  NEW_SESSION_BOOTSTRAP,
   RELAY_RESPONSE_STREAM_CHUNK_BYTES,
   RELAY_RESPONSE_STREAM_IDLE_TIMEOUT_MS,
   RELAY_RESPONSE_STREAM_WINDOW_BYTES,
@@ -253,6 +254,8 @@ export interface RelayResponseStreamState {
   cancelled: boolean;
   /** Resumes a sender waiting for the window to open. */
   wake: (() => void) | null;
+  /** Cancels a pending body read when the client leaves during a quiet part. */
+  cancelRead: () => Promise<void>;
 }
 
 /** Tracks an active upload over WebSocket relay */
@@ -530,6 +533,8 @@ export function cleanupConnectionState(connState: ConnectionState): void {
 function cancelResponseStream(stream: RelayResponseStreamState): void {
   stream.cancelled = true;
   stream.wake?.();
+  // The sender's finally block also awaits cancellation and releases the lock.
+  void stream.cancelRead().catch(() => undefined);
 }
 
 /** Records a client's acknowledgement of streamed body bytes. */
@@ -971,10 +976,12 @@ async function streamRelayResponse(
   frameMode: RequestResponseFrameMode,
 ): Promise<void> {
   const declaredLength = response.headers.get("Content-Length");
+  const reader = body.getReader();
   const stream: RelayResponseStreamState = {
     ackedBytes: 0,
     cancelled: false,
     wake: null,
+    cancelRead: () => reader.cancel(),
   };
   connState.responseStreams.set(id, stream);
   send(
@@ -990,7 +997,6 @@ async function streamRelayResponse(
     frameMode,
   );
 
-  const reader = body.getReader();
   let sentBytes = 0;
   let completed = false;
   let error: string | undefined;
@@ -1201,12 +1207,18 @@ export async function handleRequest(
       !(legacyPublicShareRequest && !jsonResponse) &&
       (downloadResponse ||
         (!jsonResponse && isRelayBinaryMediaType(contentType)));
+    // Only this finite event-stream contract uses response streaming; ordinary
+    // live subscriptions retain their own subscription/teardown protocol.
+    const bootstrapResponse =
+      url.pathname === "/api/settings" &&
+      url.searchParams.get("bootstrap") === NEW_SESSION_BOOTSTRAP &&
+      contentType.startsWith("text/event-stream");
     const streamedBody =
       request.stream === true &&
       responseFrameMode.kind === "srp_encrypted" &&
       !isPreauthPublicShareRequest &&
       response.ok &&
-      binaryResponse
+      (binaryResponse || bootstrapResponse)
         ? response.body
         : null;
     if (streamedBody && send.sendResponseChunk) {

@@ -945,8 +945,11 @@ The five-part finite stream and its failure, authorization and publication
 contracts are defined in
 [session catalog observation](session-catalog-observation.md#retained-project-discovery-owner).
 An invalid or interrupted event stream fails its missing parts instead of
-silently replaying the bundle as legacy requests. The initial integration is
-the local New Session entrypoint; hosted clients retain their existing path.
+silently replaying the bundle as legacy requests. Both local and authenticated
+hosted New Session startup use this negotiation. Streamed hosted requests use
+the existing optional `stream` request flag and response frames; older servers
+still return ordinary settings JSON. No existing streaming capability is
+broadened: the response content type selects the finite bundle protocol.
 
 ### Retained collection gate
 

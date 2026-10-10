@@ -29,9 +29,9 @@ type Received =
   | { kind: "message"; seq: number; msg: YepMessage }
   | { kind: "chunk"; seq: number; requestId: string; data: Uint8Array };
 
-function setup(body: () => Response) {
+function setup(body: () => Response, path = "/api/file") {
   const app = new Hono<{ Bindings: HttpBindings }>();
-  app.get("/api/file", body);
+  app.get(path.split("?")[0]!, body);
   const state = createConnectionState();
   state.authState = "authenticated";
   state.sessionKey = sessionKey;
@@ -71,7 +71,7 @@ function setup(body: () => Response) {
         type: "request",
         id: REQUEST_ID,
         method: "GET",
-        path: "/api/file",
+        path,
         ...(stream ? { stream: true } : {}),
       },
       createSendFn(ws, state),
@@ -113,6 +113,45 @@ afterEach(() => {
 });
 
 describe("streamed relay responses", () => {
+  it("delivers a bootstrap part before completion and cancels a quiet producer", async () => {
+    let producer!: ReadableStreamDefaultController<Uint8Array>;
+    const cancelled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        producer = controller;
+      },
+      cancel: cancelled,
+    });
+    const { state, received, request } = setup(
+      () =>
+        new Response(body, {
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      "/api/settings?bootstrap=new-session-v1",
+    );
+    const running = request();
+    try {
+      const first = new TextEncoder().encode(
+        'event: bootstrap\ndata: {"part":"projects","status":200,"body":{"projects":[]}}\n\n',
+      );
+      producer.enqueue(first);
+      await vi.waitFor(() =>
+        expect(chunkBytes(received)).toBe(first.byteLength),
+      );
+      expect(messages(received).map((message) => message.type)).toEqual([
+        "response_stream_start",
+      ]);
+      expect(state.responseStreams.size).toBe(1);
+      handleResponseStreamCancel(state, REQUEST_ID);
+      await running;
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect(state.responseStreams.size).toBe(0);
+    } finally {
+      cleanupConnectionState(state);
+      await running;
+    }
+  });
+
   it("streams a body past the single-message limit within the client's window", async () => {
     // Larger than one relayed response may be, so only streaming can carry it.
     const size = RELAY_BINARY_RESPONSE_MAX_BYTES + 3;

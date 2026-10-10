@@ -276,7 +276,7 @@ export interface Connection {
    */
   fetchStream?(
     path: string,
-    init?: { signal?: AbortSignal },
+    init?: { signal?: AbortSignal | null; headers?: HeadersInit },
   ): Promise<Response>;
 
   /**

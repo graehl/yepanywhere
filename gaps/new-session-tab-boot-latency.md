@@ -109,6 +109,24 @@ the state/bootstrap requests below remain open. Contributing-model: 6-astra.
 
 ## Remaining
 
+Hosted direct/relay startup now starts the same route bundle when its
+authenticated transport attaches (2026-10-10), before mounted UI consumers.
+Settings uses that route owner for its two independent reads. The encrypted
+relay delivers bundle parts without buffering the entire response, and client
+cancellation interrupts a quiet body producer. Thirty browser cases pass,
+covering relay lifecycle/downloads and local New Session typing/layout. The
+previously failing provider-descriptor case passes in this bounded run;
+the earlier full-suite failure's cause remains unproven.
+
+Three hosted new-tab samples with fixture projects and a remembered relay
+login showed full project/Claude/Sonnet/High controls at 307/244/271 ms.
+The first tab had a cleared browser resource cache, but server discovery and
+authentication were already warm from fixture setup. Load was 2.28 on sixteen
+cores, with about 97 GB available RAM. These are diagnostic hosted-path samples,
+not native-data cold-server or heavy-contention acceptance. All spawned
+processes were removed. Request-time project enrichment and renewed loaded
+native-data acceptance remain open. Contributing-model: 6-astra.
+
 New Session now has an explicit five-part server bundle (2026-10-10), consumed
 by the local entrypoint before React loads. Canonical authenticated routes
 supply settings, retained projects, visits, version and the selected provider;

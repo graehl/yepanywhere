@@ -169,7 +169,7 @@ export interface SourceTransport {
    */
   fetchStream?(
     path: string,
-    init?: { signal?: AbortSignal },
+    init?: { signal?: AbortSignal | null; headers?: HeadersInit },
   ): Promise<Response>;
   upload(
     projectId: string,

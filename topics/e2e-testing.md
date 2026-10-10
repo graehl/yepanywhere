@@ -10,7 +10,15 @@ test in that suite should exercise a failure that a smaller boundary cannot
 observe. Running an existing browser test after a change and adding a
 permanent browser test are separate decisions.
 
-Choose the smallest boundary that can falsify the observable contract:
+Before retaining or adding any case, apply
+[test value and CI cost](../docs/development/testing.md#test-value-and-ci-cost).
+Agents may remove shallow tests, including those useful only as initial
+implementation evidence. Moving a trivial mocked assertion to a cheaper layer
+does not automatically make it worth retaining. Preserve meaningful regression,
+integration and rare-race detection; reduce the seconds spent on retained cases.
+
+For a test worth retaining, choose the smallest boundary that can falsify the
+observable contract:
 
 | Contract under test | Preferred check |
 | --- | --- |

@@ -33,6 +33,14 @@ silently skip presentation.
 The working tree may contain concurrent human or agent edits. Avoid reverting
 or tidying unrelated changes unless the task directly requires them.
 
+When adding, reviewing, removing, or accelerating tests, read
+[test value and CI cost](docs/development/testing.md#test-value-and-ci-cost).
+Agents are authorized to avoid or remove shallow mocked/local tests whose
+likely regression value does not justify their ongoing cost, including tests
+that helped prove an initial implementation. Prefer meaningful integration,
+tricky-interaction and race coverage; accelerate retained tests to keep CI
+latency and load stable over time.
+
 ## Agent Attribution
 
 Record agent involvement with a `Contributing-model: <short-model-name>`

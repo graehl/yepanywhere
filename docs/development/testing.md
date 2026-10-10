@@ -5,6 +5,53 @@
 Commands and code paths below are relative to the repository root unless stated
 otherwise.
 
+## Test Value And CI Cost
+
+Keep CI latency and runner load stable over time by judging tests on the
+regressions they can reveal relative to their ongoing runtime and maintenance
+cost. Agents are authorized to avoid writing, remove, consolidate, or replace
+low-value tests without separate permission. This includes shallow mocked/local
+tests that merely restate the implementation or assert mock wiring whose
+correctness is readily established by reading the code. Like redundant comments,
+such tests can add upkeep without protecting useful behavior. Test count and
+coverage percentage alone do not establish value.
+
+Apply the same retention decision to tests used to prove a feature during
+implementation: keep them when they protect likely future regressions or
+meaningful failure modes; their usefulness during development does not by itself
+justify permanent CI execution. A test can be valuable during exploration and
+be removed before landing, or later when its continuing value no longer pays
+for its cost.
+
+Prefer scenarios exercising real integration boundaries, specific regression
+risks, tricky interactions, or fragile-seeming code. Small unit tests remain
+valuable for subtle algorithms and state transitions. Mocks are useful for
+controlling a real failure or interleaving; they are weak evidence when they
+replace the behavior being claimed. Tests capable of exposing rare races or
+unexpected scheduling failures have lasting value even when they rarely fail.
+Preserve that detection capability when making them faster. Investigate an
+intermittent failure before deciding it is expendable test noise.
+
+For a removal or replacement, identify the plausible regression the test could
+catch and whether surviving coverage still catches it, or explain why the
+assertion adds little beyond code inspection. Do not require a replacement for
+every deleted trivial assertion. Do not delete a failing test merely to make CI
+green or remove unique security, persistence, transport, or real-input coverage
+without preserving its contract.
+
+When retaining tests, reduce their duration in seconds where practical: remove
+fixed sleeps, unnecessary services, repeated setup and duplicate scenarios;
+use controlled clocks or interleavings where they preserve the failure under
+test. Keep enough real scheduling coverage to expose races. Compare relevant
+before/after case or suite times on comparable runs, including setup, teardown,
+retries and total runner time. More parallel workers can reduce wall time while
+increasing load; report both. A single local sample is diagnostic, not proof of
+a sustained CI improvement. Avoid adding expensive measurement machinery for a
+trivial deletion. [E2E testing](../../topics/e2e-testing.md) owns browser-boundary
+choices and detailed cost measurement; [test time budgets](../../topics/test-time-budgets.md)
+owns timeout evidence. Raising timeouts, retries or resource allocation does not
+count as accelerating a test.
+
 ## After Editing Code
 
 After editing TypeScript or other source files, verify your changes compile

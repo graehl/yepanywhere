@@ -10,6 +10,13 @@ Topic: `test-time-budgets`
 Read this before adding a timeout to a test, raising one after a CI failure, or
 explaining a CI-only failure as a flake.
 
+Before paying more time for a test, apply
+[test value and CI cost](../docs/development/testing.md#test-value-and-ci-cost):
+remove low-value cases or accelerate retained ones while preserving meaningful
+regression and race detection. Initial implementation proof alone does not
+justify permanent retention. A larger timeout is a reliability budget, not a
+reduction in CI latency or runner load.
+
 ## A budget is measured, not guessed
 
 CI runners are contended and several times slower than a development host, and

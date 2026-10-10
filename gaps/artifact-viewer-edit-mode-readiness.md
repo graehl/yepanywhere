@@ -14,3 +14,26 @@ the mode transition from the uploaded evidence before choosing a change;
 no assertion or retry policy has been weakened to hide it.
 
 Found 2026-10-01 while repairing simulator and native WebView CI.
+
+## Broad local failure 2026-10-10
+
+The full browser run at `debb025bb` also failed the icon-mode case, plus four
+other cases in `packages/client/e2e/artifact-viewer.spec.ts`: frame-local Find,
+framed PDF handoff, saving a frame-generated file, and authenticated Edit links.
+Their expected dialog, frame or controls were absent. This broader symptom
+must not be attributed to the earlier CI mode transition without diagnosis.
+
+The Find case's error context shows a fatal
+`Cannot read properties of null (reading 'useRef')` in `BrowserRouter`, with
+Vite-optimized React/router dependency paths. A duplicate React runtime is a
+hypothesis, not a confirmed cause. Reproduce the component fixture and inspect
+dependency identity before changing viewer behavior or increasing timeouts.
+
+Evidence is under
+`packages/client/test-results/9ebe4732-5fad-49db-945a-f9ab17b547b5/`, notably
+`artifact-viewer-finds-with-73ba7-me-only-from-its-own-Ctrl-F/error-context.md`.
+Full local output is retained in
+`/local/graehl/ya-boot/final-deep-browser.{out,err}`.
+The startup bundle does not run on this viewer route, but the run does not
+establish whether these failures predate the startup series. No assertions
+were relaxed. Contributing-model: 6-astra.

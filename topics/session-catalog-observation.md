@@ -266,16 +266,61 @@ Without any snapshot to display, initial retained discovery is queued for the
 next event-loop turn. The 300 ms debounce applies only when a snapshot already
 exists, coalescing subsequent file-event refreshes without delaying first use.
 
-**Remaining:** captions and code names still use their existing request-time
-enrichment, selected-project detail for an unknown directory still uses complete
-discovery, and standalone complete provider reads retain age-driven enumeration.
-The full New Session latency target remains open; the display-only browser
-snapshot below removes collection acquisition from returning-tab display.
+Project responses retain bounded metadata enrichment: code-name reconciliation
+is in memory and saves only on change; derived captions are cached with input
+stat validation, preserving the [next-read freshness contract](project-captions.md).
+Selected-project detail for an unknown directory still uses complete discovery,
+and standalone complete provider reads retain age-driven enumeration. These
+paths must preserve complete inventory, including old sessions and empty
+registered directories; the startup optimization does not truncate history.
 
 **Design decision:** retain inside the existing project scanner rather than
 constructing another project inventory from session rows. Registered empty
 projects and the existing path/workstream identity rules belong to the scanner;
 session catalog membership alone cannot enumerate them.
+
+### New-tab acceptance
+
+The maintainer's startup target is 3,000 ms to populated project, provider,
+model and effort controls, including recent projects when no project URL or
+browser selection is saved. An empty selector or pre-boot textarea alone is
+insufficient. Settings measures populated controls separately. Parts may arrive
+independently, but reserved geometry must keep controls stable and sequential
+typing must acknowledge each key within 100 ms. Frontend updates remain
+user-initiated; [built client delivery](reload-safe-provider-runtimes.md#built-client-for-everyday-source-checkout-use)
+avoids development-mode module request fan-out.
+
+Final isolated checks at `debb025bb` on 2026-10-10 used the native Claude/Codex
+stores, authenticated Claude discovery, a saved recent project, and fresh
+server/app-data/browser instances without an HTTP discovery warm-up:
+
+| Case | Samples | Full controls from navigation |
+| --- | ---: | ---: |
+| Fresh server and browser, recent project selected | 3 | 1,019–1,742 ms |
+| Returning New Session tabs | 6 | 198–227 ms |
+| Three simultaneous tabs per fresh server | 9 | 1,067–1,166 ms |
+| Fresh server and browser, Settings | 3 | 452–470 ms |
+| Hosted relay tabs, authenticated warmed fixture | 3 | 244–307 ms |
+
+The native New Session checks validated the selected project's membership,
+seven live Claude models, provider-host health and local SQLite. Host load was
+2–3 on sixteen cores with about 98 GB available RAM. Earlier concurrent native
+checks at `6c4ad0710`, under load 25.87, placed all nine tabs within
+1,206–2,601 ms. These observations meet the revised target in the measured
+cases; changing shared-host contention prevents a controlled speedup claim or
+a universal latency guarantee. Hosted fixtures used warmed discovery and login,
+so their numbers do not establish cold native-provider or Internet latency.
+
+Held-response browser checks cover independent bundle arrival, source/principal
+isolation, less than 2 px control movement, and sequential typing below 100 ms.
+The final focused transport/startup run passed thirty cases. The broad browser
+run passed 392, skipped ten and failed ten; two obsolete older-server fixtures
+were corrected and passed focused reruns. Eight remaining failures are tracked
+under [artifact viewer readiness](../gaps/artifact-viewer-edit-mode-readiness.md)
+and [instruction/App browser checks](../gaps/e2e-local-instructions-and-project-app-failures.md).
+The full browser suite is not green. Final quick checks passed without warnings.
+All isolated processes were removed. The live backend was not restarted for
+these measurements; applying backend changes requires its normal restart.
 
 ## Continuous-observer model
 

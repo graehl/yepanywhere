@@ -100,6 +100,15 @@ export function canonicalizeCodexToolName(name: string): string {
   );
 }
 
+/** Async delivery reuses its tool call ID for a distinct agent message. */
+export function codexToolMessageId(callId: string, toolName: string): string {
+  return toolName === "request_user_input_async" ||
+    toolName === "send_user_message_async" ||
+    toolName === "send_message_to_user_async"
+    ? `${callId}-tool-call`
+    : callId;
+}
+
 export function normalizeCodexToolInvocation(
   toolName: string,
   input: unknown,

@@ -36,6 +36,7 @@ import {
 import {
   type CodexToolCallContext,
   canonicalizeCodexToolName,
+  codexToolMessageId,
   isCodexBackgroundProcessOutput,
   isCodexInterruptedToolOutput,
   normalizeCodexCommandExecutionOutput,
@@ -1551,7 +1552,7 @@ function convertCodexFunctionCallPayload(
   ];
 
   const message: Message = {
-    uuid,
+    uuid: codexToolMessageId(uuid, rawToolName),
     type: "assistant",
     message: {
       role: "assistant",

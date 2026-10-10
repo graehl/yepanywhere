@@ -164,6 +164,95 @@ function client(s: ReturnType<typeof server>) {
   clients.push(c);
   return c;
 }
+it.each([400, 403, 404, 413, 422])(
+  "pauses rejected draft requests (%s) without losing local text",
+  async (status) => {
+    const s = server();
+    s.fetch.mockRejectedValue(Object.assign(new Error("Rejected"), { status }));
+    const c = client(s);
+    localStorage.setItem(key, raw("Keep my draft"));
+    const e = c.register(key)!;
+    await c.sync(e);
+    await vi.advanceTimersByTimeAsync(60_000);
+    c.observe(key);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(key)).toBe(raw("Keep my draft"));
+    expect(e.error).toBe("sync");
+    c.retryEntry(e);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+  },
+);
+it("retains the retry pause for an inactive empty slot", async () => {
+  const s = server();
+  s.fetch.mockRejectedValue(
+    Object.assign(new Error("Missing context"), { status: 404 }),
+  );
+  const c = client(s);
+  localStorage.setItem(key, raw(""));
+  await c.sync(c.register(key)!);
+  c.release(key);
+  c.observe(key);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(s.fetch).toHaveBeenCalledTimes(1);
+});
+it("saves corrected input after a rejected write without replaying its invalid payload", async () => {
+  const s = server();
+  const fetch = s.transport.fetch;
+  s.transport.fetch = async <T>(
+    path: string,
+    init?: RequestInit,
+  ): Promise<T> => {
+    if (path === "/drafts/write" && String(init?.body).includes("invalid"))
+      throw Object.assign(new Error("Invalid draft payload"), { status: 400 });
+    return fetch<T>(path, init);
+  };
+  const c = client(s);
+  localStorage.setItem(key, raw("invalid"));
+  const e = c.register(key)!;
+  await c.sync(e);
+  localStorage.setItem(key, raw("corrected"));
+  c.edit(key, raw("corrected"));
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(s.get().payload.fields.text).toBe("corrected");
+  expect(e.error).toBeUndefined();
+});
+it("preserves an unacknowledged write when the next read is rejected", async () => {
+  const s = server();
+  s.hold(async () => {
+    throw new Error("Lost acknowledgement");
+  });
+  const c = client(s);
+  localStorage.setItem(key, raw("Keep my draft"));
+  const e = c.register(key)!;
+  await c.sync(e);
+  const pending = e.saved.pending;
+  expect(pending).toBeDefined();
+  s.fetch.mockRejectedValueOnce(
+    Object.assign(new Error("Rejected read"), { status: 400 }),
+  );
+  await c.sync(e);
+  expect(e.saved.pending).toBe(pending);
+  c.retryEntry(e);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(e.saved.pending).toBeUndefined();
+  expect(s.get().payload.fields.text).toBe("Keep my draft");
+});
+it.each([undefined, 408, 429, 500, 503])(
+  "retries transient draft failures (%s)",
+  async (status) => {
+    const s = server();
+    s.fetch.mockRejectedValueOnce(
+      Object.assign(new Error("Unavailable"), { status }),
+    );
+    const c = client(s);
+    localStorage.setItem(key, raw("Keep my draft"));
+    await c.sync(c.register(key)!);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(s.get().payload.fields.text).toBe("Keep my draft");
+  },
+);
 it("discards recovery durably while offline and clears the server on reconnect", async () => {
   const s = server();
   s.remote("Stale draft");

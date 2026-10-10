@@ -47,6 +47,18 @@ regressions cover that boundary without changing Codex provider IDs.
 
 ## Two-layer remedy
 
+Codex async delivery uses the same provider ID for two distinct records: the
+`request_user_input_async` / async-message tool call and the displayed agent
+message it emits. Live and durable normalization give that tool-use message
+the UUID `<call_id>-tool-call`; its block ID stays `<call_id>` so the result
+still pairs normally. The displayed message keeps `<call_id>`, preserving
+stored question answers and dismissals. Ordinary tool IDs are unchanged.
+Using the provider ID unchanged for both records let snapshot deduplication
+replace the call with its displayed message, producing an unmatched-result
+warning on every projection. A captured 19,124-entry session reproduced five
+such warnings after snapshot collapse; distinct message identities preserve
+all five calls and eliminate the warnings without disabling diagnostics.
+
 1. **Deterministic id alignment (preferred).** Make the streamed id equal
    the durable id, so dedup-by-id just works. No false-merge risk.
 2. **Provider-scoped legacy backstops.** `lib/linearMessageDedup.ts`

@@ -159,6 +159,13 @@ or failed refreshes cannot apply a stale choice. **Close review** only closes
 the details and preserves all drafts.
 
 Save failures offer **Retry** without implicitly accepting a conflicting version.
+HTTP 400, 403, 404, 413 and 422 responses pause automatic slot retries; unchanged
+invalid payloads and missing/inaccessible contexts cannot recover by polling.
+Local text remains available with the existing failure notice and **Retry**.
+Editing a payload rejected with 400, 413 or 422 permits another save and does
+not replay the rejected immutable operation. Network errors, rate limits and
+server failures retain automatic retries. No draft contents are discarded merely
+because its server context is unavailable.
 Unresolved submissions offer an explicit **Recover draft** action. Failure and
 recovery reviews offer **Discard draft**, which clears only that slot, including
 local recovery/submission copies and queued writes. It clears its editor and

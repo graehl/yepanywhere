@@ -7,6 +7,13 @@ Topic: backward-compat
 
 ## Decisions
 
+2026-10-10 Codex async-delivery tool-use message UUIDs — qualify with
+`-tool-call` in live and durable normalization because Codex reuses the call ID
+for a distinct displayed agent message. Preserve the displayed message ID,
+stored question state, tool block IDs and result references. Existing clients
+already merge opaque UUIDs; no new wire field or capability is required.
+Previously loaded colliding snapshots require a fresh transcript load.
+
 2026-09-27 `yep-sidebar-interactions:*` — replaced by
 `yep-sidebar-submissions:*`; the old key is removed, not migrated. It mixed
 session visits with sends, and the two cannot be told apart, so carrying it

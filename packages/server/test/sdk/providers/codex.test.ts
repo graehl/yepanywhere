@@ -5790,6 +5790,68 @@ describe("CodexProvider Event Normalization", () => {
     ).toMatchObject([{ uuid: "reason-1" }]);
   });
 
+  it.each([
+    "request_user_input_async",
+    "send_user_message_async",
+    "send_message_to_user_async",
+  ])("keeps live %s calls distinct from their async messages", (name) => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+    const state = createLiveEventState();
+    const convert = (method: string, item: unknown) =>
+      provider.convertNotificationToSDKMessages(
+        { method, params: { threadId: "thread-1", turnId: "turn-1", item } },
+        "session-1",
+        new Map(),
+        state,
+      );
+    const messages = [
+      ...convert("rawResponseItem/completed", {
+        type: "function_call",
+        name,
+        call_id: "call-async",
+        arguments: "{}",
+      }),
+      ...convert("item/completed", {
+        type: "agentMessage",
+        id: "call-async",
+        text: "Choose a mode",
+        delivery: "async",
+      }),
+      ...convert("rawResponseItem/completed", {
+        type: "function_call_output",
+        call_id: "call-async",
+        output: '{"accepted":true}',
+      }),
+    ];
+    expect(messages.map((m) => m.uuid)).toEqual([
+      "call-async-tool-call",
+      "call-async",
+      "call-async-result",
+    ]);
+    const diagnostic = vi.fn();
+    const items = compileTranscriptProjection(messages, undefined, {
+      onUnmatchedToolResult: diagnostic,
+    });
+    expect(diagnostic).not.toHaveBeenCalled();
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool_call",
+          id: "call-async",
+          status: "complete",
+        }),
+        expect.objectContaining({ type: "text", text: "Choose a mode" }),
+      ]),
+    );
+  });
+
   it("renders asynchronously delivered agent messages", () => {
     const provider = createTestProvider() as unknown as {
       normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;

@@ -8,6 +8,7 @@ import {
 } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import { compileTranscriptProjection } from "@yep-anywhere/shared/transcript/compiler";
+import { collapseMessageSnapshots } from "@yep-anywhere/shared/transcript/message";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { LoadedSession } from "../../src/sessions/types.js";
 
@@ -351,6 +352,71 @@ describe("Codex Normalization", () => {
       type: "text",
       text: "visible reply",
     });
+  });
+
+  it.each([
+    "request_user_input_async",
+    "send_user_message_async",
+    "send_message_to_user_async",
+  ])("keeps %s tool and displayed message identities distinct", (name) => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2026-10-09T18:27:53Z",
+        payload: {
+          type: "function_call",
+          call_id: "call-async",
+          name,
+          arguments: "{}",
+        },
+      },
+      {
+        type: "event_msg",
+        timestamp: "2026-10-09T18:27:54Z",
+        payload: {
+          type: "item_completed",
+          item: {
+            type: "AgentMessage",
+            id: "call-async",
+            delivery: "async",
+            content: [{ type: "Text", text: "Choose a mode" }],
+            questions: [{ title: "Choose a mode", options: ["Safe", "Fast"] }],
+          },
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2026-10-09T18:27:55Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-async",
+          output: '{"accepted":true}',
+        },
+      },
+    ];
+    const { messages } = normalizeSession(buildLoadedSession(entries));
+    expect(new Set(messages.map((m) => m.uuid)).size).toBe(3);
+    // Question IDs persist in answer/dismissal state, so keep their identity.
+    expect(messages[1]?.uuid).toBe("call-async");
+    const diagnostic = vi.fn();
+    const items = compileTranscriptProjection(
+      collapseMessageSnapshots(messages),
+      undefined,
+      {
+        onUnmatchedToolResult: diagnostic,
+      },
+    );
+    expect(diagnostic).not.toHaveBeenCalled();
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool_call",
+          id: "call-async",
+          status: "complete",
+        }),
+        expect.objectContaining({ type: "text", text: "Choose a mode" }),
+      ]),
+    );
   });
 
   it("keeps standalone async agent questions and skips ordinary duplicates", () => {

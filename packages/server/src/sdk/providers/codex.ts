@@ -56,6 +56,7 @@ import {
 } from "../../codex/correlationDebugLogger.js";
 import {
   canonicalizeCodexToolName,
+  codexToolMessageId,
   isCodexBackgroundProcessOutput,
   isCodexInterruptedToolOutput,
   type CodexToolCallContext,
@@ -6740,8 +6741,8 @@ export class CodexProvider implements AgentProvider {
   // commandExecution instead carries an inner exec-* id while rollout stores
   // the outer call_* id; the client reconciles that scoped exception via
   // _codexToolCorrelation. See topics/stream-durable-id-dedup.md.
-  private buildItemToolUuid(callId: string): string {
-    return callId;
+  private buildItemToolUuid(callId: string, toolName = ""): string {
+    return codexToolMessageId(callId, toolName);
   }
 
   private buildItemResultUuid(callId: string): string {
@@ -6967,7 +6968,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: this.buildItemToolUuid(callId),
+            uuid: this.buildItemToolUuid(callId, rawToolName),
             message: {
               role: "assistant",
               content: [
@@ -7247,7 +7248,10 @@ export class CodexProvider implements AgentProvider {
     // carry correlation metadata for adoption of the outer durable call_* id.
     // Message/reasoning item ids are the provider ids persisted in rollout.
     const uuid = this.isToolBackedThreadItem(item)
-      ? this.buildItemToolUuid(item.id)
+      ? this.buildItemToolUuid(
+          item.id,
+          item.type === "dynamic_tool_call" ? item.tool : "",
+        )
       : item.type === "agent_message" ||
           item.type === "reasoning" ||
           item.type === "function_call_output"

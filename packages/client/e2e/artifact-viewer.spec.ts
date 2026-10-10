@@ -30,8 +30,15 @@ let listener: ReturnType<typeof createHttpServer>;
 let directory: string;
 let base: string;
 let entry: string;
+const oauthEnvironment = new Map<string, string>();
 
 test.beforeAll(async () => {
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name.startsWith("YEP_VHOST_OAUTH_") && value !== undefined) {
+      oauthEnvironment.set(name, value);
+      delete process.env[name];
+    }
+  }
   const scratch = resolve(clientRoot, "../../.artifacts/artifact-browser");
   await mkdir(scratch, { recursive: true });
   directory = await mkdtemp(join(scratch, "run-"));
@@ -118,6 +125,7 @@ test.afterAll(async () => {
   }
   if (vite) await vite.close();
   if (directory) await rm(directory, { recursive: true });
+  for (const [name, value] of oauthEnvironment) process.env[name] = value;
 });
 
 test("replaces the derived file address and acknowledges sequential manual typing during updates", async ({
@@ -245,7 +253,7 @@ test("sorts app tables by full paths and elides their paths responsively", async
     }),
   );
   await page.goto(`${base}/e2e/fixtures/artifact-viewer.html?settings`);
-  const vhosts = page.getByRole("table", { name: "HTTP vhosts" });
+  const vhosts = page.getByRole("table", { name: "Hosted apps" });
   const projects = page.getByRole("table", { name: "Project apps" });
   await vhosts.getByRole("button", { name: "Serves", exact: true }).click();
   await expect(vhosts.locator("tbody tr").first()).toContainText("alpha");
@@ -1171,22 +1179,41 @@ test("edits OAuth email rows without losing sequential input during updates", as
     await page.keyboard.type(character);
     await expect(secret).toHaveValue(typedSecret, { timeout: 100 });
   }
-  await expect(
-    page.getByText("Secret ending in abcd", { exact: true }),
-  ).toBeVisible();
+  await expect(secret).toHaveAttribute("type", "password");
   await page
-    .getByRole("button", { name: "Configure sign-in provider", exact: true })
+    .getByRole("button", { name: "Save sign-in provider", exact: true })
     .click();
   await expect(secret).toHaveValue("");
-  await expect(
-    page.getByText("Secret ending in abcd", { exact: true }),
-  ).toBeVisible();
+  await expect(secret).toHaveAttribute("placeholder", "••••abcd");
+  const provider = page.getByRole("combobox", {
+    name: "Hosted sign-in provider (OAuth)",
+    exact: true,
+  });
+  await provider.selectOption("google");
+  await expect(page.getByLabel("OpenID Connect issuer URL")).toHaveValue(
+    "https://accounts.google.com",
+  );
+  await expect(secret).toHaveAttribute("placeholder", "");
+  await secret.fill("google-test-secret-abcd");
+  await page.getByRole("button", { name: "Save sign-in provider" }).click();
+  await expect
+    .poll(() => instance.artifactServer.vhostOauth.status().provider.kind)
+    .toBe("oidc");
+  expect(instance.artifactServer.vhostOauth.status().provider.issuer).toBe(
+    "https://accounts.google.com",
+  );
+  await provider.selectOption("entra");
+  await secret.fill("new-test-secret-abcd");
+  await page.getByRole("button", { name: "Save sign-in provider" }).click();
+  await expect
+    .poll(() => instance.artifactServer.vhostOauth.status().provider.kind)
+    .toBe("entra");
   for (const viewport of [
-    { width: 1000, height: 600 },
+    { width: 1200, height: 600 },
     { width: 375, height: 812 },
   ]) {
     await page.setViewportSize(viewport);
-    await enabled.evaluate((input) =>
+    await secret.evaluate((input) =>
       input.closest("label")!.scrollIntoView({ block: "start" }),
     );
     await recordUiCapture(page, `vhost-provider-${viewport.width}`, viewport);
@@ -1289,4 +1316,17 @@ test("edits OAuth email rows without losing sequential input during updates", as
   await enabled.check();
   await expect(blocked).toHaveCount(0);
   expect(instance.artifactServer.vhostOauth.status().secretSuffix).toBe("abcd");
+  await page.route("**/api/artifacts/vhosts/oauth", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...(await response.json()), locked: true } });
+  });
+  await page.reload();
+  await providerSection.click();
+  await expect(provider).toBeDisabled();
+  await expect(secret).toBeDisabled();
+  await expect(secret).toHaveAttribute("placeholder", "••••abcd");
+  await expect(page.getByText(/Managed by environment/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save sign-in provider" }),
+  ).toHaveCount(0);
 });

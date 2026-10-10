@@ -556,7 +556,7 @@ function ArtifactSettingsForm({
         )}
       </fieldset>
       {oauth.supported && oauth.status && (
-        <details>
+        <details className={styles.provider}>
           <summary>{t("vhostOauthProvider")}</summary>
           <VhostOauthProviderSettings
             status={oauth.status}
@@ -574,19 +574,23 @@ function ArtifactSettingsForm({
       {vhostsSupported && (
         <div className={styles.fields}>
           <div className={styles.vhosts}>
-            <span className={styles.vhostHeading}>
-              {t("artifactVhostTableTitle")}
-            </span>
-            {oauth.status && (
-              <button type="button" onClick={() => setLogHost("")}>
-                {t("vhostOauthAllLogs")}
-              </button>
-            )}
-            <p>{t("artifactVhostTableHint")}</p>
-            {sitesSupported && <p>{t("artifactVhostFilesHint")}</p>}
-            <p>
-              {t(access.supported ? "appAccessHint" : "appAccessUnavailable")}
-            </p>
+            <div className={styles.vhostHeader}>
+              <h3 className={styles.vhostHeading}>
+                {t("artifactVhostTableTitle")}
+              </h3>
+              {oauth.status && (
+                <button type="button" onClick={() => setLogHost("")}>
+                  {t("vhostOauthAllLogs")}
+                </button>
+              )}
+            </div>
+            <div className={styles.vhostIntro}>
+              <p>{t("artifactVhostTableHint")}</p>
+              {sitesSupported && <p>{t("artifactVhostFilesHint")}</p>}
+              <p>
+                {t(access.supported ? "appAccessHint" : "appAccessUnavailable")}
+              </p>
+            </div>
             {access.error && <p role="alert">{access.error}</p>}
             <SettingsCollection
               selectedKey={selectedId}

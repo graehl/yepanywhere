@@ -13,6 +13,8 @@ import styles from "./VhostOauthSettings.module.css";
 
 type Update = (path: string, body: unknown) => Promise<void>;
 
+const GOOGLE_ISSUER = "https://accounts.google.com";
+
 export function VhostOauthProviderSettings({
   status,
   update,
@@ -26,11 +28,12 @@ export function VhostOauthProviderSettings({
   const [pendingEnabled, setPendingEnabled] = useState<boolean>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const secretSuffix = secret
-    ? secret.length >= 12
-      ? secret.slice(-4)
-      : undefined
-    : status.secretSuffix;
+  const hasSavedSecret =
+    status.secretConfigured &&
+    provider.kind === status.provider.kind &&
+    provider.clientId === status.provider.clientId &&
+    provider.tenantId === status.provider.tenantId &&
+    provider.issuer === status.provider.issuer;
   return (
     <div className={styles.settings}>
       {status.enabled !== undefined && (
@@ -67,18 +70,27 @@ export function VhostOauthProviderSettings({
         <label>
           {t("vhostOauthProvider")}
           <select
-            value={provider.kind}
+            value={
+              provider.kind === "oidc" && provider.issuer === GOOGLE_ISSUER
+                ? "google"
+                : provider.kind
+            }
             onChange={(e) =>
               setProvider({
                 ...provider,
-                kind: e.target.value as "entra" | "oidc",
+                kind: e.target.value === "entra" ? "entra" : "oidc",
+                issuer: e.target.value === "google" ? GOOGLE_ISSUER : "",
               })
             }
           >
             <option value="entra">Microsoft Entra</option>
-            <option value="oidc">OpenID Connect</option>
+            <option value="google">Google</option>
+            <option value="oidc">{t("vhostOauthCustomProvider")}</option>
           </select>
         </label>
+        {provider.kind === "oidc" && provider.issuer === GOOGLE_ISSUER && (
+          <p>{t("vhostOauthGoogleHint")}</p>
+        )}
         {provider.kind === "entra" ? (
           <label>
             {t("vhostOauthTenant")}
@@ -126,13 +138,12 @@ export function VhostOauthProviderSettings({
             type="password"
             autoComplete="new-password"
             value={secret}
-            placeholder={status.secretConfigured ? "••••••••" : ""}
+            placeholder={
+              hasSavedSecret ? `••••${status.secretSuffix ?? "••••"}` : ""
+            }
             onChange={(e) => setSecret(e.target.value)}
           />
         </label>
-        {secretSuffix && (
-          <p>{t("vhostOauthSecretSuffix", { suffix: secretSuffix })}</p>
-        )}
         <label>
           {t("vhostOauthIp")}
           <select
@@ -150,27 +161,29 @@ export function VhostOauthProviderSettings({
           </select>
         </label>
         <p>{t("vhostOauthIpHint")}</p>
-        <button
-          type="button"
-          onClick={async () => {
-            setBusy(true);
-            setMessage("");
-            try {
-              await update("/artifacts/vhosts/oauth", {
-                provider,
-                ...(secret ? { secret } : {}),
-              });
-              setSecret("");
-              setMessage(t("artifactSaved"));
-            } catch (error) {
-              setMessage(String(error));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {t("vhostOauthConfigure")}
-        </button>
+        {!status.locked && (
+          <button
+            type="button"
+            onClick={async () => {
+              setBusy(true);
+              setMessage("");
+              try {
+                await update("/artifacts/vhosts/oauth", {
+                  provider,
+                  ...(secret ? { secret } : {}),
+                });
+                setSecret("");
+                setMessage(t("artifactSaved"));
+              } catch (error) {
+                setMessage(String(error));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {t("vhostOauthConfigure")}
+          </button>
+        )}
       </fieldset>
       {message && <p role="status">{message}</p>}
     </div>

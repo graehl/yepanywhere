@@ -69,7 +69,7 @@ function renderSettings() {
       <ArtifactSettings />
     </I18nProvider>,
   );
-  return within(screen.getByRole("table", { name: "HTTP vhosts" }));
+  return within(screen.getByRole("table", { name: "Hosted apps" }));
 }
 
 it("links each saved row to its service in a new tab, with its access token", () => {

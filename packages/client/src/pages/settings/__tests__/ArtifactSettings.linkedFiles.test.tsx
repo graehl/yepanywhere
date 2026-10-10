@@ -99,7 +99,7 @@ it("sorts full served paths in both directions without changing saved order", as
       <ArtifactSettings />
     </I18nProvider>,
   );
-  const table = within(screen.getByRole("table", { name: "HTTP vhosts" }));
+  const table = within(screen.getByRole("table", { name: "Hosted apps" }));
   const rows = () =>
     table
       .getAllByRole("row")

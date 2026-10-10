@@ -665,8 +665,13 @@ signed ID token or subject-checked UserInfo response. Provider consent policy
 and publisher verification remain external prerequisites.
 
 Without environment configuration, the owner configures the provider and a
-masked secret in Apps. The full saved secret is never returned; the owner sees
-only a four-character suffix for values at least twelve characters long.
+masked secret in Apps. The Google preset fills the standard OIDC issuer
+`https://accounts.google.com`; it still requires the owner's registered client
+ID, secret and callback URL. Custom OIDC issuers remain editable. The preset
+uses the existing `oidc` wire format and needs no new server capability.
+The full saved secret is never returned; the empty secret field shows only a
+masked placeholder with a four-character suffix for values at least twelve
+characters long.
 Shorter values show no suffix. Settings persist owner-only under
 `{dataDir}/artifacts/vhost-oauth.json`. For environment-managed deployments,
 set all three required variables:
@@ -680,7 +685,8 @@ Optional variables are `YEP_VHOST_OAUTH_PROVIDER` (`entra` by default, or
 UUID), `YEP_VHOST_OAUTH_ISSUER` (required for generic OIDC), and
 `YEP_VHOST_OAUTH_VISITOR_IP` (`peer`, `cloudflare`, or `x-real-ip`). Any OAuth
 environment variable activates this authoritative mode: incomplete/invalid
-configuration fails explicitly. Provider settings become read-only in Apps;
+configuration fails explicitly. Provider settings become read-only in Apps,
+with an environment-management explanation and no provider-save action;
 the full environment secret is neither returned nor copied into persisted settings.
 Host allow-lists remain editable. Provider configuration never enables a host
 implicitly. Restart after changing environment variables.

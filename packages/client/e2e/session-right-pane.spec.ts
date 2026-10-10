@@ -535,7 +535,7 @@ test("Apps settings explains wildcard hosting without a domain default", async (
   await page
     .getByRole("button", { name: "Minimize details", exact: true })
     .click();
-  await expect(page.getByRole("table", { name: "HTTP vhosts" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Hosted apps" })).toBeVisible();
 });
 
 test("older servers expose no app-link management requests", async ({
@@ -663,7 +663,7 @@ test("Apps saves on defocus without losing typing during a pending save", async 
   await expect(
     page.getByRole("button", { name: /Save.*settings/ }),
   ).toHaveCount(0);
-  const table = page.getByRole("table", { name: "HTTP vhosts" });
+  const table = page.getByRole("table", { name: "Hosted apps" });
   const back = page.getByRole("button", {
     name: "Minimize details",
     exact: true,

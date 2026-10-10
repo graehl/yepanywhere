@@ -57,6 +57,19 @@
   cursor: pointer;
 }
 
+.provider {
+  margin-block: 24px;
+}
+
+.provider > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.provider[open] > summary {
+  margin-block-end: 16px;
+}
+
 .vhosts {
   display: flex;
   flex-direction: column;
@@ -65,7 +78,27 @@
 }
 
 .vhostHeading {
+  margin: 0;
+  font-size: 16px;
   font-weight: 600;
+}
+
+.vhostHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vhostIntro {
+  display: grid;
+  gap: 12px;
+}
+
+.vhostIntro p {
+  margin: 0;
+  line-height: 1.5;
 }
 
 .vhostRow {

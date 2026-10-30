@@ -554,6 +554,54 @@ describe("parseMarkdownSourceSpans", () => {
   });
 });
 
+describe("renderSafeMarkdown — visualize artifacts", () => {
+  const marker = (path: unknown) =>
+    `\uE200visualize\uE202${JSON.stringify({ path, mode: "wide" })}\uE201`;
+
+  it("links an artifact in prose without interpreting its JSON path as Markdown", () => {
+    const path = '/tmp/review _draft_/panel [comparison] #1 & "notes".html';
+    const html = renderSafeMarkdown(`Before ${marker(path)} after.`);
+    expect(html).toContain(
+      `href="/api/local-file?path=${encodeURIComponent(path)}"`,
+    );
+    expect(html).toContain('data-ya-resource="local-file"');
+    expect(html).toContain(
+      'panel [comparison] #1 &amp; "notes".html</a> after.',
+    );
+    expect(html).not.toContain("visualize");
+    expect(html).not.toContain("<em>");
+    expect(renderSafeMarkdown(marker("C:\\reports\\panel.html"))).toContain(
+      'href="/api/local-file?path=C%3A%5Creports%5Cpanel.html"',
+    );
+  });
+
+  it("keeps code, invalid destinations, incomplete markers and share output inert", () => {
+    for (const source of [
+      `\`${marker("/tmp/report.html")}\``,
+      `\`\`\`text\n${marker("/tmp/report.html")}\n\`\`\``,
+      `[${marker("/tmp/report.html")}](https://example.com)`,
+      marker("javascript:alert(1)"),
+      marker("//example.com/report.html"),
+      marker("relative/report.html"),
+      marker("/tmp/report.html\n"),
+      marker(null),
+      "\uE200visualize\uE202{bad json}\uE201",
+      '\uE200visualize\uE202{"path":"/tmp/report.html"}',
+    ]) {
+      expect(renderSafeMarkdown(source)).not.toContain("/api/local-file");
+    }
+    expect(
+      renderSafeMarkdown(marker("/tmp/report.html"), {
+        projectFileLinks: {
+          projectId: "project",
+          projectPath: "/project",
+          publicShare: true,
+        },
+      }),
+    ).not.toContain("/api/local-file");
+  });
+});
+
 describe("renderSafeMarkdown — local file links", () => {
   it("routes local Quarto Markdown links through rendered file viewing", () => {
     const html = renderSafeMarkdown("[report](/tmp/report.qmd)");

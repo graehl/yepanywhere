@@ -5,7 +5,7 @@ import { recordUiCapture } from "./support/ui-capture.js";
 
 test.use({ colorScheme: "dark" });
 
-test("document links remain recognizable inside inline code", async ({
+test("document and visualize links open through the file viewer", async ({
   page,
   baseURL,
 }) => {
@@ -14,6 +14,8 @@ test("document links remain recognizable inside inline code", async ({
   const target = "gaps/sketches/quarto-aware-document-view.md";
   mkdirSync(join(projectPath, "gaps/sketches"), { recursive: true });
   writeFileSync(join(projectPath, target), "# Quarto document proposal\n");
+  const artifactPath = join(projectPath, "visualize-comparison.html");
+  writeFileSync(artifactPath, "<!doctype html><h1>Visualize comparison</h1>");
   writeFileSync(
     join(projectPath, "link-affordance.md"),
     [
@@ -24,6 +26,8 @@ test("document links remain recognizable inside inline code", async ({
       "Ordinary code such as `renderMarkdown` is not a link.",
       "",
       `[Read the proposal](./${target}).`,
+      "",
+      `\uE200visualize\uE202${JSON.stringify({ path: artifactPath, mode: "wide" })}\uE201`,
     ].join("\n"),
   );
 
@@ -38,7 +42,8 @@ test("document links remain recognizable inside inline code", async ({
     const preview = page.locator(".markdown-preview");
     const link = preview.getByRole("link", { name: target, exact: true });
     await expect(link).toBeVisible();
-    await page.mouse.move(0, 0);
+    await page.keyboard.press("Escape");
+    await page.mouse.move(viewport.width - 10, viewport.height - 10);
     await expect(link).toHaveCSS("text-decoration-line", "underline");
     const linkColor = await link.evaluate(
       (node) => getComputedStyle(node).color,
@@ -47,7 +52,22 @@ test("document links remain recognizable inside inline code", async ({
     await expect(
       preview.getByText("renderMarkdown", { exact: true }),
     ).not.toHaveCSS("color", linkColor);
+    const artifact = preview.getByRole("link", {
+      name: "visualize-comparison.html",
+      exact: true,
+    });
+    await expect(artifact).toHaveAttribute("data-ya-path", artifactPath);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await recordUiCapture(page, `markdown-links-${viewport.width}`);
+    await artifact.click();
+    await expect(
+      page
+        .frameLocator('iframe[title="visualize-comparison.html"]')
+        .getByRole("heading", { name: "Visualize comparison" }),
+    ).toBeVisible();
+    await page.goto(
+      `${baseURL}/projects/${projectId}/file?path=link-affordance.md`,
+    );
     await link.focus();
     await expect(link).toBeFocused();
     await page.keyboard.press("Enter");

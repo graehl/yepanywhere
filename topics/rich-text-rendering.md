@@ -73,6 +73,16 @@ Provider formats observed so far:
 
 These run unconditionally and are not user-configurable:
 
+- **Visualize artifact references** — a complete Codex
+  `\uE200visualize\uE202{"path":"/absolute/report.html","mode":"wide"}\uE201`
+  marker in rendered prose becomes a filename link to YA's existing file
+  viewer. POSIX and Windows absolute HTML paths retain their exact spelling;
+  the viewer applies its existing file-access checks and isolated HTML preview
+  policy when clicked. The marker does not mint a grant, load an iframe inline
+  in the transcript, or change file authority. Presentation hints such as
+  `mode` are ignored. Incomplete/malformed markers, non-local or non-HTML paths,
+  code examples, existing link labels, and public-share output are not
+  converted into artifact links.
 - **Wrapped lines stay separated** — Appearance line spacing may tighten prose,
   but rendered markdown must never overlap its own wrapped lines. Body prose in
   assistant text, streaming blocks, thinking blocks, and document previews keeps

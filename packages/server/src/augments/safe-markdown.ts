@@ -1655,6 +1655,71 @@ const markdownRenderer = new MarkdownIt({
   xhtmlOut: false,
 }).disable("strip_references");
 
+// Let the normal inline parser handle code and links, but stop its plain-text
+// scan at Codex's artifact marker so JSON paths never become Markdown syntax.
+const inlineTextRule = markdownRenderer.inline.ruler.getRules("")[0];
+if (!inlineTextRule) throw new Error("Missing Markdown inline text rule");
+const VISUALIZE_OPEN = "\uE200visualize\uE202";
+const VISUALIZE_CLOSE = "\uE201";
+const nextVisualizeMarker = new WeakMap<object, number>();
+markdownRenderer.inline.ruler.at("text", (state, silent) => {
+  let start = nextVisualizeMarker.get(state);
+  if (start === undefined || (start >= 0 && start < state.pos)) {
+    start = state.src.indexOf(VISUALIZE_OPEN, state.pos);
+    nextVisualizeMarker.set(state, start);
+  }
+  if (
+    start < 0 ||
+    start >= state.posMax ||
+    state.linkLevel > 0 ||
+    activeRenderOptions.projectFileLinks?.publicShare
+  ) {
+    return inlineTextRule(state, silent);
+  }
+  if (start > state.pos) {
+    const end = state.posMax;
+    state.posMax = start;
+    try {
+      return inlineTextRule(state, silent);
+    } finally {
+      state.posMax = end;
+    }
+  }
+  const end = state.src.indexOf(VISUALIZE_CLOSE, start + VISUALIZE_OPEN.length);
+  if (end >= 0 && end < state.posMax) {
+    try {
+      const value: unknown = JSON.parse(
+        state.src.slice(start + VISUALIZE_OPEN.length, end),
+      );
+      const path =
+        value && typeof value === "object" && "path" in value
+          ? value.path
+          : undefined;
+      if (
+        typeof path === "string" &&
+        (path.startsWith("/") || isWindowsDriveAbsolutePath(path)) &&
+        !path.startsWith("//") &&
+        !/\p{C}/u.test(path) &&
+        /\.html?$/i.test(path)
+      ) {
+        if (!silent) state.push("ya_visualize", "", 0).content = path;
+        state.pos = end + VISUALIZE_CLOSE.length;
+        return true;
+      }
+    } catch {
+      // Incomplete or malformed markers remain readable provider text.
+    }
+  }
+  return inlineTextRule(state, silent);
+});
+markdownRenderer.renderer.rules.ya_visualize = (tokens, index) => {
+  const path = tokens[index]?.content ?? "";
+  return renderLocalFileLink(
+    { filePath: path },
+    escapeHtml(path.split(/[\\/]/).pop() ?? path),
+  );
+};
+
 markdownRenderer.use(markdownItKatex, {
   allowInlineWithSpace: false,
   delimiters: "all",

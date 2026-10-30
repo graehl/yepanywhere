@@ -425,3 +425,22 @@ migration, public core package or event-sourced conversation rewrite is a
 prerequisite. Revisit a framework only against demonstrated lifecycle/concurrency
 cost in the extracted seam, following the existing
 [provider comparison](../docs/competitive/t3code-provider-architecture.md).
+
+## Opt-in documentation evals
+
+The [small eval runner](../scripts/agent-api-eval/README.md) imports the actual
+bootstrap/help/schema and private HTTP adapter with deterministic source
+functions. It needs no full YA app, scanner or ordinary profile. Normal tests
+exercise fixture boundaries and grading without model calls; `--run` explicitly
+opts into fresh Codex scratch sessions. Real-model execution currently requires
+POSIX process groups; native Windows HTTP/bootstrap qualification remains
+separate. Saved ChatGPT access is copied without refresh or API-key authority;
+local Ollama is an optional diagnostic lane.
+
+The [initial evidence](../docs/tactical/166-agent-api-bootstrap-and-documentation.md#delivered-eval-evidence--2026-10-30)
+records 12/12 Sol medium trials across documentation variants, three extra Sol
+high tasks and one local Qwen identity trial. Keep the short bootstrap plus
+served help for now; this small sample does not establish cache savings or a
+statistical model-quality ranking. Narrower operation docs/schema are a useful
+next context-cost experiment. The runner reports bytes and provider usage
+separately rather than inventing unique-context tokens or subscription prices.

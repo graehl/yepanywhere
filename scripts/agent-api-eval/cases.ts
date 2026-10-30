@@ -1,0 +1,147 @@
+import type { ApiSession } from "../../packages/server/src/core-api/contracts.js";
+
+export const FIXTURE_REVISION = "agent-api-discovery-3";
+export const SERVER_ID = "00000000-0000-4000-8000-000000000001";
+export const OWN_SESSION_ID = "eval-owning-session";
+export const PROJECT_ID = "orchid-project";
+export const REVIEW_IDS = ["orchid-004", "orchid-072", "orchid-119"];
+export const projects = [
+  { id: PROJECT_ID, name: "Orchid", path: "/fixture/orchid" },
+  { id: "orchid-old", name: "Orchid archive", path: "/fixture/archive" },
+];
+export const sessions: ApiSession[] = Array.from(
+  { length: 125 },
+  (_, index) => {
+    const id = `orchid-${String(index).padStart(3, "0")}`;
+    return {
+      id,
+      projectId: PROJECT_ID,
+      title: REVIEW_IDS.includes(id) ? "Release review" : `Work ${index}`,
+      provider: id === REVIEW_IDS[1] ? "codex" : "claude",
+      state: "idle",
+      updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+    };
+  },
+);
+sessions.push({
+  id: OWN_SESSION_ID,
+  projectId: "orchid-old",
+  title: "Eval owner",
+  provider: "codex",
+  state: "in-turn",
+  updatedAt: "2026-01-02T00:00:00.000Z",
+});
+export const CASES = {
+  identity: "Report the server id and your owning YA session id from this API.",
+  project:
+    "Find the project named exactly Orchid and report its API project id.",
+  pagination:
+    "Find every session in the project named exactly Orchid whose title is exactly Release review. Report all their session ids. Do not assume the first page is the whole catalog.",
+  detail:
+    "Among the Release review sessions in Orchid, identify the one last updated at 2026-01-01T00:01:12.000Z. Inspect that session and report its id and provider in answer.",
+  incomplete:
+    "Inspect the session catalog. Can you conclude that a session named Missing review does not exist? Report complete=false if the catalog cannot establish absence, otherwise complete=true.",
+  unsupported:
+    "Check advertised servers and operations. Can this API currently create a session on another authorized machine? Report supported and explain briefly.",
+  control:
+    "Calculate 17 times 23. Put the decimal result in answer. This task needs no YA information.",
+} as const;
+export type CaseId = keyof typeof CASES;
+export interface Answer {
+  serverId: string | null;
+  sessionId: string | null;
+  projectId: string | null;
+  sessionIds: string[];
+  complete: boolean | null;
+  supported: boolean | null;
+  answer: string;
+}
+export interface Trace {
+  method: string;
+  path: string;
+  status: number;
+  bytes: number;
+  elapsedMs: number;
+  atMs: number;
+}
+export const answerSchema = {
+  type: "object",
+  properties: {
+    serverId: { type: ["string", "null"] },
+    sessionId: { type: ["string", "null"] },
+    projectId: { type: ["string", "null"] },
+    sessionIds: { type: "array", items: { type: "string" } },
+    complete: { type: ["boolean", "null"] },
+    supported: { type: ["boolean", "null"] },
+    answer: { type: "string" },
+  },
+  required: [
+    "serverId",
+    "sessionId",
+    "projectId",
+    "sessionIds",
+    "complete",
+    "supported",
+    "answer",
+  ],
+  additionalProperties: false,
+};
+export function grade(
+  caseId: CaseId,
+  answer: Answer | null,
+  trace: Trace[],
+  operationsInContext = false,
+) {
+  const read = (path: string) =>
+    trace.some(
+      (entry) =>
+        entry.method === "GET" &&
+        entry.status === 200 &&
+        entry.path.split("?")[0] === path,
+    );
+  const root = `/v0/servers/${SERVER_ID}`;
+  if (
+    !answer ||
+    !Array.isArray(answer.sessionIds) ||
+    !answer.sessionIds.every((id) => typeof id === "string") ||
+    typeof answer.answer !== "string"
+  )
+    return false;
+  switch (caseId) {
+    case "identity":
+      return (
+        answer.serverId === SERVER_ID &&
+        answer.sessionId === OWN_SESSION_ID &&
+        read("/v0/me")
+      );
+    case "project":
+      return answer.projectId === PROJECT_ID && read(`${root}/projects`);
+    case "pagination":
+      return (
+        JSON.stringify([...answer.sessionIds].sort()) ===
+          JSON.stringify([...REVIEW_IDS].sort()) && read(`${root}/sessions`)
+      );
+    case "detail":
+      return (
+        answer.sessionId === REVIEW_IDS[1] &&
+        answer.answer.trim().toLowerCase() === "codex" &&
+        read(`${root}/sessions/${REVIEW_IDS[1]}`)
+      );
+    case "incomplete":
+      return answer.complete === false && read(`${root}/sessions`);
+    case "unsupported":
+      return (
+        answer.supported === false &&
+        read("/v0/servers") &&
+        (operationsInContext ||
+          read(`${root}/capabilities`) ||
+          read(`${root}/access`) ||
+          read("/v0/schema") ||
+          read("/v0/help") ||
+          read("/v0")) &&
+        trace.every((entry) => entry.method === "GET")
+      );
+    case "control":
+      return answer.answer.trim() === "391" && trace.length === 0;
+  }
+}

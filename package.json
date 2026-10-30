@@ -67,8 +67,8 @@
     "site:dev": "node scripts/run-site-npm.mjs dev",
     "site:build": "node scripts/run-site-npm.mjs build",
     "e2e:typecheck": "tsc -p packages/client/tsconfig.e2e.json --noEmit",
-    "tools:typecheck": "tsc -p packages/server/tsconfig.tool-display-tests.json --noEmit",
-    "tools:check": "node --test scripts/check-tool-display-boundaries.test.mjs && node scripts/check-tool-display-boundaries.mjs && pnpm simple-client:check",
+    "tools:typecheck": "tsc -p packages/server/tsconfig.tool-display-tests.json --noEmit && tsc -p packages/server/tsconfig.agent-api-eval.json --noEmit",
+    "tools:check": "node --test scripts/check-tool-display-boundaries.test.mjs && node scripts/check-tool-display-boundaries.mjs && pnpm simple-client:check && pnpm exec tsx --conditions source scripts/agent-api-eval/run.ts",
     "simple-client:generate": "node scripts/generate-simple-client.mjs",
     "simple-client:check": "node --test scripts/simple-client-schema.test.mjs && node scripts/generate-simple-client.mjs --check"
   },

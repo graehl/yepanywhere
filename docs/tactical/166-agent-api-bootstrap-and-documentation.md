@@ -1,9 +1,9 @@
 # Agent API bootstrap and served documentation
 
-Status: **implementation authorized**, 2026-10-30. Deliver in four reviewed
-phases: documentation, credentials/local transports, provider advertisement/UI
-and reload continuity, then the opt-in eval runner. Use YA-launched Sol 6.1 high
-reviewers between phases, repair findings and commit each completed phase.
+Status: **implemented**, 2026-10-30, with platform qualification limits below.
+Delivered in four reviewed phases: documentation, credentials/local transports, provider advertisement/UI
+and reload continuity, then the opt-in eval runner. Each phase used a
+YA-launched Sol 6.1 high reviewer; findings were repaired before its commit.
 It extends the delivered
 [local read slice](165-http-api-v0.md), under the owning
 [HTTP v0 topic](../../topics/http-api-v0.md). Release priority is unchanged.
@@ -36,8 +36,9 @@ settings reply arrives pass. Native Windows and packaged-provider qualification
 remain explicit limitations. Root lint, formatting and types pass. The full
 workspace test run has 6,583 passing server tests and one known unrelated
 [Rendez restart watcher failure](../../gaps/rendez-nested-watch-event-after-restart.md);
-its isolated rerun also failed, so the full gate is not green. Phase 4 remains
-pending.
+its isolated rerun also failed. Those Node 26 failures remain recorded.
+Phase 4 had a complete Node 22 workspace pass; its final cleanup verification
+again hit the known watcher failure. Details and remaining limits are below.
 
 ## Outcome and scope
 
@@ -356,7 +357,7 @@ schema byte sizes without model calls. Establish a measured baseline before
 choosing useful growth limits; do not add arbitrary token ceilings or brittle
 snapshots for all prose. Real-model comparisons remain opt-in, with redacted
 traces/results retained in ignored scratch output and a concise review report.
-No paid eval has been run as part of writing this plan.
+Real-model evidence is recorded below; no model calls run in normal CI.
 
 After source changes, run lint, format verification, typecheck and workspace
 tests. New UI requires the repository's focused browser, real sequential typing
@@ -372,3 +373,65 @@ and artifact evidence. Record platform limitations and timing for added tests.
 - Accept Unix sockets on macOS/Linux and bearer-authenticated random loopback
   TCP on native Windows. Confirm required Node/Bun/desktop evidence. Strict
   no-TCP Windows and cross-WSL access need separate qualification/design.
+
+## Delivered eval evidence — 2026-10-30
+
+The opt-in [runner](../../scripts/agent-api-eval/README.md) uses the actual
+private HTTP runtime and pure fixture sources without starting the YA app or
+scanners. The CLI runs in fresh scratch HOME/CODEX_HOME/cwd with ephemeral
+sessions, ignored personal config/rules, no API keys and an access-only copy
+of saved ChatGPT auth. Refresh authority is blank; expiry/age preflight requires
+margin for the declared budget. Reviewers still launch through YA. Direct eval
+execution controls fixture env without adding arbitrary env injection to YA.
+
+macOS, Codex CLI 0.160.0, Sol 6.1 medium: one fresh sample of each identity,
+pagination, unsupported-action and ordinary-no-API task per variant, rotated
+order, fixture revision 3. All 12 passed. The control made no API calls in any
+variant. This is descriptive qualification, not a statistically established
+quality or cache-efficiency ranking. Reported input includes processed/replayed
+context and is not unique documentation context.
+
+| Variant | Success | Bootstrap bytes | API requests / errors | Fetched docs bytes, including repeats | Total seconds | Reported input tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| Minimal | 4/4 | 292 | 13 / 0 | 230,068 | 57.3 | 218,298 |
+| Served help | 4/4 | 696 | 14 / 0 | 245,378 | 52.5 | 199,040 |
+| Inline help | 4/4 | 8,353 | 22 / 0 | 310,550 | 61.1 | 225,021 |
+
+Sol high additionally passed project lookup, detail disambiguation and incomplete
+catalog handling (3/3) using the shipped bootstrap, plus an access-only-auth
+identity qualification (1/1). Installed local Qwen 3.5 9B through Codex OSS /
+Ollama passed identity (1/1, about 41 seconds); this qualifies that diagnostic
+harness path only, not all tasks or shipped provider eligibility. Local tokens
+are not directly comparable with Sol or across tokenizers.
+
+The first setup fixture omitted its owning session from the catalog and caused
+a needless 404; revision 2 repaired that inconsistency. The final comparison
+uses revision 3 with a detail-only output instruction restricted to its case.
+Review also repaired false grading requirements: help/schema/inline supplied
+operation evidence need not force a particular extra fetch. Provider quota
+detection ignores ordinary prose and token counts such as 429. A real TERM-resistant descendant regression covers process-group teardown;
+the leader closing cannot cancel escalation. Windows real-model eval execution
+remains disabled pending equivalent process-tree qualification. Raw prior runs
+remain separate from final evidence in ignored `tasks/http-api-v0/phase4-*`.
+
+Keep the shipped small bootstrap plus served help. This sample shows no outcome
+benefit from injecting the whole guide. A useful next experiment is narrower
+on-demand operation documentation/schema: the full launch OpenAPI is 57,517
+UTF-8 bytes, help 7,655, and repeated schema fetches dominate discovery bytes
+in some trials. Do not claim a measured cache saving or change defaults from
+this sample. Larger or repeat runs should answer a concrete decision.
+
+Normal CI retains four boundary/grader/cleanup tests (roughly 90 ms of test work,
+about 0.5 s including Vitest startup here), source typechecking and a dry-run
+byte report command; no paid CI dependency or new runtime library. The browser
+proof remains the phase 3 preview and real sequential typing check. Root Node 22
+lint, format and type checks pass. An earlier full workspace run passed
+(6,586 server / 7,018 client); final cleanup changes pass all focused checks,
+but the final full server run has 6,587 passing tests and the known unrelated
+Rendez watcher failure at line 353; its isolated rerun passed in 5.76 s.
+The full final gate is not green; earlier
+Node 22 passes do not resolve that intermittent failure.
+
+Native Windows PowerShell/tool invocation, Linux, packaged-provider end-to-end
+and crossing native Windows/WSL still need qualification. Session writes/history,
+peer grant enrollment/routing and command/PTY surfaces remain subsequent slices.

@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.test.json",
+  "include": [
+    "../../scripts/agent-api-eval/**/*.ts",
+    "test/core-api/eval.test.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

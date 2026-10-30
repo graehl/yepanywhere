@@ -31,3 +31,13 @@ The immediate isolated file rerun failed at the same assertion: 3 passed,
 1 failed, 1 skipped, 12.83 s. This is not a passing isolated recheck. No watcher
 source, assertion, retries or timeout changed. Evidence is retained in ignored
 `tasks/http-api-v0/phase3-final-tests.log` and `phase3-rendez-recheck.log`.
+
+Later on 2026-10-30, two complete server runs on Node 22.23.3 passed the case
+(including one full workspace run). The final HTTP API eval cleanup verification
+then missed the first nested delivery at line 353 on Node 22: 6,587 other server
+tests passed. Earlier green runs do not resolve this intermittent watcher defect
+or establish that changing Node versions fixes it. Evidence: ignored
+`tasks/http-api-v0/phase4-reviewed-tests.log`; watcher code/budgets remain unchanged.
+The immediate final Node 22 isolated rerun passed all four runnable cases in
+5.76 s. That disagreement is retained as intermittent evidence, not a green
+replacement for the failing full run.

@@ -10,6 +10,44 @@ import {
 /** Durable identity/outcomes only; never stores prompts or bearer credentials. */
 export class ApiReceiptStore {
   private statements = new Map<string, SqliteStatement>();
+  private readonly listeners = new Map<
+    string,
+    Set<(receipt: ApiReceipt) => void>
+  >();
+  private listenerCount = 0;
+  subscribe(id: string, listener: (receipt: ApiReceipt) => void) {
+    if (this.listenerCount >= 128)
+      throw new CoreApiError(
+        "controller_unavailable",
+        "Receipt observation capacity reached",
+        503,
+      );
+    let listeners = this.listeners.get(id);
+    if (!listeners) {
+      listeners = new Set();
+      this.listeners.set(id, listeners);
+    }
+    listeners.add(listener);
+    this.listenerCount++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      listeners!.delete(listener);
+      this.listenerCount--;
+      if (!listeners!.size) this.listeners.delete(id);
+    };
+  }
+  private publish(receipt: ApiReceipt) {
+    for (const listener of [...(this.listeners.get(receipt.id) ?? [])]) {
+      try {
+        listener(receipt);
+      } catch {
+        /* Observation cannot undo committed admission. */
+      }
+    }
+  }
+
   constructor(private readonly database: SqliteDatabase) {}
   private statement(sql: string) {
     let statement = this.statements.get(sql);
@@ -164,27 +202,48 @@ export class ApiReceiptStore {
         "state" | "sessionId" | "queueId" | "delivery" | "failure"
       >
     >,
+    publish = true,
   ) {
     const previous = this.get(id);
     if (!previous) return;
-    const next = receiptSchema.parse({
-      ...previous,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    });
+    const next = receiptSchema.parse({ ...previous, ...patch });
+    if (JSON.stringify(next) === JSON.stringify(previous)) return previous;
+    next.updatedAt = new Date().toISOString();
     this.statement(
       "UPDATE agent_api_receipts SET session_id = ?, state = ?, receipt_json = ? WHERE id = ?",
     ).run(next.sessionId, next.state, JSON.stringify(next), id);
+    if (publish) this.publish(next);
     return next;
   }
   /** A crash/reload cannot prove whether an external startup crossed its boundary. */
   recoverInterrupted() {
+    const recovered: ApiReceipt[] = [];
     this.database.transaction(() => {
       const rows = this.statement(
-        "SELECT id FROM agent_api_receipts WHERE state IN ('dispatching', 'queued') LIMIT 10000",
-      ).all<{ id: string }>();
-      for (const row of rows) this.update(row.id, { state: "uncertain" });
+        "SELECT receipt_json FROM agent_api_receipts WHERE state IN ('dispatching', 'queued', 'accepted') LIMIT 10000",
+      ).all<{ receipt_json: string }>();
+      for (const row of rows) {
+        const receipt = this.decode(row)!;
+        if (receipt.state === "accepted" && receipt.delivery === "consumed")
+          continue;
+        const next = this.update(
+          receipt.id,
+          receipt.state === "accepted"
+            ? {
+                delivery: "uncertain",
+                failure: {
+                  code: "delivery_uncertain",
+                  message:
+                    "Server restarted without durable input-consumption evidence; no automatic resend is performed",
+                },
+              }
+            : { state: "uncertain", delivery: "uncertain" },
+          false,
+        );
+        if (next) recovered.push(next);
+      }
     });
+    for (const receipt of recovered) this.publish(receipt);
   }
   relationships(sessionId: string, offset: number, limit: number) {
     const creation =
@@ -206,6 +265,7 @@ export class ApiReceiptStore {
   /** Canonicalization updates both ends without inventing a parenting relation. */
   remap(oldId: string, newId: string) {
     if (oldId === newId) return;
+    const changed: ApiReceipt[] = [];
     this.database.transaction(() => {
       const rows = this.statement(
         "SELECT id, scope_key, receipt_json FROM agent_api_receipts WHERE session_id = ? OR source_session_id = ? LIMIT 10000",
@@ -221,6 +281,7 @@ export class ApiReceiptStore {
         const previous = this.decode(row)!;
         const next = {
           ...previous,
+          updatedAt: new Date().toISOString(),
           sessionId: previous.sessionId === oldId ? newId : previous.sessionId,
           creator: {
             ...previous.creator,
@@ -243,10 +304,13 @@ export class ApiReceiptStore {
           JSON.stringify(next),
           row.id,
         );
+        changed.push(next);
       }
     });
+    for (const receipt of changed) this.publish(receipt);
   }
   close() {
+    this.listeners.clear();
     for (const statement of this.statements.values()) statement.finalize();
     this.statements.clear();
   }

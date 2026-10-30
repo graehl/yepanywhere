@@ -126,6 +126,10 @@ export interface NonHumanUserTurn {
 }
 
 export interface UserMessageMetadata {
+  /** Server-stamped v0 receipt identity; never accepted from API message JSON. */
+  apiSubmissionId?: string;
+  /** Internal native batching preserves every admitted API input identity. */
+  apiSubmissionIds?: string[];
   /** Routing provenance; a provider user role does not imply human input. */
   origin?: "user" | "coordination" | "rendezvous" | "automation";
   /** Caller-declared cross-session provenance; never a grant of authority. */

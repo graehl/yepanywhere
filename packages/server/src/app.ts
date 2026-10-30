@@ -3173,6 +3173,25 @@ export function createApp(options: AppOptions): AppResult {
       },
       sessionState: (id) =>
         supervisor.getProcessForSession(id)?.state.type ?? "not-running",
+      ownedSessions: () =>
+        supervisor
+          .getAllProcesses()
+          .filter((process) => !process.isTerminated)
+          .map((process) => {
+            const info = process.getInfo();
+            const metadata = options.sessionMetadataService?.getMetadata(
+              process.sessionId,
+            );
+            return {
+              id: process.sessionId,
+              projectId: metadata?.workingProjectId ?? process.projectId,
+              provider: process.provider,
+              title: metadata?.customTitle ?? info.sessionTitle,
+              createdByUser: metadata?.createdByUser,
+              updatedAt: info.startedAt,
+              state: process.state.type,
+            };
+          }),
       hiddenProjects: (username) => projectAppStore.hiddenProjectIds(username),
     }),
     conversation: createConversationRead(conversationSubscriptions),

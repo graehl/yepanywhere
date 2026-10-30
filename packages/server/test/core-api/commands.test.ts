@@ -400,7 +400,7 @@ it("records ambiguous launch failures without repeating work and reconciles only
     ).toMatchObject({
       state: "accepted",
       sessionId: "native-child",
-      delivery: "unknown",
+      delivery: "uncertain",
     });
     await expect(
       f.core.call("createSession", SUPERUSER, {

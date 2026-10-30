@@ -21,10 +21,10 @@ export interface ConversationSourceDependencies {
   getProcess(
     sessionId: string,
   ):
-    | Pick<
+    | (Pick<
         Process,
         "state" | "subscribe" | "registerViewer" | "getMessageHistory"
-      >
+      > & { provider?: string; sessionId?: string })
     | undefined;
   eventBus?: EventBus;
   watch?(row: Readonly<SessionCatalogRow>, invalidate: () => void): () => void;
@@ -176,20 +176,30 @@ export function createConversationSource(
           row = await deps.resolve(sessionId);
           readSignal.throwIfAborted();
           signal.throwIfAborted();
-          if (
-            !row ||
-            row.sessionId !== sessionId ||
-            row.location.kind !== "file"
-          )
-            throw new Error("Conversation source not found");
-          releaseWatch = deps.watch?.(row, changed);
+          if (!row) {
+            if (
+              !process ||
+              process.sessionId !== sessionId ||
+              !["claude", "codex"].includes(process.provider ?? "")
+            )
+              throw new Error("Conversation source not found");
+          } else {
+            if (row.sessionId !== sessionId || row.location.kind !== "file")
+              throw new Error("Conversation source not found");
+            releaseWatch = deps.watch?.(row, changed);
+          }
         }
         if (
-          row.location.kind !== "file" ||
-          !["claude", "codex"].includes(row.catalogFamily)
+          row &&
+          (row.location.kind !== "file" ||
+            !["claude", "codex"].includes(row.catalogFamily))
         )
           throw new Error("Unsupported conversation source");
-        if (!baseline || (dirty && process?.state.type !== "in-turn")) {
+        if (
+          row &&
+          row.location.kind === "file" &&
+          (!baseline || (dirty && process?.state.type !== "in-turn"))
+        ) {
           const liveAtReadStart = new Map(live);
           const observedRevision = durableRevision;
           const settledAtReadStart =
@@ -240,9 +250,21 @@ export function createConversationSource(
         if (failed) throw new Error("Unreconciled live conversation");
         // A durable record wins over its replay echo. Unpersisted records retain
         // arrival order and stable IDs; the bounded producer detects collisions.
-        const known = new Set(baseline.messages.map(getMessageId));
+        // The incumbent owner's bounded replay can precede catalog/file
+        // materialization. It is useful partial evidence, never complete history.
+        const durable = baseline ?? {
+          sessionId,
+          messages: [],
+          activity: "unknown" as const,
+          pendingRequests: [],
+          sourceCoverage: {
+            complete: false,
+            earlierOutsideScope: "unknown" as const,
+          },
+        };
+        const known = new Set(durable.messages.map(getMessageId));
         const messages = [
-          ...baseline.messages.map(
+          ...durable.messages.map(
             (message) => live.get(getMessageId(message))?.message ?? message,
           ),
           ...[...live.entries()]
@@ -252,7 +274,7 @@ export function createConversationSource(
         const state = process?.state;
         const waiting = state?.type === "waiting-input";
         return {
-          ...baseline,
+          ...durable,
           messages,
           activity:
             state?.type === "in-turn"
@@ -278,9 +300,9 @@ export function createConversationSource(
               ]
             : [],
           sourceCoverage: {
-            ...baseline.sourceCoverage,
+            ...durable.sourceCoverage,
             complete:
-              baseline.sourceCoverage.complete && state?.type !== "in-turn",
+              durable.sourceCoverage.complete && state?.type !== "in-turn",
           },
         };
       },

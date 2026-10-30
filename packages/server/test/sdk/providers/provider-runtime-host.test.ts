@@ -2023,7 +2023,9 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
     const database = openSqliteOrThrow(":memory:");
     migrateDiscoveryDatabase(database);
     const receiptStore = new ApiReceiptStore(database);
-    let launches = 0;
+    let launches = 0,
+      inputs = 0;
+    let consumeInput = () => {};
     const commands = new SessionCommands(
       "profile-api-host",
       receiptStore,
@@ -2031,6 +2033,12 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
         async start() {
           launches++;
           return { sessionId: "created-native" };
+        },
+        canSend: () => true,
+        send(_id, _request, _receipt, consumed) {
+          inputs++;
+          consumeInput = consumed;
+          return { accepted: true };
         },
       },
       () => true,
@@ -2164,6 +2172,51 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
       };
       expect(JSON.parse(repeated.body).id).toBe(receipt.id);
       expect(launches).toBe(1);
+      const sendBody = { requestId: "bridge-message-1", message: "Follow up" };
+      const sendPath =
+        "/v0/servers/profile-api-host/sessions/api-fixture/messages";
+      first.queue.push({
+        text: JSON.stringify({ path: sendPath, body: sendBody }),
+        uuid: "proxy-batch",
+        metadata: { apiSubmissionIds: ["proxy-api-A", "proxy-api-B"] },
+      });
+      const sent = (await first.iterator.next()).value!.apiResult as {
+        status: number;
+        body: string;
+      };
+      expect(sent.status).toBe(202);
+      const inputReceipt = JSON.parse(sent.body);
+      expect(inputReceipt.creator.sessionId).toBe("api-fixture");
+      expect(first.queue.hasYieldedApiInput?.("proxy-api-A")).toBe(true);
+      expect(first.queue.hasYieldedApiInput?.("proxy-api-B")).toBe(true);
+      const receiptPath = `/v0/servers/profile-api-host/receipts/${inputReceipt.id}/follow`;
+      first.queue.push({ text: receiptPath + "?waitMS=0" });
+      expect(
+        ((await first.iterator.next()).value!.apiResult as { status: number })
+          .status,
+      ).toBe(400);
+      first.queue.push({ text: receiptPath + "?waitMs=0" });
+      const beforeInput = JSON.parse(
+        ((await first.iterator.next()).value!.apiResult as { body: string })
+          .body,
+      );
+      expect(beforeInput.receipt.delivery).toBe("unknown");
+      consumeInput();
+      first.queue.push({
+        text: receiptPath + "?waitMs=0&after=" + beforeInput.cursor,
+      });
+      const consumedInput = JSON.parse(
+        ((await first.iterator.next()).value!.apiResult as { body: string })
+          .body,
+      );
+      expect(consumedInput).toMatchObject({
+        changed: true,
+        receipt: {
+          id: inputReceipt.id,
+          delivery: "consumed",
+          completion: "unknown",
+        },
+      });
       await first.publishAgentctlSessionId?.("api-fixture");
       const waiting = first.iterator.next();
       await first.detachForServerReload?.();
@@ -2188,6 +2241,18 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
         ((await second.iterator.next()).value!.apiResult as { status: number })
           .status,
       ).toBe(200);
+      second.queue.push({
+        text: JSON.stringify({ path: sendPath, body: sendBody }),
+      });
+      const replayedInput = JSON.parse(
+        ((await second.iterator.next()).value!.apiResult as { body: string })
+          .body,
+      );
+      expect(replayedInput).toMatchObject({
+        id: inputReceipt.id,
+        delivery: "consumed",
+      });
+      expect(inputs).toBe(1);
       const other = await startHostedProviderSession(
         "claude",
         { ...options, agentApi: { serverId: "other-profile" } },

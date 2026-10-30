@@ -8,6 +8,7 @@ import {
 } from "../../src/auth/principal.js";
 import {
   operations,
+  operationMethod,
   apiSchema,
   operationDocumentation,
   type ApiSession,
@@ -157,7 +158,8 @@ describe("isolated v0 application and HTTP reads", () => {
     expect((await (await other.app.request("/v0")).json()).serverId).toBe("B");
     for (const operation of operations) {
       if (
-        operation.id === "createSession" ||
+        operationMethod(operation) === "POST" ||
+        operation.id === "followReceipt" ||
         operation.id === "receipt" ||
         operation.id === "relationships"
       )

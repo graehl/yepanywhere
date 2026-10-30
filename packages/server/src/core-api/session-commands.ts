@@ -1,26 +1,43 @@
-import type { ApiProject, ApiLaunchContext } from "./contracts.js";
+import { followReceipt, type ReceiptFollowQuery } from "./receipt-follow.js";
+import type { ApiProject, ApiLaunchContext, ApiSession } from "./contracts.js";
 import type {
   ApiReceipt,
   CreateSessionRequest,
+  SendMessageRequest,
   ApiCreator,
 } from "./command-contracts.js";
 import type { ApiReceiptStore } from "./receipt-store.js";
 import { CoreApiError } from "./errors.js";
 
 export interface SessionCommandOwner {
-  recover?(receipt: ApiReceipt): Promise<{ sessionId: string } | undefined>;
+  recover?(
+    receipt: ApiReceipt,
+    consumed?: () => void,
+    ended?: () => void,
+  ): Promise<{ sessionId: string; consumed?: boolean } | undefined>;
+  canSend?(sessionId: string): boolean;
+  send?(
+    sessionId: string,
+    request: SendMessageRequest,
+    receipt: ApiReceipt,
+    consumed: () => void,
+    ended: () => void,
+  ): { accepted: boolean };
+  close?(): void;
   start(
     project: ApiProject,
     request: CreateSessionRequest,
     receipt: ApiReceipt,
     settled: (sessionId: string) => void,
     failed: () => void,
+    consumed?: () => void,
   ): Promise<{ sessionId: string } | { queueId: string } | { rejected: true }>;
 }
 /** Native launch admission plus durable retry identity; no HTTP or workflow policy. */
 export class SessionCommands {
   private active = new Set<Promise<void>>();
   private disposed = false;
+  private readonly closing = new AbortController();
   constructor(
     readonly serverId: string,
     readonly store: ApiReceiptStore,
@@ -92,9 +109,16 @@ export class SessionCommands {
       this.store.update(receipt.id, { state: "accepted", sessionId });
     };
     const failed = () => {
-      if (!this.disposed)
+      if (this.disposed) return;
+      const current = this.store.get(receipt.id);
+      if (current?.state === "accepted" && current.sessionId) {
+        this.ended(receipt.id);
+        return;
+      }
+      if (this.store.get(receipt.id)?.delivery !== "consumed")
         this.store.update(receipt.id, {
           state: "uncertain",
+          delivery: "uncertain",
           failure: {
             code: "launch_uncertain",
             message:
@@ -106,7 +130,9 @@ export class SessionCommands {
       .then(() =>
         this.disposed
           ? { rejected: true as const }
-          : this.owner.start(project, request, receipt, settled, failed),
+          : this.owner.start(project, request, receipt, settled, failed, () =>
+              this.consumed(receipt.id),
+            ),
       )
       .then((result) => {
         if (this.disposed) return;
@@ -134,20 +160,159 @@ export class SessionCommands {
     this.active.add(work);
     return receipt;
   }
+  private consumed(id: string) {
+    if (this.disposed) return;
+    try {
+      this.store.update(id, {
+        state: "accepted",
+        delivery: "consumed",
+        failure: undefined,
+      });
+    } catch (error) {
+      this.onError(error);
+    }
+  }
+  private ended(id: string) {
+    if (this.disposed) return;
+    try {
+      const receipt = this.store.get(id);
+      if (receipt && receipt.delivery !== "consumed")
+        this.store.update(id, {
+          delivery: "uncertain",
+          failure: {
+            code: "delivery_uncertain",
+            message:
+              "The incumbent native process ended or input was removed without consumption evidence; this input is not automatically replayed",
+          },
+        });
+    } catch (error) {
+      this.onError(error);
+    }
+  }
+  replaySend(
+    sessionId: string,
+    request: SendMessageRequest,
+    launch?: ApiLaunchContext,
+  ) {
+    return this.store.lookup({
+      requestId: request.requestId,
+      kind: "sendMessage",
+      projectId: "",
+      sessionId,
+      creator: this.creator(launch),
+      payload: request,
+    });
+  }
+  send(
+    session: ApiSession,
+    request: SendMessageRequest,
+    launch?: ApiLaunchContext,
+  ) {
+    if (this.disposed)
+      throw new CoreApiError(
+        "controller_unavailable",
+        "Session command owner is closing",
+        503,
+      );
+    if (!this.enabled())
+      throw new CoreApiError(
+        "forbidden",
+        "Session command enablement was revoked before admission",
+        403,
+      );
+    const replay = this.replaySend(session.id, request, launch);
+    if (replay) return replay;
+    if (!this.owner.canSend?.(session.id) || !this.owner.send)
+      throw new CoreApiError(
+        "session_not_running",
+        "Only the incumbent active native owner can receive input; automatic resume is not supported",
+        409,
+      );
+    const { created, receipt } = this.store.reserve({
+      requestId: request.requestId,
+      kind: "sendMessage",
+      projectId: session.projectId,
+      sessionId: session.id,
+      creator: this.creator(launch),
+      destinationServerId: this.serverId,
+      payload: request,
+    });
+    if (!created) return receipt;
+    try {
+      const result = this.owner.send(
+        session.id,
+        request,
+        receipt,
+        () => this.consumed(receipt.id),
+        () => this.ended(receipt.id),
+      );
+      this.store.update(
+        receipt.id,
+        result.accepted
+          ? { state: "accepted" }
+          : {
+              state: "failed",
+              failure: {
+                code: "input_rejected",
+                message:
+                  "The native owner rejected input before queue admission",
+              },
+            },
+      );
+    } catch (error) {
+      this.onError(error);
+      if (this.store.get(receipt.id)?.delivery !== "consumed")
+        this.store.update(receipt.id, {
+          state: "uncertain",
+          delivery: "uncertain",
+          failure: {
+            code: "input_uncertain",
+            message:
+              "Input admission did not establish a durable outcome; do not automatically resend",
+          },
+        });
+    }
+    return this.store.get(receipt.id)!;
+  }
+  async follow(id: string, query: ReceiptFollowQuery, signal?: AbortSignal) {
+    // Reattach positive incumbent-owner evidence after controller replacement.
+    await this.receipt(id);
+    return followReceipt(
+      this.store,
+      id,
+      query,
+      AbortSignal.any([this.closing.signal, ...(signal ? [signal] : [])]),
+    );
+  }
   async receipt(id: string) {
     const receipt = this.store.get(id);
-    if (receipt?.state !== "uncertain" || this.disposed) return receipt;
-    const evidence = await this.owner.recover?.(receipt);
+    if (
+      !receipt ||
+      this.disposed ||
+      (receipt.state !== "uncertain" &&
+        receipt.delivery !== "uncertain" &&
+        receipt.delivery !== "unknown")
+    )
+      return receipt;
+    const evidence = await this.owner.recover?.(
+      receipt,
+      () => this.consumed(id),
+      () => this.ended(id),
+    );
     if (evidence && !this.disposed)
       return this.store.update(id, {
         state: "accepted",
         sessionId: evidence.sessionId,
+        failure: undefined,
+        ...(evidence.consumed ? { delivery: "consumed" as const } : {}),
       });
     return receipt;
   }
   /** Shutdown fences stale async completions; it never repeats an external launch. */
   close() {
     this.disposed = true;
+    this.closing.abort();
+    this.owner.close?.();
   }
   async idle() {
     await Promise.allSettled(this.active);

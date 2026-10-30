@@ -1,4 +1,8 @@
-import { createSessionRequest } from "./command-contracts.js";
+import { receiptFollowQuery } from "./receipt-follow.js";
+import {
+  createSessionRequest,
+  sendMessageRequest,
+} from "./command-contracts.js";
 import type { SessionCommands } from "./session-commands.js";
 import {
   conversationQuery,
@@ -16,6 +20,7 @@ import {
   apiSchema,
   operationIds,
   readOperationIds,
+  sessionSchema,
   pageQuery,
   type ApiProject,
   type ApiProvider,
@@ -164,7 +169,13 @@ export class CoreApi {
           operations: operationIds.filter((id) => {
             if (
               caller.kind !== "superuser" &&
-              ["receipt", "relationships", "createSession"].includes(id)
+              [
+                "receipt",
+                "relationships",
+                "createSession",
+                "sendMessage",
+                "followReceipt",
+              ].includes(id)
             )
               return false;
             if (readOperationIds.includes(id)) return true;
@@ -204,22 +215,7 @@ export class CoreApi {
         };
       }
       case "createSession": {
-        if (
-          caller.kind !== "superuser" ||
-          !this.sources.commands?.enabled() ||
-          (input.launch && !input.launch.management)
-        )
-          throw new CoreApiError(
-            "forbidden",
-            "Session commands require explicit management enablement and authority",
-            403,
-          );
-        if (input.launch && !input.launch.id)
-          throw new CoreApiError(
-            "identity_pending",
-            "Owning session is not bound yet",
-            409,
-          );
+        const commands = this.commandAccess(caller, input.launch);
         const body = createSessionRequest.safeParse(input.body);
         if (!body.success)
           throw new CoreApiError(
@@ -227,10 +223,7 @@ export class CoreApi {
             "Invalid native session creation request; inspect this operation's schema",
             400,
           );
-        const replay = this.sources.commands.replayCreate(
-          body.data,
-          input.launch,
-        );
+        const replay = commands.replayCreate(body.data, input.launch);
         if (replay) return replay;
         const [projects, providers] = await Promise.all([
           this.sources.projects(input.signal),
@@ -254,7 +247,50 @@ export class CoreApi {
             400,
           );
         input.signal?.throwIfAborted();
-        return this.sources.commands.create(project, body.data, input.launch);
+        return commands.create(project, body.data, input.launch);
+      }
+      case "sendMessage": {
+        const commands = this.commandAccess(caller, input.launch);
+        const body = sendMessageRequest.safeParse(input.body);
+        if (!body.success)
+          throw new CoreApiError(
+            "invalid_request",
+            "Invalid queued input request; inspect this operation's schema",
+            400,
+          );
+        const replay = commands.replaySend(
+          input.sessionId!,
+          body.data,
+          input.launch,
+        );
+        if (replay) return replay;
+        const session = sessionSchema.parse(
+          await this.read("session", caller, { ...input, query: undefined }),
+        );
+        input.signal?.throwIfAborted();
+        return commands.send(session, body.data, input.launch);
+      }
+      case "followReceipt": {
+        if (caller.kind !== "superuser")
+          throw new CoreApiError(
+            "forbidden",
+            "Receipt access requires operator authority",
+            403,
+          );
+        const query = receiptFollowQuery.safeParse(input.query ?? {});
+        if (!query.success)
+          throw new CoreApiError(
+            "invalid_request",
+            "Invalid receipt cursor or wait",
+            400,
+          );
+        if (!this.sources.commands)
+          throw new CoreApiError("receipt_not_found", "Receipt not found", 404);
+        return this.sources.commands.follow(
+          input.receiptId!,
+          query.data,
+          input.signal,
+        );
       }
       case "receipt": {
         if (caller.kind !== "superuser")
@@ -386,6 +422,29 @@ export class CoreApi {
     }
   }
 
+  private commandAccess(
+    caller: Principal,
+    launch?: ApiLaunchContext,
+  ): SessionCommands {
+    const commands = this.sources.commands;
+    if (
+      caller.kind !== "superuser" ||
+      !commands?.enabled() ||
+      (launch && !launch.management)
+    )
+      throw new CoreApiError(
+        "forbidden",
+        "Session commands require explicit management enablement and authority",
+        403,
+      );
+    if (launch && !launch.id)
+      throw new CoreApiError(
+        "identity_pending",
+        "Owning session is not bound yet",
+        409,
+      );
+    return commands;
+  }
   private page<T>(items: T[], query: PageQuery) {
     const offset = Number(query.cursor ?? 0),
       limit = Number(query.limit ?? 50);

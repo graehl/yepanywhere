@@ -2,10 +2,11 @@
 
 Topic: http-api-v0
 
-Status: local compact reads/following and opt-in native creation implemented, 2026-10-30. The maintainer selected
+Status: local compact reads/following and opt-in native creation/messaging
+implemented, 2026-10-30. The maintainer selected
 HTTP-first design, explicit server addressing, agent-discoverable identity/access,
 and creation provenance, then authorized implementation. The delivered subset
-is specified below; messaging and peer routing/enrollment remain later slices.
+is specified below; peer routing/enrollment remain later slices.
 Launch-bound bootstrap is implemented. [Implementation and tests](../docs/tactical/165-http-api-v0.md)
 track the staged work. This does not reprioritize releases or restart the
 archived session-core campaign.
@@ -15,11 +16,12 @@ archived session-core campaign.
 The ordinary app mounts `/v0`, `/v0/schema`, `/v0/me`, `/v0/servers`, and the
 self server's description, access, capabilities, projects, providers, sessions
 and single-session summary routes. Unknown targets never execute locally.
-Compact conversations/following and separately authorized creation, receipts
-and provenance are specified below. Other planned resources remain absent.
+Compact conversations/following and separately authorized creation, messaging,
+receipts and provenance are specified below. Other planned resources remain
+absent.
 Existing `/api/*` and the separate own-session listener retain their contracts.
 
-- `/v0` returns public server id, revision `2026-10-30.6`, unstable status and
+- `/v0` returns public server id, revision `2026-10-30.7`, unstable status and
   discovery links. The documentation slice adds Markdown
   help at `/v0/help`, links help/me/schema from discovery, and generates field
   descriptions, operation semantics and example requests alongside OpenAPI.
@@ -192,7 +194,11 @@ Reads use the existing shared conversation observation owner. They add no
 independent scanner, permanent poll loop or per-token transcript read. A request
 that cannot obtain its first publication within four seconds releases demand
 and returns unavailable, within the private controller bridge's deadline.
-Final-consumer removal cancels source work and releases watches/viewers. Native
+Final-consumer removal cancels source work and releases watches/viewers.
+An exact managed Claude/Codex owner may precede retained catalog materialization:
+its summary and bounded replay are immediately usable, with incomplete history
+coverage. A later catalog row reconciles normal durable history. Unsupported
+owners and mismatched/ambiguous identities never supply guessed history. Native
 acquisition constraints are owned by [Simple Client API](simple-client-api.md).
 
 ## Bounded HTTP following
@@ -233,7 +239,7 @@ use bounded waiting rather than a tight zero-wait/error loop.
 Implemented in revision `2026-10-30.6`, behind **Agent session commands** in
 Settings → Local Access (`agentApiManagementEnabled`, default false). This
 setting is independent of read-only **Agent API discovery**. It enables v0
-native creation for ordinary authenticated operators and grants management to
+native creation and messaging for ordinary authenticated operators and grants management to
 new eligible local agent launches when discovery is also enabled. Existing
 read-only leases remain read-only. `/me` records `management=true` only on an
 explicit management lease; `/access` lists credential-authorized operations.
@@ -283,11 +289,11 @@ replay, provider restart or fallback routing.
 not successful response completion. Native capacity rejection is recorded as a
 known failure. An exception after reservation, queued startup failure, or an
 unfinished reservation recovered after restart is uncertain; never generate a
-new retry key merely to escape that uncertainty. Unique live-owner user-message
-identity can reconcile a target binding without launching again. Missing,
-evicted or ambiguous evidence remains uncertain. `delivery=unknown` and
-`completion=unknown` stay explicit in this creation slice. Cancellation after
-reservation cannot assert that a provider was never launched.
+new retry key merely to escape that uncertainty. Unique live-owner API-input
+admission/consumption evidence can reconcile a target binding without launching
+again. Inherited transcript UUIDs and optimistic user echoes are not admission
+proof. Missing, evicted or ambiguous evidence remains uncertain. Cancellation
+after reservation cannot assert that a provider was never launched.
 
 Receipts persist in the profile discovery SQLite database, separately from
 native transcripts and existing client creation hints. They contain no prompt
@@ -315,6 +321,51 @@ reference/request schema; the full reference remains available without it.
 Request bodies are limited to 256 KiB before command dispatch. When an early
 network rejection closes an upload, clients may observe a transport error;
 no oversized request may reserve or launch work.
+
+### Attributed queued input and consumption
+
+`POST /v0/servers/{serverId}/sessions/{sessionId}/messages` accepts strict JSON
+`{requestId,message,delivery?:"queue"}`. It uses the same explicit management
+opt-in, trusted origin and durable scoped retry rules as creation. `message`
+is nonblank exact text, at most 100,000 characters. Only the incumbent active
+native owner can accept a new input; otherwise return `409 session_not_running`.
+There is no implicit resume, interruption, steering, mode/model change or provider
+restart. An authorized identical retry resolves the original receipt before
+looking at the mutable catalog or checking whether its process still runs.
+A conflicting body/key returns 409; no input is repeated.
+
+A `202` receipt's `state=accepted` means native queue admission. `delivery=unknown`
+awaits evidence. `delivery=consumed` means the native provider input iterator
+consumed that API input; it does not mean provider acknowledgement or successful
+response completion. Native batching can consume several submitted messages in
+one turn, including interrupt concatenation. Internal constituent identities
+survive that batching and hosted queue notifications. They are server-stamped;
+the public request body cannot supply submission/origin metadata. Queue removal
+or a user echo alone never establishes consumption.
+
+When an owner completes, aborts or detaches, or existing session controls remove
+unconsumed input, `delivery=uncertain` is explicit. Restart conservatively marks admitted but
+unconfirmed delivery uncertain. Receipt reads/follow can reattach to a uniquely
+identified incumbent owner and reconcile positive admission/consumption evidence;
+they never automatically requeue input. Each process/queue retains at most 512
+positive API identities for this reconciliation; absent evidence is inconclusive.
+Native observation shares one monitor per process, bounded to 128 processes and
+1,024 pending API inputs, and releases after consumption, cancellation, completion
+or command service shutdown. No transcript poller is added. `completion=unknown` remains
+explicit for every receipt; idle or an unrelated reply does not complete it.
+Follow the session's compact prose to interpret the response.
+
+`GET /v0/servers/{serverId}/receipts/{receiptId}/follow` is operator-only like
+receipt reads. The first request returns `{cursor,changed:true,receipt}`. Reissue
+that opaque `r1` cursor as `after` with `waitMs=0..4000` (default 4000) to wait for
+admission, consumption or provenance changes. Unchanged returns
+`{cursor,changed:false,receipt:null}`; retain the previous receipt. Every changed
+response is a complete replacement; foreign/stale cursors return current state,
+malformed cursors/unknown parameters return 400, and missing receipts return 404.
+The store admits at most 128 receipt observers. Disconnect, lease revocation,
+command-owner shutdown and finite wait completion release demand. Observer
+notification occurs after the durable transaction commits; no event log or every
+intermediate transition is promised. Existing command work outlives the reader.
 
 ## Local agent runtime factory
 

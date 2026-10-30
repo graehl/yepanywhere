@@ -1,6 +1,6 @@
 # Agent session commands and compact following
 
-Status: **implementation authorized**, 2026-10-30. Implement end to end in
+Status: **implemented locally**, 2026-10-30. Delivered end to end in
 five reviewed, committed phases. The maintainer approved the sequence and
 autonomous delivery, with YA-launched Sol 6.1 high reviews between phases.
 The owning contract is [HTTP v0](../../topics/http-api-v0.md#next-slice-session-commands-and-compact-following-proposal).
@@ -263,9 +263,74 @@ The final release-copy browser run passed (26.5 seconds including setup).
 All six captures under `.artifacts/ui-testing/20261030-agent-session-commands-release/`
 were presented through the artifact capture facility and inspected one at a time:
 
-+- Desktop default: both grants off; rows and captions fit, toggles remain separate, no horizontal overflow or stale-runtime banner.
+- Desktop default: both grants off; rows and captions fit, toggles remain separate, no horizontal overflow or stale-runtime banner.
 - Desktop enabled: both independent toggles active, command caption stays within its row and its doc link remains readable. No overlap.
 - Desktop preview: platform-specific commands show variable references only; long instructions wrap inside the pane and continue by vertical scroll. No horizontal overflow.
 - Phone discovery view: separate command row is still visible below the collapsed preview; long captions fit the narrow content column and toggles stay clear.
 - Phone commands view: command authority has its own row, active state and documentation link. Caption stays contained; no horizontal clipping or stale-runtime indicator.
 - Phone preview: platform heading and wrapped variable-only command remain legible; preview scrolls vertically, with no horizontal overflow.
+
+
+## Phase 5 evidence
+
+Added strict attributed queue submission and bounded receipt following through
+normal HTTP, private transport and the hosted controller bridge. Durable identity
+precedes external input; identical retries cannot enqueue a second message.
+Stopped owners are explicit 409s with no automatic resume/steer. Native iterator
+consumption is distinct from admission, acknowledgement and task completion.
+The owner and proxy retain bounded positive API input evidence; no polling or
+transcript UUID inference establishes delivery. New active summaries and replay
+cover the catalog-materialization gap with explicitly incomplete history.
+
+Sol high review identified abort monitor leaks, loss of constituent submission
+identities during interrupt concatenation, and false admission evidence after a
+failed native push. Repairs release on completion, preserve all constituent API
+identities through native/proxy yield notifications, and record admission only
+after successful push. Native integration regressions cover those mechanisms,
+including an optimistic echo that cannot establish admission. Explicit input
+cancellation on the existing session route drops positive admission markers,
+wakes receipt following as uncertain and releases that monitor while the owner
+stays alive. Native regressions verify that distinction from external drains.
+Controller
+replacement reconciles positive owner evidence and reattaches pending input
+observation without resending. Receipt follow tests cover cancellation, committed
+remapping, subscribe/read races, capacity reuse and stronger evidence surviving
+late admission errors. Real hosted-worker/socket coverage includes sending,
+strict receipt queries, consumption and duplicate retry after replacement.
+
+One opt-in Sol medium workflow trial passed: 35.3 seconds, 14 HTTP requests,
+zero errors, 14,699 fetched documentation bytes, and 152,574 reported processed
+input tokens (136,960 cached). This is descriptive subscription-lane evidence,
+not unique-context or causal cache/price evidence. It used the shipped bootstrap
+and real private API with scripted native-owner truth. The grader requires a
+same-receipt duplicate submission, consumed observation, creator and exact
+follow-up result; a deterministic no-model HTTP regression checks rejection
+without that evidence. Eight model trials ran across this plan: six accepted
+final trials and two diagnostic follow trials before the harness repair.
+
+Sol high fix review is closed with no remaining material runtime findings,
+including a read-only diagnostic of 1,024 cancellations without monitor-capacity
+leakage and consumption of an unrelated pending input. Final root lint,
+non-writing formatting and typecheck pass. The focused API/source/native/hosted
+suite passed 96 tests in 12.04 seconds; the subsequent cancellation/legacy queue
+regression run passed 32 in 1.86 seconds (295 ms aggregate test bodies).
+
+An initial workspace attempt overlapped the cancellation edit and failed the
+new assertion; that result is retained, not accepted as final evidence. The
+subsequent unchanged-source workspace run passed all new regressions and 6,615
+other server tests, but failed only the previously tracked Rendez nested watcher
+restart at line 364. Its gap records the run; the full workspace gate remains
+red. No watcher retry or timeout change was used to replace that outcome.
+The separately completed client suite passed all 7,019 cases in 127.98 seconds.
+Native Windows, packaged-provider qualification, peer routing/enrollment and
+retention/export policy remain explicitly deferred; no primary server setting
+or provider host was changed or restarted during this implementation.
+
+
+The implementation series consists of the plan commit `54e3c6de3`, bounded
+acquisition `c777bee4e`, compact v0 reads `890fa5c21`, HTTP following `40d3e4c4f`,
+native creation/provenance `36ea1b9c7`, and the attributed messaging/receipt-follow
+commit carrying this final evidence. All five local implementation phases are
+complete. Next design work is directional peer grants/enrollment and routing;
+use that to qualify the deferred Windows host. Receipt retention/export policy
+and independent packaged-provider smoke qualification remain separate follow-ups.

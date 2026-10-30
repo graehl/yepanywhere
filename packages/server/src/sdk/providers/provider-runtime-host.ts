@@ -21,7 +21,7 @@ import type {
   EffortLevel,
   ImagePreparationProfile,
 } from "@yep-anywhere/shared";
-import type { AgentMessageQueue } from "../messageQueue.js";
+import { apiInputIds, type AgentMessageQueue } from "../messageQueue.js";
 import type {
   ProviderActivitySnapshot,
   ProviderRetentionSnapshot,
@@ -812,6 +812,7 @@ class HostedMessageQueue implements AgentMessageQueue {
   private pending: UserMessage[] = [];
   private remoteDepth: number;
   private yieldedListeners = new Set<(messages: UserMessage[]) => void>();
+  private readonly apiInputs = new Set<string>();
 
   constructor(
     initialDepth: number,
@@ -873,9 +874,19 @@ class HostedMessageQueue implements AgentMessageQueue {
       (message) => message.uuid && yielded.has(message.uuid),
     );
     if (messages.length === 0) return;
+    for (const message of messages) {
+      for (const id of apiInputIds(message)) {
+        this.apiInputs.add(id);
+        while (this.apiInputs.size > 512)
+          this.apiInputs.delete(this.apiInputs.values().next().value!);
+      }
+    }
     for (const listener of this.yieldedListeners) listener(messages);
   }
 
+  hasYieldedApiInput(id: string) {
+    return this.apiInputs.has(id);
+  }
   subscribeYielded(listener: (messages: UserMessage[]) => void): () => void {
     this.yieldedListeners.add(listener);
     return () => this.yieldedListeners.delete(listener);

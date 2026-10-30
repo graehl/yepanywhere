@@ -1,5 +1,7 @@
+import { receiptFollowQuery, receiptFollowSchema } from "./receipt-follow.js";
 import {
   createSessionRequest,
+  sendMessageRequest,
   receiptSchema,
   relationshipsSchema,
 } from "./command-contracts.js";
@@ -11,7 +13,7 @@ import {
   followSchema,
 } from "./conversation.js";
 
-export const API_REVISION = "2026-10-30.6";
+export const API_REVISION = "2026-10-30.7";
 export const paginationQuery = z.object({
   cursor: z
     .string()
@@ -262,6 +264,18 @@ export const operations = [
     response: relationshipsSchema,
     paginated: true,
   },
+  {
+    id: "sendMessage",
+    path: "/servers/:serverId/sessions/:sessionId/messages",
+    method: "POST",
+    request: sendMessageRequest,
+    response: receiptSchema,
+  },
+  {
+    id: "followReceipt",
+    path: "/servers/:serverId/receipts/:receiptId/follow",
+    response: receiptFollowSchema,
+  },
 ] as const;
 export type Operation = (typeof operations)[number]["id"];
 export const operationIds = operations.map((operation) => operation.id);
@@ -345,6 +359,18 @@ export const operationDocumentation: Record<
       "List retained summaries, optionally filtered by exact projectId. Newest updatedAt first, then id. Resource grants, creator access and hidden projects apply before pagination. Ambiguous cross-project ids are omitted. This does not return messages or completion results.",
     example: "/v0/servers/{serverId}/sessions?projectId={projectId}&limit=1",
   },
+  sendMessage: {
+    summary: "Queue attributed input on an active session",
+    description:
+      "Requires explicit management authority like createSession. POST strict JSON {requestId,message,delivery?:'queue'}. Reuse the identical key/body after response loss. Only the incumbent active native owner receives input; stopped sessions return409 session_not_running, with no automatic resume, steering, model/mode change or restart. Input can be consumed together with other queued messages. The202 receipt distinguishes accepted from native-input consumed; neither proves provider acknowledgement or successful completion. Follow the receipt for delivery evidence and its session conversation for the reply.",
+    example: "/v0/servers/{serverId}/sessions/{sessionId}/messages",
+  },
+  followReceipt: {
+    summary: "Follow one submission receipt",
+    description:
+      "Operator-only bounded status observation. Without after returns the current receipt and r1 cursor. Reissue with after and waitMs0–4000 to wait for admission/delivery/provenance changes; unchanged returns changed=false,receipt=null. Changed responses replace the full receipt, including after reconnect. This does not infer which reply completed a batched input, and does not poll transcripts or restart work. Use receipt.sessionId to follow conversation prose separately.",
+    example: "/v0/servers/{serverId}/receipts/{receiptId}/follow?waitMs=4000",
+  },
   createSession: {
     summary: "Create a native session with retry identity",
     description:
@@ -391,7 +417,7 @@ export const errorDescriptions = {
   401: "Authentication missing, invalid or expired. Host authentication may return its existing error format.",
   403: "Request denied by host, origin, custom-header or principal policy. The hosting security layer may use its existing error format.",
   404: "Unknown resource/server, or session absent/inaccessible/ambiguous in a complete catalog; anchor_unavailable means choose another history window explicitly. No target fallback.",
-  409: "request_id_conflict: retry key names a different payload; identity_pending: owning session is not bound yet.",
+  409: "request_id_conflict: retry key names a different payload; identity_pending: owning session is not bound yet; session_not_running: input requires the incumbent active owner.",
   500: "internal_error: unexpected read failure; private exception details are not returned.",
   503: "catalog_not_ready: session absence is uncertain in an incomplete catalog; controller_unavailable: the catalog owner is detached/reloading. Retry reads later; neither means the session was deleted. conversation_unavailable means unsupported, unreadable or over-budget history; do not infer successful completion.",
 };
@@ -415,7 +441,7 @@ export function apiHelp(selected?: Operation) {
     "",
     `Revision: ${API_REVISION}. Unstable: routes, fields and behavior may change.`,
     "",
-    "Use this API to inspect authorized projects, configured provider harnesses and coding-agent session summaries and compact conversations. Reading includes compact conversations and following. Session creation requires a separate explicit management grant and default-off setting; read-only launch credentials never gain writes. Message sending, configuration, interruption, command execution, terminals and peer routing are not implemented in this revision. Do not infer support from older /api routes or provider capability flags.",
+    "Use this API to inspect authorized projects, configured provider harnesses and coding-agent session summaries and compact conversations. Reading includes compact conversations and following. Session creation requires a separate explicit management grant and default-off setting; read-only launch credentials never gain writes. Input messaging requires the same explicit management authority. Configuration, interruption, command execution, terminals and peer routing remain unimplemented. Do not infer support from older /api routes or provider capability flags.",
     "",
     "## Connect and discover",
     "",
@@ -515,6 +541,17 @@ export function apiSchema(launchBound = false, selected?: Operation) {
                   }
                 : {}),
               parameters: [
+                ...(operation.id === "followReceipt"
+                  ? Object.entries(receiptFollowQuery.shape).map(
+                      ([name, schema]) => ({
+                        name,
+                        in: "query",
+                        required: false,
+                        description: schema.description,
+                        schema: z.toJSONSchema(schema),
+                      }),
+                    )
+                  : []),
                 ...(["help", "schema"].includes(operation.id)
                   ? [
                       {

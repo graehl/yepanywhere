@@ -410,3 +410,75 @@ describe("observed Conversation source", () => {
     source.close();
   });
 });
+
+it("serves only a supported exact live owner before catalog materialization and reconciles durable history", async () => {
+  let retained: SessionCatalogRow | undefined;
+  const releaseViewer = vi.fn(),
+    off = vi.fn(),
+    unwatch = vi.fn();
+  const process = {
+    sessionId: "s",
+    provider: "codex",
+    state: { type: "idle" as const, since: new Date() },
+    registerViewer: () => releaseViewer,
+    subscribe: () => off,
+    getMessageHistory: () => [
+      {
+        type: "assistant" as const,
+        uuid: "answer",
+        message: { role: "assistant" as const, content: "Available now" },
+      },
+    ],
+  };
+  const readFile = vi.fn(async () => ({
+    sessionId: "s",
+    messages: [
+      { type: "assistant" as const, uuid: "answer", content: "Available now" },
+    ],
+    activity: "unknown" as const,
+    pendingRequests: [],
+    sourceCoverage: { complete: true, earlierOutsideScope: "no" as const },
+  }));
+  const open = createConversationSource({
+    resolve: async () => retained,
+    getProcess: () => process,
+    readFile,
+    watch: () => unwatch,
+  });
+  const abort = new AbortController();
+  const source = await open("s", () => {}, abort.signal);
+  try {
+    const early = await source.read(abort.signal);
+    expect(early.messages.map((m) => m.uuid)).toEqual(["answer"]);
+    expect(early.sourceCoverage).toEqual({
+      complete: false,
+      earlierOutsideScope: "unknown",
+    });
+    expect(readFile).not.toHaveBeenCalled();
+    retained = { ...row, catalogFamily: "codex" };
+    const durable = await source.read(abort.signal);
+    expect(durable.messages).toHaveLength(1);
+    expect(durable.sourceCoverage.complete).toBe(true);
+    expect(readFile).toHaveBeenCalledTimes(1);
+  } finally {
+    source.close();
+  }
+  expect(off).toHaveBeenCalledTimes(1);
+  expect(releaseViewer).toHaveBeenCalledTimes(1);
+  expect(unwatch).toHaveBeenCalledTimes(1);
+  retained = undefined;
+  for (const wrong of [
+    { ...process, provider: "pi" },
+    { ...process, sessionId: "other" },
+  ]) {
+    const source = await createConversationSource({
+      resolve: async () => undefined,
+      getProcess: () => wrong,
+    })("s", () => {}, abort.signal);
+    try {
+      await expect(source.read(abort.signal)).rejects.toThrow("not found");
+    } finally {
+      source.close();
+    }
+  }
+});

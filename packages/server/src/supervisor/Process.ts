@@ -46,7 +46,11 @@ import {
   getProjectName,
   type ProjectDisplayNameResolver,
 } from "../projects/paths.js";
-import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
+import {
+  apiInputIds,
+  concatUserMessages,
+  INTERRUPT_PREAMBLE,
+} from "../sdk/messageQueue.js";
 import type { AgentMessageQueue } from "../sdk/messageQueue.js";
 import type {
   PersistedSessionQueuedMessage,
@@ -3607,6 +3611,7 @@ export class Process {
     uuid: string,
     tempId?: string,
   ): void {
+    this.recordApiInput(message, uuid);
     const sdkMessage = this.withTimestamp({
       type: "user",
       uuid,
@@ -3962,11 +3967,13 @@ export class Process {
       }
       // Pass message with UUID so SDK uses the same UUID we emitted via SSE
       const position = this.messageQueue.push(messageWithUuid);
+      this.recordApiInput(messageWithUuid, uuid);
       return { success: true, position };
     }
 
     // Legacy behavior for mock SDK
     this.legacyQueue.push(messageWithUuid);
+    this.recordApiInput(messageWithUuid, uuid);
     if (this._state.type === "idle") {
       this.processNextInQueue();
     }
@@ -3980,6 +3987,41 @@ export class Process {
    *
    * @returns Object with success status and queue position or error
    */
+  private readonly acceptedApiInputs = new Set<string>();
+  private readonly apiInputCancelled = new Set<(id: string) => void>();
+  observeApiInputCancelled(listener: (id: string) => void): () => void {
+    this.apiInputCancelled.add(listener);
+    return () => {
+      this.apiInputCancelled.delete(listener);
+    };
+  }
+  private recordApiInput(message: UserMessage, uuid: string) {
+    const id = message.metadata?.apiSubmissionId;
+    if (id === uuid && id.length <= 128) {
+      this.acceptedApiInputs.add(id);
+      while (this.acceptedApiInputs.size > 512)
+        this.acceptedApiInputs.delete(
+          this.acceptedApiInputs.values().next().value!,
+        );
+    }
+  }
+  hasAcceptedApiInput(id: string) {
+    return this.acceptedApiInputs.has(id);
+  }
+  /** Native input consumption, distinct from YA's optimistic user echo. */
+  hasConsumedApiInput(id: string): boolean {
+    return this.messageQueue?.hasYieldedApiInput?.(id) ?? false;
+  }
+  observeApiInputConsumed(listener: (id: string) => void): () => void {
+    return (
+      this.messageQueue?.subscribeYielded?.((messages) => {
+        for (const message of messages) {
+          for (const id of apiInputIds(message)) listener(id);
+        }
+      }) ?? (() => {})
+    );
+  }
+
   queueMessage(
     message: UserMessage,
     options?: { allowSteer?: boolean; composeAnchor?: string | null },
@@ -4378,17 +4420,25 @@ export class Process {
    * has not consumed yet.
    */
   cancelUnconfirmedSteerMessage(tempId: string): boolean {
-    const removedFromMessageQueue =
-      this.messageQueue?.removeByTempId(tempId).length ?? 0;
-    const legacyQueueLength = this.legacyQueue.length;
+    const removed = [
+      ...(this.messageQueue?.removeByTempId(tempId) ?? []),
+      ...this.legacyQueue.filter((message) =>
+        this.userMessageMatchesTempId(message, tempId),
+      ),
+    ];
     this.legacyQueue = this.legacyQueue.filter(
       (message) => !this.userMessageMatchesTempId(message, tempId),
     );
-    const removedFromLegacyQueue = legacyQueueLength - this.legacyQueue.length;
-    const removedCount = removedFromMessageQueue + removedFromLegacyQueue;
-
-    if (removedCount === 0) {
-      return false;
+    if (!removed.length) return false;
+    for (const id of removed.flatMap(apiInputIds)) {
+      this.acceptedApiInputs.delete(id);
+      for (const listener of [...this.apiInputCancelled]) {
+        try {
+          listener(id);
+        } catch {
+          /* Cancellation must release all observers. */
+        }
+      }
     }
 
     this.removeBufferedEchoByTempId(tempId);

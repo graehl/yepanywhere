@@ -83,7 +83,12 @@ and incomplete coverage are not reported as successful completion. `follow` wait
 for scripted worker progress; `reconnect` checks explicit replacement after a
 window change. Both use the production bounded follow adapter. `create` uses an explicit
 management lease, real in-memory SQLite retry receipts and scripted native-owner
-admission, then checks the worker answer and creator via HTTP.
+admission, then checks the worker answer and creator via HTTP. `workflow` adds
+queued follow-up input, an identical-key retry, receipt consumption and the
+follow-up answer. Its grader requires the same receipt id on both successful
+submissions and an actual successful consumed receipt read; answer prose alone
+does not pass. Normal tests exercise that complete private-HTTP fixture without
+calling a model.
 
 Reports include every completed or timed-out trial, success, exit status,
 HTTP requests/errors/repeats, time to first successful HTTP request, duration,
@@ -100,7 +105,7 @@ known saved-auth values. They remain potentially sensitive task artifacts.
 Do not publish them without inspecting them. Provider rate/usage exhaustion
 stops the matrix; there is no automatic fallback to API-key billing.
 
-CI runs four tests in `test/core-api/eval.test.ts` to exercise real pagination, incomplete
+CI runs deterministic tests in `test/core-api/eval.test.ts` to exercise real pagination, incomplete
 catalog semantics, auth-failure/repeated-byte tracing, grader rejection,
 access-only auth and a TERM-resistant descendant surviving its leader.
 `tsconfig.agent-api-eval.json` checks the runner via the root typecheck gate.

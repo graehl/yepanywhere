@@ -1,10 +1,17 @@
-import { expect, it } from "vitest";
+import {
+  Process,
+  createControllableIterator,
+} from "../process.test-support.js";
+import { expect, it, vi } from "vitest";
 import { openSqliteOrThrow } from "../../src/storage/sqlite.js";
 import { migrateDiscoveryDatabase } from "../../src/storage/discovery-sqlite.js";
 import { ApiReceiptStore } from "../../src/core-api/receipt-store.js";
 import { SessionCommands } from "../../src/core-api/session-commands.js";
 import { nativeSessionCommandOwner } from "../../src/core-api/native-session-commands.js";
-import { createSessionRequest } from "../../src/core-api/command-contracts.js";
+import {
+  createSessionRequest,
+  sendMessageRequest,
+} from "../../src/core-api/command-contracts.js";
 import { Supervisor } from "../../src/supervisor/Supervisor.js";
 import { MessageQueue } from "../../src/sdk/messageQueue.js";
 import type {
@@ -13,18 +20,25 @@ import type {
 } from "../../src/sdk/providers/types.js";
 import { encodeProjectId } from "../../src/projects/paths.js";
 
-it("uses the native Supervisor owner, retains requested launch options and recovers canonical identity", async () => {
+it("uses native admission and queued input, follows consumption, and never resumes a stopped owner", async () => {
   const database = openSqliteOrThrow(":memory:");
   migrateDiscoveryDatabase(database);
   const store = new ApiReceiptStore(database);
   let options: StartSessionOptions | undefined;
-  let starts = 0;
+  let starts = 0,
+    steers = 0;
+  const consumed: string[] = [];
+  let releaseFirst!: () => void;
+  const firstTurn = new Promise<void>((resolve) => (releaseFirst = resolve));
+  let firstConsumed!: () => void;
+  const firstInput = new Promise<void>((resolve) => (firstConsumed = resolve));
+  let nextConsumed!: () => void;
+  const secondInput = new Promise<void>((resolve) => (nextConsumed = resolve));
   const nativeId = "00000000-0000-4000-8000-000000000042";
   const provider = {
     name: "codex",
     async startSession(request: StartSessionOptions) {
-      if (++starts > 1)
-        throw new Error("Scripted queued provider startup failure");
+      if (++starts > 1) throw new Error("Scripted queued startup failure");
       options = request;
       const queue = new MessageQueue();
       const incoming = queue.generator();
@@ -34,17 +48,29 @@ it("uses the native Supervisor owner, retains requested launch options and recov
           subtype: "init" as const,
           session_id: nativeId,
         };
-        for await (const _message of incoming)
+        for await (const message of incoming) {
+          consumed.push(message.uuid!);
+          if (consumed.length === 2) nextConsumed();
+          if (consumed.length === 1) {
+            firstConsumed();
+            await firstTurn;
+          }
           yield {
             type: "result" as const,
             subtype: "success" as const,
             session_id: nativeId,
           };
+        }
       })();
       return {
         queue,
         iterator,
+        steer: async () => {
+          steers++;
+          return true;
+        },
         abort: async () => {
+          releaseFirst();
           await incoming.return();
         },
       };
@@ -63,11 +89,18 @@ it("uses the native Supervisor owner, retains requested launch options and recov
   const failure = new Promise<void>((resolve) => (failed = resolve));
   const owner: typeof nativeOwner = {
     ...nativeOwner,
-    start: (project, request, receipt, settled, onFailed) =>
-      nativeOwner.start(project, request, receipt, settled, () => {
-        onFailed();
-        failed();
-      }),
+    start: (project, request, receipt, settled, onFailed, onConsumed) =>
+      nativeOwner.start(
+        project,
+        request,
+        receipt,
+        settled,
+        () => {
+          onFailed();
+          failed();
+        },
+        onConsumed,
+      ),
   };
   const remapped: string[] = [];
   const firstObserver = supervisor.observeSessionIdRemaps((oldId, newId) => {
@@ -78,6 +111,11 @@ it("uses the native Supervisor owner, retains requested launch options and recov
     remapped.push("second:" + newId),
   );
   const commands = new SessionCommands("A", store, owner, () => true);
+  const launch = {
+    id: "parent",
+    launchId: "launch",
+    management: true as const,
+  };
   try {
     const project = {
       id: encodeProjectId(process.cwd()),
@@ -93,15 +131,14 @@ it("uses the native Supervisor owner, retains requested launch options and recov
       permissionMode: "bypassPermissions",
       message: "Review",
     });
-    const receipt = commands.create(project, request, {
-      id: "parent",
-      launchId: "launch",
-      management: true,
-    });
+    const receipt = commands.create(project, request, launch);
     await commands.idle();
+    await firstInput;
     expect(store.get(receipt.id)).toMatchObject({
       state: "accepted",
       sessionId: nativeId,
+      delivery: "consumed",
+      completion: "unknown",
       creator: { sessionId: "parent" },
     });
     expect(options).toMatchObject({
@@ -111,19 +148,49 @@ it("uses the native Supervisor owner, retains requested launch options and recov
       globalInstructions: "Fixture guidance",
     });
     const nativeProcess = supervisor.getProcessForSession(nativeId)!;
-    expect(nativeProcess).toBeDefined();
     expect(remapped).toContain("first:" + nativeId);
     expect(remapped).toContain("second:" + nativeId);
-    expect(
-      nativeProcess
-        .getMessageHistory()
-        .some((message) => message.uuid === receipt.id),
-    ).toBe(true);
+    expect(nativeProcess.hasAcceptedApiInput(receipt.id)).toBe(true);
+    const session = {
+      id: nativeId,
+      projectId: project.id,
+      provider: "codex",
+      title: null,
+      updatedAt: "",
+      state: "in-turn",
+    };
+    const input = sendMessageRequest.parse({
+      requestId: "native-input-1",
+      message: "Follow up",
+    });
+    const sent = commands.send(session, input, launch);
+    expect(sent).toMatchObject({
+      state: "accepted",
+      delivery: "unknown",
+      completion: "unknown",
+    });
+    expect(commands.send(session, input, launch).id).toBe(sent.id);
+    expect(nativeProcess.getInfo().queueDepth).toBe(1);
+    expect(steers).toBe(0);
+    const before = await commands.follow(sent.id, {});
+    const waiting = commands.follow(sent.id, {
+      after: before.cursor,
+      waitMs: "4000",
+    });
+    releaseFirst();
+    expect(await waiting).toMatchObject({
+      changed: true,
+      receipt: { delivery: "consumed", completion: "unknown" },
+    });
+    await secondInput;
+    expect(consumed).toEqual([receipt.id, sent.id]);
+    expect(starts).toBe(1);
+    expect(steers).toBe(0);
     store.update(receipt.id, { state: "uncertain", sessionId: null });
     expect(await commands.receipt(receipt.id)).toMatchObject({
       state: "accepted",
       sessionId: nativeId,
-      delivery: "unknown",
+      delivery: "consumed",
     });
     const queued = commands.create(project, {
       ...request,
@@ -137,7 +204,16 @@ it("uses the native Supervisor owner, retains requested launch options and recov
       state: "uncertain",
       failure: { code: "launch_uncertain" },
     });
+    expect(commands.send(session, input, launch)).toMatchObject({
+      id: sent.id,
+      delivery: "consumed",
+    });
+    expect(() =>
+      commands.send(session, { ...input, requestId: "native-input-2" }, launch),
+    ).toThrow("incumbent active native owner");
+    expect(starts).toBe(2);
   } finally {
+    releaseFirst();
     commands.close();
     firstObserver();
     secondObserver();
@@ -147,6 +223,156 @@ it("uses the native Supervisor owner, retains requested launch options and recov
         .map((process) => supervisor.abortProcess(process.id)),
     );
     await supervisor.stopBackgroundTasks();
+    store.close();
+    database.close();
+  }
+});
+
+it("preserves batched input identities, rejects false push evidence, and tears down pending monitors on abort", async () => {
+  const database = openSqliteOrThrow(":memory:");
+  migrateDiscoveryDatabase(database);
+  const store = new ApiReceiptStore(database);
+  const queue = new MessageQueue();
+  const subscriptions = new Set<() => void>();
+  const subscribe = queue.subscribeYielded.bind(queue);
+  vi.spyOn(queue, "subscribeYielded").mockImplementation((listener) => {
+    const off = subscribe(listener);
+    const release = () => {
+      subscriptions.delete(release);
+      off();
+    };
+    subscriptions.add(release);
+    return release;
+  });
+  const controlled = createControllableIterator();
+  const process = new Process(controlled.iterator, {
+    projectPath: "/fixture",
+    projectId: "p" as import("@yep-anywhere/shared").UrlProjectId,
+    sessionId: "target",
+    provider: "codex",
+    queue,
+    abortFn: async () => controlled.finish(),
+  });
+  const owner = nativeSessionCommandOwner({
+    supervisor: {
+      startSession: async () => {
+        throw new Error("Unexpected launch");
+      },
+      getAllProcesses: () => [process],
+      getProcessForSession: (id) => (id === "target" ? process : undefined),
+    },
+    globalInstructions: () => undefined,
+  });
+  let commands = new SessionCommands("A", store, owner, () => true);
+  const session = {
+    id: "target",
+    projectId: "p",
+    provider: "codex",
+    title: null,
+    updatedAt: "",
+    state: "in-turn",
+  };
+  try {
+    const push = vi.spyOn(queue, "push").mockImplementationOnce(() => {
+      throw new Error("push rejected");
+    });
+    const failed = commands.send(
+      session,
+      sendMessageRequest.parse({
+        requestId: "rejected-push",
+        message: "Rejected",
+      }),
+    );
+    expect(queue.depth).toBe(0);
+    expect(process.hasAcceptedApiInput(failed.id)).toBe(false);
+    expect(await commands.receipt(failed.id)).toMatchObject({
+      state: "uncertain",
+      delivery: "uncertain",
+    });
+    push.mockRestore();
+    const first = commands.send(
+      session,
+      sendMessageRequest.parse({
+        requestId: "batched-first",
+        message: "First",
+      }),
+    );
+    const second = commands.send(
+      session,
+      sendMessageRequest.parse({
+        requestId: "batched-second",
+        message: "Second",
+      }),
+    );
+    const combined = queue.concatDrain({ interrupted: true })!;
+    expect(store.get(first.id)?.delivery).toBe("unknown");
+    expect(store.get(second.id)?.delivery).toBe("unknown");
+    queue.push(combined);
+    const input = queue.generator();
+    await input.next();
+    await input.return();
+    expect(store.get(first.id)?.delivery).toBe("consumed");
+    expect(store.get(second.id)?.delivery).toBe("consumed");
+    expect(process.hasConsumedApiInput(second.id)).toBe(true);
+    const pending = commands.send(
+      session,
+      sendMessageRequest.parse({
+        requestId: "aborted-input",
+        message: "Not consumed",
+      }),
+    );
+    commands.close();
+    commands = new SessionCommands("A", store, owner, () => true);
+    const recovered = await commands.follow(pending.id, { waitMs: "0" });
+    expect(recovered.receipt?.delivery).toBe("uncertain");
+    const reattached = commands.follow(pending.id, { after: recovered.cursor });
+    const resumedInput = queue.generator();
+    await resumedInput.next();
+    await resumedInput.return();
+    expect(await reattached).toMatchObject({
+      changed: true,
+      receipt: { delivery: "consumed" },
+    });
+    const cancelled = commands.send(
+      session,
+      sendMessageRequest.parse({
+        requestId: "cancelled-input",
+        message: "Cancel this",
+      }),
+    );
+    const cancelBefore = await commands.follow(cancelled.id, { waitMs: "0" });
+    const cancelledWait = commands.follow(cancelled.id, {
+      after: cancelBefore.cursor,
+    });
+    expect(process.cancelUnconfirmedSteerMessage(cancelled.id)).toBe(true);
+    expect(await cancelledWait).toMatchObject({
+      changed: true,
+      receipt: { delivery: "uncertain" },
+    });
+    expect(process.hasAcceptedApiInput(cancelled.id)).toBe(false);
+    expect(await commands.receipt(cancelled.id)).toHaveProperty(
+      "delivery",
+      "uncertain",
+    );
+    expect(subscriptions.size).toBe(1); // Only Process's incumbent queue observer remains.
+    const aborted = commands.send(
+      session,
+      sendMessageRequest.parse({
+        requestId: "final-aborted",
+        message: "Never consumed",
+      }),
+    );
+    expect(subscriptions.size).toBeGreaterThan(0);
+    await process.abort();
+    expect(store.get(aborted.id)).toMatchObject({
+      state: "accepted",
+      delivery: "uncertain",
+    });
+    expect(subscriptions.size).toBe(0);
+  } finally {
+    controlled.finish();
+    await process.abort();
+    commands.close();
     store.close();
     database.close();
   }

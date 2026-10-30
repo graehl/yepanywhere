@@ -1,4 +1,4 @@
-import { get } from "node:http";
+import { request } from "node:http";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { expect, it } from "vitest";
@@ -13,6 +13,7 @@ import {
   SERVER_ID,
   REVIEW_IDS,
   PROJECT_ID,
+  OWN_SESSION_ID,
   type Answer,
 } from "../../../../scripts/agent-api-eval/cases.js";
 
@@ -117,12 +118,18 @@ it("does not treat model prose as a quota failure or give a trial refresh/API-ke
   expect(copy.OPENAI_API_KEY).toBeUndefined();
   expect(() => trialAuth(saved, 3_600_000, now)).toThrow("needs refreshing");
 });
-function read(env: Record<string, string>, path: string, authenticated = true) {
+function read(
+  env: Record<string, string>,
+  path: string,
+  authenticated = true,
+  body?: unknown,
+) {
   return new Promise<{ status: number; body: string }>((resolve, reject) => {
-    const req = get(
+    const req = request(
       new URL(path, env.AGENT_YA_V0_URL),
       {
         socketPath: env.AGENT_YA_V0_SOCKET,
+        method: body === undefined ? "GET" : "POST",
         headers: authenticated
           ? { Authorization: env.AGENT_YA_V0_AUTHORIZATION }
           : {},
@@ -138,6 +145,7 @@ function read(env: Record<string, string>, path: string, authenticated = true) {
       },
     );
     req.on("error", reject);
+    req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
 
@@ -265,5 +273,67 @@ it("lets an unobserved worker finish for polling and requires real reset evidenc
     ).toBe(false);
   } finally {
     await reconnect.close();
+  }
+});
+
+it("requires a real same-receipt retry and consumed observation for the complete agent workflow", async () => {
+  const fixture = await createFixture("workflow");
+  const root = `/v0/servers/${SERVER_ID}`;
+  try {
+    const created = JSON.parse(
+      (
+        await read(fixture.environment, root + "/sessions", true, {
+          requestId: "eval-create-1",
+          projectId: PROJECT_ID,
+          provider: "codex",
+          message: "Release review",
+        })
+      ).body,
+    );
+    const creation = JSON.parse(
+      (await read(fixture.environment, root + "/receipts/" + created.id)).body,
+    );
+    expect(creation.sessionId).toBe("eval-worker-1");
+    const path = root + "/sessions/eval-worker-1";
+    await read(fixture.environment, path + "/conversation");
+    const input = {
+      requestId: "eval-message-1",
+      message: "Follow-up artifact",
+    };
+    const sent = JSON.parse(
+      (await read(fixture.environment, path + "/messages", true, input)).body,
+    );
+    await read(fixture.environment, path + "/relationships");
+    await read(fixture.environment, path + "/conversation/follow?waitMs=0");
+    const answer = {
+      ...empty,
+      sessionId: "eval-worker-1",
+      sessionIds: [OWN_SESSION_ID],
+      answer: "followup-c82",
+    };
+    expect(grade("workflow", answer, fixture.trace)).toBe(false);
+    const repeated = JSON.parse(
+      (await read(fixture.environment, path + "/messages", true, input)).body,
+    );
+    expect(repeated.id).toBe(sent.id);
+    expect(grade("workflow", answer, fixture.trace)).toBe(false);
+    await read(
+      fixture.environment,
+      root + "/receipts/" + sent.id + "/follow?waitMs=0",
+    );
+    expect(grade("workflow", answer, fixture.trace)).toBe(true);
+    expect(
+      grade(
+        "workflow",
+        answer,
+        fixture.trace.map((entry) => ({ ...entry, receipt: undefined })),
+      ),
+    ).toBe(false);
+    const view = JSON.parse(
+      (await read(fixture.environment, path + "/conversation")).body,
+    );
+    expect(JSON.stringify(view).match(/followup-c82/g)).toHaveLength(1);
+  } finally {
+    await fixture.close();
   }
 });

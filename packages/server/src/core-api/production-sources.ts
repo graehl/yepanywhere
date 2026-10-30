@@ -3,6 +3,7 @@ import { isDetachedProjectPath } from "../projects/paths.js";
 import type { RetainedSessionCollections } from "../services/RetainedSessionCollections.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { AgentProvider } from "../sdk/providers/types.js";
+import type { ApiSession } from "./contracts.js";
 import type { CoreApiSources } from "./service.js";
 
 export function productionApiSources(deps: {
@@ -14,6 +15,7 @@ export function productionApiSources(deps: {
     "name" | "displayName" | "supportsSteering" | "supportsPermissionMode"
   >[];
   sessionState: (sessionId: string) => string;
+  ownedSessions?: () => readonly import("./contracts.js").ApiSession[];
   hiddenProjects: NonNullable<CoreApiSources["hiddenProjects"]>;
 }): CoreApiSources {
   return {
@@ -41,22 +43,36 @@ export function productionApiSources(deps: {
           ambiguous.add(row.sessionId);
         sourceProjects.set(row.sessionId, row.projectId);
       }
+      const items = result.rows
+        .filter((row) => !ambiguous.has(row.sessionId))
+        .filter((r) => !isDetachedProjectPath(r.projectPath))
+        .map((row) => {
+          const metadata = deps.metadata?.getMetadata(row.sessionId);
+          return {
+            id: row.sessionId,
+            projectId: metadata?.workingProjectId ?? row.projectId,
+            provider: metadata?.provider ?? row.provider ?? row.catalogFamily,
+            title: metadata?.customTitle ?? row.title ?? null,
+            updatedAt: row.updatedAt,
+            createdByUser: metadata?.createdByUser,
+            state: deps.sessionState(row.sessionId),
+          };
+        });
+      const byId = new Map<string, ApiSession>(
+        items.map((item) => [item.id, item]),
+      );
+      for (const owned of deps.ownedSessions?.() ?? []) {
+        if (ambiguous.has(owned.id)) continue;
+        const existing = byId.get(owned.id);
+        if (existing && existing.projectId !== owned.projectId) {
+          ambiguous.add(owned.id);
+          byId.delete(owned.id);
+          continue;
+        }
+        if (!existing) byId.set(owned.id, owned);
+      }
       return {
-        items: result.rows
-          .filter((row) => !ambiguous.has(row.sessionId))
-          .filter((r) => !isDetachedProjectPath(r.projectPath))
-          .map((row) => {
-            const metadata = deps.metadata?.getMetadata(row.sessionId);
-            return {
-              id: row.sessionId,
-              projectId: metadata?.workingProjectId ?? row.projectId,
-              provider: metadata?.provider ?? row.provider ?? row.catalogFamily,
-              title: metadata?.customTitle ?? row.title ?? null,
-              updatedAt: row.updatedAt,
-              createdByUser: metadata?.createdByUser,
-              state: deps.sessionState(row.sessionId),
-            };
-          }),
+        items: [...byId.values()].filter((item) => !ambiguous.has(item.id)),
         catalog: {
           complete: result.catalog.complete,
           refreshing: result.catalog.refreshing,

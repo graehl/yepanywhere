@@ -65,6 +65,26 @@ export const createSessionRequest = z
     serviceTier: z.string().min(1).max(128).optional(),
   })
   .strict();
+export const sendMessageRequest = z
+  .object({
+    requestId: requestIdSchema,
+    message: z
+      .string()
+      .min(1)
+      .max(100000)
+      .refine((value) => value.trim().length > 0)
+      .describe(
+        "Follow-up text for the incumbent native session owner. No automatic resume, mode/model change, interruption or command translation.",
+      ),
+    delivery: z
+      .literal("queue")
+      .default("queue")
+      .describe(
+        "Append to the native input queue. Does not steer/intercept an active turn. Busy inputs may be consumed together; consumption is not successful response completion.",
+      ),
+  })
+  .strict();
+export type SendMessageRequest = z.infer<typeof sendMessageRequest>;
 export type CreateSessionRequest = z.infer<typeof createSessionRequest>;
 export const creatorSchema = z.object({
   serverId: z
@@ -99,9 +119,9 @@ export const receiptSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   delivery: z
-    .enum(["unknown", "consumed"])
+    .enum(["unknown", "consumed", "uncertain"])
     .describe(
-      "consumed means the native provider input iterator consumed the input. It is not provider acknowledgement or successful completion.",
+      "unknown awaits evidence; uncertain means owner/restart lost delivery proof. consumed means the native provider input iterator consumed the input, not provider acknowledgement or successful completion.",
     ),
   completion: z
     .enum(["unknown"])

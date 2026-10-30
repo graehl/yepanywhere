@@ -52,6 +52,32 @@ it("rejects native cross-project collisions before session-wide metadata can hid
     },
     metadata: { getMetadata: () => ({ workingProjectId: visible }) },
     sessionState: () => "not-running",
+    ownedSessions: () => [
+      {
+        id: "same-id",
+        projectId: visible,
+        provider: "claude",
+        title: "must stay hidden",
+        updatedAt: "",
+        state: "in-turn",
+      },
+      {
+        id: "new-visible",
+        projectId: visible,
+        provider: "codex",
+        title: "New owner",
+        updatedAt: "",
+        state: "in-turn",
+      },
+      {
+        id: "new-private",
+        projectId: privateId,
+        provider: "codex",
+        title: "Private owner",
+        updatedAt: "",
+        state: "in-turn",
+      },
+    ],
     providers: () => [],
     hiddenProjects: async () => new Set(),
   });
@@ -70,7 +96,9 @@ it("rejects native cross-project collisions before session-wide metadata can hid
   app.route("/v0", createV0Routes(new CoreApi("A", sources)));
   const response = await app.request("/v0/servers/A/sessions");
   expect(response.status).toBe(200);
-  expect((await response.json()).items).toEqual([]);
+  expect(
+    (await response.json()).items.map((item: { id: string }) => item.id),
+  ).toEqual(["new-visible"]);
   expect((await app.request("/v0/servers/A/sessions/same-id")).status).toBe(
     404,
   );

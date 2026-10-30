@@ -2,6 +2,17 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { TurnEffort, UploadedFile } from "@yep-anywhere/shared";
 import type { UserMessage } from "./types.js";
 
+/** Internal server-stamped identities survive native interrupt concatenation. */
+export function apiInputIds(message: UserMessage): string[] {
+  const scalar = message.metadata?.apiSubmissionId;
+  return [
+    ...new Set([
+      ...(scalar && scalar === message.uuid ? [scalar] : []),
+      ...(message.metadata?.apiSubmissionIds ?? []).slice(0, 1024),
+    ]),
+  ].filter((id) => typeof id === "string" && id.length > 0 && id.length <= 128);
+}
+
 export const CONCAT_SEPARATOR = "--------";
 export const INTERRUPT_PREAMBLE = "interrupt resumable after:";
 
@@ -35,6 +46,8 @@ export interface AgentMessageQueue {
   removeByTempId(tempId: string): UserMessage[];
   /** Observe messages when the provider input iterator actually consumes them. */
   subscribeYielded?(listener: (messages: UserMessage[]) => void): () => void;
+  /** Positive bounded API-input evidence; false never proves nondelivery. */
+  hasYieldedApiInput?(id: string): boolean;
   readonly depth: number;
 }
 
@@ -79,6 +92,12 @@ export function concatUserMessages(
     ...(first.metadata ? { metadata: first.metadata } : {}),
     ...(first.mode ? { mode: first.mode } : {}),
   };
+  const apiSubmissionIds = [...new Set(messages.flatMap(apiInputIds))].slice(
+    0,
+    1024,
+  );
+  if (apiSubmissionIds.length)
+    combined.metadata = { ...combined.metadata, apiSubmissionIds };
   const sourceSessionId = [...messages]
     .reverse()
     .find((message) => message.metadata?.sourceSessionId)
@@ -204,6 +223,7 @@ export class MessageQueue
   private depthListeners = new Set<(depth: number) => void>();
   private removalListeners = new Set<(messages: UserMessage[]) => void>();
   private yieldedListeners = new Set<(messages: UserMessage[]) => void>();
+  private readonly apiInputs = new Set<string>();
   /** Set when concatDrain() is called to prevent generator from yielding stale data */
   private drainedByExternal = false;
 
@@ -481,8 +501,18 @@ export class MessageQueue
     for (const listener of this.removalListeners) listener(messages);
   }
 
+  hasYieldedApiInput(id: string) {
+    return this.apiInputs.has(id);
+  }
   private emitYielded(messages: UserMessage[]): void {
     if (messages.length === 0) return;
+    for (const message of messages) {
+      for (const id of apiInputIds(message)) {
+        this.apiInputs.add(id);
+        while (this.apiInputs.size > 512)
+          this.apiInputs.delete(this.apiInputs.values().next().value!);
+      }
+    }
     for (const listener of this.yieldedListeners) listener(messages);
   }
 

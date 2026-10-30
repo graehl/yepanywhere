@@ -313,6 +313,13 @@ no alternate authentication or provider transcript store is introduced.
   turn idle or ended rather than working or awaiting input. A record arriving
   while reads are refused is itself treated as dropped. The refusal is not
   permanent for the lifetime of the lease.
+- A newly created exact managed Claude/Codex session can precede its retained
+  catalog row. Its bounded replay is available with incomplete coverage and
+  unknown earlier history. Re-resolve on later reads/catalog invalidations and
+  reconcile native durable history when materialized. No file is guessed, and
+  unsupported or mismatched live owners stay unavailable. Retained summaries
+  merge active owners before catalog catch-up, subject to the same grants and
+  cross-project ambiguity rejection as durable rows.
 - Existing focused file watches are shared with the full client and released
   with source demand. Native history is not polled by a new permanent loop.
   Activity/file observation can retry an unavailable source; absence of new

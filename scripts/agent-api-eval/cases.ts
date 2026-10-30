@@ -1,6 +1,6 @@
 import type { ApiSession } from "../../packages/server/src/core-api/contracts.js";
 
-export const FIXTURE_REVISION = "agent-api-commands-6";
+export const FIXTURE_REVISION = "agent-api-messaging-7";
 export const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 export const OWN_SESSION_ID = "eval-owning-session";
 export const PROJECT_ID = "orchid-project";
@@ -32,6 +32,8 @@ sessions.push({
   updatedAt: "2026-01-02T00:00:00.000Z",
 });
 export const CASES = {
+  workflow:
+    "Create one Codex worker in Orchid and read its initial release answer. Queue a follow-up asking for its follow-up artifact, repeat that identical submission with the same retry key once, and follow its receipt for input consumption. Reconnect to its conversation and inspect trusted creation provenance. Report the worker id in sessionId, creator session id in sessionIds, and final follow-up artifact exactly in answer. Do not infer successful task completion from queue acceptance.",
   create:
     "Create one Codex worker in project Orchid with an initial prompt to review the release. Follow its compact conversation and inspect its trusted creation provenance. Report its session id in sessionId, its creator session id in sessionIds, and the release artifact exactly in answer.",
   follow:
@@ -67,6 +69,7 @@ export interface Answer {
   answer: string;
 }
 export interface Trace {
+  receipt?: { id: string; kind: string; delivery: string };
   follow?: { cursor: string; reset: boolean; changed: boolean };
   method: string;
   path: string;
@@ -119,6 +122,41 @@ export function grade(
   )
     return false;
   switch (caseId) {
+    case "workflow": {
+      const sent = trace.filter(
+        (entry) =>
+          entry.method === "POST" &&
+          entry.status === 202 &&
+          entry.path === `${root}/sessions/eval-worker-1/messages` &&
+          entry.receipt?.kind === "sendMessage",
+      );
+      const repeated =
+        sent.length >= 2 &&
+        sent.some((first, index) =>
+          sent
+            .slice(index + 1)
+            .some((next) => next.receipt?.id === first.receipt?.id),
+        );
+      const consumed = sent.some((entry) =>
+        trace.some(
+          (observation) =>
+            observation.method === "GET" &&
+            observation.status === 200 &&
+            observation.receipt?.id === entry.receipt?.id &&
+            observation.receipt?.delivery === "consumed",
+        ),
+      );
+      return (
+        repeated &&
+        consumed &&
+        answer.sessionId === "eval-worker-1" &&
+        answer.sessionIds.includes(OWN_SESSION_ID) &&
+        answer.answer.trim() === "followup-c82" &&
+        read(`${root}/sessions/eval-worker-1/relationships`) &&
+        (read(`${root}/sessions/eval-worker-1/conversation`) ||
+          read(`${root}/sessions/eval-worker-1/conversation/follow`))
+      );
+    }
     case "create":
       return (
         answer.sessionId === "eval-worker-1" &&

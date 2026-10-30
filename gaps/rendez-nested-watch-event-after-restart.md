@@ -47,3 +47,12 @@ The compact conversation phase 2 workspace run on 2026-10-30, macOS / Node
 tests passed. Watcher source, budgets and assertions were unchanged. Evidence:
 ignored `tasks/http-api-v0/167-phase2-root-tests.log`. This run remains red; no
 retries or timeout changes were used to replace its result.
+
+
+The final compact conversation/commands workspace run on 2026-10-30, macOS /
+Node 22.23.3, missed the second nested delivery at line 364 (1 observed, 2
+expected): 6,615 other server tests passed. No watcher source, assertion,
+retry or timeout changed. Evidence: ignored
+`tasks/http-api-v0/167-phase5-root-final-tests.log` (125.36 s server run).
+All new API/native lifecycle regressions passed in that run. The workspace
+result remains red; no isolated watcher rerun replaces it.

@@ -1,8 +1,7 @@
+import { launchContextSchema } from "../core-api/contracts.js";
 import { z } from "zod";
-import { followQuery } from "../core-api/conversation.js";
-import { pageQuery, launchContextSchema } from "../core-api/contracts.js";
 
-/** Only existing catalog reads cross the trusted provider/controller channel. */
+/** Only bounded authenticated operations cross the trusted provider/controller channel. */
 export const agentCatalogRequest = z
   .object({
     operation: z.enum([
@@ -15,6 +14,8 @@ export const agentCatalogRequest = z
       "createSession",
       "receipt",
       "relationships",
+      "sendMessage",
+      "followReceipt",
     ]),
     input: z
       .object({
@@ -23,9 +24,9 @@ export const agentCatalogRequest = z
         receiptId: z.string().min(1).max(128).optional(),
         body: z.unknown().optional(),
         launch: launchContextSchema.optional(),
-        query: pageQuery
-          .extend(followQuery.shape)
-          .catchall(z.string().max(4096))
+        query: z
+          .record(z.string().max(128), z.string().max(4096))
+          .refine((value) => Object.keys(value).length <= 32)
           .optional(),
       })
       .strict(),

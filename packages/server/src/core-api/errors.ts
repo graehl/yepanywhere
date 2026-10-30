@@ -1,6 +1,7 @@
 /** Wire errors shared by core and the trusted provider/controller bridge. */
 const statuses = {
   forbidden: 403,
+  session_not_running: 409,
   identity_pending: 409,
   project_not_found: 404,
   receipt_not_found: 404,

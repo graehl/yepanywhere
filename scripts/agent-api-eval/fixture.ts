@@ -27,10 +27,14 @@ import {
 /** Real private adapter, deterministic source functions, no app/profile/scanners. */
 export async function createFixture(caseId: CaseId) {
   const localSessions = [...sessions];
-  const management = caseId === "create";
+  const management = caseId === "create" || caseId === "workflow";
   const database = management ? openSqliteOrThrow(":memory:") : undefined;
   if (database) migrateDiscoveryDatabase(database);
   const receiptStore = database ? new ApiReceiptStore(database) : undefined;
+  const workers = new Map<
+    string,
+    { prompt: string; followups: Array<{ id: string; text: string }> }
+  >();
   let workerCount = 0;
   const commands = receiptStore
     ? new SessionCommands(
@@ -39,6 +43,7 @@ export async function createFixture(caseId: CaseId) {
         {
           async start(project, request) {
             const id = `eval-worker-${++workerCount}`;
+            workers.set(id, { prompt: request.message, followups: [] });
             localSessions.push({
               id,
               projectId: project.id,
@@ -48,6 +53,15 @@ export async function createFixture(caseId: CaseId) {
               state: "idle",
             });
             return { sessionId: id };
+          },
+          canSend: (id) => workers.has(id),
+          send(id, request, receipt, consumed) {
+            const worker = workers.get(id);
+            if (!worker) return { accepted: false };
+            worker.followups.push({ id: receipt.id, text: request.message });
+            consumed();
+            notifyWorker();
+            return { accepted: true };
           },
         },
         () => management,
@@ -100,9 +114,32 @@ export async function createFixture(caseId: CaseId) {
       return {
         close() {},
         async read() {
+          const managed = workers.get(sessionId);
+          const workerMessages: Message[] | undefined = managed
+            ? [
+                {
+                  type: "user",
+                  uuid: "worker-initial",
+                  content: managed.prompt,
+                },
+                {
+                  type: "assistant",
+                  uuid: "worker-first",
+                  content: "The release artifact is created-5b7.",
+                },
+                ...managed.followups.flatMap((input, index): Message[] => [
+                  { type: "user", uuid: input.id, content: input.text },
+                  {
+                    type: "assistant",
+                    uuid: `worker-reply-${index}`,
+                    content: "The follow-up artifact is followup-c82.",
+                  },
+                ]),
+              ]
+            : undefined;
           return {
             sessionId,
-            messages: [
+            messages: workerMessages ?? [
               {
                 type: "user",
                 uuid: "question",
@@ -176,7 +213,11 @@ export async function createFixture(caseId: CaseId) {
   const front = createServer((req, res) => {
     const start = performance.now();
     let bytes = 0;
-    const capture = req.url?.split("?")[0]?.endsWith("/conversation/follow");
+    const routePath = req.url?.split("?")[0] ?? "";
+    const capture =
+      routePath.endsWith("/conversation/follow") ||
+      routePath.includes("/receipts/") ||
+      (req.method === "POST" && routePath.startsWith("/v0/"));
     let captured = "";
     const upstream = request(
       new URL(req.url ?? "/", runtime.baseUrl),
@@ -193,9 +234,21 @@ export async function createFixture(caseId: CaseId) {
         });
         response.on("end", () => {
           let follow: Trace["follow"];
+          let receipt: Trace["receipt"];
           if (capture && bytes <= 512 * 1024) {
             try {
               const data = JSON.parse(captured);
+              const value = data.receipt ?? data;
+              if (
+                typeof value?.id === "string" &&
+                typeof value?.kind === "string" &&
+                typeof value?.delivery === "string"
+              )
+                receipt = {
+                  id: value.id,
+                  kind: value.kind,
+                  delivery: value.delivery,
+                };
               if (
                 typeof data.cursor === "string" &&
                 typeof data.reset === "boolean" &&
@@ -218,6 +271,7 @@ export async function createFixture(caseId: CaseId) {
             elapsedMs: performance.now() - start,
             atMs: start,
             ...(follow ? { follow } : {}),
+            ...(receipt ? { receipt } : {}),
           });
         });
         response.pipe(res);

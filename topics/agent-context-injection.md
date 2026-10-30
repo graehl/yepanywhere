@@ -374,3 +374,13 @@ the pinned Codex source under `references/codex`. Key YA entry points are
 `packages/shared/src/agent-context.ts` and provider adapters under
 `packages/server/src/sdk/providers/`. The detailed source list and observed
 trace evidence remain in the sketches companion.
+
+## HTTP v0 bootstrap placement
+
+The default-off **Agent API discovery** setting uses the exact shared
+`agentApiBootstrapInstructions` fragment shown in Local Access. Claude receives
+it with global instructions. Codex receives it once in the first ordinary queued
+input of each provider launch, including a resume; general global instructions
+keep their existing placement. The fragment uses variable references, never
+credential values, and points to live help/schema. It is small static context,
+not dynamic compaction state. See [HTTP v0](http-api-v0.md#local-agent-bootstrap).

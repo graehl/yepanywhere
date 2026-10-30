@@ -33,8 +33,10 @@ import {
   ensureProviderRuntimeHost,
   initializeProviderRuntimeHost,
   startHostedProviderSession,
+  revokeHostedAgentApiAccess,
 } from "../../../src/sdk/providers/provider-runtime-host.js";
 import { isProviderHostDegraded } from "../../../src/sdk/providers/provider-host-status.js";
+import { CoreApi } from "../../../src/core-api/service.js";
 
 const temporaryPaths: string[] = [];
 const fixtureWorker = join(
@@ -521,6 +523,7 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
           "session-turn-idle-timeout",
           "recent-runtime-recovery",
           "provider-session-options",
+          "agent-api-revocation",
         ],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
@@ -1949,6 +1952,142 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
 
     await session.abort();
     await host.shutdown("approval cancellation test complete");
+  });
+
+  it("omits API advertisement for ineligible launches against an older host", async () => {
+    const runtimeRoot = await mkdtemp(join(runtimeTmpDir, "old-api-host-"));
+    temporaryPaths.push(runtimeRoot);
+    const controlSocketPath = join(runtimeRoot, "host.sock");
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath,
+      token: "old-api-token",
+      workerPath: fixtureWorker,
+    });
+    const handle = host.handleRequest.bind(host);
+    vi.spyOn(host, "handleRequest").mockImplementation(
+      async (request: Record<string, unknown>, owner: unknown) => {
+        const result = await handle(request, owner);
+        return request.op === "status" ? { ...result, features: [] } : result;
+      },
+    );
+    await host.start();
+    process.env.YEP_PROVIDER_RUNTIME_SOCKET = controlSocketPath;
+    process.env.YEP_PROVIDER_RUNTIME_TOKEN = "old-api-token";
+    process.env.YEP_SERVER_GENERATION = "old-api";
+    try {
+      expect(await initializeProviderRuntimeHost()).toBe(true);
+      for (const provider of ["pi", "gemini", "codex"] as const) {
+        const session = await startHostedProviderSession(
+          provider,
+          {
+            cwd: runtimeRoot,
+            permissionMode: "default",
+            agentApi: { serverId: "old-profile" },
+          },
+          {},
+        );
+        await session.abort();
+      }
+      await expect(
+        startHostedProviderSession(
+          "claude",
+          { cwd: runtimeRoot, agentApi: { serverId: "old-profile" } },
+          {},
+        ),
+      ).rejects.toThrow("Restart the provider host");
+    } finally {
+      await host.shutdown("old host qualification complete");
+    }
+  });
+
+  it("routes real agent HTTP reads through the worker socket across controller replacement", async () => {
+    const runtimeRoot = await mkdtemp(join(runtimeTmpDir, "api-host-"));
+    temporaryPaths.push(runtimeRoot);
+    const controlSocketPath = join(runtimeRoot, "host.sock");
+    const host = new ProviderRuntimeHost({
+      runtimeDir: runtimeRoot,
+      controlSocketPath,
+      token: "api-host-token",
+      workerPath: join(dirname(fixtureWorker), "agent-api-runtime-worker.ts"),
+    });
+    await host.start();
+    process.env.YEP_PROVIDER_RUNTIME_SOCKET = controlSocketPath;
+    process.env.YEP_PROVIDER_RUNTIME_TOKEN = "api-host-token";
+    process.env.YEP_SERVER_GENERATION = "api-first";
+    const core = new CoreApi("profile-api-host", {
+      projects: async () => ({
+        items: [
+          { id: "worker-project", name: "worker project", path: runtimeRoot },
+        ],
+      }),
+      sessions: async () => ({ items: [] }),
+      providers: async () => [],
+    });
+    const options = {
+      cwd: runtimeRoot,
+      agentApi: { serverId: "profile-api-host" },
+      onAgentApiRead: core.read.bind(core),
+    };
+    try {
+      expect(await initializeProviderRuntimeHost()).toBe(true);
+      const first = await startHostedProviderSession("claude", options, {});
+      expect((await first.iterator.next()).value?.session_id).toBe(
+        "api-fixture",
+      );
+      first.queue.push({ text: "/v0/servers/profile-api-host/projects" });
+      const result = (await first.iterator.next()).value!.apiResult as {
+        status: number;
+        body: string;
+      };
+      expect(result.status).toBe(200);
+      expect(JSON.parse(result.body).items[0].id).toBe("worker-project");
+      await first.publishAgentctlSessionId?.("api-fixture");
+      const waiting = first.iterator.next();
+      await first.detachForServerReload?.();
+      await waiting;
+      closeProviderRuntimeHostRegistration();
+      process.env.YEP_SERVER_GENERATION = "api-second";
+      expect(await initializeProviderRuntimeHost()).toBe(true);
+      const second = await startHostedProviderSession(
+        "claude",
+        { ...options, resumeSessionId: "api-fixture" },
+        {},
+      );
+      second.queue.push({ text: "/v0/me" });
+      const me = (await second.iterator.next()).value!.apiResult as {
+        status: number;
+        body: string;
+      };
+      expect(me.status).toBe(200);
+      expect(JSON.parse(me.body).session.id).toBe("api-fixture");
+      second.queue.push({ text: "/v0/servers/profile-api-host/projects" });
+      expect(
+        ((await second.iterator.next()).value!.apiResult as { status: number })
+          .status,
+      ).toBe(200);
+      const other = await startHostedProviderSession(
+        "claude",
+        { ...options, agentApi: { serverId: "other-profile" } },
+        {},
+      );
+      await other.iterator.next();
+      await revokeHostedAgentApiAccess("profile-api-host");
+      other.queue.push({ text: "/v0/me" });
+      expect(
+        ((await other.iterator.next()).value!.apiResult as { status: number })
+          .status,
+      ).toBe(200);
+      second.queue.push({ text: "/v0/me" });
+      expect([0, 401]).toContain(
+        ((await second.iterator.next()).value!.apiResult as { status: number })
+          .status,
+      );
+      await second.abort();
+      await other.abort();
+    } finally {
+      await host.shutdown("agent HTTP test complete");
+    }
   });
 
   it("reattaches the AgentSession proxy to the same worker", async () => {

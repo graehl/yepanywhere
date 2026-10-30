@@ -133,6 +133,8 @@ export interface ServerSettings {
    * (topics/agent-session-access.md § Operator API token).
    */
   agentServerAccessEnabled: boolean;
+  /** Explicit discovery and read-only v0 access for eligible local launches. */
+  agentApiEnabled: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled: boolean;
   /**
@@ -351,6 +353,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   clientLogCollectionRequested: false,
   approvalAuditLogEnabled: false,
   agentServerAccessEnabled: false,
+  agentApiEnabled: false,
   publicSharesEnabled: false,
   limitedUsersEnabled: false,
   limitedUserInstructions: defaultLimitedUserInstructions(),

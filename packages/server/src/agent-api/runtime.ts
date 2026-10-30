@@ -249,9 +249,9 @@ export async function createAgentApiRuntime(options: {
       return {
         launchId: entry.launchId,
         environment: {
-          AGENT_YA_API_URL: baseUrl,
-          AGENT_YA_API_TOKEN: token,
-          ...(socketPath ? { AGENT_YA_API_SOCKET: socketPath } : {}),
+          AGENT_YA_V0_URL: baseUrl,
+          AGENT_YA_V0_AUTHORIZATION: `Bearer ${token}`,
+          ...(socketPath ? { AGENT_YA_V0_SOCKET: socketPath } : {}),
         },
         renew() {
           if (entries.get(key) === entry) entry.expiresAt = now() + LEASE_MS;

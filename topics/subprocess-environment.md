@@ -176,3 +176,12 @@ individual YA variables remain in [ya-env-vars.md](ya-env-vars.md).
 not client-supplied session fields. Eligible local launches verify signatures
 before adding the native resources directory to agent PATH. Restart the
 provider host after changing its environment. See [native sudo](native-sudo.md).
+
+## HTTP v0 launch credential
+
+Both provider environment filters remove inherited `AGENT_YA_V0_*` names
+case-insensitively. Only an explicitly eligible launch injects its own URL,
+socket and complete Authorization header through spawn environment. This family
+must not enter the legacy Bash bridge or cloneable worker launch options.
+Codex API-enabled threads disable both shell snapshot features to avoid writing
+the header to snapshots. See [HTTP v0](http-api-v0.md#local-agent-bootstrap).

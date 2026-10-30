@@ -1750,6 +1750,59 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it.each([undefined, "thread-1"])(
+    "advertises the API once per Codex launch, including resume %s, without snapshotting credentials",
+    async (resumeSessionId) => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-api-bootstrap-"));
+      const logPath = join(tempDir, "requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-api",
+        buildFakeCodexPermissionAppServer(logPath),
+      );
+      const instance = new CodexProvider({ codexPath });
+      const session = await instance.startSession({
+        cwd: tempDir,
+        permissionMode: "bypassPermissions",
+        resumeSessionId,
+        agentSelf: false,
+        agentApi: { serverId: "codex-api-profile" },
+        initialMessage: { text: "first task" },
+      });
+      try {
+        await consumeCodexTurn(session.iterator);
+        session.queue.push({ text: "second task" });
+        await consumeCodexTurn(session.iterator);
+        const requests = readFakeCodexRequests(logPath);
+        const thread = requests.find(
+          (request) =>
+            request.method ===
+            (resumeSessionId ? "thread/resume" : "thread/start"),
+        );
+        expect(thread?.params).toMatchObject({
+          config: {
+            features: { shell_snapshot: false, shell_snapshot_v2: false },
+          },
+        });
+        const turns = requests.filter(
+          (request) => request.method === "turn/start",
+        );
+        expect(JSON.stringify(turns[0]?.params)).toContain(
+          "AGENT_YA_V0_AUTHORIZATION",
+        );
+        expect(JSON.stringify(turns[0]?.params)).toContain("first task");
+        expect(JSON.stringify(turns[1]?.params)).not.toContain(
+          "[Yep Anywhere API]",
+        );
+        expect(JSON.stringify(thread?.params)).not.toContain("Bearer ");
+      } finally {
+        await session.abort();
+        await session.iterator.return?.(undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("switches complete turn policies without restarting app-server", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-policy-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -4361,6 +4414,7 @@ function handleMessage(message) {
         }],
       });
       break;
+    case "thread/resume":
     case "thread/start":
       effectiveApprovalPolicy =
         message.params?.approvalPolicy ?? effectiveApprovalPolicy;

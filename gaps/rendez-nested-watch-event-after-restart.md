@@ -24,3 +24,10 @@ observer and changing an already-observed file. The watcher source and test
 were unchanged. An immediate isolated rerun passed all four runnable cases
 in 5.97 s. This extends the evidence beyond Node 26; runtime alone does not
 explain the restart/event-registration race. No timeout or assertion changed.
+
+2026-10-30: the HTTP API bootstrap phase 3 whole-workspace run on macOS /
+Node 26.7.0 again missed the second delivery at line 364 (1 observed, 2 expected).
+The immediate isolated file rerun failed at the same assertion: 3 passed,
+1 failed, 1 skipped, 12.83 s. This is not a passing isolated recheck. No watcher
+source, assertion, retries or timeout changed. Evidence is retained in ignored
+`tasks/http-api-v0/phase3-final-tests.log` and `phase3-rendez-recheck.log`.

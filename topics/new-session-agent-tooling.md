@@ -164,3 +164,11 @@ Stop, expiry or MC restart owns revocation. Native sudo remains independent.
 [Optional Computer Control](optional-computer-control.md) owns configuration,
 legacy retirement and acceptance limits; [Tactical 142](../docs/tactical/142-machine-control-desktop-consumer.md)
 records actual native/browser Codex turns, image/media use and platform checks.
+
+## HTTP API discovery
+
+The global **Agent API discovery** setting is default-off and applies to new
+provider launches. Eligible local Claude-family and Codex bypass-permissions
+launches receive a private v0 connection and the shared, previewable instruction.
+Remote/restricted launches receive no advertisement. This option is independent
+of legacy operator API access. See [HTTP v0](http-api-v0.md#local-agent-bootstrap).

@@ -4837,5 +4837,10 @@
   "extensionDevUpdatePanel": "Update panel",
   "extensionDevReloadPanel": "Reload panel",
   "extensionDevFullReloadHelp": "Reloads the whole extension, including its background worker and manifest, even when no update is detected. YA will try to reopen this panel; if Chrome closes it, click the toolbar icon to reopen.",
-  "extensionDevPanelReloadHelp": "Loads the latest panel code while keeping the side panel open."
+  "extensionDevPanelReloadHelp": "Loads the latest panel code while keeping the side panel open.",
+  "localAccessAgentApiTitle": "Agent API discovery",
+  "localAccessAgentApiDescription": "Give eligible local unrestricted Claude and Codex sessions a read-only YA API connection and discovery instructions. Applies to new provider launches; switching off revokes current access.",
+  "localAccessAgentApiPreview": "Preview agent instructions",
+  "localAccessAgentApiUnix": "macOS and Linux",
+  "localAccessAgentApiWindows": "Windows"
 }

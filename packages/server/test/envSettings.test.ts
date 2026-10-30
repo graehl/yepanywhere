@@ -18,6 +18,7 @@ describe("isSecretName", () => {
     expect(isSecretName("ANTHROPIC_API_KEY")).toBe(true);
     expect(isSecretName("AUTH_COOKIE_SECRET")).toBe(true);
     expect(isSecretName("DESKTOP_AUTH_TOKEN")).toBe(true);
+    expect(isSecretName("AGENT_YA_V0_AUTHORIZATION", false)).toBe(true);
     expect(isSecretName("DB_PASSWORD")).toBe(true);
   });
 

@@ -187,3 +187,11 @@ or that a provider reported an exact hidden backend revision.
 Related: [tactical](../docs/tactical/122-ya-agent-self-inspection.md),
 [environment boundaries](subprocess-environment.md),
 [provider host](provider-host-api.md), [desktop](desktop-v0.md).
+
+## HTTP v0 discovery is a separate opt-in
+
+Settings → Local Access → **Agent API discovery** supplies eligible local
+unrestricted launches a separate `AGENT_YA_V0_*` credential and minimal HTTP
+instruction. Legacy `ya-agent self/view` and `AGENT_YA_API_URL/TOKEN` keep their
+original authority. See [HTTP v0](http-api-v0.md#local-agent-bootstrap) for lease,
+transport and reload contracts.

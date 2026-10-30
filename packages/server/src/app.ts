@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { CoreApi } from "./core-api/service.js";
+import { CoreApi, CoreApiError } from "./core-api/service.js";
 import { readServerIdentity } from "./core-api/server-identity.js";
 import { productionApiSources } from "./core-api/production-sources.js";
 import { createV0Routes } from "./routes/v0/index.js";
@@ -795,6 +795,7 @@ export function createApp(options: AppOptions): AppResult {
     options.discoverySqlite ??
     new DiscoverySqliteService({ dataDir: effectiveDataDir });
   let publicServerId: string;
+  let agentApiController: CoreApi | undefined;
   try {
     publicServerId = readServerIdentity(discoverySqlite.getDatabase());
   } catch (error) {
@@ -2029,6 +2030,18 @@ export function createApp(options: AppOptions): AppResult {
   );
   app.route("/api", createAgentAuthRouterRoutes(agentAuthRouter));
 
+  const readAgentApi: CoreApi["read"] = async (operation, caller, input) => {
+    if (
+      !agentApiController ||
+      options.serverSettingsService?.getSetting("agentApiEnabled") !== true
+    )
+      throw new CoreApiError(
+        "controller_unavailable",
+        "Agent API catalog access is unavailable",
+        503,
+      );
+    return agentApiController.read(operation, caller, input);
+  };
   supervisor = new Supervisor({
     agentAuthRouter,
     projectDisplayName,
@@ -2078,6 +2091,10 @@ export function createApp(options: AppOptions): AppResult {
       : undefined,
     onSuccessfulProviderSession: options.onSuccessfulProviderSession,
     mintAgentServerAccess: () => agentServerTokens.mint(),
+    getAgentApiAccess: () =>
+      options.serverSettingsService?.getSetting("agentApiEnabled") === true
+        ? { serverId: publicServerId, read: readAgentApi }
+        : undefined,
     getSessionChildEnv: (sessionId, executor) => {
       const wakeBaseUrl = options.getSessionWakeBaseUrl?.(executor);
       const browserDebugConnection =
@@ -2175,9 +2192,21 @@ export function createApp(options: AppOptions): AppResult {
       options.serverSettingsService?.getSetting("claudeSteerBackgroundBash"),
   });
   options.serverSettingsService?.onSettingsChanged((settings, previous) => {
+    if (previous.agentApiEnabled && !settings.agentApiEnabled)
+      void supervisor
+        .revokeAgentApiAccess(publicServerId)
+        .catch((error) =>
+          getLogger().error({ error }, "Agent API revocation failed"),
+        );
     if (settings.instructionRestoration !== previous.instructionRestoration)
       void supervisor.refreshInstructionRestoration();
   });
+  if (options.serverSettingsService?.getSetting("agentApiEnabled") !== true)
+    void supervisor
+      .revokeAgentApiAccess(publicServerId)
+      .catch((error) =>
+        getLogger().error({ error }, "Agent API startup revocation failed"),
+      );
   if (sessionWakeService) {
     app.use("/session-wake/*", hostCheckMiddleware);
     app.route("/session-wake", createSessionWakeRoutes(sessionWakeService));
@@ -2380,6 +2409,9 @@ export function createApp(options: AppOptions): AppResult {
       getLatestVersion: options.getLatestVersion,
       installedMachineControlAvailable: supportsInstalledMachineControl(),
       agentSessionViewAvailable: agentSelfEnabled(),
+      agentApiAvailable: ["darwin", "linux", "win32"].includes(
+        process.platform,
+      ),
       agentAuthRouterAvailable:
         process.platform !== "win32" && Boolean(options.sessionMetadataService),
       getExperimentalConversationAvailable: () =>
@@ -3071,36 +3103,29 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
 
-  app.route(
-    "/v0",
-    createV0Routes(
-      new CoreApi(
-        publicServerId,
-        productionApiSources({
-          scanner,
-          sessions: retainedCollections,
-          metadata: options.sessionMetadataService,
-          providers: () => {
-            const providers =
-              options.provider === null
-                ? []
-                : options.provider
-                  ? [options.provider]
-                  : getAllProviders();
-            return options.enabledProviders?.length
-              ? providers.filter((p) =>
-                  options.enabledProviders!.includes(p.name),
-                )
-              : providers;
-          },
-          sessionState: (id) =>
-            supervisor.getProcessForSession(id)?.state.type ?? "not-running",
-          hiddenProjects: (username) =>
-            projectAppStore.hiddenProjectIds(username),
-        }),
-      ),
-    ),
+  agentApiController = new CoreApi(
+    publicServerId,
+    productionApiSources({
+      scanner,
+      sessions: retainedCollections,
+      metadata: options.sessionMetadataService,
+      providers: () => {
+        const providers =
+          options.provider === null
+            ? []
+            : options.provider
+              ? [options.provider]
+              : getAllProviders();
+        return options.enabledProviders?.length
+          ? providers.filter((p) => options.enabledProviders!.includes(p.name))
+          : providers;
+      },
+      sessionState: (id) =>
+        supervisor.getProcessForSession(id)?.state.type ?? "not-running",
+      hiddenProjects: (username) => projectAppStore.hiddenProjectIds(username),
+    }),
   );
+  app.route("/v0", createV0Routes(agentApiController));
 
   // Global sessions route (flat list of all sessions for navigation)
   app.route(

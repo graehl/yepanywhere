@@ -106,13 +106,13 @@ The schema describes supported operations, bounds, errors and examples without
 requiring the YA source checkout. Discovery reports implementation support
 separately from effective caller permissions and reachability.
 
-The proposed `GET /v0/help` adds a short Markdown introduction, the resource
+`GET /v0/help` serves a short Markdown introduction, the resource
 model and executable examples for implemented operations. Operation summaries,
 descriptions, field semantics, errors and examples should live with the
 operation contracts and generate both the readable reference and OpenAPI.
 Identity/access discovery alone is not sufficient documentation. See
 [the review plan](../docs/tactical/166-agent-api-bootstrap-and-documentation.md)
-for the next proposed delivery and acceptance criteria.
+for delivery and acceptance evidence.
 
 `GET /v0/me` describes the authenticated caller. A launch-bound session credential
 may identify its owning `{serverId, sessionId}`; an ordinary operator or peer
@@ -201,94 +201,78 @@ cover identity, auth, lease lifecycle and controller handoff races. The bundled
 macOS Bun 1.3.14 binary also passed Unix/loopback source-adapter smoke checks;
 this is not native Windows or complete packaged-provider qualification.
 
-## Local agent bootstrap: Unix socket first
+## Local agent bootstrap
 
-Maintainer direction, 2026-10-30: start local agent access with HTTP over a
-private Unix-domain socket. This is a proposal, not an implemented listener or
-credential. Preserve the same core operations and `/v0/me` resource without
-requiring a TCP listener, a `ya-agent` command, an MCP configuration, or an SRP
-client inside the agent. Remote SRP-only access policy can coexist with this
-separate local transport. For native Windows, the proposed starting transport
-is a dedicated bearer-authenticated loopback HTTP listener on an OS-selected
-port. It serves the same operations without a public/LAN listener or helper
-CLI; strict no-TCP Windows support needs another transport. The
-[review plan](../docs/tactical/166-agent-api-bootstrap-and-documentation.md#native-windows-transport)
-specifies platform bootstrap and evidence requirements.
+**Agent API discovery** in Settings → Local Access is independently configurable
+and default-off. Enabling it gives new eligible local, unrestricted Claude-family
+and Codex bypass-permissions launches a private connection, a launch credential
+and the exact previewable instruction exported by
+`packages/shared/src/agent-api-bootstrap.ts`. Restricted and remote-executor
+launches receive none. This is the existing v0 read catalog, not a grant to future
+writes or legacy `/api/*`. Turning it off revokes current access; turning it on
+again applies to new launches. Old servers omit the control through the separate
+`agent-api-bootstrap` capability (introduced in the 0.11.1 line).
 
-An eligible provider launch should receive the socket path, an HTTP base URL
-and a scoped credential, plus a minimal instruction showing how to query its
-own context. Candidate names are `AGENT_YA_API_SOCKET`, `AGENT_YA_API_URL` and
-`AGENT_YA_API_TOKEN`. The current own-session inspection service already uses
-the latter two names with a different endpoint and credential; migration must
-be explicit rather than silently repointing an existing lease. Credentials
-establish the owning YA session/launch and effective authority; asserted ids
-and socket reachability alone do not. An inherited child credential still
-identifies its owning YA session.
+Connection variables are `AGENT_YA_V0_URL`, `AGENT_YA_V0_SOCKET` (Unix only)
+and `AGENT_YA_V0_AUTHORIZATION` (the complete `Bearer …` header value). They are
+separate from the unchanged legacy self/view `AGENT_YA_API_URL/TOKEN` and from
+the broader legacy operator `AGENT_SERVER_TOKEN`. An old self-only credential
+cannot acquire catalog authority. No actual credential is injected into prompt
+text, written to YA's shell bridge, exposed in the environment viewer, or sent
+through worker launch recipes. Both provider environment filters remove an
+inherited v0 family before an explicitly authorized new launch is injected.
+Native child tools inherit their owning YA session, not a new session identity.
 
-Before implementation, define private socket placement and permissions,
-ownership and cleanup across restarts, credential lifetime/revocation, and
-provider sandbox reachability. Do not advertise a socket the agent cannot
-reach or silently widen its sandbox. Native Windows loopback, Node/Bun runtime
-and client-tool compatibility need qualification. Broader default advertisement and
-agent permissions remain explicit product decisions.
+On macOS/Linux, the HTTP adapter owns a fresh mode-0700 temporary directory and
+mode-0600 socket. Native Windows uses a random `127.0.0.1` TCP port with bearer
+authentication on every route, including help/schema. The URL is a syntactic
+origin when curl uses the socket; no DNS or TCP access is required. The transport
+factory also supports loopback on Unix for qualification. These listeners mount
+only v0, reject browser Origins and do not use desktop master credentials.
 
-The current desktop application instead starts a bundled Bun server on a
-loopback HTTP port and loads its web dashboard in a Tauri WebView. Native code
-manages server lifecycle and bootstraps a browser session; ordinary dashboard
-traffic uses HTTP and WebSocket, not a general Tauri API bridge. The proposed
-agent socket can coexist with that listener and does not require replacing
-the dashboard transport. [Desktop contract](desktop-v0.md#local-dashboard-authentication)
-owns that existing boundary.
+```sh
+curl --unix-socket "$AGENT_YA_V0_SOCKET" -H "Authorization: $AGENT_YA_V0_AUTHORIZATION" "$AGENT_YA_V0_URL/v0/me"
+```
 
-### Preferred first slice (proposal)
+```powershell
+curl.exe -H "Authorization: $env:AGENT_YA_V0_AUTHORIZATION" "$env:AGENT_YA_V0_URL/v0/me"
+```
 
-Offer one explicit **YA API access** option, initially off. For an explicitly
-enabled, unrestricted operator-owned launch, the proposed useful first profile
-allows all currently implemented v0 catalog reads under the operator's existing
-authority, with an authenticated owning-session binding. This supersedes the
-earlier own-session-only first-slice sketch. Scope is an explicit operation set,
-not automatic access to future routes or the legacy `/api/*` surface. Restricted
-launches must retain their principal/resource ceilings or remain ineligible;
-shell access is not itself a credential or a sandbox guarantee. Broader default
-advertisement is a later product decision.
+Codex's default shell environment excludes names containing TOKEN, KEY or SECRET;
+the header variable remains policy-admitted without widening that user policy.
+For API-enabled Codex threads YA disables `shell_snapshot` and
+`shell_snapshot_v2`, since snapshots can persist admitted values to disk. A
+user's stricter environment policy may still hide the connection; instructions
+say to report unavailable access instead of guessing another port or credential.
+Other provider persistence, user shell startup scripts and agent-written files
+are outside YA's guarantee; a full-shell agent can intentionally inspect its own
+environment. This is attribution and authenticated access, not a shell sandbox.
 
-For an eligible launch, publish socket/base-URL/credential connection details
-and a short, previewable instruction containing one working `/v0/me` request.
-The instruction also directs the agent to `/v0/help` to learn what it can do.
-Use ordinary environment variables first; a mutable connection descriptor file
-is an extension if real reconnection or credential-rotation needs justify it.
-Do not include credential values in the injected instruction or transcript.
+The provider owner holds a bounded shared runtime per logical profile and one
+24-hour lease per launch, renewed on observed SDK activity without heartbeat
+loops. Abort/end revokes and releases the runtime when the last launch ends.
+Disable is sticky across pending starts and applies by public profile id to
+hosted workers. `/me`, help/schema and local identity stay available while a
+hosted controller detaches; dependent catalogs return retryable
+`controller_unavailable` until a matching controller attaches. The authenticated
+worker socket dispatches only bounded catalog reads; stale replies and stalled
+reads are cancelled. An older source host without revocation support must be
+restarted before launching with this option. In-process desktop/Windows paths
+do not enable the source provider host.
 
-The initial agent credential permits caller inspection, served help/schema and
-the implemented read catalog under its effective authority. `/v0/me` should return the public server id,
-canonical owning session id, launch id, effective access, observation time and
-links to the allowed resources. Resolve these from the credential and live
-owner state, not caller-supplied session ids. Advertised server capabilities
-remain distinct from operations this particular caller may perform. The own
-session identity may be temporarily unavailable before native session creation
-finishes; expose that state explicitly rather than substitute a resume handle.
+The desktop application still starts bundled Bun on loopback HTTP and loads its
+web dashboard in Tauri. Native code bootstraps the browser session; dashboard
+traffic uses HTTP/WebSocket. The private agent adapter is independent of that
+listener and does not require a Tauri IPC transport.
+[Desktop contract](desktop-v0.md#local-dashboard-authentication) owns that boundary.
 
-Prefer extending the existing provider-owned inspection runtime with a separate
-private HTTP socket adapter. Do not expose the provider host's private JSONL
-worker/control sockets as the public API or create another daemon. On paths
-where the provider owner survives Hono replacement, its local identity service
-and credential should survive too. Own-context reads should not depend on Hono;
-catalog operations may explicitly report temporary unavailability while
-their authoritative owner reloads. A full provider-owner restart ends the old
-launch lease and requires fresh bootstrap on the next launch.
-
-Use one bounded listener/credential registry per owning runtime, not a listener
-per session. Place it in a short private runtime directory, outside projects;
-qualify directory/socket permissions and safe stale-path cleanup. Revoke the
-lease when its launch ends, and recheck effective authority on each request.
-No fallback to unauthenticated localhost or another profile is allowed.
-
-Prove the slice with isolated core/auth fixtures, then a real Unix-socket
-request: two concurrent profiles, caller/resource isolation, revoked credentials,
-inherited child identity and provider-owner continuity across controller
-reattachment. Provider/platform reachability must be qualified before claiming
-support. Peer enrollment remains the next independent design, not part of this
-first slice.
+Evidence: real curl bootstrap, credential separation, owner detach/reattach,
+actual host/worker socket dispatch and revocation, plus desktop/phone preview and
+sequential typing checks. macOS Node and bundled Bun source-adapter checks pass.
+Native Windows PowerShell, Linux, packaged provider/tool invocation and crossing
+native Windows/WSL remain qualification work; transport tests on macOS do not
+establish that parity. Broader onboarding, peer grants/routing, session writes,
+command execution and PTYs remain separate proposals.
 
 ## One HTTP surface across routes
 

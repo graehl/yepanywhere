@@ -206,6 +206,14 @@ export interface StartSessionOptions {
   computerControl?: boolean;
   /** Operator opt-in, preserved across provider-host process boundaries. */
   agentSelf?: boolean;
+  /** Trusted local launch grant; never accepted from session-create JSON. */
+  agentApi?: { serverId: string };
+  /** Controller-owned catalog dispatcher, removed at the worker boundary. */
+  onAgentApiRead?: import("../../core-api/service.js").CoreApi["read"];
+  /** Spawn-only connection credential. Never publish into a Bash bridge file. */
+  agentApiEnvironment?: Record<string, string>;
+  /** Public bootstrap fragment, independently refreshed on Codex resume. */
+  agentApiInstructions?: string;
   /** Explicit installed MC advertisement; no resident grant or supervisor. */
   machineControl?: boolean;
   /** Private credential proof; never accepted from JSON or restored settings. */
@@ -329,6 +337,8 @@ export interface StartSessionOptions {
  * This is the common interface all providers must return.
  */
 export interface AgentSession {
+  revokeAgentApiAccess?: () => void | Promise<void>;
+  setAgentApiControllerAttached?: (attached: boolean) => void;
   hydrateInstructionReadHistory?: (
     messages: SDKMessage[],
     complete: boolean,
@@ -701,6 +711,19 @@ export function agentServerEnvironmentFor(
     return undefined;
   }
   return options.agentServerEnvironment;
+}
+
+/** Spawn only: keep this header out of bridge files and inherited YA launches. */
+export function agentApiEnvironmentFor(
+  options: StartSessionOptions,
+): Record<string, string> | undefined {
+  if (
+    options.executor ||
+    options.sessionSandbox ||
+    options.sessionSandboxOptions?.level === "project-write"
+  )
+    return undefined;
+  return options.agentApiEnvironment;
 }
 
 /**

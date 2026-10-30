@@ -28,6 +28,9 @@ const EXCLUDED_VARS = new Set([
   // A nested YA session must never adopt its caller's self-inspection grant.
   "AGENT_YA_API_URL",
   "AGENT_YA_API_TOKEN",
+  "AGENT_YA_V0_URL",
+  "AGENT_YA_V0_SOCKET",
+  "AGENT_YA_V0_AUTHORIZATION",
   // Nor a caller's operator API token: a YA server started from an agent
   // shell would otherwise hand it to every child, sandboxed ones included.
   // A launch that should have one gets its own through agentServerEnvironment.
@@ -67,7 +70,9 @@ export function stripYaControlPlaneCredentials(
 ): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(env).filter(
-      ([name]) => !YA_CONTROL_PLANE_CREDENTIALS.has(name),
+      ([name]) =>
+        !YA_CONTROL_PLANE_CREDENTIALS.has(name) &&
+        !name.toUpperCase().startsWith("AGENT_YA_V0_"),
     ),
   );
 }
@@ -142,7 +147,10 @@ export function filterEnvForChildProcess(
     }
 
     // Exclude exact matches
-    if (EXCLUDED_VARS.has(key)) {
+    if (
+      EXCLUDED_VARS.has(key) ||
+      key.toUpperCase().startsWith("AGENT_YA_V0_")
+    ) {
       continue;
     }
 

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentServerTokens } from "../src/auth/AgentServerTokens.js";
+import { CoreApi } from "../src/core-api/service.js";
 import { MessageQueue } from "../src/sdk/messageQueue.js";
 import type {
   EffectiveSessionLaunchSettings,
@@ -437,6 +438,61 @@ describe("Supervisor", () => {
       expect(result.error).toBeUndefined();
       expect(runProviderCommand).toHaveBeenCalledWith("goal", "");
       await providerSupervisor.abortProcess(process.id);
+    });
+
+    it("revokes a pending API launch even if discovery is re-enabled before startup completes", async () => {
+      let release!: () => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const native = createControllableIterator();
+      const revoke = vi.fn();
+      const core = new CoreApi("pending-profile", {
+        projects: async () => ({ items: [] }),
+        sessions: async () => ({ items: [] }),
+        providers: async () => [],
+      });
+      let enabled = true;
+      const provider = testProvider(async () => {
+        entered();
+        await held;
+        return {
+          queue: new MessageQueue(),
+          iterator: {
+            ...native.iterator,
+            [Symbol.asyncIterator]() {
+              return this;
+            },
+          },
+          abort: () => native.finish(),
+          initializedSessionId: "pending-session",
+          revokeAgentApiAccess: revoke,
+        };
+      });
+      const instance = new Supervisor({
+        provider,
+        getAgentApiAccess: () =>
+          enabled
+            ? { serverId: core.serverId, read: core.read.bind(core) }
+            : undefined,
+      });
+      const pending = instance.reactivateSession(
+        "/tmp/test",
+        "pending-session",
+      );
+      await started;
+      enabled = false;
+      await instance.revokeAgentApiAccess();
+      enabled = true;
+      release();
+      const process = await pending;
+      expect(revoke).toHaveBeenCalledOnce();
+      await instance.abortProcess(process.id);
+      await instance.stopBackgroundTasks();
     });
 
     it("hands an unsandboxed launch its own API token and revokes it at exit", async () => {

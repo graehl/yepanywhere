@@ -182,6 +182,10 @@ export {
 
 export type { AgentContextHints } from "./agent-context.js";
 export {
+  AGENT_API_BOOTSTRAP_ENV,
+  agentApiBootstrapInstructions,
+} from "./agent-api-bootstrap.js";
+export {
   buildEffectiveAgentContext,
   LATEX_MATH_RENDERING_CLIENT_CAPABILITY,
 } from "./agent-context.js";

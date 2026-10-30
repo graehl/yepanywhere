@@ -1,4 +1,10 @@
-import { agentHarness, type SessionClientView } from "@yep-anywhere/shared";
+import { agentApiEligible } from "../../agent-api/eligibility.js";
+import {
+  agentHarness,
+  agentApiBootstrapInstructions,
+  type SessionClientView,
+} from "@yep-anywhere/shared";
+import { createAgentApiLaunch } from "../../agent-api/launch.js";
 import {
   type AgentSelfReport,
   type AgentSelfSelection,
@@ -156,19 +162,7 @@ function eligible(
   options: StartSessionOptions,
 ): boolean {
   if (!(options.agentSelf ?? agentSelfEnabled())) return false;
-  if (
-    options.executor ||
-    options.sessionSandbox ||
-    options.sessionSandboxOptions?.level === "project-write"
-  )
-    return false;
-  if (provider === "codex")
-    return options.permissionMode === "bypassPermissions";
-  return (
-    provider === "claude" ||
-    provider === "claude-gateway" ||
-    provider === "claude-ollama"
-  );
+  return agentApiEligible(provider, options);
 }
 
 export async function startAgentSelfSession(
@@ -178,18 +172,40 @@ export async function startAgentSelfSession(
 ): Promise<AgentSession> {
   const startWithNativeSudo = (resolved: StartSessionOptions) =>
     startMachineControlToolsSession(provider, resolved, start);
-  if (!eligible(provider, options))
+  const selfEnabled = eligible(provider, options);
+  const apiEnabled = Boolean(
+    options.agentApi && agentApiEligible(provider, options),
+  );
+  if (!selfEnabled && !apiEnabled)
     return await startWithNativeSudo({
       ...options,
       agentEnvironment: undefined,
+      agentApiEnvironment: undefined,
     });
   const state = new AgentSelfState(provider, options);
-  const lease = await createAgentSelfLease({
-    self: (launchId) => state.snapshot(launchId),
-    view: () => state.viewSnapshot(),
-  });
+  const lease = selfEnabled
+    ? await createAgentSelfLease({
+        self: (launchId) => state.snapshot(launchId),
+        view: () => state.viewSnapshot(),
+      })
+    : undefined;
+  let apiLease: Awaited<ReturnType<typeof createAgentApiLaunch>> | undefined;
+  try {
+    if (apiEnabled)
+      apiLease = await createAgentApiLaunch({
+        serverId: options.agentApi!.serverId,
+        sessionId: () => state.sessionId ?? null,
+        read: options.onAgentApiRead,
+      });
+  } catch (error) {
+    await lease?.dispose();
+    throw error;
+  }
+  const dispose = async () => {
+    await Promise.all([lease?.dispose(), apiLease?.dispose()]);
+  };
   const environment = {
-    ...lease.environment,
+    ...lease?.environment,
     AGENT_LAUNCHER: "yepanywhere",
     AGENT_LAUNCH_HARNESS: agentHarness(provider),
     AGENT_LAUNCH_MODEL: options.launchModel || options.model || "",
@@ -200,13 +216,27 @@ export async function startAgentSelfSession(
     session = await startWithNativeSudo({
       ...options,
       agentEnvironment: environment,
+      // This distinct family never enters the legacy self-token Bash file.
+      agentApiEnvironment: apiLease?.environment,
+      agentApiInstructions: apiLease
+        ? agentApiBootstrapInstructions(process.platform === "win32")
+        : undefined,
+      globalInstructions:
+        apiLease && provider !== "codex"
+          ? [
+              options.globalInstructions,
+              agentApiBootstrapInstructions(process.platform === "win32"),
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : options.globalInstructions,
       getSessionChildEnv: (sessionId, executor) => ({
         ...options.getSessionChildEnv?.(sessionId, executor),
         ...environment,
       }),
     });
   } catch (error) {
-    await lease.dispose();
+    await dispose();
     throw error;
   }
   const original = session;
@@ -214,16 +244,21 @@ export async function startAgentSelfSession(
     try {
       for await (const message of original.iterator) {
         state.observe(message);
+        apiLease?.renew();
         yield message;
       }
     } finally {
-      await lease.dispose();
+      await dispose();
     }
   })();
   // Preserve live getters (notably provider pid), rather than spreading session.
   return new Proxy(session, {
     get(target, property) {
       if (property === "iterator") return iterator;
+      if (property === "revokeAgentApiAccess" && apiLease)
+        return apiLease.dispose;
+      if (property === "setAgentApiControllerAttached" && apiLease)
+        return apiLease.setAttached;
       if (property === "publishAgentSelfSelection")
         return (selection: AgentSelfSelection) => state.select(selection);
       if (property === "publishAgentSessionViews")
@@ -240,7 +275,7 @@ export async function startAgentSelfSession(
       if (property === "abort")
         return async () => {
           try {
-            await lease.dispose();
+            await dispose();
           } finally {
             await original.abort();
           }

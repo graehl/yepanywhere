@@ -13,7 +13,7 @@ example requests, discovery links and a fixture-backed pagination walkthrough.
 Lint, formatting, typecheck, full workspace tests and focused core/auth tests
 pass. Sol 6.1 high review found one misleading authentication statement; the
 guide now accurately explains host auth-off behavior, and the same reviewer
-confirmed the repair. Later phases remain in progress/pending.
+confirmed the repair. Later phases are tracked below.
 
 Phase 2 is implemented as an isolated local runtime factory, before provider
 wiring: Unix/loopback bearer authentication, trusted launch context, bounded
@@ -23,6 +23,21 @@ attachment cancellation, guarded outcomes and reserved catalog concurrency.
 The reviewer rechecked all three and ran all six focused regressions with no
 remaining blockers. Native Windows qualification remains outstanding; macOS
 Node tests and bundled Bun 1.3.14 source-adapter smoke pass both transports.
+
+Phase 3 is implemented: independent default-off Local Access setting and exact
+preview, separate V0 credential namespace, eligible provider spawn/bootstrap,
+Codex resume handling and snapshot suppression, bounded controller dispatch and
+profile-scoped revocation. Review found inherited-env, pending-start, profile
+revocation, snapshot-persistence and older-host eligibility defects; all repaired
+and rechecked by the same Sol 6.1 high reviewer with no remaining findings.
+Real host/worker HTTP integration and lifecycle regressions pass; focused Codex
+start/resume checks pass. Desktop/phone captures and sequential typing while a
+settings reply arrives pass. Native Windows and packaged-provider qualification
+remain explicit limitations. Root lint, formatting and types pass. The full
+workspace test run has 6,583 passing server tests and one known unrelated
+[Rendez restart watcher failure](../../gaps/rendez-nested-watch-event-after-restart.md);
+its isolated rerun also failed, so the full gate is not green. Phase 4 remains
+pending.
 
 ## Outcome and scope
 
@@ -74,8 +89,8 @@ not an automatic grant to every future operation. Restricted launches retain
 their existing principal/permission ceilings or remain unsupported with an
 explicit reason. No implicit elevation from a limited user to the operator.
 
-Candidate environment variables are `AGENT_YA_API_SOCKET`,
-`AGENT_YA_API_URL` and `AGENT_YA_API_TOKEN`. Publish the socket variable only
+Implemented environment variables are `AGENT_YA_V0_SOCKET`,
+`AGENT_YA_V0_URL` and `AGENT_YA_V0_AUTHORIZATION` (the full bearer header). Publish the socket variable only
 when Unix-socket transport is selected. Use variables initially; a mutable
 connection descriptor is deferred until a concrete lifecycle need justifies it.
 The HTTP base URL is a syntactic request origin when using the socket; no DNS
@@ -85,9 +100,9 @@ The short capability fragment should identify YA and give this working request,
 then direct the agent to `/v0/help` for operations and `/v0/schema` for details:
 
 ```sh
-curl --unix-socket "$AGENT_YA_API_SOCKET" \
-  -H "Authorization: Bearer $AGENT_YA_API_TOKEN" \
-  "$AGENT_YA_API_URL/v0/me"
+curl --unix-socket "$AGENT_YA_V0_SOCKET" \
+  -H "Authorization: $AGENT_YA_V0_AUTHORIZATION" \
+  "$AGENT_YA_V0_URL/v0/me"
 ```
 
 Never interpolate the actual credential into model context or transcripts.
@@ -108,7 +123,7 @@ Publish the exact URL and token, omit the socket variable, and advertise a
 PowerShell example using `curl.exe` explicitly:
 
 ```powershell
-curl.exe -H "Authorization: Bearer $env:AGENT_YA_API_TOKEN" "$env:AGENT_YA_API_URL/v0/me"
+curl.exe -H "Authorization: $env:AGENT_YA_V0_AUTHORIZATION" "$env:AGENT_YA_V0_URL/v0/me"
 ```
 
 The current own-session service already uses a random authenticated loopback
@@ -170,11 +185,9 @@ may still have no bound session. Caller-supplied ids, cwd, socket proximity and
 headers cannot establish the launch binding. Unknown/expired/revoked credentials
 fail explicitly; never fall back to ambient operator access.
 
-The old inspection service already publishes the URL/token names. Choose an
-explicit migration that keeps `ya-agent self/view` working with their original
-narrow authority, or updates their consumer and lease together. Never repoint an
-existing self-only token into the broader profile. Define lease expiry/renewal,
-revocation and bounded registry cleanup before implementing issuance.
+The existing self/view URL/token family remains unchanged. The new V0 family
+keeps credentials and authority separate. Leases expire after 24 hours, renew on
+owner observations, and are bounded and revoked on owner end or disable.
 
 ### 3 — Serve the API over the selected local transport
 
@@ -207,8 +220,8 @@ listener, cookie bootstrap and Tauri boundary.
 
 ### 4 — Advertise only working launch paths
 
-Wire environment and the minimal capability fragment through the existing
-provider-owned spawn and Claude shell bridges. Start with current own-session
+Wire environment and the minimal capability fragment through provider-owned
+spawn only; the v0 credential must stay out of legacy shell bridge files. Start with current own-session
 eligible local Claude-family and unrestricted Codex paths, and qualify each
 actual runtime. Preserve default-off behavior and unrelated context.
 
@@ -219,11 +232,13 @@ Include native Windows eligibility and its transport-specific bootstrap in this
 slice. Record Node, Bun, desktop and OS evidence separately; do not advertise
 unqualified parity or require the Linux/macOS provider host on Windows.
 
-A small New Session option and exact injected-context preview should reuse
-existing controls. If this needs new hosted-client contract fields, first
-record the stable-release corpus, capability gate and older-host omission;
-never reinterpret an existing capability. Final copy is proposed here, not a
-finished UI design. Broader onboarding and default-on promotion are deferred.
+The implemented global Settings → Local Access option **Agent API discovery**
+reuses existing controls and shows the exact shared instruction preview. This
+keeps the first opt-in independent of legacy operator access and avoids adding
+a second per-session policy field. The separate `agent-api-bootstrap` capability
+gates the setting; old hosts omit it. Stable corpus: 0.11.0 and 0.10.2 (plus
+optional 0.10.0/0.10.1) have no promise of this feature. Broader onboarding,
+per-session choices and default-on promotion are deferred.
 
 ## Validation and acceptance
 

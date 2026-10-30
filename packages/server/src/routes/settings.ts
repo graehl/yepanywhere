@@ -376,6 +376,8 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps) {
       if (typeof body.agentServerAccessEnabled === "boolean") {
         updates.agentServerAccessEnabled = body.agentServerAccessEnabled;
       }
+      if (typeof body.agentApiEnabled === "boolean")
+        updates.agentApiEnabled = body.agentApiEnabled;
       if (typeof body.publicSharesEnabled === "boolean") {
         updates.publicSharesEnabled = body.publicSharesEnabled;
       }

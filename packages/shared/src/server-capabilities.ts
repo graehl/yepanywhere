@@ -15,6 +15,11 @@ import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
 export type ServerCapabilityKind = "permanent" | "transitional";
 
 export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
+  agentApiBootstrap: {
+    name: "agent-api-bootstrap",
+    index: CAPABILITY_ID_ALLOCATIONS.agentApiBootstrap.id,
+    introducedIn: "0.11.1",
+  },
   agentAuthRouterServiceTiers: {
     name: "agent-auth-router-service-tiers",
     index: CAPABILITY_ID_ALLOCATIONS.agentAuthRouterServiceTiers.id,
@@ -912,6 +917,37 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Older servers neither store the setting nor accept agent bearer tokens.",
+    },
+  },
+  agentApiBootstrap: {
+    id: CAPABILITY_ID_ALLOCATIONS.agentApiBootstrap.id,
+    name: "agent-api-bootstrap",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.11.1",
+    advertisement: {
+      kind: "optional-bit",
+      index: CAPABILITY_ID_ALLOCATIONS.agentApiBootstrap.id,
+    },
+    description:
+      "Opt-in read-only v0 connection and launch identity advertised to eligible local unrestricted Claude/Codex sessions over Unix HTTP or Windows loopback.",
+    clientFallback:
+      "Hide the agent API discovery setting and do not send agentApiEnabled; retain existing operator token behavior.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PATCH /api/settings",
+        "GET /v0/help",
+        "GET /v0/me",
+        "GET /v0/schema",
+      ],
+      requestFields: ["agentApiEnabled"],
+      responseFields: ["settings.agentApiEnabled"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "The local adapter and trusted launch propagation must exist before advertising this connection.",
     },
   },
   sessionScopedLocalFiles: {

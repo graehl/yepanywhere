@@ -200,6 +200,8 @@ export interface ProviderRetentionSnapshot {
 }
 
 export interface StartSessionOptions {
+  agentApi?: import("./providers/types.js").StartSessionOptions["agentApi"];
+  onAgentApiRead?: import("./providers/types.js").StartSessionOptions["onAgentApiRead"];
   /** Installed MC command advertisement; independent of native access. */
   machineControl?: boolean;
   desktopControlOrigin?: DesktopControlOrigin;
@@ -258,6 +260,7 @@ export interface StartSessionOptions {
 }
 
 export interface StartSessionResult {
+  revokeAgentApiAccess?: () => void | Promise<void>;
   publishAgentSelfSelection?: (
     selection: import("../agent-tools/protocol.js").AgentSelfSelection,
   ) => void | Promise<void>;

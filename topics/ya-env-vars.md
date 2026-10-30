@@ -312,3 +312,12 @@ metered-vs-free and billing-isolation rules.
 | `SERVE_FRONTEND` | `false` runs API-only (no static client). |
 | `MAX_UPLOAD_SIZE_MB` / `MAX_QUEUE_SIZE` | Upload / queue limits. |
 | `ALLOWED_IMAGE_PATHS` | Extra dirs allowed for local image serving. |
+
+## Agent HTTP v0 connection
+
+`AGENT_YA_V0_URL`, optional Unix `AGENT_YA_V0_SOCKET`, and
+`AGENT_YA_V0_AUTHORIZATION` are private launch connection variables. The last is
+a complete bearer header, mandatory-redacted in environment inspection. They are
+not global server configuration, stable launcher markers, or substitutes for
+legacy `AGENT_YA_API_*`. They identify the owning YA launch even in native child
+tools. See [HTTP v0](http-api-v0.md#local-agent-bootstrap).

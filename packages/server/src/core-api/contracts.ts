@@ -318,7 +318,7 @@ export function apiHelp() {
     "",
     "## Connect and discover",
     "",
-    "Use your supplied connection and authentication. Normal server access follows the host's operator cookie/token or authenticated transport policy; desktop sessions use their own cookie bootstrap. When the ordinary host has authentication disabled or unconfigured without a desktop auth floor, it may admit requests as the operator without a credential. When authentication is required, supply the host credential. Follow the host's custom-header requirement when using its ordinary TCP API. A dedicated agent adapter always requires its supplied launch bearer, including help/schema. If supplied, AGENT_YA_API_SOCKET selects Unix HTTP; otherwise use the supplied loopback AGENT_YA_API_URL on Windows. Never guess a port, profile or credential. Only qualified launches advertise this connection.",
+    "Use your supplied connection and authentication. Normal server access follows the host's operator cookie/token or authenticated transport policy; desktop sessions use their own cookie bootstrap. When the ordinary host has authentication disabled or unconfigured without a desktop auth floor, it may admit requests as the operator without a credential. When authentication is required, supply the host credential. Follow the host's custom-header requirement when using its ordinary TCP API. A dedicated agent adapter always requires its supplied launch bearer, including help/schema. If supplied, AGENT_YA_V0_SOCKET selects Unix HTTP; otherwise use the supplied loopback AGENT_YA_V0_URL on Windows. Never guess a port, profile or credential. Only qualified launches advertise this connection.",
     "",
     "Read GET /v0 for serverId, GET /v0/me for caller identity, and GET /v0/schema for exact parameter and response schemas. Copy ids from responses, not names or local paths. URL-encode path ids and query values. A session belongs to a server; projects and paths are not global across hosts.",
     "",
@@ -367,7 +367,7 @@ export function apiSchema(launchBound = false) {
                 type: "http",
                 scheme: "bearer",
                 description:
-                  "Launch-scoped bearer from AGENT_YA_API_TOKEN. Required for every request on the dedicated agent listener, including help/schema. Never use the desktop master credential.",
+                  "Launch-scoped Authorization header from AGENT_YA_V0_AUTHORIZATION. Required for every request on the dedicated agent listener, including help/schema. Never use the desktop master credential.",
               },
             },
           },

@@ -494,6 +494,7 @@ export class ProviderRuntimeHost {
             "recent-runtime-recovery",
             "provider-session-options",
             "project-services",
+            "agent-api-revocation",
           ],
         };
       case "registerServer": {
@@ -539,6 +540,20 @@ export class ProviderRuntimeHost {
         return this.turnLedger.status(
           this.requireString(request.submissionId, "submissionId"),
         );
+      case "revokeAgentApi": {
+        const generation = this.requireString(request.generation, "generation");
+        if (!this.registeredServers.has(generation))
+          throw new Error("App controller is not registered");
+        const serverId = this.requireString(request.serverId, "serverId");
+        for (const entry of this.runtimes.values()) {
+          if (entry.launchRecipe.options.agentApi?.serverId !== serverId)
+            continue;
+          entry.agentApiRevoked = true;
+          if (entry.child.connected)
+            entry.child.send({ type: "revokeAgentApi" }, () => {});
+        }
+        return {};
+      }
       case "interruptSessionTurn":
         return this.turnLedger.interrupt(
           this.requireString(request.submissionId, "submissionId"),
@@ -998,7 +1013,11 @@ export class ProviderRuntimeHost {
         fn();
       };
       const onMessage = (message) => {
-        if (message?.type === "ready") finish(() => resolve(message));
+        if (message?.type === "ready") {
+          if (entry.agentApiRevoked && child.connected)
+            child.send({ type: "revokeAgentApi" }, () => {});
+          finish(() => resolve(message));
+        }
         if (message?.type === "startupError") {
           finish(() => reject(new Error(message.error)));
         }
@@ -1670,6 +1689,7 @@ async function main() {
           "session-turn-idle-timeout",
           "recent-runtime-recovery",
           "provider-session-options",
+          "agent-api-revocation",
         ],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,

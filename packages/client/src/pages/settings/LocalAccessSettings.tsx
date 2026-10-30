@@ -1,5 +1,7 @@
 import {
   AGENT_SERVER_ACCESS_CAPABILITY,
+  SERVER_CAPABILITIES,
+  agentApiBootstrapInstructions,
   serverHasCapability,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -133,6 +135,10 @@ export function LocalAccessSettings() {
   const supportsAgentServerAccess = serverHasCapability(
     versionInfo,
     AGENT_SERVER_ACCESS_CAPABILITY,
+  );
+  const supportsAgentApi = serverHasCapability(
+    versionInfo,
+    SERVER_CAPABILITIES.agentApiBootstrap,
   );
 
   // Network binding form state
@@ -1219,6 +1225,36 @@ export function LocalAccessSettings() {
           {supportsAgentServerAccess &&
             auth.authEnabled &&
             renderAgentServerAccessSetting()}
+
+          {supportsAgentApi && (
+            <SettingsItem
+              label={t("localAccessAgentApiTitle")}
+              description={t("localAccessAgentApiDescription")}
+              doc="topics/http-api-v0.md#local-agent-bootstrap"
+              after={
+                <details className={styles.agentApiPreview}>
+                  <summary>{t("localAccessAgentApiPreview")}</summary>
+                  <p>{t("localAccessAgentApiUnix")}</p>
+                  <pre>{agentApiBootstrapInstructions(false)}</pre>
+                  <p>{t("localAccessAgentApiWindows")}</p>
+                  <pre>{agentApiBootstrapInstructions(true)}</pre>
+                </details>
+              }
+            >
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={serverSettings?.agentApiEnabled ?? false}
+                  disabled={!serverSettings}
+                  onChange={(e) =>
+                    updateServerSetting("agentApiEnabled", e.target.checked)
+                  }
+                  aria-label={t("localAccessAgentApiTitle")}
+                />
+                <span className="toggle-slider" />
+              </label>
+            </SettingsItem>
+          )}
 
           {/* Allow Localhost Access - shown in desktop mode when password auth is off */}
           {auth.hasDesktopToken &&

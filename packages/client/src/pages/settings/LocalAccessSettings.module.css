@@ -1,3 +1,14 @@
+.agentApiPreview {
+  min-width: 0;
+  max-width: 100%;
+  margin-block: var(--space-2);
+}
+
+.agentApiPreview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .customFoldersControls {
   display: flex;
   flex: 1 1 20rem;

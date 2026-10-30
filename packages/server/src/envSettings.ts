@@ -80,7 +80,8 @@ export interface EnvSettingsReport {
 }
 
 /** A conventionally named credential can never opt out of redaction. */
-const MANDATORY_SECRET_NAME_RE = /_(?:KEY|TOKEN|SECRET|PASSWORD)$/;
+const MANDATORY_SECRET_NAME_RE =
+  /_(?:KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)$/;
 
 /** Other conventional secret names are redacted unless explicitly classified. */
 const SECRET_NAME_RE = /KEY|SECRET|TOKEN|PASSWORD/;

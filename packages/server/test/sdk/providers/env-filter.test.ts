@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { filterEnvForChildProcess } from "../../../src/sdk/providers/env-filter.js";
+import {
+  filterEnvForChildProcess,
+  stripYaControlPlaneCredentials,
+} from "../../../src/sdk/providers/env-filter.js";
+
+it.each([filterEnvForChildProcess, stripYaControlPlaneCredentials])(
+  "strips a caller's v0 grant at either provider environment boundary",
+  (filter) => {
+    const result = filter({
+      AGENT_YA_V0_URL: "http://127.0.0.1:1234",
+      AGENT_YA_V0_AUTHORIZATION: "Bearer outer",
+      agent_ya_v0_socket: "/outer/socket",
+      KEEP: "yes",
+    });
+    expect(result).toMatchObject({ KEEP: "yes" });
+    expect(
+      Object.keys(result).some((key) =>
+        key.toUpperCase().startsWith("AGENT_YA_V0_"),
+      ),
+    ).toBe(false);
+  },
+);
 
 describe("filterEnvForChildProcess", () => {
   it("removes ambient own-session grants before the owner injects a new grant", () => {

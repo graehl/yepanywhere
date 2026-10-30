@@ -11,6 +11,8 @@ import {
 import {
   AGENT_SERVER_ACCESS_CAPABILITY,
   APPROVAL_AUDIT_LOG_CAPABILITY,
+  SERVER_CAPABILITIES,
+  agentApiBootstrapInstructions,
 } from "@yep-anywhere/shared";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -216,6 +218,37 @@ describe("LocalAccessSettings", () => {
         .querySelector("[data-local-access-password-feedback]")
         ?.getAttribute("data-local-access-password-feedback");
     }
+
+    it("gates API discovery separately from the legacy operator token and previews the exact bootstrap", async () => {
+      useDirectAccess(false);
+      const first = render(<LocalAccessSettings />);
+      expect(
+        screen.queryByRole("checkbox", { name: "localAccessAgentApiTitle" }),
+      ).toBeNull();
+      first.unmount();
+      versionState.capabilities = [SERVER_CAPABILITIES.agentApiBootstrap.name];
+      render(<LocalAccessSettings />);
+      const toggle = screen.getByRole("checkbox", {
+        name: "localAccessAgentApiTitle",
+      });
+      expect(toggle).toHaveProperty("checked", false);
+      fireEvent.click(toggle);
+      expect(mockUpdateSetting).toHaveBeenCalledWith("agentApiEnabled", true);
+      expect(
+        screen.queryByRole("checkbox", {
+          name: "localAccessAgentServerAccessTitle",
+        }),
+      ).toBeNull();
+      const preview = screen
+        .getByText("localAccessAgentApiPreview")
+        .closest("details")!;
+      expect(preview.textContent).toContain(
+        agentApiBootstrapInstructions(false),
+      );
+      expect(preview.textContent).toContain(
+        agentApiBootstrapInstructions(true),
+      );
+    });
 
     it("offers session API access only once a password is required", async () => {
       versionState.capabilities = [

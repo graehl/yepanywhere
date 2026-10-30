@@ -156,6 +156,7 @@ async function main(): Promise<void> {
           sessionSandbox,
           sessionSandboxOptions: undefined,
           onToolApproval: hooks.onToolApproval,
+          onAgentApiRead: hooks.onAgentApiRead,
           shouldEmitLiveDeltas: hooks.shouldEmitLiveDeltas,
           onPermissionModeApplied: (mode: PermissionMode) =>
             hooks.onPermissionModeApplied(mode),

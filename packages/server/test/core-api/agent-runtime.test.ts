@@ -25,7 +25,7 @@ function request(
         socketPath: runtime.socketPath,
         headers: {
           ...headers,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(token ? { Authorization: token } : {}),
         },
       },
       (response) => {
@@ -80,7 +80,7 @@ describe("launch-bound local agent adapter", () => {
           principal: SUPERUSER,
           sessionId: () => sessionId,
         });
-        const token = lease.environment.AGENT_YA_API_TOKEN;
+        const token = lease.environment.AGENT_YA_V0_AUTHORIZATION;
         const other = b.issue({
           principal: SUPERUSER,
           sessionId: () => "other",
@@ -89,8 +89,13 @@ describe("launch-bound local agent adapter", () => {
           expect((await request(a, path)).status).toBe(401);
         expect((await request(b, "/v0/me", token)).status).toBe(401);
         expect(
-          (await request(a, "/v0/me", other.environment.AGENT_YA_API_TOKEN))
-            .status,
+          (
+            await request(
+              a,
+              "/v0/me",
+              other.environment.AGENT_YA_V0_AUTHORIZATION,
+            )
+          ).status,
         ).toBe(401);
         const pending = (await request(a, "/v0/me", token)).json();
         expect(pending.session).toEqual({ id: null, launchId: lease.launchId });
@@ -167,8 +172,13 @@ describe("launch-bound local agent adapter", () => {
         a.revokeAll();
         fresh.renew();
         expect(
-          (await request(a, "/v0/me", fresh.environment.AGENT_YA_API_TOKEN))
-            .status,
+          (
+            await request(
+              a,
+              "/v0/me",
+              fresh.environment.AGENT_YA_V0_AUTHORIZATION,
+            )
+          ).status,
         ).toBe(401);
         if (a.socketPath)
           expect((await stat(a.socketPath)).mode & 0o777).toBe(0o600);
@@ -221,7 +231,7 @@ describe("launch-bound local agent adapter", () => {
         const reading = request(
           runtime,
           "/v0/servers/A/projects",
-          lease.environment.AGENT_YA_API_TOKEN,
+          lease.environment.AGENT_YA_V0_AUTHORIZATION,
         );
         await entered;
         runtime.attachController(
@@ -234,7 +244,7 @@ describe("launch-bound local agent adapter", () => {
             await request(
               runtime,
               "/v0/me",
-              lease.environment.AGENT_YA_API_TOKEN,
+              lease.environment.AGENT_YA_V0_AUTHORIZATION,
             )
           ).status,
         ).toBe(200);
@@ -276,21 +286,31 @@ describe("launch-bound local agent adapter", () => {
         request(
           runtime,
           "/v0/servers/A/projects",
-          lease.environment.AGENT_YA_API_TOKEN,
+          lease.environment.AGENT_YA_V0_AUTHORIZATION,
         ),
       );
       await started;
       expect(
-        (await request(runtime, "/v0/me", lease.environment.AGENT_YA_API_TOKEN))
-          .status,
+        (
+          await request(
+            runtime,
+            "/v0/me",
+            lease.environment.AGENT_YA_V0_AUTHORIZATION,
+          )
+        ).status,
       ).toBe(200);
       detach();
       expect(
         (await Promise.all(reads)).every((response) => response.status === 503),
       ).toBe(true);
       expect(
-        (await request(runtime, "/v0/me", lease.environment.AGENT_YA_API_TOKEN))
-          .status,
+        (
+          await request(
+            runtime,
+            "/v0/me",
+            lease.environment.AGENT_YA_V0_AUTHORIZATION,
+          )
+        ).status,
       ).toBe(200);
     } finally {
       release();

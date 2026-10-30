@@ -275,19 +275,42 @@ listed above or establish background, remote or reboot acceptance.
 
 ## Distribution and optional phone automation
 
-**Direction discussed 2026-10-18; research only, not store acceptance.** The
+**Direction clarified 2026-10-30; implementation and store acceptance pending.** The
 basic product is the existing YA coding host on a phone. It should be useful
 without AccessibilityService, an accessibility MCP, ADB or the assistant role.
+Phone computer use is a core product capability, controlled by an explicit
+default-off app toggle; optional enablement does not make it an unimportant
+future feature. The toggle must gate actual control operations and report
+missing/revoked platform authority, rather than merely hide tools from prompts.
+The implementation must establish how disabling it retires existing control
+access. PRoot and same-app shell access are not an independent security boundary;
+withholding an MCP declaration alone cannot revoke a separately usable ADB key.
 The preferred advanced phone-automation route is explicit developer-options
 setup and the existing MC/ADB facilities, with a computer able to bootstrap or
 re-arm the phone's listener. Shizuku's on-phone wireless-debugging setup is an
 alternative to study, not an adopted dependency or implemented fallback.
 
-This narrows the earlier capability exploration: built-in autonomous
-AccessibilityService control is not the selected baseline or a release
-prerequisite. Ordinary Android APIs, selected documents and explicit sharing
-can still make the host useful without device control. This direction does not
-reprioritize lifecycle, sign-in persistence or durable-workspace work.
+Built-in autonomous AccessibilityService control remains unselected. The
+computer-use direction does not select that mechanism, an assistant-role
+integration, or a second agent harness. Local coding, optional device control
+and optional remote access belong to the same phone-owned host.
+
+The [October 30 distribution comparison](../docs/competitive/android-host-distribution.md)
+records stronger precedents than the original Termux/compiler comparison:
+UserLAnd and standalone Andronix distribute downloadable Linux environments,
+and UserLAnd's AiCLI is publicly listed on Play for Claude Code/Codex in Ubuntu.
+This supports proceeding with concrete packaging work; it does not reveal
+Google's review rationale or approve YA's exact payload and control mechanism.
+
+The current desktop/ADB provisioning dependency is an unfinished installer,
+not a PRoot requirement. The APK bundles native PRoot libraries but not the
+Alpine/Node/YA filesystem. `host.py prepare` builds `runtime.tar`, and `stage`
+extracts it through debug `run-as` into app-private storage. HostService refuses
+a missing `opt/host/launch.mjs`; no in-app runtime installer exists. Normal
+installation must replace that development path with phone-owned provisioning,
+keeping replaceable runtime files separate from persistent credentials/sessions.
+Bundled or Play-delivered assets and verified in-app downloads are packaging
+candidates; the delivery choice and update contract remain to be selected.
 
 Google's [device/network policy](https://support.google.com/googleplay/android-developer/answer/16559646?hl=en)
 restricts external executable downloads and app self-updates, with a bounded
@@ -306,12 +329,44 @@ not a blanket ban on coding agents. Disability assistance must be the product's
 primary purpose, not incidental positioning. ADB setup does not exempt later
 behavior from other policies. Recheck both live policies before submission.
 
-Buddy documents a Play closed test and has a restricted Play flavor; this is
-evidence of a distribution attempt, not full production acceptance. Its GitHub
+The October 18 Buddy snapshot documents a Play closed test and a restricted
+Play flavor. The October 30 README instead recommends a direct Play link;
+the follow-up could not independently confirm its track availability. Its GitHub
 flavor's self-update opens Android's installer for the user to confirm; it is
 neither a silent APK replacement nor the Play flavor's update mechanism. The
 [Buddy review](../docs/competitive/buddy.md) preserves source evidence and
 the limits of the reported closed-test status.
+
+## Remote access and wake direction
+
+**Priority clarified 2026-10-30; not implemented.** Reliable access to the
+phone-owned host from another device is important. Remote wake means reaching
+the native host app when its ordinary relay socket is suspended or absent,
+then attempting bounded host readiness and relay reconnection. It does not
+mean turning on the display or unlocking the phone, and it does not grant
+phone-control authority.
+
+An FCM registration plus the existing separate push-broker infrastructure is a
+candidate delivery path. Relay connection and push enrollment are separate:
+the experimental host has neither Firebase integration nor a wake receiver.
+The published companion's [push enrollment](android-fcm-push.md) delivers
+server events to companion clients; it does not wake this host. A candidate
+flow is an authorized remote wake request, broker/FCM delivery, native service
+recovery, relay registration, then ordinary authenticated encrypted access.
+Existing pairing/owner authority remains the authentication boundary; a push
+token or relay target name is not permission to access the host. Revocable
+wake authorization must exist before the host becomes unreachable. The exact
+protocol, enrollment and rate limits remain design work.
+
+[FCM priority guidance](https://firebase.google.com/docs/cloud-messaging/android-message-priority)
+limits urgent delivery to time-sensitive user-visible behavior, and
+[Android background-start rules](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)
+constrain foreground-service starts. A silent push is not an unlimited runtime
+or immediate-delivery guarantee. Force-stop requires subsequent user action
+under [Android's stopped-state contract](https://developer.android.com/about/versions/15/behavior-changes-all#stopped-state).
+Reboot/unlock, OEM power restrictions, network loss, native process loss and
+same-phone ADB re-arming need separate acceptance. A push cannot itself restore
+an unavailable ADB listener. This direction adds no unattended behavior today.
 
 ## Assistant entry-point research
 

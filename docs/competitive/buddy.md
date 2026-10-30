@@ -4,6 +4,12 @@ Reviewed 2026-10-18 through public source and project documentation only.
 No installation, device experiment, inference run or store-console inspection.
 Pinned source: [ffd2ec84c749](https://github.com/ghorbelhamdi/buddy-android/tree/ffd2ec84c7498c9e10e22889b4f4d1f52c293e18); [reference manifest](android-host-references.yaml).
 
+The [October 30 distribution follow-up](android-host-distribution.md) reads
+newer source at `2e2ee71ab8748042cad7bf8a7c05191fc90dfbc7`. Its README now
+recommends a direct Play installation link without the earlier tester steps;
+track availability was not independently confirmed. The findings below retain
+their October 18 source boundary.
+
 ## Product and relevance
 
 Buddy is a phone-local assistant that combines real Claude Code, Codex and

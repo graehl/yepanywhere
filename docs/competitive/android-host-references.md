@@ -5,6 +5,11 @@ and the dedicated [Buddy](buddy.md), [Shizuku](shizuku.md) and
 [Termux](termux.md) reviews. Shizuku, Termux and PRoot are adjacent platform
 references rather than competing agent supervisors.
 
+The [2026-10-30 distribution follow-up](android-host-distribution.md) adds live
+Play listings for UserLAnd, AiCLI, standalone Andronix and AnLinux, with separate
+source pins for the newly inspected UserLAnd/AiCLI and refreshed Buddy files.
+The original checkout manifest below remains the October 18 snapshot.
+
 ## Reproducible source set
 
 The tracked [YAML manifest](android-host-references.yaml) records repository

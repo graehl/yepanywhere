@@ -1,5 +1,13 @@
 # Relay peer session coordination: first useful slice
 
+The 2026-10-30 [HTTP v0 proposal](../../topics/http-api-v0.md) and
+[plan 165](165-http-api-v0.md) supersede this plan's worker/delegation service
+as the entry point. Start with ordinary server-addressed resources, creation
+provenance and local/direct tests; peer-grant UI and production secure peer
+enrollment follow separately. Relay remains the intended usual remote route.
+The lifecycle and trust analysis below is earlier background, not an instruction
+to implement a custom task/worker system first.
+
 Status: **proposed implementation scope**, 2026-10-03. The maintainer selected
 persistent, target-owned YA sessions over the public relay as the direction for
 their installed hardware. The details below are a bounded recommendation, not

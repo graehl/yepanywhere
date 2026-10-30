@@ -10,6 +10,12 @@
 
 Topic: core-service-api
 
+The 2026-10-30 [server-addressed HTTP v0 proposal](http-api-v0.md) is the
+selected entry point for the new agent/API discussion. It starts with a small
+transport-independent application-service seam and unstable HTTP resources.
+The Python client, standalone runtime, public package and custom delegation
+staging below remain background proposals, not prerequisites for v0.
+
 See also: [`provider-abstraction.md`](provider-abstraction.md),
 [`multi-machine-architecture.md`](multi-machine-architecture.md),
 [`cross-host-delegation.md`](cross-host-delegation.md),
@@ -74,6 +80,13 @@ the runtime as a package. This topic is about *drawing that seam deliberately*
 rather than leaving it implicit.
 
 ## Relationship To The Coordination API
+
+The following custom coordination-service design predates the
+[v0 direction](http-api-v0.md). V0 exposes authorized topology and ordinary
+session operations, with creation provenance but no required worker/delegation
+lifecycle. It routes only its supported surface to authorized targets; it does
+not add arbitrary host selectors to existing `/api/*` routes. The older
+delegation-handle design below is not a prerequisite for this work.
 
 Cross-host delegation adds a higher-level consumer of this runtime rather than
 a second provider harness abstraction. Its provisional coordination service

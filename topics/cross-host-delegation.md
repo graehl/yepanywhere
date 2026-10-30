@@ -7,6 +7,15 @@
 
 Topic: cross-host-delegation
 
+**Updated direction, 2026-10-30:** the
+[server-addressed HTTP v0 proposal](http-api-v0.md) starts with discoverable
+hosts/access and ordinary session APIs. Agents arrange their own workflows;
+YA records creation provenance on both ends. Custom delegation handles,
+automatic result delivery and parent/child lifecycle are not prerequisites.
+The earlier coordination-service shape below remains background. Directed
+grants and target-owned sessions remain relevant; first implementation advice
+uses local/direct fixtures before production peer enrollment and grant UI.
+
 Status: product direction with a provisional API shape. The user need, trust
 shape, broad UI direction, provider-neutral coordination boundary, and agent
 exposure model are clear enough to guide experiments. Peer identity, pairing,
@@ -226,6 +235,10 @@ jump. Provider-native subagents inside the worker remain a separate, nested
 provider concept.
 
 ## Provisional Coordination API Direction
+
+This earlier worker/delegation service is not the selected v0 entry point; see
+the updated direction above. Its trust and ownership analysis remains useful,
+while its task/handle lifecycle is not required by the simpler HTTP API.
 
 The provisional direction is one **provider-neutral YA coordination service**,
 not separate local-control and remote-delegation products. Starting and

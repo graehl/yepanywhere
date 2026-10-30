@@ -4,8 +4,10 @@ On-device Android hosting is authorized as a separate incubation effort
 (2026-10-17), not a blocker or replacement for the published mobile companion.
 The [Android host contract](../../topics/android-host.md) owns the scaffold,
 shared Alpine runtime, disabled external desktop observers and the remaining
-lifecycle/authentication work. Remote wake is a later experiment. Native setup
-shortcuts and focused shared YA sign-in pages now form the onboarding baseline:
+lifecycle/authentication work. Reliable remote access, including a bounded wake
+path, is important product work; host push enrollment and recovery remain
+unimplemented. Native setup shortcuts and focused shared YA sign-in pages now
+form the onboarding baseline:
 the user completed both Claude and Codex subscription sign-ins on the Pixel 9.
 Refresh, sign-out and restart persistence remain separate validation work.
 Explicit Open now starts a stopped Android host, waits for authenticated local
@@ -72,13 +74,21 @@ per-launch authority/identity checks, and restart required after media changes.
 Existing in-flight I/O is not made safe for unplugging.
 
 The [Android host distribution/assistant research](../../topics/android-host.md#distribution-and-optional-phone-automation)
-now records a basic coding host independent of accessibility automation, optional
-developer-enabled MC/ADB control, and dedicated pinned Buddy/Shizuku/Termux
-reviews. Assistant invocation/context is a compelling optional direction, but
+keeps phone-local coding as the product scope. The maintainer clarified on
+October 30 that phone computer use is core, behind an explicit default-off app
+toggle, and reliable remote access/wake is important. MC/ADB remains the
+preferred control route; actual enable/disable enforcement and platform setup
+remain integration work. The [updated distribution comparison](../competitive/android-host-distribution.md)
+finds live Play precedents in UserLAnd, standalone Andronix and AiCLI's
+Claude/Codex environment. Next: select phone-owned runtime provisioning and
+updates, replacing debug ADB staging; qualify lifecycle/credential recovery;
+and design gated device control and authorized wake delivery. Play acceptance
+of YA's payload, permissions and background/control behavior remains unproven.
+Assistant invocation/context is a compelling optional direction, but
 remains research/docs only: no device investigation or implementation spike is
-authorized. This does not change the incubation order or companion release scope.
+authorized. The companion remains a separate release.
 
-Last updated: 2026-10-26.
+Last updated: 2026-10-30.
 
 This is Yep Anywhere's canonical product-priority overview. Keep initiative
 status, the next action, and major blockers here; keep implementation steps in
@@ -699,7 +709,7 @@ displace release delivery.
 | Direction | Existing context / decision still needed |
 | --- | --- |
 | Multi-machine experience across the full web and desktop clients | Preserve independent host access and [source runtimes](../../topics/client-source-runtime-topology.md). The Kyle-led alternate Conversation API/preview is deferred from the current removal pass under [core house cleaning](../../topics/core-house-cleaning.md), row 10; retain its current consumers and behavior. |
-| Agent coordination across installed machines | Direction selected 2026-10-03: persistent, target-owned YA sessions over the public relay, with explicit directional peer grants. The [bounded first-slice plan](../tactical/144-relay-peer-session-coordination.md) proposes the same local/remote worker API for Claude and Codex, existing target projects, and durable reconnect. Runtime implementation and peer protocol review remain pending. Hosted identity issuance, SSH provisioning, and same-conversation migration are not prerequisites; this does not displace release delivery. |
+| Agent API and access across installed machines | Updated direction, 2026-10-30: [unstable server-addressed HTTP v0](../../topics/http-api-v0.md), discoverable caller identity/access and session creation provenance on both ends. Agents manage their workflows; custom delegation/task lifecycles are not prerequisites. [Plan 165](../tactical/165-http-api-v0.md) starts with isolated core/HTTP tests and local/direct profiles before peer-grant UI and production enrollment. Persistent target-owned sessions and directional grants remain the remote direction, with the public encrypted relay as the usual route. Implementation and peer protocol review remain pending; this does not displace release delivery. |
 | Authentication and delegated access | [Limited users](../../topics/limited-users.md) delivers local accounts and project grants. [Principals and grants](../../topics/principals-and-grants.md) coordinates the broader proposed invitation/account and issuer boundaries; it does not approve a universal grant protocol. [Session notes and discussion](../../topics/session-notes-and-discussion.md) and [participatory Live Share](../../topics/relay-origin-and-share-gating.sketches.md#participatory-live-share) propose human-only notes/chat, owner-reviewed suggestions, and later explicit session-input grants. These remain later directions, not a newly ranked implementation queue. |
 | Related work across repositories | [Issues & PRs](../../topics/issue-session-associations.md) now has experimental, default-off automatic ticket/URL discovery from viewed sessions and a configurable recent-session window, durable evidence, search and correction controls. Conservative URL/known-prefix matching, durable Jira project learning, and session-grouped browsing are implemented and locally validated. SQLite migrations and compatibility gating are implemented. Multi-server issue grouping enters the simple-client demo above. GitHub items show their last-read open/draft/merged/closed state, with independent read-only checks, configurable gh/account use, durable merge facts and an expandable extension Merged PRs section ([plan 153](../tactical/153-durable-github-status-and-extension-groups.md)). Refresh remains demand-driven. Workstream/branch inference, Jira status and tracker synchronization remain deferred. |
 | Parallel work within one repository | YA-managed workstreams/lane checkout creation is removed under [core house cleaning](../../topics/core-house-cleaning.md). Do not continue its unfinished scheduler, sync or landing plan. Ordinary user-created Git worktrees and Source Control are distinct retained concerns. |

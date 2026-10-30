@@ -7,6 +7,13 @@
 
 Topic: agent-session-access
 
+The 2026-10-30 [HTTP v0 proposal](http-api-v0.md) selects HTTP resources,
+server addressing and caller inspection as the first new API design surface.
+The scripts/CLI-first staging below remains earlier background; no CLI or MCP
+client is a prerequisite. Existing operator-token and own-session behavior
+described here is unchanged. [Plan 165](../docs/tactical/165-http-api-v0.md)
+records the proposed isolated service/HTTP tests and local/direct staging.
+
 Status: direction proposal, 2026-08-24. Cross-session access remains unimplemented; the
 script layer, the search route, and the boss conventions below are
 candidate work, not contracts. The launch-time half (PATH injection,

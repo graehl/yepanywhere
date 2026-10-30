@@ -557,6 +557,29 @@ export const displayFixtures = {
       provenance: claude,
     },
   },
+  SendMessage: {
+    "plain-text": {
+      input: { to: "agent-contract", message: "Contract message" },
+      result: "Contract text output",
+      text: "Contract text output",
+      provenance:
+        "Synthetic plain-text provider output; metadata unavailable, checked input remains usable.",
+    },
+    standard: {
+      input: {
+        to: "agent-contract",
+        summary: "Check the contract",
+        message: "Contract message",
+      },
+      result: {
+        success: true,
+        message: "Resuming agent agent-c",
+        resumedAgentId: "agent-contract",
+      },
+      text: "agent-contract",
+      provenance: claude,
+    },
+  },
   TaskCreate: {
     event: {
       input: { subject: "Verify contracts" },

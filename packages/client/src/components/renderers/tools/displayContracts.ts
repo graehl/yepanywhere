@@ -484,6 +484,20 @@ export const SkillDisplayResultSchema = z.object({
   success: z.boolean(),
   commandName: optionalString,
 });
+// Claude's SendMessage addresses a subagent or peer session by id or name.
+// An unreachable recipient is an ordinary result with `success: false`, not a
+// rejected call; `display` is the provider's short wording for that outcome.
+export const SendMessageDisplayInputSchema = z.object({
+  to: string,
+  summary: optionalString,
+  message: string,
+});
+export const SendMessageDisplayResultSchema = z.object({
+  success: z.boolean(),
+  message: optionalString,
+  display: optionalString,
+  resumedAgentId: optionalString,
+});
 export const ViewImageDisplayInputSchema = z.object({ path: string });
 export const ViewImageDisplayResultSchema = z.union([
   string,

@@ -209,6 +209,10 @@ export const displayExpectations = {
     "plain-text": plain("publish"),
     standard: ordinary("publish", "publish"),
   },
+  SendMessage: {
+    "plain-text": plain("agent-contract"),
+    standard: ordinary("Check the contract", "agent-contract"),
+  },
   TaskCreate: {
     event: ordinary(
       "Verify contracts",

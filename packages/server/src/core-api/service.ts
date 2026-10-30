@@ -1,5 +1,8 @@
 import {
   conversationQuery,
+  followQuery,
+  type ApiConversationFollow,
+  type ConversationFollowQuery,
   type ApiConversation,
   type ConversationReadQuery,
 } from "./conversation.js";
@@ -33,6 +36,11 @@ export interface CoreApiSources {
     query: ConversationReadQuery,
     signal?: AbortSignal,
   ): Promise<ApiConversation>;
+  followConversation?(
+    sessionId: string,
+    query: ConversationFollowQuery,
+    signal?: AbortSignal,
+  ): Promise<ApiConversationFollow>;
   hiddenProjects?(username: string): Promise<ReadonlySet<string>>;
 }
 export { CoreApiError } from "./errors.js";
@@ -56,7 +64,7 @@ export class CoreApi {
     input: {
       serverId?: string;
       sessionId?: string;
-      query?: PageQuery & ConversationReadQuery;
+      query?: PageQuery & ConversationFollowQuery;
       signal?: AbortSignal;
       /** Established by a trusted launch authenticator, never a request field. */
       launch?: ApiLaunchContext;
@@ -156,6 +164,27 @@ export class CoreApi {
           ),
           catalog: result.catalog,
         };
+      }
+      case "followConversation": {
+        const parsed = followQuery.safeParse(input.query ?? {});
+        if (!parsed.success)
+          throw new CoreApiError(
+            "invalid_request",
+            "Invalid follow cursor or window",
+            400,
+          );
+        await this.read("session", caller, { ...input, query: undefined });
+        if (!this.sources.followConversation)
+          throw new CoreApiError(
+            "conversation_unavailable",
+            "Conversation following is not configured",
+            503,
+          );
+        return this.sources.followConversation(
+          input.sessionId!,
+          parsed.data,
+          input.signal,
+        );
       }
       case "conversation": {
         const parsed = conversationQuery.safeParse(input.query ?? {});

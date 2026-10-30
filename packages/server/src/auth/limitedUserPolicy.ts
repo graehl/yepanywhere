@@ -314,7 +314,7 @@ export function decideLimitedRoute(
   // V0 application reads enforce project/session scope before pagination.
   if (
     isRead &&
-    /^\/v0(?:\/(?:help|schema|me|servers(?:\/[^/]+(?:\/(?:access|capabilities|projects|providers|sessions(?:\/[^/]+(?:\/conversation)?)?))?)?))?$/.test(
+    /^\/v0(?:\/(?:help|schema|me|servers(?:\/[^/]+(?:\/(?:access|capabilities|projects|providers|sessions(?:\/[^/]+(?:\/conversation(?:\/follow)?)?)?))?)?))?$/.test(
       path,
     )
   ) {

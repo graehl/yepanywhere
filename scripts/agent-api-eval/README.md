@@ -79,7 +79,9 @@ compare domain identifiers and requested results with fixture truth and real
 successful API evidence, not exact prose or a prescribed call sequence. The
 control case fails if it makes unnecessary API calls. `conversation` extracts an exact
 artifact from prose amid native tool noise; `evidence` checks that unknown activity
-and incomplete coverage are not reported as successful completion.
+and incomplete coverage are not reported as successful completion. `follow` waits
+for scripted worker progress; `reconnect` checks explicit replacement after a
+window change. Both use the production bounded follow adapter.
 
 Reports include every completed or timed-out trial, success, exit status,
 HTTP requests/errors/repeats, time to first successful HTTP request, duration,

@@ -1,5 +1,8 @@
 import type { MiddlewareHandler } from "hono";
-import { createConversationRead } from "./core-api/conversation.js";
+import {
+  createConversationRead,
+  createConversationFollow,
+} from "./core-api/conversation.js";
 import { CoreApi, CoreApiError } from "./core-api/service.js";
 import { readServerIdentity } from "./core-api/server-identity.js";
 import { productionApiSources } from "./core-api/production-sources.js";
@@ -3127,6 +3130,10 @@ export function createApp(options: AppOptions): AppResult {
       hiddenProjects: (username) => projectAppStore.hiddenProjectIds(username),
     }),
     conversation: createConversationRead(conversationSubscriptions),
+    followConversation: createConversationFollow(
+      conversationSubscriptions,
+      publicServerId,
+    ),
   });
   app.route("/v0", createV0Routes(agentApiController));
 

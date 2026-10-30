@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SUPERUSER } from "../../packages/server/src/auth/principal.js";
 import { createAgentApiRuntime } from "../../packages/server/src/agent-api/runtime.js";
-import { createConversationRead } from "../../packages/server/src/core-api/conversation.js";
+import {
+  createConversationRead,
+  createConversationFollow,
+} from "../../packages/server/src/core-api/conversation.js";
 import { ConversationSubscriptions } from "../../packages/server/src/experimental/conversation-subscriptions.js";
 import type { Message } from "../../packages/shared/src/transcript/message.js";
 import { CoreApi } from "../../packages/server/src/core-api/service.js";
@@ -45,35 +48,66 @@ export async function createFixture(caseId: CaseId) {
       ],
     },
   ]).flat();
-  const conversations = new ConversationSubscriptions(async (sessionId) => ({
-    close() {},
-    async read() {
+  let done = caseId === "reconnect";
+  const worker = caseId === "follow" || caseId === "reconnect";
+  let finishWorker!: () => void;
+  const workerFinished = new Promise<void>(
+    (resolve) => (finishWorker = resolve),
+  );
+  let notifyWorker = () => {};
+  let workerTimer: ReturnType<typeof setTimeout> | undefined;
+  const conversations = new ConversationSubscriptions(
+    async (sessionId, invalidate) => {
+      notifyWorker = invalidate;
+      // The scripted worker owns progress independently of observer lifetime.
+      // A finite timer starts on first observation and ends with this fixture.
+      if (worker && !done && !workerTimer)
+        workerTimer = setTimeout(() => {
+          done = true;
+          finishWorker();
+          notifyWorker();
+        }, 350);
       return {
-        sessionId,
-        messages: [
-          {
-            type: "user",
-            uuid: "question",
-            content: "Which release artifact is ready?",
-          },
-          ...noise,
-          {
-            type: "assistant",
-            uuid: "answer",
-            content: "The release artifact is orchid-7f2.",
-          },
-        ],
-        activity: caseId === "evidence" ? "unknown" : "idle",
-        pendingRequests: [],
-        sourceCoverage: {
-          complete: caseId !== "evidence",
-          earlierOutsideScope: caseId === "evidence" ? "unknown" : "no",
+        close() {},
+        async read() {
+          return {
+            sessionId,
+            messages: [
+              {
+                type: "user",
+                uuid: "question",
+                content: "Which release artifact is ready?",
+              },
+              ...noise,
+              {
+                type: "assistant",
+                uuid: "answer",
+                content: worker
+                  ? done
+                    ? "The release artifact is worker-9c4."
+                    : "Working on the release."
+                  : "The release artifact is orchid-7f2.",
+              },
+            ],
+            activity:
+              caseId === "evidence"
+                ? "unknown"
+                : worker && !done
+                  ? "working"
+                  : "idle",
+            pendingRequests: [],
+            sourceCoverage: {
+              complete: caseId !== "evidence",
+              earlierOutsideScope: caseId === "evidence" ? "unknown" : "no",
+            },
+          };
         },
       };
     },
-  }));
+  );
   const core = new CoreApi(SERVER_ID, {
     conversation: createConversationRead(conversations),
+    followConversation: createConversationFollow(conversations, SERVER_ID),
     projects: async () => ({ items: projects }),
     sessions: async () => ({
       items: sessions,
@@ -106,6 +140,8 @@ export async function createFixture(caseId: CaseId) {
   const front = createServer((req, res) => {
     const start = performance.now();
     let bytes = 0;
+    const capture = req.url?.split("?")[0]?.endsWith("/conversation/follow");
+    let captured = "";
     const upstream = request(
       new URL(req.url ?? "/", runtime.baseUrl),
       {
@@ -117,8 +153,27 @@ export async function createFixture(caseId: CaseId) {
         res.writeHead(response.statusCode ?? 502, response.headers);
         response.on("data", (chunk) => {
           bytes += chunk.length;
+          if (capture && bytes <= 512 * 1024) captured += String(chunk);
         });
-        response.on("end", () =>
+        response.on("end", () => {
+          let follow: Trace["follow"];
+          if (capture && bytes <= 512 * 1024) {
+            try {
+              const data = JSON.parse(captured);
+              if (
+                typeof data.cursor === "string" &&
+                typeof data.reset === "boolean" &&
+                typeof data.changed === "boolean"
+              )
+                follow = {
+                  cursor: data.cursor,
+                  reset: data.reset,
+                  changed: data.changed,
+                };
+            } catch {
+              /* Not a successful follow response. */
+            }
+          }
           trace.push({
             method: req.method ?? "GET",
             path: req.url ?? "/",
@@ -126,8 +181,9 @@ export async function createFixture(caseId: CaseId) {
             bytes,
             elapsedMs: performance.now() - start,
             atMs: start,
-          }),
-        );
+            ...(follow ? { follow } : {}),
+          });
+        });
         response.pipe(res);
       },
     );
@@ -162,6 +218,7 @@ export async function createFixture(caseId: CaseId) {
     ? "http://127.0.0.1"
     : `http://127.0.0.1:${typeof address === "object" && address ? address.port : ""}`;
   return {
+    workerFinished,
     trace,
     environment: {
       ...lease.environment,
@@ -171,6 +228,7 @@ export async function createFixture(caseId: CaseId) {
     async close() {
       front.closeAllConnections();
       await new Promise<void>((resolve) => front.close(() => resolve()));
+      if (workerTimer) clearTimeout(workerTimer);
       conversations.close();
       await runtime.close();
       await rm(directory, { recursive: true, force: true });

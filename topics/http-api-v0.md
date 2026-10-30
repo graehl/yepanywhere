@@ -194,6 +194,39 @@ and returns unavailable, within the private controller bridge's deadline.
 Final-consumer removal cancels source work and releases watches/viewers. Native
 acquisition constraints are owned by [Simple Client API](simple-client-api.md).
 
+## Bounded HTTP following
+
+Implemented in revision `2026-10-30.5`: `GET
+/v0/servers/{serverId}/sessions/{sessionId}/conversation/follow` uses the same
+window parameters and authorization as a compact read. Without `after`, it
+returns the initial compact view, a cursor, `changed=true` and `reset=true`.
+Reissue with that cursor in `after` and the same window to wait for prose,
+failures, pending attention, activity or coverage to change. Tool-count-only
+updates do not wake the wait. Finalized prose is sufficient; token streaming
+is not promised.
+
+`waitMs` is 0–4000, default 4000, after the first observation. Initial
+acquisition has a separate four-second deadline, so a request takes at most
+eight seconds. An unchanged wait returns the same cursor, `changed=false`,
+`reset=false`, `conversation=null`; retain the previous view. Changed responses
+contain one full bounded compact replacement with `reset=true`. Consumers must
+replace their selected window, including removals/rewinds. Cursors are scoped
+to server, session, visible content and window, with no retained cursor registry.
+A foreign/stale cursor in the current format returns explicit replacement
+state. A malformed or unsupported cursor format returns 400. This contract
+promises current-state recovery, not event-log replay or every intermediate
+message. Coverage still describes retained history limits.
+
+One request owns at most one response and one bounded wait. There is no SSE/PTY
+or permanent per-client loop in this slice. Identical requests share source
+acquisition and coalescing. A disconnect, deadline, controller replacement or
+launch-credential revocation cancels demand; the final consumer releases the
+source/watch/viewer. Active private reads revoked or detached return 503 where
+the transport remains writable; later revoked-credential requests return 401.
+Slow readers cannot accumulate repeated snapshots or keep observation alive
+after the one response has been selected. Clients own retry/backoff and should
+use bounded waiting rather than a tight zero-wait/error loop.
+
 ## Local agent runtime factory
 
 Implemented independently of provider/UI integration, 2026-10-30. A provider

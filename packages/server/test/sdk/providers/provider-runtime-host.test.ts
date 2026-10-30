@@ -2033,6 +2033,12 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
           },
         ],
       }),
+      followConversation: async (_id, query) => ({
+        cursor: query.after ?? "c1." + "a".repeat(64),
+        changed: false,
+        reset: false,
+        conversation: null,
+      }),
       conversation: async (_id, query) => {
         throw new CoreApiError(
           query.anchorMessageId
@@ -2081,6 +2087,21 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
         expect(failure.status).toBe(status);
         expect(JSON.parse(failure.body).error.code).toBe(code);
       }
+      first.queue.push({
+        text:
+          "/v0/servers/profile-api-host/sessions/api-fixture/conversation/follow?after=c1." +
+          "a".repeat(64) +
+          "&waitMs=0",
+      });
+      const followed = (await first.iterator.next()).value!.apiResult as {
+        status: number;
+        body: string;
+      };
+      expect(followed.status).toBe(200);
+      expect(JSON.parse(followed.body)).toMatchObject({
+        changed: false,
+        conversation: null,
+      });
       await first.publishAgentctlSessionId?.("api-fixture");
       const waiting = first.iterator.next();
       await first.detachForServerReload?.();

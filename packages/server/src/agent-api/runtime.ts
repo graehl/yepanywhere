@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { PRINCIPAL_VARIABLE, type Principal } from "../auth/principal.js";
 import {
   API_LAUNCH_VARIABLE,
+  API_SIGNAL_VARIABLE,
   type ApiLaunchContext,
   type Operation,
 } from "../core-api/contracts.js";
@@ -30,6 +31,7 @@ const independent = new Set<Operation>([
   "capabilities",
 ]);
 interface Entry {
+  abort: AbortController;
   launchId: string;
   sessionId: () => string | null;
   principal: Principal;
@@ -137,7 +139,11 @@ export async function createAgentApiRuntime(options: {
     },
   };
   const app = new Hono<{
-    Variables: { yaPrincipal: Principal; yaApiLaunch: ApiLaunchContext };
+    Variables: {
+      yaPrincipal: Principal;
+      yaApiLaunch: ApiLaunchContext;
+      yaApiSignal: AbortSignal;
+    };
   }>();
   app.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
@@ -173,6 +179,10 @@ export async function createAgentApiRuntime(options: {
         },
         403,
       );
+    c.set(
+      API_SIGNAL_VARIABLE,
+      AbortSignal.any([c.req.raw.signal, entry.abort.signal]),
+    );
     c.set(PRINCIPAL_VARIABLE, entry.principal);
     c.set(API_LAUNCH_VARIABLE, {
       id: entry.sessionId(),
@@ -240,6 +250,7 @@ export async function createAgentApiRuntime(options: {
       const token = randomBytes(32).toString("base64url");
       const key = hash(token);
       const entry: Entry = {
+        abort: new AbortController(),
         launchId: randomUUID(),
         sessionId: input.sessionId,
         principal: input.principal,
@@ -257,6 +268,7 @@ export async function createAgentApiRuntime(options: {
           if (entries.get(key) === entry) entry.expiresAt = now() + LEASE_MS;
         },
         dispose() {
+          entry.abort.abort();
           entries.delete(key);
         },
       };
@@ -276,11 +288,13 @@ export async function createAgentApiRuntime(options: {
       };
     },
     revokeAll() {
+      for (const entry of entries.values()) entry.abort.abort();
       entries.clear();
     },
     close() {
       closePromise ??= (async () => {
         closing = true;
+        for (const entry of entries.values()) entry.abort.abort();
         entries.clear();
         controller?.abort.abort();
         controller = undefined;

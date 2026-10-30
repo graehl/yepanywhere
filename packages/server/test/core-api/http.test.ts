@@ -13,7 +13,10 @@ import {
   type ApiSession,
 } from "../../src/core-api/contracts.js";
 import { CoreApi, type CoreApiSources } from "../../src/core-api/service.js";
-import { createConversationRead } from "../../src/core-api/conversation.js";
+import {
+  createConversationRead,
+  createConversationFollow,
+} from "../../src/core-api/conversation.js";
 import { ConversationSubscriptions } from "../../src/experimental/conversation-subscriptions.js";
 import { createV0Routes } from "../../src/routes/v0/index.js";
 
@@ -49,6 +52,28 @@ function fixture(
     row("e", "hidden"),
   ],
 ) {
+  const subscriptions = new ConversationSubscriptions(async (sessionId) => ({
+    close() {},
+    async read() {
+      return {
+        sessionId,
+        activity: "idle",
+        messages: [
+          { type: "user", uuid: "q", content: "What shipped?" },
+          {
+            type: "assistant",
+            uuid: "a",
+            content: [
+              { type: "thinking", thinking: "private-reasoning" },
+              { type: "text", text: "Shipped **Orchid**." },
+            ],
+          },
+        ],
+        pendingRequests: [],
+        sourceCoverage: { complete: true, earlierOutsideScope: "no" },
+      };
+    },
+  }));
   const sources: CoreApiSources = {
     projects: async () => ({
       items: ["private", "visible", "hidden"].map((id) => ({
@@ -70,30 +95,8 @@ function fixture(
       },
     ],
     hiddenProjects: async () => new Set(["hidden"]),
-    conversation: createConversationRead(
-      new ConversationSubscriptions(async (sessionId) => ({
-        close() {},
-        async read() {
-          return {
-            sessionId,
-            activity: "idle",
-            messages: [
-              { type: "user", uuid: "q", content: "What shipped?" },
-              {
-                type: "assistant",
-                uuid: "a",
-                content: [
-                  { type: "thinking", thinking: "private-reasoning" },
-                  { type: "text", text: "Shipped **Orchid**." },
-                ],
-              },
-            ],
-            pendingRequests: [],
-            sourceCoverage: { complete: true, earlierOutsideScope: "no" },
-          };
-        },
-      })),
-    ),
+    conversation: createConversationRead(subscriptions),
+    followConversation: createConversationFollow(subscriptions, id),
   };
   const api = new CoreApi(id, sources);
   const app = new Hono<{ Variables: { yaPrincipal: Principal } }>();

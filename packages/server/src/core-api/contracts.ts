@@ -1,7 +1,12 @@
 import { z } from "zod";
-import { conversationQuery, conversationSchema } from "./conversation.js";
+import {
+  conversationQuery,
+  conversationSchema,
+  followQuery,
+  followSchema,
+} from "./conversation.js";
 
-export const API_REVISION = "2026-10-30.4";
+export const API_REVISION = "2026-10-30.5";
 export const paginationQuery = z.object({
   cursor: z
     .string()
@@ -150,6 +155,7 @@ export const launchContextSchema = z.object({
 });
 export type ApiLaunchContext = z.infer<typeof launchContextSchema>;
 export const API_LAUNCH_VARIABLE = "yaApiLaunch";
+export const API_SIGNAL_VARIABLE = "yaApiSignal";
 export const operations = [
   {
     id: "describe",
@@ -221,6 +227,11 @@ export const operations = [
     id: "conversation",
     path: "/servers/:serverId/sessions/:sessionId/conversation",
     response: conversationSchema,
+  },
+  {
+    id: "followConversation",
+    path: "/servers/:serverId/sessions/:sessionId/conversation/follow",
+    response: followSchema,
   },
 ] as const;
 export type Operation = (typeof operations)[number]["id"];
@@ -297,6 +308,13 @@ export const operationDocumentation: Record<
       "List retained summaries, optionally filtered by exact projectId. Newest updatedAt first, then id. Resource grants, creator access and hidden projects apply before pagination. Ambiguous cross-project ids are omitted. This does not return messages or completion results.",
     example: "/v0/servers/{serverId}/sessions?projectId={projectId}&limit=1",
   },
+  followConversation: {
+    summary: "Follow compact conversation over bounded HTTP",
+    description:
+      "Without after, returns initial compact state. Reissue using the returned cursor and the same window to wait for prose, failures, pending attention, activity or coverage changes. waitMs is 0–4000 (default4000). Unchanged waits return changed=false, conversation=null. Changed results have reset=true and full replacement state; reconnects, compaction and foreign cursors never claim event replay. Tool-count-only updates do not wake the wait. Initial acquisition has a separate four-second deadline; total request lifetime is at most eight seconds. Finalized prose is sufficient; token streaming is not promised.",
+    example:
+      "/v0/servers/{serverId}/sessions/{sessionId}/conversation/follow?waitMs=4000",
+  },
   conversation: {
     summary: "Read compact conversation and activity",
     description:
@@ -337,7 +355,13 @@ export function apiHelp() {
     "",
     "## Find a project and its sessions",
     "",
-    ...["projects", "sessions", "session", "conversation"].flatMap((id) => {
+    ...[
+      "projects",
+      "sessions",
+      "session",
+      "conversation",
+      "followConversation",
+    ].flatMap((id) => {
       const doc = operationDocumentation[id as Operation];
       return [`GET ${doc.example}`, doc.description, ""];
     }),
@@ -405,16 +429,19 @@ export function apiSchema(launchBound = false) {
               path: operationDocumentation[operation.id].example,
             },
             parameters: [
-              ...(operation.id === "conversation"
-                ? Object.entries(conversationQuery.shape).map(
-                    ([name, schema]) => ({
-                      name,
-                      in: "query",
-                      required: false,
-                      description: schema.description,
-                      schema: z.toJSONSchema(schema),
-                    }),
-                  )
+              ...(operation.id === "conversation" ||
+              operation.id === "followConversation"
+                ? Object.entries(
+                    operation.id === "followConversation"
+                      ? followQuery.shape
+                      : conversationQuery.shape,
+                  ).map(([name, schema]) => ({
+                    name,
+                    in: "query",
+                    required: false,
+                    description: schema.description,
+                    schema: z.toJSONSchema(schema),
+                  }))
                 : []),
               ...[...operation.path.matchAll(/:([A-Za-z]+)/g)].map((match) => ({
                 name: match[1],

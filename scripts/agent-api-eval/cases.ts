@@ -1,6 +1,6 @@
 import type { ApiSession } from "../../packages/server/src/core-api/contracts.js";
 
-export const FIXTURE_REVISION = "agent-api-conversation-4";
+export const FIXTURE_REVISION = "agent-api-follow-5";
 export const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 export const OWN_SESSION_ID = "eval-owning-session";
 export const PROJECT_ID = "orchid-project";
@@ -32,6 +32,10 @@ sessions.push({
   updatedAt: "2026-01-02T00:00:00.000Z",
 });
 export const CASES = {
+  follow:
+    "Follow the worker in session orchid-072 using this HTTP API until it reports its final release artifact. Report that artifact exactly in answer; observe its completion rather than guessing from its title.",
+  reconnect:
+    "Read session orchid-072 through the follow endpoint with maxMessages=1. Then reconnect with that cursor but maxMessages=20. Does the response explicitly tell you to replace the window? Report supported=true if reset is true, and the release artifact exactly in answer.",
   conversation:
     "Inspect the compact conversation of session orchid-072. Report the exact release artifact named in the agent answer, without tool logs.",
   evidence:
@@ -61,6 +65,7 @@ export interface Answer {
   answer: string;
 }
 export interface Trace {
+  follow?: { cursor: string; reset: boolean; changed: boolean };
   method: string;
   path: string;
   status: number;
@@ -112,6 +117,48 @@ export function grade(
   )
     return false;
   switch (caseId) {
+    case "follow":
+      return (
+        answer.answer.trim() === "worker-9c4" &&
+        trace.filter(
+          (entry) =>
+            entry.status === 200 &&
+            entry.method === "GET" &&
+            [
+              `${root}/sessions/orchid-072/conversation`,
+              `${root}/sessions/orchid-072/conversation/follow`,
+            ].includes(entry.path.split("?")[0]!),
+        ).length >= 2
+      );
+    case "reconnect": {
+      const observations = trace.filter(
+        (entry) =>
+          entry.status === 200 &&
+          entry.method === "GET" &&
+          entry.path.split("?")[0] ===
+            `${root}/sessions/orchid-072/conversation/follow`,
+      );
+      return (
+        answer.answer.trim() === "worker-9c4" &&
+        answer.supported === true &&
+        observations.some((initial, index) => {
+          const first = new URL(initial.path, "http://fixture");
+          return (
+            first.searchParams.get("maxMessages") === "1" &&
+            Boolean(initial.follow?.cursor) &&
+            observations.slice(index + 1).some((next) => {
+              const query = new URL(next.path, "http://fixture").searchParams;
+              return (
+                query.get("after") === initial.follow!.cursor &&
+                (query.get("maxMessages") ?? "20") === "20" &&
+                next.follow?.reset === true &&
+                next.follow.changed === true
+              );
+            })
+          );
+        })
+      );
+    }
     case "conversation":
       return (
         answer.answer.trim() === "orchid-7f2" &&

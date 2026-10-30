@@ -3,6 +3,7 @@ import { PRINCIPAL_VARIABLE, type Principal } from "../../auth/principal.js";
 import {
   operations,
   API_LAUNCH_VARIABLE,
+  API_SIGNAL_VARIABLE,
   type ApiLaunchContext,
 } from "../../core-api/contracts.js";
 import { type CoreApi, CoreApiError } from "../../core-api/service.js";
@@ -10,7 +11,11 @@ import { type CoreApi, CoreApiError } from "../../core-api/service.js";
 /** Mount after the hosting app's authentication and principal resolution. */
 export function createV0Routes(api: Pick<CoreApi, "read">) {
   const routes = new Hono<{
-    Variables: { yaPrincipal: Principal; yaApiLaunch: ApiLaunchContext };
+    Variables: {
+      yaPrincipal: Principal;
+      yaApiLaunch: ApiLaunchContext;
+      yaApiSignal: AbortSignal;
+    };
   }>();
   routes.use("*", async (c, next) => {
     if (!c.get(PRINCIPAL_VARIABLE))
@@ -44,7 +49,7 @@ export function createV0Routes(api: Pick<CoreApi, "read">) {
           serverId: c.req.param("serverId"),
           sessionId: c.req.param("sessionId"),
           query: c.req.query(),
-          signal: c.req.raw.signal,
+          signal: c.get(API_SIGNAL_VARIABLE) ?? c.req.raw.signal,
           launch: c.get(API_LAUNCH_VARIABLE),
         },
       );

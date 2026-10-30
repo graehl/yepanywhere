@@ -183,3 +183,29 @@ passed); its gap records this observation. Do not substitute the phase 1 green
 suite or a later isolated pass for this failed run. Focused core/real hosted
 bridge checks pass (60 tests). Query preservation was also repaired so a typo
 cannot become a successful latest-window read across the bridge.
+
+## Phase 3 evidence
+
+Selected bounded HTTP long polling, preserving the existing finite private
+controller protocol. Full compact replacement plus explicit reset is the first
+reconnect contract; no event-log replay or token assembly is claimed. Source
+ownership is shared, tool-count-only changes do not wake waits, and lease
+revocation now cancels already admitted requests. Deterministic tests cover
+shared reads, invalidation, window/server scope, rewind replacement, unchanged
+waits, tool noise, abort and real Unix HTTP disconnect/revocation teardown.
+The existing real hosted-worker test also exercises a follow response.
+
+Two final opt-in Sol medium trials passed: following scripted progress (24.7 s,
+6 requests) and reconnecting with a changed window (15.1 s, 5 requests). Both
+had zero HTTP errors and fetched 89,752 documentation bytes. Reported processed
+input was 141,173/62,585 tokens, not unique context or a documentation-only cost.
+The increased schema/help fetch size is evidence to consider a more concise
+operation-discovery path later; it is not a causal comparison between variants.
+
+Review found no material product-runtime issues, but two eval defects: observer
+teardown paused simulated worker progress, and a grader accepted two initial
+reads without reconnect/reset evidence. Both were repaired with a real private
+HTTP regression; the two earlier trials are diagnostic only and the final pair
+above reruns the repaired harness. Polling and held waits are both accepted.
+Root lint, formatting, types and workspace tests pass; final core/fixture
+regressions were rerun after the harness repair. Windows remains deferred.

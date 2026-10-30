@@ -228,3 +228,42 @@ it("distinguishes incomplete evidence, unsupported actions and an ordinary no-AP
     await fixture.close();
   }
 });
+
+it("lets an unobserved worker finish for polling and requires real reset evidence", async () => {
+  const polling = await createFixture("follow");
+  const path = `/v0/servers/${SERVER_ID}/sessions/orchid-072/conversation`;
+  try {
+    const first = JSON.parse((await read(polling.environment, path)).body);
+    expect(first.activity).toBe("working");
+    await polling.workerFinished;
+    const final = JSON.parse((await read(polling.environment, path)).body);
+    expect(final.activity).toBe("idle");
+    expect(
+      grade("follow", { ...empty, answer: "worker-9c4" }, polling.trace),
+    ).toBe(true);
+  } finally {
+    await polling.close();
+  }
+  const reconnect = await createFixture("reconnect");
+  try {
+    const initial = JSON.parse(
+      (await read(reconnect.environment, path + "/follow?maxMessages=1")).body,
+    );
+    const answer = { ...empty, supported: true, answer: "worker-9c4" };
+    expect(grade("reconnect", answer, reconnect.trace)).toBe(false);
+    await read(
+      reconnect.environment,
+      path + "/follow?after=" + initial.cursor + "&maxMessages=20&waitMs=0",
+    );
+    expect(grade("reconnect", answer, reconnect.trace)).toBe(true);
+    expect(
+      grade(
+        "reconnect",
+        answer,
+        reconnect.trace.map((item) => ({ ...item, follow: undefined })),
+      ),
+    ).toBe(false);
+  } finally {
+    await reconnect.close();
+  }
+});

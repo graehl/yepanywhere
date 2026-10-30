@@ -1,3 +1,6 @@
+import { ApiReceiptStore } from "./core-api/receipt-store.js";
+import { SessionCommands } from "./core-api/session-commands.js";
+import { nativeSessionCommandOwner } from "./core-api/native-session-commands.js";
 import type { MiddlewareHandler } from "hono";
 import {
   createConversationRead,
@@ -800,6 +803,9 @@ export function createApp(options: AppOptions): AppResult {
     new DiscoverySqliteService({ dataDir: effectiveDataDir });
   let publicServerId: string;
   let agentApiController: CoreApi | undefined;
+  let apiCommands: SessionCommands | undefined;
+  let apiReceipts: ApiReceiptStore | undefined;
+  let releaseApiRemaps: (() => void) | undefined;
   try {
     publicServerId = readServerIdentity(discoverySqlite.getDatabase());
   } catch (error) {
@@ -1543,6 +1549,9 @@ export function createApp(options: AppOptions): AppResult {
     // Explicit shutdown and fixture ownership may join the same disposal.
     // Cache the promise before asynchronous cleanup can close shared services.
     sessionReadersDisposal ??= (async () => {
+      apiCommands?.close();
+      releaseApiRemaps?.();
+      apiReceipts?.close();
       await supervisor.stopBackgroundTasks();
       await rendezCompose?.close();
       await rendezDraftDelivery?.close();
@@ -2097,7 +2106,14 @@ export function createApp(options: AppOptions): AppResult {
     mintAgentServerAccess: () => agentServerTokens.mint(),
     getAgentApiAccess: () =>
       options.serverSettingsService?.getSetting("agentApiEnabled") === true
-        ? { serverId: publicServerId, read: readAgentApi }
+        ? {
+            serverId: publicServerId,
+            read: readAgentApi,
+            management:
+              options.serverSettingsService?.getSetting(
+                "agentApiManagementEnabled",
+              ) === true,
+          }
         : undefined,
     getSessionChildEnv: (sessionId, executor) => {
       const wakeBaseUrl = options.getSessionWakeBaseUrl?.(executor);
@@ -2196,7 +2212,11 @@ export function createApp(options: AppOptions): AppResult {
       options.serverSettingsService?.getSetting("claudeSteerBackgroundBash"),
   });
   options.serverSettingsService?.onSettingsChanged((settings, previous) => {
-    if (previous.agentApiEnabled && !settings.agentApiEnabled)
+    if (
+      (previous.agentApiEnabled && !settings.agentApiEnabled) ||
+      (previous.agentApiManagementEnabled &&
+        !settings.agentApiManagementEnabled)
+    )
       void supervisor
         .revokeAgentApiAccess(publicServerId)
         .catch((error) =>
@@ -3109,7 +3129,33 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
 
+  apiReceipts = new ApiReceiptStore(discoverySqlite.getDatabase());
+  apiCommands = new SessionCommands(
+    publicServerId,
+    apiReceipts,
+    nativeSessionCommandOwner({
+      supervisor,
+      globalInstructions: () =>
+        buildEffectiveAgentContext({
+          globalInstructions:
+            options.serverSettingsService?.getSetting("globalInstructions"),
+          hints: options.serverSettingsService?.getSetting("agentContextHints"),
+        }),
+    }),
+    () =>
+      options.serverSettingsService?.getSetting("agentApiManagementEnabled") ===
+      true,
+    (error) =>
+      getLogger().error(
+        { error },
+        "Agent API command outcome persistence failed",
+      ),
+  );
+  releaseApiRemaps = supervisor.observeSessionIdRemaps?.((oldId, newId) =>
+    apiReceipts?.remap(oldId, newId),
+  );
   agentApiController = new CoreApi(publicServerId, {
+    commands: apiCommands,
     ...productionApiSources({
       scanner,
       sessions: retainedCollections,

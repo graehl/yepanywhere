@@ -124,7 +124,10 @@ rows render with `settings-search-match`; a fully-matched section adds
 non-row content is either row-owned (`after` prop), wrapped in
 `HideInSettingsSearch`, or hidden by default in search mode.
 
-**Bounds.** Entering search mounts every category pane once (the same
+**Bounds.** Entering search defers the first pane mount until the deferred query is
+non-empty; falling back to the urgent first character would put the entire
+initial corpus mount on the input acknowledgement path. Search mounts every
+category pane once (the same
 read-effects as visiting each pane once, as a burst); the mount persists
 while the query is non-empty. Per-keystroke work is one deferred context
 update fanned to row-level consumers doing substring checks — pane bodies

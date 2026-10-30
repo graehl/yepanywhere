@@ -209,3 +209,63 @@ HTTP regression; the two earlier trials are diagnostic only and the final pair
 above reruns the repaired harness. Polling and held waits are both accepted.
 Root lint, formatting, types and workspace tests pass; final core/fixture
 regressions were rerun after the harness repair. Windows remains deferred.
+
+## Phase 4 evidence
+
+Added default-off command authority, immutable launch grants, a distinct hosted
+feature/capability gate, native creation with durable SQLite reservations,
+operator receipt/relationship reads, canonical remapping and conservative
+restart reconciliation. No prompts/tokens are stored. Receipts hard-stop at
+10,000 without silent expiration; 16 concurrent admissions share native queues.
+The pure command service and real in-memory SQLite tests avoid full app/HTTP
+startup; separate private HTTP and real Supervisor tests exercise boundaries.
+
+Sol high review identified remap listener replacement, queued retryable failure
+handling, an enablement race, mutable-catalog retry lookup and missing owning
+documentation. Repairs preserve both issue/API remap subscribers, capture both
+native failure callbacks, recheck admission authority, look up durable retry
+identity first and document the authority/lifetime/retention contract. Regression
+coverage uses actual Supervisor queue startup and concurrent private HTTP.
+
+One opt-in Sol medium creation/provenance trial passed: 20.1 seconds, 10 HTTP
+requests, zero errors, 13,097 fetched documentation bytes. Reported processed
+input was 108,524 tokens; no unique-context/cache-saving claim is implied. The
+trial used the new shipped bootstrap and fetched only the Markdown guide;
+operation-specific schema discovery is separately tested.
+
+Browser verification exposed a 105.9 ms first-search-frame miss. Search entry
+now waits for the deferred query before mounting the full settings corpus,
+keeping that work off the urgent first-character update; focused settings tests
+pass. The preview test also now waits for the responsive pane remount before
+reading/toggling its native details state after a viewport change.
+
+Final desktop capture at 1000×600 shows separate discovery/command rows,
+independent active toggles and their documentation links. Descriptions wrap
+inside their own rows with no control overlap. No stale-runtime banner appears.
+Capture: `.artifacts/ui-testing/20261030-agent-session-commands-final-reviewed/agent-session-commands-desktop.png`.
+
+Final phone capture at 375×812 shows readable, wrapped captions with distinct
+row backgrounds and practical toggle targets. Discovery and management remain
+visually independent; no horizontal overflow or stale-runtime banner appears.
+The keyboard test retains the 100 ms gate; final browser run passed. The initial
+failed run and its timing evidence remain in ignored logs, not retried away.
+Capture: `.artifacts/ui-testing/20261030-agent-session-commands-final-reviewed/agent-session-commands-phone.png`.
+
+Phase 4 root lint/format/types and the workspace suite pass (6,608 server and
+7,019 client cases). The console scan is unchanged at its existing 108-warning
+budget; no touched file adds chatter. CSS ownership extraction is deferred for
+the two touched settings owners because their rules span coupled legacy shared
+styles (38/14 edges); this slice adds no authored CSS. Current hosted compatibility
+uses the existing supported release corpus and a distinct optional capability,
+with old servers omitting the new row/field. No transport horizon is changed.
+
+The final release-copy browser run passed (26.5 seconds including setup).
+All six captures under `.artifacts/ui-testing/20261030-agent-session-commands-release/`
+were presented through the artifact capture facility and inspected one at a time:
+
++- Desktop default: both grants off; rows and captions fit, toggles remain separate, no horizontal overflow or stale-runtime banner.
+- Desktop enabled: both independent toggles active, command caption stays within its row and its doc link remains readable. No overlap.
+- Desktop preview: platform-specific commands show variable references only; long instructions wrap inside the pane and continue by vertical scroll. No horizontal overflow.
+- Phone discovery view: separate command row is still visible below the collapsed preview; long captions fit the narrow content column and toggles stay clear.
+- Phone commands view: command authority has its own row, active state and documentation link. Caption stays contained; no horizontal clipping or stale-runtime indicator.
+- Phone preview: platform heading and wrapped variable-only command remain legible; preview scrolls vertically, with no horizontal overflow.

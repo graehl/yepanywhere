@@ -15,6 +15,11 @@ import { SECURITY_CLIENT_AUDIT_CAPABILITY } from "./security-clients.js";
 export type ServerCapabilityKind = "permanent" | "transitional";
 
 export const OPTIONAL_SERVER_CAPABILITY_BIT_ALLOCATIONS = {
+  agentApiManagement: {
+    name: "agent-api-management",
+    index: CAPABILITY_ID_ALLOCATIONS.agentApiManagement.id,
+    introducedIn: "0.11.1",
+  },
   agentApiBootstrap: {
     name: "agent-api-bootstrap",
     index: CAPABILITY_ID_ALLOCATIONS.agentApiBootstrap.id,
@@ -917,6 +922,37 @@ export const SERVER_CAPABILITIES = {
       kind: "permanent",
       reason:
         "Older servers neither store the setting nor accept agent bearer tokens.",
+    },
+  },
+  agentApiManagement: {
+    id: CAPABILITY_ID_ALLOCATIONS.agentApiManagement.id,
+    name: "agent-api-management",
+    kind: "permanent",
+    area: "localAccess",
+    introducedIn: "0.11.1",
+    advertisement: {
+      kind: "optional-bit",
+      index: CAPABILITY_ID_ALLOCATIONS.agentApiManagement.id,
+    },
+    description:
+      "Separate default-off native v0 session-command enablement, durable retry receipts and trusted creation provenance for qualified operator launches. Existing read leases remain read-only.",
+    clientFallback:
+      "Hide the session-command setting and send no agentApiManagementEnabled. Keep read-only discovery independent.",
+    serverContract: {
+      routes: [
+        "GET /api/settings",
+        "PUT /api/settings",
+        "POST /v0/servers/:serverId/sessions",
+        "GET /v0/servers/:serverId/receipts/:receiptId",
+        "GET /v0/servers/:serverId/sessions/:sessionId/relationships",
+      ],
+      requestFields: ["agentApiManagementEnabled"],
+      responseFields: ["settings.agentApiManagementEnabled"],
+    },
+    lifecycle: {
+      kind: "permanent",
+      reason:
+        "Older API adapters and provider hosts cannot issue or enforce management grants.",
     },
   },
   agentApiBootstrap: {

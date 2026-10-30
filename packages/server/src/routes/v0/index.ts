@@ -1,7 +1,9 @@
+import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { PRINCIPAL_VARIABLE, type Principal } from "../../auth/principal.js";
 import {
   operations,
+  operationMethod,
   API_LAUNCH_VARIABLE,
   API_SIGNAL_VARIABLE,
   type ApiLaunchContext,
@@ -40,14 +42,44 @@ export function createV0Routes(api: Pick<CoreApi, "read">) {
       500,
     );
   });
+  routes.use(
+    "*",
+    bodyLimit({
+      maxSize: 256 * 1024,
+      onError: (c) =>
+        c.json(
+          {
+            error: {
+              code: "invalid_request",
+              message: "API request body exceeds 256 KiB",
+            },
+          },
+          400,
+        ),
+    }),
+  );
   for (const operation of operations) {
-    routes.get(operation.path || "/", async (c) => {
+    routes.on(operationMethod(operation), operation.path || "/", async (c) => {
+      let body: unknown;
+      if (operationMethod(operation) === "POST") {
+        try {
+          body = await c.req.json();
+        } catch {
+          throw new CoreApiError(
+            "invalid_request",
+            "Expected a JSON request body",
+            400,
+          );
+        }
+      }
       const result = await api.read(
         operation.id,
         c.get(PRINCIPAL_VARIABLE) as Principal,
         {
           serverId: c.req.param("serverId"),
           sessionId: c.req.param("sessionId"),
+          receiptId: c.req.param("receiptId"),
+          body,
           query: c.req.query(),
           signal: c.get(API_SIGNAL_VARIABLE) ?? c.req.raw.signal,
           launch: c.get(API_LAUNCH_VARIABLE),
@@ -57,7 +89,7 @@ export function createV0Routes(api: Pick<CoreApi, "read">) {
         return c.body(result as string, 200, {
           "Content-Type": "text/markdown; charset=utf-8",
         });
-      return c.json(result);
+      return c.json(result, operationMethod(operation) === "POST" ? 202 : 200);
     });
   }
   routes.all("*", (c) =>

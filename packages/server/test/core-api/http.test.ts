@@ -156,6 +156,12 @@ describe("isolated v0 application and HTTP reads", () => {
       other = fixture("B", SUPERUSER);
     expect((await (await other.app.request("/v0")).json()).serverId).toBe("B");
     for (const operation of operations) {
+      if (
+        operation.id === "createSession" ||
+        operation.id === "receipt" ||
+        operation.id === "relationships"
+      )
+        continue;
       const path = `/v0${operation.path.replace(":serverId", "A").replace(":sessionId", "b")}`;
       const response = await app.request(path);
       expect(response.status, path).toBe(200);
@@ -200,7 +206,7 @@ describe("isolated v0 application and HTTP reads", () => {
     const helpResponse = await app.request(root.help);
     expect(helpResponse.headers.get("content-type")).toContain("text/markdown");
     const help = await helpResponse.text();
-    expect(help).toContain("READ ONLY");
+    expect(help).toContain("read-only launch credentials");
     const projects = await (
       await app.request(
         operationDocumentation.projects.example.replace(

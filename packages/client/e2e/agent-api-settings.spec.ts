@@ -6,6 +6,7 @@ test("agent API discovery previews its bootstrap and acknowledges typing during 
   baseURL,
 }) => {
   let enabled = false;
+  let management = false;
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -15,14 +16,22 @@ test("agent API discovery previews its bootstrap and acknowledges typing during 
     const response = await page.request.get(route.request().url());
     const body = await response.json();
     if (route.request().method() === "PUT") {
-      enabled = route.request().postDataJSON().agentApiEnabled === true;
+      const updates = route.request().postDataJSON();
+      if (typeof updates.agentApiEnabled === "boolean")
+        enabled = updates.agentApiEnabled;
+      if (typeof updates.agentApiManagementEnabled === "boolean")
+        management = updates.agentApiManagementEnabled;
       await held;
     }
     await route.fulfill({
       response,
       json: {
         ...body,
-        settings: { ...body.settings, agentApiEnabled: enabled },
+        settings: {
+          ...body.settings,
+          agentApiEnabled: enabled,
+          agentApiManagementEnabled: management,
+        },
       },
     });
   });
@@ -82,6 +91,16 @@ test("agent API discovery previews its bootstrap and acknowledges typing during 
     await search.clear();
     await page.goto(`${baseURL}/settings/local-access`);
     await expect(toggle).toBeChecked();
+    const managementToggle = page.getByRole("checkbox", {
+      name: "Agent session commands",
+      exact: true,
+    });
+    const managementControl = managementToggle.locator("..");
+    await expect(managementToggle).not.toBeChecked();
+    await managementControl.click();
+    await expect(managementToggle).toBeChecked();
+    await managementControl.scrollIntoViewIfNeeded();
+    await recordUiCapture(page, "agent-session-commands-desktop");
     const preview = page.getByText("Preview agent instructions", {
       exact: true,
     });
@@ -90,14 +109,24 @@ test("agent API discovery previews its bootstrap and acknowledges typing during 
       await preview.click();
     await expect(details).toHaveAttribute("open", "");
     await expect(details).toContainText("AGENT_YA_V0_AUTHORIZATION");
+    await expect(details).toContainText("explicit session-command authority");
     await details.scrollIntoViewIfNeeded();
     await recordUiCapture(page, "agent-api-desktop-preview");
     await page.setViewportSize({ width: 375, height: 812 });
-    if (await details.evaluate((node) => (node as HTMLDetailsElement).open))
-      await preview.click();
+    // Crossing this breakpoint remounts the pane. Wait for the phone detail
+    // layout before reading/toggling the new native details element.
+    await expect(
+      page.getByRole("searchbox", { name: "Search settings" }),
+    ).toHaveCount(0);
+    if (await details.evaluate((node) => (node as HTMLDetailsElement).open)) {
+      await preview.focus();
+      await preview.press("Enter");
+    }
     await expect(details).not.toHaveAttribute("open", "");
     await toggleControl.scrollIntoViewIfNeeded();
     await recordUiCapture(page, "agent-api-phone");
+    await managementControl.scrollIntoViewIfNeeded();
+    await recordUiCapture(page, "agent-session-commands-phone");
     if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open)))
       await preview.click();
     await expect(details).toHaveAttribute("open", "");

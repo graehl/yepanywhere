@@ -764,8 +764,10 @@ export function getServerCapabilities(options?: VersionRouteOptions): string[] {
     capabilities.push(SERVER_CAPABILITIES.installedMachineControl.name);
   if (options?.agentSessionViewAvailable)
     capabilities.push(SERVER_CAPABILITIES.agentSessionView.name);
-  if (options?.agentApiAvailable)
+  if (options?.agentApiAvailable) {
     capabilities.push(SERVER_CAPABILITIES.agentApiBootstrap.name);
+    capabilities.push(SERVER_CAPABILITIES.agentApiManagement.name);
+  }
   capabilities.push(SERVER_CAPABILITIES.claudeGatewayServices.name);
   if (options?.getExperimentalConversationAvailable?.())
     capabilities.push(SERVER_CAPABILITIES.experimentalConversation.name);

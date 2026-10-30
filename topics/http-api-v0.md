@@ -2,11 +2,11 @@
 
 Topic: http-api-v0
 
-Status: local read-only slice implemented, 2026-10-30. The maintainer selected
+Status: local compact reads/following and opt-in native creation implemented, 2026-10-30. The maintainer selected
 HTTP-first design, explicit server addressing, agent-discoverable identity/access,
 and creation provenance, then authorized implementation. The delivered subset
-is specified below; creation, messaging, peer routing/enrollment and consistent
-launch-bound bootstrap remain proposals. [Implementation and tests](../docs/tactical/165-http-api-v0.md)
+is specified below; messaging and peer routing/enrollment remain later slices.
+Launch-bound bootstrap is implemented. [Implementation and tests](../docs/tactical/165-http-api-v0.md)
 track the staged work. This does not reprioritize releases or restart the
 archived session-core campaign.
 
@@ -15,10 +15,11 @@ archived session-core campaign.
 The ordinary app mounts `/v0`, `/v0/schema`, `/v0/me`, `/v0/servers`, and the
 self server's description, access, capabilities, projects, providers, sessions
 and single-session summary routes. Unknown targets never execute locally.
-Other v0 resources and all writes remain unimplemented. Existing `/api/*` and
-the separate own-session listener retain their contracts.
+Compact conversations/following and separately authorized creation, receipts
+and provenance are specified below. Other planned resources remain absent.
+Existing `/api/*` and the separate own-session listener retain their contracts.
 
-- `/v0` returns public server id, revision `2026-10-30.3`, unstable status and
+- `/v0` returns public server id, revision `2026-10-30.6`, unstable status and
   discovery links. The documentation slice adds Markdown
   help at `/v0/help`, links help/me/schema from discovery, and generates field
   descriptions, operation semantics and example requests alongside OpenAPI.
@@ -26,7 +27,7 @@ the separate own-session listener retain their contracts.
   from the same Zod definitions used by the read surface. These schemas describe
   this subset, not every planned route in the table below. The documentation
   slice is implemented. The local agent runtime factory below adds launch
-  binding; automatic provider advertisement/integration remains pending.
+  binding; automatic provider advertisement/integration is implemented for qualified launches.
   Help/schema inherit the normal host's authentication policy, including
   configured auth-off localhost behavior; they do not introduce an independent
   credential requirement on that existing listener.
@@ -227,6 +228,94 @@ Slow readers cannot accumulate repeated snapshots or keep observation alive
 after the one response has been selected. Clients own retry/backoff and should
 use bounded waiting rather than a tight zero-wait/error loop.
 
+## Session command authority
+
+Implemented in revision `2026-10-30.6`, behind **Agent session commands** in
+Settings → Local Access (`agentApiManagementEnabled`, default false). This
+setting is independent of read-only **Agent API discovery**. It enables v0
+native creation for ordinary authenticated operators and grants management to
+new eligible local agent launches when discovery is also enabled. Existing
+read-only leases remain read-only. `/me` records `management=true` only on an
+explicit management lease; `/access` lists credential-authorized operations.
+Missing management authority returns 403, and a management launch whose owning
+session is not yet bound returns `409 identity_pending`. Caller JSON/headers
+cannot supply creator identity or command authority. Limited users cannot use
+these command/audit surfaces in this first profile.
+
+Turning discovery off, or turning management off, revokes current profile agent
+API leases, including active waits. Turning management on does not upgrade old
+leases. Enablement is rechecked immediately before durable admission after
+asynchronous catalog lookup. Already accepted native work remains target-owned;
+revocation/disconnect is not rollback, process termination or an automatic retry.
+A hosted provider launch requires the distinct `agent-api-management` host
+feature; an older source host must be restarted before issuing management
+leases. In-process paths do not require that host. UI support uses a distinct
+optional `agent-api-management` capability; older servers hide the command
+setting and receive no unsupported field. This adds no peer grants or remote
+access and retains the existing supported-release/transport horizons.
+
+### Creation and retry receipts
+
+`POST /v0/servers/{serverId}/sessions` accepts strict JSON with `requestId`,
+`projectId`, `provider` and exact initial `message`. Optional model,
+thinking/effort, permission mode and service tier map to incumbent native
+launch controls. Permission mode defaults to `default`; bypass must be explicit.
+Only configured local Claude/Codex providers and catalog projects are qualified.
+Blank creation, remote executors, worktree/cloning policy, managed delegation,
+terminal execution and provider upgrades are outside this slice. Global agent
+context and native launch ownership/admission remain shared with existing YA
+sessions. V0 asks for settled native identity before reporting an accepted
+canonical session id. Fork and /btw parenting remain separate from creator facts.
+
+The response is `202` with a durable receipt before native launch completion.
+Use a caller-generated 8–128 character retry key and repeat the identical body
+after response loss. Scoped retry identity includes authenticated principal,
+origin server/session, operation, target project/session and request id; a new
+provider launch of the same originating session can recover the same receipt.
+The first originating launch id stays in the audit record. Conflicting payloads
+return `409 request_id_conflict`. Existing identity is resolved before mutable
+catalog/provider checks; disabling a provider or removing a project cannot
+make an authorized retry launch a duplicate. There is no automatic side-effect
+replay, provider restart or fallback routing.
+
+`GET /v0/servers/{serverId}/receipts/{receiptId}` observes `dispatching`,
+`queued`, `accepted`, `failed` or `uncertain`. These describe admission evidence,
+not successful response completion. Native capacity rejection is recorded as a
+known failure. An exception after reservation, queued startup failure, or an
+unfinished reservation recovered after restart is uncertain; never generate a
+new retry key merely to escape that uncertainty. Unique live-owner user-message
+identity can reconcile a target binding without launching again. Missing,
+evicted or ambiguous evidence remains uncertain. `delivery=unknown` and
+`completion=unknown` stay explicit in this creation slice. Cancellation after
+reservation cannot assert that a provider was never launched.
+
+Receipts persist in the profile discovery SQLite database, separately from
+native transcripts and existing client creation hints. They contain no prompt
+bodies or credentials. The implementation retains at most **10,000 receipts**,
+with no silent expiry or deletion; further new requests fail capacity rather
+than forgetting retry identity. Replays and reads remain available at capacity.
+At most 16 native admission promises run concurrently, and native Supervisor
+queues retain their existing limits. No new background poller or workflow queue
+is added. Creation provenance and retry keys survive profile restart. Alias
+reconciliation is bounded to 32 hops and updates both relationship ends. Future
+retention/export/pruning needs its own explicit idempotency-window contract.
+
+`GET /v0/servers/{serverId}/sessions/{sessionId}/relationships` returns the
+first recorded v0 creation receipt and a bounded page of initiated command
+receipts. `creation=null` does not prove that an older session was human-created.
+Both ends retain source/destination public server ids, trusted source session,
+launch, principal, request id and time. Source/destination are currently this
+same local profile; server-granted peer identity and cross-host routing remain
+future work. Audit reads require operator authority and never disclose related
+private session ids to limited users. Canonical-id remaps share a multi-subscriber
+Supervisor observer so provenance does not replace existing issue remapping.
+
+Help and schema support `?operation={operationId}` for a concise operation
+reference/request schema; the full reference remains available without it.
+Request bodies are limited to 256 KiB before command dispatch. When an early
+network rejection closes an upload, clients may observe a transport error;
+no oversized request may reserve or launch work.
+
 ## Local agent runtime factory
 
 Implemented independently of provider/UI integration, 2026-10-30. A provider
@@ -330,7 +419,7 @@ actual host/worker socket dispatch and revocation, plus desktop/phone preview an
 sequential typing checks. macOS Node and bundled Bun source-adapter checks pass.
 Native Windows PowerShell, Linux, packaged provider/tool invocation and crossing
 native Windows/WSL remain qualification work; transport tests on macOS do not
-establish that parity. Broader onboarding, peer grants/routing, session writes,
+establish that parity. Broader onboarding, peer grants/routing, additional session commands,
 command execution and PTYs remain separate proposals.
 
 ## One HTTP surface across routes

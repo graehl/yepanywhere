@@ -495,6 +495,7 @@ export class ProviderRuntimeHost {
             "provider-session-options",
             "project-services",
             "agent-api-revocation",
+            "agent-api-management",
           ],
         };
       case "registerServer": {
@@ -1690,6 +1691,7 @@ async function main() {
           "recent-runtime-recovery",
           "provider-session-options",
           "agent-api-revocation",
+          "agent-api-management",
         ],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,

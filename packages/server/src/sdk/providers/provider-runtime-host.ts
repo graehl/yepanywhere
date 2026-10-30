@@ -752,6 +752,13 @@ export async function startHostedProviderSession(
       throw new Error(
         "Restart the provider host before enabling agent API discovery for this launch",
       );
+    if (
+      options.agentApi.management &&
+      !status.features?.includes("agent-api-management")
+    )
+      throw new Error(
+        "Restart the provider host before enabling agent API session commands for this launch",
+      );
   }
   let runtime = options.resumeSessionId
     ? await requestHost<HostedProviderRuntimeInfo | null>("claim", {

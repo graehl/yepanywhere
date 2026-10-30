@@ -135,6 +135,8 @@ export interface ServerSettings {
   agentServerAccessEnabled: boolean;
   /** Explicit discovery and read-only v0 access for eligible local launches. */
   agentApiEnabled: boolean;
+  /** Explicit native session command authority for future eligible API launches. */
+  agentApiManagementEnabled: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled: boolean;
   /**
@@ -354,6 +356,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   approvalAuditLogEnabled: false,
   agentServerAccessEnabled: false,
   agentApiEnabled: false,
+  agentApiManagementEnabled: false,
   publicSharesEnabled: false,
   limitedUsersEnabled: false,
   limitedUserInstructions: defaultLimitedUserInstructions(),

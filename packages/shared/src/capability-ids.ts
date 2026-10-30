@@ -852,6 +852,12 @@ export const CAPABILITY_ID_ALLOCATIONS = {
     name: "agent-api-bootstrap",
     introducedIn: "0.11.1",
   },
+  agentApiManagement: {
+    id: 139,
+    direction: "server",
+    name: "agent-api-management",
+    introducedIn: "0.11.1",
+  },
 } as const satisfies Record<string, CapabilityIdAllocation>;
 
 export type CapabilityBitset = readonly (readonly [

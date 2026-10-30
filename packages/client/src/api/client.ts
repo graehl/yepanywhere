@@ -1982,6 +1982,7 @@ export interface ServerSettings {
   /** Whether unsandboxed superuser sessions get an in-memory API token */
   agentServerAccessEnabled?: boolean;
   agentApiEnabled?: boolean;
+  agentApiManagementEnabled?: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled?: boolean;
   /** Whether limited users exist beside the superuser (topics/limited-users.md) */

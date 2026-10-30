@@ -81,7 +81,9 @@ control case fails if it makes unnecessary API calls. `conversation` extracts an
 artifact from prose amid native tool noise; `evidence` checks that unknown activity
 and incomplete coverage are not reported as successful completion. `follow` waits
 for scripted worker progress; `reconnect` checks explicit replacement after a
-window change. Both use the production bounded follow adapter.
+window change. Both use the production bounded follow adapter. `create` uses an explicit
+management lease, real in-memory SQLite retry receipts and scripted native-owner
+admission, then checks the worker answer and creator via HTTP.
 
 Reports include every completed or timed-out trial, success, exit status,
 HTTP requests/errors/repeats, time to first successful HTTP request, duration,

@@ -383,12 +383,14 @@ export function SettingsLayout() {
     />
   );
 
+  // The first key must not mount every settings pane on the urgent input
+  // update. Enter search only once its deferred query is ready as well.
   const searchResults =
-    searchActive && principalResolved ? (
+    searchActive && deferredSearchQuery !== "" && principalResolved ? (
       <SettingsSearchResults
         categories={visibleCategories}
         components={CATEGORY_COMPONENTS}
-        query={deferredSearchQuery || searchQuery.trim()}
+        query={deferredSearchQuery}
         matchValues={matchValues}
         onJumpToItem={handleCategoryClick}
         onOpenCategory={handleCategoryClick}

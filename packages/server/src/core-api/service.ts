@@ -1,3 +1,5 @@
+import { createSessionRequest } from "./command-contracts.js";
+import type { SessionCommands } from "./session-commands.js";
 import {
   conversationQuery,
   followQuery,
@@ -13,6 +15,7 @@ import {
   apiHelp,
   apiSchema,
   operationIds,
+  readOperationIds,
   pageQuery,
   type ApiProject,
   type ApiProvider,
@@ -24,6 +27,8 @@ import {
 } from "./contracts.js";
 
 export interface CoreApiSources {
+  commands?: SessionCommands;
+  managementEnabled?: () => boolean;
   projects(
     signal?: AbortSignal,
   ): Promise<{ items: ApiProject[]; catalog?: CatalogState }>;
@@ -51,12 +56,17 @@ const describePrincipal = (principal: Principal) =>
     ? { kind: principal.kind, username: principal.username }
     : { kind: principal.kind };
 
-/** Application reads have no HTTP, provider-registry or discovery ownership. */
+/** Application operations have no HTTP, provider-registry or discovery ownership. */
 export class CoreApi {
   constructor(
     readonly serverId: string,
     private readonly sources: CoreApiSources,
   ) {}
+
+  /** Canonical dispatcher. read remains the incumbent controller-port alias. */
+  call(...args: Parameters<CoreApi["read"]>) {
+    return this.read(...args);
+  }
 
   async read(
     operation: Operation,
@@ -64,7 +74,9 @@ export class CoreApi {
     input: {
       serverId?: string;
       sessionId?: string;
-      query?: PageQuery & ConversationFollowQuery;
+      receiptId?: string;
+      body?: unknown;
+      query?: PageQuery & ConversationFollowQuery & { operation?: string };
       signal?: AbortSignal;
       /** Established by a trusted launch authenticator, never a request field. */
       launch?: ApiLaunchContext;
@@ -85,6 +97,17 @@ export class CoreApi {
         400,
       );
     }
+    const selected = input.query?.operation;
+    if (
+      selected &&
+      (!["help", "schema"].includes(operation) ||
+        !operationIds.includes(selected as Operation))
+    )
+      throw new CoreApiError(
+        "invalid_request",
+        "Unknown or unsupported documentation operation selector",
+        400,
+      );
     const query = pageQuery.safeParse(input.query ?? {});
     if (!query.success)
       throw new CoreApiError(
@@ -108,9 +131,12 @@ export class CoreApi {
           servers: "/v0/servers",
         };
       case "help":
-        return apiHelp();
+        return apiHelp(selected as Operation | undefined);
       case "schema":
-        return apiSchema(Boolean(input.launch));
+        return apiSchema(
+          Boolean(input.launch),
+          selected as Operation | undefined,
+        );
       case "me":
         return {
           principal: describePrincipal(caller),
@@ -135,7 +161,19 @@ export class CoreApi {
           principal: describePrincipal(caller),
           scope:
             caller.kind === "superuser" ? "all-projects" : "project-grants",
-          operations: operationIds,
+          operations: operationIds.filter((id) => {
+            if (
+              caller.kind !== "superuser" &&
+              ["receipt", "relationships", "createSession"].includes(id)
+            )
+              return false;
+            if (readOperationIds.includes(id)) return true;
+            return Boolean(
+              (this.sources.managementEnabled?.() ??
+                this.sources.commands?.enabled()) &&
+                (!input.launch || (input.launch.management && input.launch.id)),
+            );
+          }),
         };
       case "capabilities":
         return {
@@ -164,6 +202,94 @@ export class CoreApi {
           ),
           catalog: result.catalog,
         };
+      }
+      case "createSession": {
+        if (
+          caller.kind !== "superuser" ||
+          !this.sources.commands?.enabled() ||
+          (input.launch && !input.launch.management)
+        )
+          throw new CoreApiError(
+            "forbidden",
+            "Session commands require explicit management enablement and authority",
+            403,
+          );
+        if (input.launch && !input.launch.id)
+          throw new CoreApiError(
+            "identity_pending",
+            "Owning session is not bound yet",
+            409,
+          );
+        const body = createSessionRequest.safeParse(input.body);
+        if (!body.success)
+          throw new CoreApiError(
+            "invalid_request",
+            "Invalid native session creation request; inspect this operation's schema",
+            400,
+          );
+        const replay = this.sources.commands.replayCreate(
+          body.data,
+          input.launch,
+        );
+        if (replay) return replay;
+        const [projects, providers] = await Promise.all([
+          this.sources.projects(input.signal),
+          this.sources.providers(input.signal),
+        ]);
+        const project = projects.items.find(
+          (project) => project.id === body.data.projectId,
+        );
+        if (!project)
+          throw new CoreApiError(
+            projects.catalog?.complete === false
+              ? "catalog_not_ready"
+              : "project_not_found",
+            "Project is not available in this server's catalog",
+            projects.catalog?.complete === false ? 503 : 404,
+          );
+        if (!providers.some((provider) => provider.id === body.data.provider))
+          throw new CoreApiError(
+            "invalid_request",
+            "Provider is not configured on this server",
+            400,
+          );
+        input.signal?.throwIfAborted();
+        return this.sources.commands.create(project, body.data, input.launch);
+      }
+      case "receipt": {
+        if (caller.kind !== "superuser")
+          throw new CoreApiError(
+            "forbidden",
+            "Receipt access requires operator authority",
+            403,
+          );
+        const receipt = await this.sources.commands?.receipt(
+          input.receiptId ?? "",
+        );
+        if (!receipt)
+          throw new CoreApiError("receipt_not_found", "Receipt not found", 404);
+        return receipt;
+      }
+      case "relationships": {
+        if (caller.kind !== "superuser")
+          throw new CoreApiError(
+            "forbidden",
+            "Provenance access requires operator authority",
+            403,
+          );
+        await this.read("session", caller, { ...input, query: undefined });
+        return (
+          this.sources.commands?.store.relationships(
+            input.sessionId!,
+            Number(query.data.cursor ?? 0),
+            Number(query.data.limit ?? 50),
+          ) ?? {
+            sessionId: input.sessionId!,
+            creation: null,
+            initiated: [],
+            nextCursor: null,
+          }
+        );
       }
       case "followConversation": {
         const parsed = followQuery.safeParse(input.query ?? {});

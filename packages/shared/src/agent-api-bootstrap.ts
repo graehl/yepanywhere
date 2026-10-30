@@ -6,7 +6,10 @@ export const AGENT_API_BOOTSTRAP_ENV = {
 } as const;
 
 /** Values are variable references only; never render an actual credential. */
-export function agentApiBootstrapInstructions(windows: boolean): string {
+export function agentApiBootstrapInstructions(
+  windows: boolean,
+  management = false,
+): string {
   const command = windows
     ? 'curl.exe -H "Authorization: $env:AGENT_YA_V0_AUTHORIZATION" "$env:AGENT_YA_V0_URL/v0/me"'
     : 'curl --unix-socket "$AGENT_YA_V0_SOCKET" -H "Authorization: $AGENT_YA_V0_AUTHORIZATION" "$AGENT_YA_V0_URL/v0/me"';
@@ -14,6 +17,10 @@ export function agentApiBootstrapInstructions(windows: boolean): string {
     "[Yep Anywhere API]",
     "You are running inside Yep Anywhere. Inspect your owning session, server and API access with:",
     command,
-    "Use the same connection for GET /v0/help to learn available operations and examples, and GET /v0/schema for exact request/response details. This API currently reads authorized project/session catalogs; session creation, messaging, command execution and peer routing are not implemented in v0. Inherited child environments identify the owning YA session. If connection variables are missing, report API access unavailable; do not guess a port or reuse another credential.",
+    "Read GET /v0/help for operations and examples; consult GET /v0/schema only when you need exact request/response fields. Use advertised access and operation support, including any conversation/following surfaces, rather than inferring capabilities from a session title.",
+    management
+      ? "This launch has explicit session-command authority. Inspect access before creating a worker; use durable request ids and receipts, and follow its conversation. Do not assume admission means delivery or successful completion."
+      : "This launch is read-only; session commands require a separate management grant. Command execution and peer routing are not implemented.",
+    "Inherited child environments identify the owning YA session. If connection variables are missing, report API access unavailable; do not guess a port or reuse another credential.",
   ].join("\n");
 }

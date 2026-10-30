@@ -4839,8 +4839,10 @@
   "extensionDevFullReloadHelp": "Reloads the whole extension, including its background worker and manifest, even when no update is detected. YA will try to reopen this panel; if Chrome closes it, click the toolbar icon to reopen.",
   "extensionDevPanelReloadHelp": "Loads the latest panel code while keeping the side panel open.",
   "localAccessAgentApiTitle": "Agent API discovery",
-  "localAccessAgentApiDescription": "Give eligible local unrestricted Claude and Codex sessions a read-only YA API connection and discovery instructions. Applies to new provider launches; switching off revokes current access.",
+  "localAccessAgentApiDescription": "Give eligible local unrestricted Claude and Codex sessions an authenticated YA API connection and discovery instructions. Read-only unless session commands are separately enabled. Applies to new launches; switching off revokes current access.",
   "localAccessAgentApiPreview": "Preview agent instructions",
   "localAccessAgentApiUnix": "macOS and Linux",
-  "localAccessAgentApiWindows": "Windows"
+  "localAccessAgentApiWindows": "Windows",
+  "localAccessAgentApiManagementTitle": "Agent session commands",
+  "localAccessAgentApiManagementDescription": "Allow native session commands through HTTP v0. New eligible launches with API discovery enabled receive a separate management grant; existing read-only launches stay read-only. Switching off revokes current agent API access. No remote host access is granted."
 }

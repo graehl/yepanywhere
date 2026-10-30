@@ -1142,6 +1142,9 @@ export class ProviderSessionOwner {
       input: {
         serverId: input.serverId,
         sessionId: input.sessionId,
+        receiptId: input.receiptId,
+        body: input.body,
+        launch: input.launch,
         query: input.query,
       },
     });

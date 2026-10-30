@@ -494,6 +494,7 @@ export interface SupervisorOptions {
   getAgentApiAccess?: () =>
     | {
         serverId: string;
+        management?: boolean;
         read: import("../core-api/service.js").CoreApi["read"];
       }
     | undefined;
@@ -671,14 +672,15 @@ export class Supervisor {
     contextWindow: number,
     provider: ProviderName,
   ) => void;
-  private issueSessionRemapObserver?: (oldId: string, newId: string) => void;
+  private readonly sessionRemapObservers = new Set<
+    (oldId: string, newId: string) => void
+  >();
   observeSessionIdRemaps(
     observer: (oldId: string, newId: string) => void,
   ): () => void {
-    this.issueSessionRemapObserver = observer;
+    this.sessionRemapObservers.add(observer);
     return () => {
-      if (this.issueSessionRemapObserver === observer)
-        this.issueSessionRemapObserver = undefined;
+      this.sessionRemapObservers.delete(observer);
     };
   }
   private onSessionSummary?: OnSessionSummaryCallback;
@@ -5601,13 +5603,12 @@ export class Supervisor {
         process.publishAgentSessionViews(
           this.sessionViews.views(event.newSessionId),
         );
-        try {
-          this.issueSessionRemapObserver?.(
-            event.oldSessionId,
-            event.newSessionId,
-          );
-        } catch (error) {
-          log.warn({ error }, "Issue evidence session remap failed");
+        for (const observer of this.sessionRemapObservers) {
+          try {
+            observer(event.oldSessionId, event.newSessionId);
+          } catch (error) {
+            log.warn({ error }, "Session remap observer failed");
+          }
         }
 
         this.everOwnedSessions.add(event.newSessionId);
@@ -5900,7 +5901,13 @@ export class Supervisor {
     if (sandboxed || executor) return {};
     const access = this.getAgentApiAccess?.();
     return access
-      ? { agentApi: { serverId: access.serverId }, onAgentApiRead: access.read }
+      ? {
+          agentApi: {
+            serverId: access.serverId,
+            management: access.management,
+          },
+          onAgentApiRead: access.read,
+        }
       : {};
   }
 

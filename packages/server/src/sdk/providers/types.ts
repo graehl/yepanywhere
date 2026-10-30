@@ -207,7 +207,7 @@ export interface StartSessionOptions {
   /** Operator opt-in, preserved across provider-host process boundaries. */
   agentSelf?: boolean;
   /** Trusted local launch grant; never accepted from session-create JSON. */
-  agentApi?: { serverId: string };
+  agentApi?: { serverId: string; management?: boolean };
   /** Controller-owned catalog dispatcher, removed at the worker boundary. */
   onAgentApiRead?: import("../../core-api/service.js").CoreApi["read"];
   /** Spawn-only connection credential. Never publish into a Bash bridge file. */

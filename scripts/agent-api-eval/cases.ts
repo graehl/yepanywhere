@@ -1,6 +1,6 @@
 import type { ApiSession } from "../../packages/server/src/core-api/contracts.js";
 
-export const FIXTURE_REVISION = "agent-api-follow-5";
+export const FIXTURE_REVISION = "agent-api-commands-6";
 export const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 export const OWN_SESSION_ID = "eval-owning-session";
 export const PROJECT_ID = "orchid-project";
@@ -32,6 +32,8 @@ sessions.push({
   updatedAt: "2026-01-02T00:00:00.000Z",
 });
 export const CASES = {
+  create:
+    "Create one Codex worker in project Orchid with an initial prompt to review the release. Follow its compact conversation and inspect its trusted creation provenance. Report its session id in sessionId, its creator session id in sessionIds, and the release artifact exactly in answer.",
   follow:
     "Follow the worker in session orchid-072 using this HTTP API until it reports its final release artifact. Report that artifact exactly in answer; observe its completion rather than guessing from its title.",
   reconnect:
@@ -117,6 +119,21 @@ export function grade(
   )
     return false;
   switch (caseId) {
+    case "create":
+      return (
+        answer.sessionId === "eval-worker-1" &&
+        answer.sessionIds.includes(OWN_SESSION_ID) &&
+        answer.answer.trim() === "created-5b7" &&
+        trace.some(
+          (entry) =>
+            entry.method === "POST" &&
+            entry.status === 202 &&
+            entry.path === `${root}/sessions`,
+        ) &&
+        read(`${root}/sessions/eval-worker-1/relationships`) &&
+        (read(`${root}/sessions/eval-worker-1/conversation`) ||
+          read(`${root}/sessions/eval-worker-1/conversation/follow`))
+      );
     case "follow":
       return (
         answer.answer.trim() === "worker-9c4" &&

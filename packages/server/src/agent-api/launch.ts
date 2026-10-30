@@ -18,6 +18,7 @@ const runtimes = new Map<string, SharedRuntime>();
 export async function createAgentApiLaunch(options: {
   serverId: string;
   sessionId: () => string | null;
+  management?: boolean;
   read?: CoreApi["read"];
 }) {
   let shared = runtimes.get(options.serverId);
@@ -38,6 +39,7 @@ export async function createAgentApiLaunch(options: {
     lease = runtime.issue({
       principal: SUPERUSER,
       sessionId: options.sessionId,
+      management: options.management,
     });
   } catch (error) {
     if (!record.users && runtimes.get(options.serverId) === record) {

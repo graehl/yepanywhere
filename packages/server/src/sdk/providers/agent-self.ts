@@ -194,6 +194,7 @@ export async function startAgentSelfSession(
     if (apiEnabled)
       apiLease = await createAgentApiLaunch({
         serverId: options.agentApi!.serverId,
+        management: options.agentApi!.management,
         sessionId: () => state.sessionId ?? null,
         read: options.onAgentApiRead,
       });
@@ -219,13 +220,19 @@ export async function startAgentSelfSession(
       // This distinct family never enters the legacy self-token Bash file.
       agentApiEnvironment: apiLease?.environment,
       agentApiInstructions: apiLease
-        ? agentApiBootstrapInstructions(process.platform === "win32")
+        ? agentApiBootstrapInstructions(
+            process.platform === "win32",
+            options.agentApi?.management === true,
+          )
         : undefined,
       globalInstructions:
         apiLease && provider !== "codex"
           ? [
               options.globalInstructions,
-              agentApiBootstrapInstructions(process.platform === "win32"),
+              agentApiBootstrapInstructions(
+                process.platform === "win32",
+                options.agentApi?.management === true,
+              ),
             ]
               .filter(Boolean)
               .join("\n\n")

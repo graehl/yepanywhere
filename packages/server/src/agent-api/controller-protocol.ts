@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { followQuery } from "../core-api/conversation.js";
-import { pageQuery } from "../core-api/contracts.js";
+import { pageQuery, launchContextSchema } from "../core-api/contracts.js";
 
 /** Only existing catalog reads cross the trusted provider/controller channel. */
 export const agentCatalogRequest = z
@@ -12,11 +12,17 @@ export const agentCatalogRequest = z
       "session",
       "conversation",
       "followConversation",
+      "createSession",
+      "receipt",
+      "relationships",
     ]),
     input: z
       .object({
         serverId: z.string().min(1).max(4096).optional(),
         sessionId: z.string().min(1).max(4096).optional(),
+        receiptId: z.string().min(1).max(128).optional(),
+        body: z.unknown().optional(),
+        launch: launchContextSchema.optional(),
         query: pageQuery
           .extend(followQuery.shape)
           .catchall(z.string().max(4096))

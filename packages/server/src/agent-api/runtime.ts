@@ -35,6 +35,7 @@ interface Entry {
   launchId: string;
   sessionId: () => string | null;
   principal: Principal;
+  management?: true;
   expiresAt: number;
 }
 export interface AgentApiLease {
@@ -51,6 +52,7 @@ export interface AgentApiRuntime {
   issue(input: {
     principal: Principal;
     sessionId: () => string | null;
+    management?: boolean;
   }): AgentApiLease;
   /** An old detach cannot disconnect a replacement controller. */
   attachController(controller: AgentApiController): () => void;
@@ -89,6 +91,7 @@ export async function createAgentApiRuntime(options: {
     projects: unavailable,
     sessions: unavailable,
     providers: unavailable,
+    managementEnabled: () => true,
   });
   const reader: Pick<CoreApi, "read"> = {
     read: async (operation, caller, input = {}) => {
@@ -187,6 +190,7 @@ export async function createAgentApiRuntime(options: {
     c.set(API_LAUNCH_VARIABLE, {
       id: entry.sessionId(),
       launchId: entry.launchId,
+      ...(entry.management ? { management: true as const } : {}),
     });
     await next();
   });
@@ -254,6 +258,7 @@ export async function createAgentApiRuntime(options: {
         launchId: randomUUID(),
         sessionId: input.sessionId,
         principal: input.principal,
+        ...(input.management ? { management: true as const } : {}),
         expiresAt: now() + LEASE_MS,
       };
       entries.set(key, entry);

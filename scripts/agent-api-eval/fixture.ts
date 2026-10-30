@@ -1,3 +1,7 @@
+import { openSqliteOrThrow } from "../../packages/server/src/storage/sqlite.js";
+import { migrateDiscoveryDatabase } from "../../packages/server/src/storage/discovery-sqlite.js";
+import { ApiReceiptStore } from "../../packages/server/src/core-api/receipt-store.js";
+import { SessionCommands } from "../../packages/server/src/core-api/session-commands.js";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
@@ -22,7 +26,33 @@ import {
 
 /** Real private adapter, deterministic source functions, no app/profile/scanners. */
 export async function createFixture(caseId: CaseId) {
-  const runtime = await createAgentApiRuntime({ serverId: SERVER_ID });
+  const localSessions = [...sessions];
+  const management = caseId === "create";
+  const database = management ? openSqliteOrThrow(":memory:") : undefined;
+  if (database) migrateDiscoveryDatabase(database);
+  const receiptStore = database ? new ApiReceiptStore(database) : undefined;
+  let workerCount = 0;
+  const commands = receiptStore
+    ? new SessionCommands(
+        SERVER_ID,
+        receiptStore,
+        {
+          async start(project, request) {
+            const id = `eval-worker-${++workerCount}`;
+            localSessions.push({
+              id,
+              projectId: project.id,
+              provider: request.provider,
+              title: "Release worker",
+              updatedAt: new Date().toISOString(),
+              state: "idle",
+            });
+            return { sessionId: id };
+          },
+        },
+        () => management,
+      )
+    : undefined;
   const noise: Message[] = Array.from({ length: 40 }, (_, i) => [
     {
       type: "assistant" as const,
@@ -82,11 +112,14 @@ export async function createFixture(caseId: CaseId) {
               {
                 type: "assistant",
                 uuid: "answer",
-                content: worker
-                  ? done
-                    ? "The release artifact is worker-9c4."
-                    : "Working on the release."
-                  : "The release artifact is orchid-7f2.",
+                content:
+                  management && sessionId.startsWith("eval-worker-")
+                    ? "The release artifact is created-5b7."
+                    : worker
+                      ? done
+                        ? "The release artifact is worker-9c4."
+                        : "Working on the release."
+                      : "The release artifact is orchid-7f2.",
               },
             ],
             activity:
@@ -105,12 +138,14 @@ export async function createFixture(caseId: CaseId) {
       };
     },
   );
+  const runtime = await createAgentApiRuntime({ serverId: SERVER_ID });
   const core = new CoreApi(SERVER_ID, {
+    commands,
     conversation: createConversationRead(conversations),
     followConversation: createConversationFollow(conversations, SERVER_ID),
     projects: async () => ({ items: projects }),
     sessions: async () => ({
-      items: sessions,
+      items: localSessions,
       catalog: {
         complete: caseId !== "incomplete",
         refreshing: caseId === "incomplete",
@@ -129,6 +164,7 @@ export async function createFixture(caseId: CaseId) {
   const lease = runtime.issue({
     principal: SUPERUSER,
     sessionId: () => OWN_SESSION_ID,
+    management,
   });
   const trace: Trace[] = [];
   // A test-only transparent front records actual HTTP outcomes and repeated doc
@@ -209,6 +245,12 @@ export async function createFixture(caseId: CaseId) {
     });
     if (socket) await chmod(socket, 0o600);
   } catch (error) {
+    if (workerTimer) clearTimeout(workerTimer);
+    conversations.close();
+    commands?.close();
+    await commands?.idle();
+    receiptStore?.close();
+    database?.close();
     await runtime.close();
     await rm(directory, { recursive: true, force: true });
     throw error;
@@ -218,6 +260,7 @@ export async function createFixture(caseId: CaseId) {
     ? "http://127.0.0.1"
     : `http://127.0.0.1:${typeof address === "object" && address ? address.port : ""}`;
   return {
+    management,
     workerFinished,
     trace,
     environment: {
@@ -230,6 +273,10 @@ export async function createFixture(caseId: CaseId) {
       await new Promise<void>((resolve) => front.close(() => resolve()));
       if (workerTimer) clearTimeout(workerTimer);
       conversations.close();
+      commands?.close();
+      await commands?.idle();
+      receiptStore?.close();
+      database?.close();
       await runtime.close();
       await rm(directory, { recursive: true, force: true });
     },

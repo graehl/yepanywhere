@@ -250,6 +250,31 @@ describe("LocalAccessSettings", () => {
       );
     });
 
+    it("keeps command authority behind its distinct capability and setting", () => {
+      useDirectAccess(false);
+      versionState.capabilities = [SERVER_CAPABILITIES.agentApiBootstrap.name];
+      const first = render(<LocalAccessSettings />);
+      expect(
+        screen.queryByRole("checkbox", {
+          name: "localAccessAgentApiManagementTitle",
+        }),
+      ).toBeNull();
+      first.unmount();
+      versionState.capabilities.push(
+        SERVER_CAPABILITIES.agentApiManagement.name,
+      );
+      render(<LocalAccessSettings />);
+      const management = screen.getByRole("checkbox", {
+        name: "localAccessAgentApiManagementTitle",
+      });
+      expect(management).toHaveProperty("checked", false);
+      fireEvent.click(management);
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "agentApiManagementEnabled",
+        true,
+      );
+    });
+
     it("offers session API access only once a password is required", async () => {
       versionState.capabilities = [
         APPROVAL_AUDIT_LOG_CAPABILITY,

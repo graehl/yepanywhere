@@ -1,3 +1,8 @@
+import {
+  createSessionRequest,
+  receiptSchema,
+  relationshipsSchema,
+} from "./command-contracts.js";
 import { z } from "zod";
 import {
   conversationQuery,
@@ -6,7 +11,7 @@ import {
   followSchema,
 } from "./conversation.js";
 
-export const API_REVISION = "2026-10-30.5";
+export const API_REVISION = "2026-10-30.6";
 export const paginationQuery = z.object({
   cursor: z
     .string()
@@ -141,6 +146,12 @@ export const accessSchema = z.object({
   operations: z.array(z.string()),
 });
 export const launchContextSchema = z.object({
+  management: z
+    .literal(true)
+    .optional()
+    .describe(
+      "Explicit session-command authority issued for this launch. Absent means read-only, even after the operator enables management.",
+    ),
   id: z
     .string()
     .nullable()
@@ -233,9 +244,35 @@ export const operations = [
     path: "/servers/:serverId/sessions/:sessionId/conversation/follow",
     response: followSchema,
   },
+  {
+    id: "createSession",
+    path: "/servers/:serverId/sessions",
+    method: "POST",
+    request: createSessionRequest,
+    response: receiptSchema,
+  },
+  {
+    id: "receipt",
+    path: "/servers/:serverId/receipts/:receiptId",
+    response: receiptSchema,
+  },
+  {
+    id: "relationships",
+    path: "/servers/:serverId/sessions/:sessionId/relationships",
+    response: relationshipsSchema,
+    paginated: true,
+  },
 ] as const;
 export type Operation = (typeof operations)[number]["id"];
 export const operationIds = operations.map((operation) => operation.id);
+export function operationMethod(
+  operation: (typeof operations)[number],
+): "GET" | "POST" {
+  return "method" in operation ? operation.method : "GET";
+}
+export const readOperationIds = operations
+  .filter((operation) => operationMethod(operation) === "GET")
+  .map((operation) => operation.id);
 
 /** Human semantics and executable request examples share the wire contract. */
 export const operationDocumentation: Record<
@@ -308,6 +345,25 @@ export const operationDocumentation: Record<
       "List retained summaries, optionally filtered by exact projectId. Newest updatedAt first, then id. Resource grants, creator access and hidden projects apply before pagination. Ambiguous cross-project ids are omitted. This does not return messages or completion results.",
     example: "/v0/servers/{serverId}/sessions?projectId={projectId}&limit=1",
   },
+  createSession: {
+    summary: "Create a native session with retry identity",
+    description:
+      'Requires explicit default-off session-command enablement and operator authority; launch credentials also require management=true and a bound owning session. POST JSON {requestId,projectId,provider,message,model?,thinking?,permissionMode?,serviceTier?}. requestId is a unique 8–128 character retry key. Example: {"requestId":"review-2026-01","projectId":"<projectId>","provider":"codex","message":"Review the change and report findings","thinking":"on:high","permissionMode":"default"}. Returns 202 with a durable receipt before native launch completes. Reuse the identical request/key after response loss; conflicting payloads return409. Never resend an uncertain request with a new key unless intentionally accepting duplicate work. Only existing projects and configured local Claude/Codex harnesses are qualified. Native admission owns capacity; no checkout/delegation policy is added.',
+    example: "/v0/servers/{serverId}/sessions",
+  },
+  receipt: {
+    summary: "Inspect a durable command receipt",
+    description:
+      "Operator-only read of request identity, trusted creator/destination and native admission evidence. dispatching/queued/accepted are not delivery or successful response completion. Restarted unfinished reservations become uncertain and are never automatically replayed. Prompts/tokens are not stored. If the initial response was lost, POST the identical request/key again to recover this receipt id.",
+    example: "/v0/servers/{serverId}/receipts/{receiptId}",
+  },
+  relationships: {
+    summary: "Inspect recorded session creation and initiated commands",
+    description:
+      "Operator-only view of the target session's v0 creation and bounded outgoing receipts. This is provenance, independent of fork or /btw parenting. Legacy sessions can have creation=null. Sources/destinations are local public server ids in this build; no peer routing or grants are implied.",
+    example:
+      "/v0/servers/{serverId}/sessions/{sessionId}/relationships?limit=50",
+  },
   followConversation: {
     summary: "Follow compact conversation over bounded HTTP",
     description:
@@ -335,23 +391,39 @@ export const errorDescriptions = {
   401: "Authentication missing, invalid or expired. Host authentication may return its existing error format.",
   403: "Request denied by host, origin, custom-header or principal policy. The hosting security layer may use its existing error format.",
   404: "Unknown resource/server, or session absent/inaccessible/ambiguous in a complete catalog; anchor_unavailable means choose another history window explicitly. No target fallback.",
+  409: "request_id_conflict: retry key names a different payload; identity_pending: owning session is not bound yet.",
   500: "internal_error: unexpected read failure; private exception details are not returned.",
   503: "catalog_not_ready: session absence is uncertain in an incomplete catalog; controller_unavailable: the catalog owner is detached/reloading. Retry reads later; neither means the session was deleted. conversation_unavailable means unsupported, unreadable or over-budget history; do not infer successful completion.",
 };
 
-export function apiHelp() {
+export function apiHelp(selected?: Operation) {
+  if (selected) {
+    const operation = operations.find(
+      (operation) => operation.id === selected,
+    )!;
+    const doc = operationDocumentation[selected];
+    return [
+      `# ${doc.summary}`,
+      `${operationMethod(operation)} /v0${operation.path.replace(/:([A-Za-z]+)/g, "{$1}")}`,
+      doc.description,
+      `Example: ${operationMethod(operation)} ${doc.example}`,
+      `Exact schema: GET /v0/schema?operation=${selected}`,
+    ].join("\n\n");
+  }
   return [
     "# Yep Anywhere HTTP API v0",
     "",
     `Revision: ${API_REVISION}. Unstable: routes, fields and behavior may change.`,
     "",
-    "Use this API to inspect authorized projects, configured provider harnesses and coding-agent session summaries and compact conversations. This build is READ ONLY. Session creation, message sending, configuration, interruption, command execution, terminals and peer routing are not implemented in v0. Do not infer support from older /api routes or provider capability flags.",
+    "Use this API to inspect authorized projects, configured provider harnesses and coding-agent session summaries and compact conversations. Reading includes compact conversations and following. Session creation requires a separate explicit management grant and default-off setting; read-only launch credentials never gain writes. Message sending, configuration, interruption, command execution, terminals and peer routing are not implemented in this revision. Do not infer support from older /api routes or provider capability flags.",
     "",
     "## Connect and discover",
     "",
     "Use your supplied connection and authentication. Normal server access follows the host's operator cookie/token or authenticated transport policy; desktop sessions use their own cookie bootstrap. When the ordinary host has authentication disabled or unconfigured without a desktop auth floor, it may admit requests as the operator without a credential. When authentication is required, supply the host credential. Follow the host's custom-header requirement when using its ordinary TCP API. A dedicated agent adapter always requires its supplied launch bearer, including help/schema. If supplied, AGENT_YA_V0_SOCKET selects Unix HTTP; otherwise use the supplied loopback AGENT_YA_V0_URL on Windows. Never guess a port, profile or credential. Only qualified launches advertise this connection.",
     "",
     "Read GET /v0 for serverId, GET /v0/me for caller identity, and GET /v0/schema for exact parameter and response schemas. Copy ids from responses, not names or local paths. URL-encode path ids and query values. A session belongs to a server; projects and paths are not global across hosts.",
+    "",
+    "For one operation, use GET /v0/help?operation={operationId} or GET /v0/schema?operation={operationId}. Prefer the relevant operation schema over fetching the entire reference when you only need one request body.",
     "",
     "## Find a project and its sessions",
     "",
@@ -375,7 +447,7 @@ export function apiHelp() {
       ([status, description]) => `- ${status}: ${description}`,
     ),
     "",
-    "V0 handler errors use {error: {code, message}}. Earlier host authentication/policy errors can use existing JSON/text formats. Responses are no-store. Session state is an observation, not proof of turn completion. This surface starts no provider, independent scanner or retry loop.",
+    "V0 handler errors use {error: {code, message}}. Earlier host authentication/policy errors can use existing JSON/text formats. Responses are no-store. Session state is an observation, not proof of turn completion. Read operations start no provider, independent scanner or retry loop. Explicitly authorized commands use native ownership and durable retry receipts.",
     "",
     "## Operation reference",
     "",
@@ -383,16 +455,16 @@ export function apiHelp() {
       const doc = operationDocumentation[operation.id];
       return [
         `### ${doc.summary}`,
-        `GET /v0${operation.path.replace(/:([A-Za-z]+)/g, "{$1}")}`,
+        `${operationMethod(operation)} /v0${operation.path.replace(/:([A-Za-z]+)/g, "{$1}")}`,
         doc.description,
-        `Example: GET ${doc.example}`,
+        `Example: ${operationMethod(operation)} ${doc.example}`,
         "",
       ];
     }),
   ].join("\n");
 }
 
-export function apiSchema(launchBound = false) {
+export function apiSchema(launchBound = false, selected?: Operation) {
   return {
     openapi: "3.1.0",
     ...(launchBound
@@ -416,92 +488,133 @@ export function apiSchema(launchBound = false) {
       description:
         "Unstable v0: incompatible changes are permitted. Provider descriptors are configured harnesses, not an installed/authenticated model catalog. Session lists are retained summaries and may be incomplete while refreshing. Cursors are offsets, not snapshot handles.",
     },
-    paths: Object.fromEntries(
-      operations.map((operation) => [
-        `/v0${operation.path.replace(/:([A-Za-z]+)/g, "{$1}")}`,
-        {
-          get: {
-            operationId: operation.id,
-            summary: operationDocumentation[operation.id].summary,
-            description: operationDocumentation[operation.id].description,
-            "x-example-request": {
-              method: "GET",
-              path: operationDocumentation[operation.id].example,
-            },
-            parameters: [
-              ...(operation.id === "conversation" ||
-              operation.id === "followConversation"
-                ? Object.entries(
-                    operation.id === "followConversation"
-                      ? followQuery.shape
-                      : conversationQuery.shape,
-                  ).map(([name, schema]) => ({
-                    name,
-                    in: "query",
-                    required: false,
-                    description: schema.description,
-                    schema: z.toJSONSchema(schema),
-                  }))
-                : []),
-              ...[...operation.path.matchAll(/:([A-Za-z]+)/g)].map((match) => ({
-                name: match[1],
-                in: "path",
-                required: true,
-                description:
-                  match[1] === "serverId"
-                    ? "Public server id from GET /v0; unknown targets fail without local fallback."
-                    : "Canonical YA session id from this target's session collection.",
-                schema: { type: "string", minLength: 1 },
-              })),
-              ...("paginated" in operation
-                ? Object.entries(
-                    operation.id === "sessions"
-                      ? pageQuery.shape
-                      : paginationQuery.shape,
-                  ).map(([name, schema]) => ({
-                    name,
-                    in: "query",
-                    required: false,
-                    description: schema.description,
-                    schema: z.toJSONSchema(schema),
-                  }))
-                : []),
-            ],
-            responses: Object.fromEntries(
-              [200, 400, 401, 403, 404, 500, 503].map((status) => [
-                status,
-                {
-                  description:
-                    status === 200
-                      ? "Success"
-                      : errorDescriptions[
-                          status as keyof typeof errorDescriptions
-                        ],
-                  content: {
-                    [operation.id === "help" && status === 200
-                      ? "text/markdown"
-                      : "application/json"]: {
-                      schema: z.toJSONSchema(
-                        status === 200
-                          ? operation.response
-                          : status === 401 || status === 403
-                            ? z.union([
-                                errorSchema,
-                                z.object({
-                                  error: z.string(),
-                                  setupRequired: z.boolean().optional(),
-                                }),
-                              ])
-                            : errorSchema,
-                      ),
+    paths: operations
+      .filter((operation) => !selected || operation.id === selected)
+      .reduce(
+        (paths, operation) => {
+          const path = `/v0${operation.path.replace(/:([A-Za-z]+)/g, "{$1}")}`;
+          const entry = {
+            [operationMethod(operation).toLowerCase()]: {
+              operationId: operation.id,
+              summary: operationDocumentation[operation.id].summary,
+              description: operationDocumentation[operation.id].description,
+              "x-example-request": {
+                method: operationMethod(operation),
+                path: operationDocumentation[operation.id].example,
+              },
+              ...("request" in operation
+                ? {
+                    requestBody: {
+                      required: true,
+                      content: {
+                        "application/json": {
+                          schema: z.toJSONSchema(operation.request),
+                        },
+                      },
+                    },
+                  }
+                : {}),
+              parameters: [
+                ...(["help", "schema"].includes(operation.id)
+                  ? [
+                      {
+                        name: "operation",
+                        in: "query",
+                        required: false,
+                        description:
+                          "Select one operation by operationId to avoid fetching the full reference/schema.",
+                        schema: { type: "string", enum: operationIds },
+                      },
+                    ]
+                  : []),
+                ...(operation.id === "conversation" ||
+                operation.id === "followConversation"
+                  ? Object.entries(
+                      operation.id === "followConversation"
+                        ? followQuery.shape
+                        : conversationQuery.shape,
+                    ).map(([name, schema]) => ({
+                      name,
+                      in: "query",
+                      required: false,
+                      description: schema.description,
+                      schema: z.toJSONSchema(schema),
+                    }))
+                  : []),
+                ...[...operation.path.matchAll(/:([A-Za-z]+)/g)].map(
+                  (match) => ({
+                    name: match[1],
+                    in: "path",
+                    required: true,
+                    description:
+                      match[1] === "serverId"
+                        ? "Public server id from GET /v0; unknown targets fail without local fallback."
+                        : "Canonical YA session id from this target's session collection.",
+                    schema: { type: "string", minLength: 1 },
+                  }),
+                ),
+                ...("paginated" in operation
+                  ? Object.entries(
+                      operation.id === "sessions"
+                        ? pageQuery.shape
+                        : paginationQuery.shape,
+                    ).map(([name, schema]) => ({
+                      name,
+                      in: "query",
+                      required: false,
+                      description: schema.description,
+                      schema: z.toJSONSchema(schema),
+                    }))
+                  : []),
+              ],
+              responses: Object.fromEntries(
+                [
+                  operationMethod(operation) === "POST" ? 202 : 200,
+                  400,
+                  401,
+                  403,
+                  404,
+                  409,
+                  500,
+                  503,
+                ].map((status) => [
+                  status,
+                  {
+                    description:
+                      status === 200 || status === 202
+                        ? "Success"
+                        : errorDescriptions[
+                            status as keyof typeof errorDescriptions
+                          ],
+                    content: {
+                      [operation.id === "help" &&
+                      (status === 200 || status === 202)
+                        ? "text/markdown"
+                        : "application/json"]: {
+                        schema: z.toJSONSchema(
+                          status === 200 || status === 202
+                            ? operation.response
+                            : status === 401 || status === 403
+                              ? z.union([
+                                  errorSchema,
+                                  z.object({
+                                    error: z.string(),
+                                    setupRequired: z.boolean().optional(),
+                                  }),
+                                ])
+                              : errorSchema,
+                        ),
+                      },
                     },
                   },
-                },
-              ]),
-            ),
-          },
+                ]),
+              ),
+            },
+          };
+          paths[path] = { ...(paths[path] ?? {}), ...entry };
+          return paths;
         },
-      ]),
-    ),
+        {} as Record<string, Record<string, unknown>>,
+      ),
   };
 }

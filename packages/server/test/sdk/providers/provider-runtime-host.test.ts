@@ -1,3 +1,7 @@
+import { openSqliteOrThrow } from "../../../src/storage/sqlite.js";
+import { migrateDiscoveryDatabase } from "../../../src/storage/discovery-sqlite.js";
+import { ApiReceiptStore } from "../../../src/core-api/receipt-store.js";
+import { SessionCommands } from "../../../src/core-api/session-commands.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
@@ -524,6 +528,7 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
           "recent-runtime-recovery",
           "provider-session-options",
           "agent-api-revocation",
+          "agent-api-management",
         ],
         controlSocketPath: paths.controlSocketPath,
         tokenFilePath: paths.tokenPath,
@@ -2015,7 +2020,23 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
     process.env.YEP_PROVIDER_RUNTIME_SOCKET = controlSocketPath;
     process.env.YEP_PROVIDER_RUNTIME_TOKEN = "api-host-token";
     process.env.YEP_SERVER_GENERATION = "api-first";
+    const database = openSqliteOrThrow(":memory:");
+    migrateDiscoveryDatabase(database);
+    const receiptStore = new ApiReceiptStore(database);
+    let launches = 0;
+    const commands = new SessionCommands(
+      "profile-api-host",
+      receiptStore,
+      {
+        async start() {
+          launches++;
+          return { sessionId: "created-native" };
+        },
+      },
+      () => true,
+    );
     const core = new CoreApi("profile-api-host", {
+      commands,
       projects: async () => ({
         items: [
           { id: "worker-project", name: "worker project", path: runtimeRoot },
@@ -2048,11 +2069,18 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
           query.anchorMessageId ? 404 : 503,
         );
       },
-      providers: async () => [],
+      providers: async () => [
+        {
+          id: "claude",
+          name: "Claude",
+          supportsSteering: true,
+          supportsPermissionMode: true,
+        },
+      ],
     });
     const options = {
       cwd: runtimeRoot,
-      agentApi: { serverId: "profile-api-host" },
+      agentApi: { serverId: "profile-api-host", management: true },
       onAgentApiRead: core.read.bind(core),
     };
     try {
@@ -2102,6 +2130,40 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
         changed: false,
         conversation: null,
       });
+      const createBody = {
+        requestId: "bridge-create-1",
+        projectId: "worker-project",
+        provider: "claude",
+        message: "Review",
+      };
+      first.queue.push({
+        text: JSON.stringify({
+          path: "/v0/servers/profile-api-host/sessions",
+          body: createBody,
+        }),
+      });
+      const created = (await first.iterator.next()).value!.apiResult as {
+        status: number;
+        body: string;
+      };
+      expect(created.status).toBe(202);
+      const receipt = JSON.parse(created.body);
+      expect(receipt.creator).toMatchObject({
+        sessionId: "api-fixture",
+        serverId: "profile-api-host",
+      });
+      first.queue.push({
+        text: JSON.stringify({
+          path: "/v0/servers/profile-api-host/sessions",
+          body: createBody,
+        }),
+      });
+      const repeated = (await first.iterator.next()).value!.apiResult as {
+        status: number;
+        body: string;
+      };
+      expect(JSON.parse(repeated.body).id).toBe(receipt.id);
+      expect(launches).toBe(1);
       await first.publishAgentctlSessionId?.("api-fixture");
       const waiting = first.iterator.next();
       await first.detachForServerReload?.();
@@ -2146,6 +2208,10 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
       await second.abort();
       await other.abort();
     } finally {
+      commands.close();
+      await commands.idle();
+      receiptStore.close();
+      database.close();
       await host.shutdown("agent HTTP test complete");
     }
   });

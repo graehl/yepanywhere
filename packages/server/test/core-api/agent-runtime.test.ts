@@ -230,7 +230,7 @@ describe("launch-bound local agent adapter", () => {
         detachSameNew();
         expect((await request(a, "/v0/me", token)).status).toBe(200);
         expect((await request(a, "/v0/help", token)).body).toContain(
-          "READ ONLY",
+          "read-only launch credentials",
         );
         expect(() => a.attachController(controller("B", "wrong"))).toThrow(
           "identity mismatch",

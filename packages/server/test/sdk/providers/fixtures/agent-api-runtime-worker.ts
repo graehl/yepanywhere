@@ -1,5 +1,5 @@
 // Scripted provider, real owner/socket/HTTP adapters. Never exposes its lease.
-import { get } from "node:http";
+import { request as httpRequest } from "node:http";
 import { MessageQueue } from "../../../../src/sdk/messageQueue.js";
 import { startAgentSelfSession } from "../../../../src/sdk/providers/agent-self.js";
 import { ProviderSessionOwner } from "../../../../src/sdk/providers/provider-session-owner.js";
@@ -54,14 +54,22 @@ const metadata = await owner.start(async (hooks) => ({
       const iterator = (async function* (): AsyncGenerator<SDKMessage> {
         yield { type: "system", subtype: "init", session_id: "api-fixture" };
         for await (const message of incoming) {
-          const path = String(message.message.content);
+          const text = String(message.message.content);
+          const command = text.startsWith("{")
+            ? (JSON.parse(text) as { path: string; body?: unknown })
+            : { path: text };
+          const { path, body: requestBody } = command;
           const result = await new Promise<{ status: number; body: string }>(
             (resolve) => {
-              const req = get(
+              const req = httpRequest(
                 new URL(path, env.AGENT_YA_V0_URL),
                 {
                   socketPath: env.AGENT_YA_V0_SOCKET,
-                  headers: { Authorization: env.AGENT_YA_V0_AUTHORIZATION },
+                  method: requestBody === undefined ? "GET" : "POST",
+                  headers: {
+                    Authorization: env.AGENT_YA_V0_AUTHORIZATION,
+                    "Content-Type": "application/json",
+                  },
                 },
                 (response) => {
                   let body = "";
@@ -75,6 +83,11 @@ const metadata = await owner.start(async (hooks) => ({
               );
               req.on("error", () =>
                 resolve({ status: 0, body: "unavailable" }),
+              );
+              req.end(
+                requestBody === undefined
+                  ? undefined
+                  : JSON.stringify(requestBody),
               );
             },
           );

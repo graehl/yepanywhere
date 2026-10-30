@@ -141,6 +141,10 @@ export function LocalAccessSettings() {
     SERVER_CAPABILITIES.agentApiBootstrap,
   );
 
+  const supportsAgentApiManagement = serverHasCapability(
+    versionInfo,
+    SERVER_CAPABILITIES.agentApiManagement,
+  );
   // Network binding form state
   const [localhostPort, setLocalhostPort] = useState<string>("");
   const [networkEnabled, setNetworkEnabled] = useState(false);
@@ -1235,9 +1239,21 @@ export function LocalAccessSettings() {
                 <details className={styles.agentApiPreview}>
                   <summary>{t("localAccessAgentApiPreview")}</summary>
                   <p>{t("localAccessAgentApiUnix")}</p>
-                  <pre>{agentApiBootstrapInstructions(false)}</pre>
+                  <pre>
+                    {agentApiBootstrapInstructions(
+                      false,
+                      supportsAgentApiManagement &&
+                        serverSettings?.agentApiManagementEnabled === true,
+                    )}
+                  </pre>
                   <p>{t("localAccessAgentApiWindows")}</p>
-                  <pre>{agentApiBootstrapInstructions(true)}</pre>
+                  <pre>
+                    {agentApiBootstrapInstructions(
+                      true,
+                      supportsAgentApiManagement &&
+                        serverSettings?.agentApiManagementEnabled === true,
+                    )}
+                  </pre>
                 </details>
               }
             >
@@ -1250,6 +1266,30 @@ export function LocalAccessSettings() {
                     updateServerSetting("agentApiEnabled", e.target.checked)
                   }
                   aria-label={t("localAccessAgentApiTitle")}
+                />
+                <span className="toggle-slider" />
+              </label>
+            </SettingsItem>
+          )}
+
+          {supportsAgentApiManagement && (
+            <SettingsItem
+              label={t("localAccessAgentApiManagementTitle")}
+              description={t("localAccessAgentApiManagementDescription")}
+              doc="topics/http-api-v0.md#session-command-authority"
+            >
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={serverSettings?.agentApiManagementEnabled ?? false}
+                  disabled={!serverSettings}
+                  onChange={(event) =>
+                    updateServerSetting(
+                      "agentApiManagementEnabled",
+                      event.target.checked,
+                    )
+                  }
+                  aria-label={t("localAccessAgentApiManagementTitle")}
                 />
                 <span className="toggle-slider" />
               </label>

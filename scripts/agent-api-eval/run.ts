@@ -254,7 +254,7 @@ async function main() {
             const schemaPath = join(cwd, "answer-schema.json");
             const answerPath = join(cwd, "answer.json");
             await writeFile(schemaPath, JSON.stringify(answerSchema));
-            const prompt = `${bootstrap(variant)}\n\nTask: ${CASES[caseId]}\nUse null/empty fields when irrelevant. Return only the requested JSON shape. Use only this API for YA facts; do not inspect YA source, personal files, other services or credentials. Never print connection values.${caseId === "detail" ? " The answer field is the provider id only." : ""}`;
+            const prompt = `${bootstrap(variant, false, fixture.management)}\n\nTask: ${CASES[caseId]}\nUse null/empty fields when irrelevant. Return only the requested JSON shape. Use only this API for YA facts; do not inspect YA source, personal files, other services or credentials. Never print connection values.${caseId === "detail" ? " The answer field is the provider id only." : ""}`;
             const env: NodeJS.ProcessEnv = {
               PATH: process.env.PATH,
               HOME: root,
@@ -416,7 +416,9 @@ async function main() {
                 new Set(
                   fixture.trace.map((entry) => `${entry.method} ${entry.path}`),
                 ).size,
-              bootstrapBytes: bytes(bootstrap(variant)),
+              bootstrapBytes: bytes(
+                bootstrap(variant, false, fixture.management),
+              ),
               promptBytes: bytes(prompt),
               fetchedDocumentationBytes: docs.reduce(
                 (sum, entry) => sum + entry.bytes,

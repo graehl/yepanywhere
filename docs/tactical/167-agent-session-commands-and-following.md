@@ -141,3 +141,20 @@ Record each phase's actual tests, reviewer findings/fixes, model trials,
 remaining limits and commit. Existing intermittent Rendez watcher failures are
 tracked in [its gap](../../gaps/rendez-nested-watch-event-after-restart.md);
 do not hide them, widen timeouts or call a failing final suite green.
+
+## Phase 1 evidence
+
+Implemented bounded native acquisition with frozen Codex lineage, Claude branch
+selection, exact queued prose, generation validation and a bounded warm cache.
+The read-only Sol high review found and drove repairs for rewrite-plus-append,
+metadata/body races, clipped queued prompts, queued admission and long wrapped
+Codex failures. Tests include those regressions and captured-provider parity.
+A read-only local diagnostic acquired a roughly 18 MB native Codex session;
+its next unchanged read parsed zero JSONL body records. These are diagnostic
+observations, not a cross-host performance benchmark.
+
+Phase 1 review is closed after a further interruption-marker regression. Final
+focused acquisition/source/subscription checks pass (40 tests); root lint,
+format, typecheck and workspace tests pass. The full server run passed 6,595
+cases before the final guard-only repair; the changed boundary was rerun with
+15 reader cases afterward. Native Windows qualification remains deferred.

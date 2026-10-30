@@ -2871,6 +2871,8 @@ export function createApp(options: AppOptions): AppResult {
   const conversationCatalog = retainedCollections;
   conversationSubscriptions = new ConversationSubscriptions(
     createConversationSource({
+      resolveRolloutPath: (row, id) =>
+        codexReaderFactory(row.projectPath).getSessionFilePath(id),
       resolve: async (sessionId) => {
         const { rows } = await conversationCatalog.read();
         const candidates = rows.filter((row) => row.sessionId === sessionId);

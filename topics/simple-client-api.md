@@ -285,12 +285,22 @@ no alternate authentication or provider transcript store is introduced.
   open until the client gives up.
 - Native acquisition resolves an unambiguous session through the retained
   catalog and reuses the existing Claude active-branch and Codex normalizers.
-  Before parsing it caps the file at 8 MiB, individual records at 1 MiB and the
-  record count at 10,000. Descriptor reads use a fixed allocation and reject
-  concurrent file mutation. An unfinished final row marks coverage incomplete.
-  Larger files, unsupported providers and inherited Codex rollouts return
-  `unavailable`; this initial reader does not pretend a byte tail is a correct
-  provider history window. The two-compaction scope still precedes `maxMessages`.
+  Acquisition scans at most 256 MiB / 100,000 physical records with 64 KiB
+  chunks; individual rows remain capped at 1 MiB. Retained native input is
+  bounded to 8 MiB / 10,000 records before the existing normalized-input cap.
+  Unfinished rows and projection limits remain explicit in coverage; exceeding
+  retained-input bounds returns `unavailable`, rather than dropping branch evidence. Unsupported providers, malformed rows or unverifiable lineage
+  return `unavailable`. Claude branch connectors and queued prose stay exact.
+  Codex inherited history uses native frozen byte/ordinal cutoffs and stable ids;
+  metadata resolution is bound to the same file generation as the body read.
+  Concurrent mutation rejects the acquisition. Tool outputs retain their native
+  failure semantics through normalization; display filtering happens afterward.
+  Four cached files share a 16 MiB retention budget. Warm unchanged reads reuse
+  native records after descriptor/probe validation. Appends validate the complete
+  committed prefix hash before parsing new rows, so rewrite-plus-append cannot
+  report stale complete history. Four active reads and 128 cancellable FIFO
+  waiters bound work; cache clearing fences old in-flight completions. There are
+  no cache timers or watchers. The two-compaction scope precedes `maxMessages`.
 - One source subscribes to its managed Process before replay/bootstrap. YA
   user echoes and finalized provider messages retain their IDs in bounded
   memory. Raw token frames and provisional `_isStreaming` frames are not yet

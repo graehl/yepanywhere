@@ -29,6 +29,10 @@ export interface ConversationSourceDependencies {
   eventBus?: EventBus;
   watch?(row: Readonly<SessionCatalogRow>, invalidate: () => void): () => void;
   readFile?: typeof readConversationFile;
+  resolveRolloutPath?: (
+    row: Readonly<SessionCatalogRow>,
+    id: string,
+  ) => Promise<string | null>;
 }
 
 /** One observed source per session, shared by the subscription owner. */
@@ -197,6 +201,9 @@ export function createConversationSource(
             provider: row.catalogFamily as "claude" | "codex",
             sessionId,
             signal: readSignal,
+            resolveRolloutPath: deps.resolveRolloutPath
+              ? (id) => deps.resolveRolloutPath!(row!, id)
+              : undefined,
           });
           readSignal.throwIfAborted();
           signal.throwIfAborted();

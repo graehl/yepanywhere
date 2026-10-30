@@ -1,11 +1,17 @@
 import { Hono } from "hono";
 import { PRINCIPAL_VARIABLE, type Principal } from "../../auth/principal.js";
-import { operations } from "../../core-api/contracts.js";
+import {
+  operations,
+  API_LAUNCH_VARIABLE,
+  type ApiLaunchContext,
+} from "../../core-api/contracts.js";
 import { type CoreApi, CoreApiError } from "../../core-api/service.js";
 
 /** Mount after the hosting app's authentication and principal resolution. */
-export function createV0Routes(api: CoreApi) {
-  const routes = new Hono<{ Variables: { yaPrincipal: Principal } }>();
+export function createV0Routes(api: Pick<CoreApi, "read">) {
+  const routes = new Hono<{
+    Variables: { yaPrincipal: Principal; yaApiLaunch: ApiLaunchContext };
+  }>();
   routes.use("*", async (c, next) => {
     if (!c.get(PRINCIPAL_VARIABLE))
       return c.json(
@@ -16,11 +22,14 @@ export function createV0Routes(api: CoreApi) {
     await next();
   });
   routes.onError((error, c) => {
-    if (error instanceof CoreApiError)
+    if (error instanceof CoreApiError) {
+      if (error.code === "controller_unavailable")
+        c.header("Connection", "close");
       return c.json(
         { error: { code: error.code, message: error.message } },
         error.status,
       );
+    }
     return c.json(
       { error: { code: "internal_error", message: "API read failed" } },
       500,
@@ -36,6 +45,7 @@ export function createV0Routes(api: CoreApi) {
           sessionId: c.req.param("sessionId"),
           query: c.req.query(),
           signal: c.req.raw.signal,
+          launch: c.get(API_LAUNCH_VARIABLE),
         },
       );
       if (operation.id === "help")

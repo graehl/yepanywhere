@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const API_REVISION = "2026-10-30.2";
+export const API_REVISION = "2026-10-30.3";
 export const paginationQuery = z.object({
   cursor: z
     .string()
@@ -134,6 +134,21 @@ export const accessSchema = z.object({
   scope: z.enum(["all-projects", "project-grants"]),
   operations: z.array(z.string()),
 });
+export const launchContextSchema = z.object({
+  id: z
+    .string()
+    .nullable()
+    .describe(
+      "Canonical owning YA session id, or null until its owner binds it.",
+    ),
+  launchId: z
+    .string()
+    .describe(
+      "Provider-owner launch lease; inherited child environments identify this same launch.",
+    ),
+});
+export type ApiLaunchContext = z.infer<typeof launchContextSchema>;
+export const API_LAUNCH_VARIABLE = "yaApiLaunch";
 export const operations = [
   {
     id: "describe",
@@ -157,7 +172,18 @@ export const operations = [
   {
     id: "me",
     path: "/me",
-    response: z.object({ principal: principalSchema, session: z.null() }),
+    response: z.object({
+      principal: principalSchema,
+      session: launchContextSchema.nullable(),
+      server: serverSchema,
+      observedAt: z.string(),
+      links: z.object({
+        help: z.literal("/v0/help"),
+        schema: z.literal("/v0/schema"),
+        access: z.string(),
+        session: z.string().nullable(),
+      }),
+    }),
   },
   { id: "servers", path: "/servers", response: page(serverSchema) },
   { id: "server", path: "/servers/:serverId", response: serverSchema },
@@ -220,7 +246,7 @@ export const operationDocumentation: Record<
   me: {
     summary: "Inspect your caller identity",
     description:
-      "Read the authenticated acting principal. Ordinary operator/limited-user authentication does not bind an agent session; session is null in this revision. A session id supplied by the caller is not proof of identity.",
+      "Read the authenticated acting principal. Ordinary operator/limited-user authentication does not bind an agent session and returns session=null. A dedicated launch credential identifies its owning session and launch; id=null means canonical identity is pending. A session id supplied by the caller is not proof of identity.",
     example: "/v0/me",
   },
   servers: {
@@ -279,7 +305,7 @@ export const errorDescriptions = {
   403: "Request denied by host, origin, custom-header or principal policy. The hosting security layer may use its existing error format.",
   404: "Unknown resource/server, or session absent/inaccessible/ambiguous in a complete catalog. No target fallback.",
   500: "internal_error: unexpected read failure; private exception details are not returned.",
-  503: "catalog_not_ready: session absence is uncertain while its retained catalog is incomplete. Retry reads later; do not infer that the session was deleted.",
+  503: "catalog_not_ready: session absence is uncertain in an incomplete catalog; controller_unavailable: the catalog owner is detached/reloading. Retry reads later; neither means the session was deleted.",
 };
 
 export function apiHelp() {
@@ -292,7 +318,7 @@ export function apiHelp() {
     "",
     "## Connect and discover",
     "",
-    "Use your supplied connection and authentication. Normal server access follows the host's operator cookie/token or authenticated transport policy; desktop sessions use their own cookie bootstrap. When the ordinary host has authentication disabled or unconfigured without a desktop auth floor, it may admit requests as the operator without a credential. When authentication is required, supply the host credential. Follow the host's custom-header requirement when using its ordinary TCP API. Agent socket bootstrap is not implemented by this revision.",
+    "Use your supplied connection and authentication. Normal server access follows the host's operator cookie/token or authenticated transport policy; desktop sessions use their own cookie bootstrap. When the ordinary host has authentication disabled or unconfigured without a desktop auth floor, it may admit requests as the operator without a credential. When authentication is required, supply the host credential. Follow the host's custom-header requirement when using its ordinary TCP API. A dedicated agent adapter always requires its supplied launch bearer, including help/schema. If supplied, AGENT_YA_API_SOCKET selects Unix HTTP; otherwise use the supplied loopback AGENT_YA_API_URL on Windows. Never guess a port, profile or credential. Only qualified launches advertise this connection.",
     "",
     "Read GET /v0 for serverId, GET /v0/me for caller identity, and GET /v0/schema for exact parameter and response schemas. Copy ids from responses, not names or local paths. URL-encode path ids and query values. A session belongs to a server; projects and paths are not global across hosts.",
     "",
@@ -329,9 +355,24 @@ export function apiHelp() {
   ].join("\n");
 }
 
-export function apiSchema() {
+export function apiSchema(launchBound = false) {
   return {
     openapi: "3.1.0",
+    ...(launchBound
+      ? {
+          security: [{ launchBearer: [] }],
+          components: {
+            securitySchemes: {
+              launchBearer: {
+                type: "http",
+                scheme: "bearer",
+                description:
+                  "Launch-scoped bearer from AGENT_YA_API_TOKEN. Required for every request on the dedicated agent listener, including help/schema. Never use the desktop master credential.",
+              },
+            },
+          },
+        }
+      : {}),
     info: {
       title: "YA HTTP API",
       version: API_REVISION,

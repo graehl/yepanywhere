@@ -12,6 +12,7 @@ import {
   type CatalogState,
   type Operation,
   type PageQuery,
+  type ApiLaunchContext,
 } from "./contracts.js";
 
 export interface CoreApiSources {
@@ -30,7 +31,8 @@ export class CoreApiError extends Error {
       | "invalid_request"
       | "server_not_found"
       | "session_not_found"
-      | "catalog_not_ready",
+      | "catalog_not_ready"
+      | "controller_unavailable",
     message: string,
     readonly status: 400 | 404 | 503,
   ) {
@@ -58,6 +60,8 @@ export class CoreApi {
       sessionId?: string;
       query?: PageQuery;
       signal?: AbortSignal;
+      /** Established by a trusted launch authenticator, never a request field. */
+      launch?: ApiLaunchContext;
     } = {},
   ) {
     input.signal?.throwIfAborted();
@@ -100,9 +104,22 @@ export class CoreApi {
       case "help":
         return apiHelp();
       case "schema":
-        return apiSchema();
+        return apiSchema(Boolean(input.launch));
       case "me":
-        return { principal: describePrincipal(caller), session: null };
+        return {
+          principal: describePrincipal(caller),
+          session: input.launch ?? null,
+          server,
+          observedAt: new Date().toISOString(),
+          links: {
+            help: "/v0/help",
+            schema: "/v0/schema",
+            access: `/v0/servers/${encodeURIComponent(this.serverId)}/access`,
+            session: input.launch?.id
+              ? `/v0/servers/${encodeURIComponent(this.serverId)}/sessions/${encodeURIComponent(input.launch.id)}`
+              : null,
+          },
+        };
       case "servers":
         return { items: [server], nextCursor: null };
       case "server":

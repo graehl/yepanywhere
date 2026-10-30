@@ -18,14 +18,15 @@ and single-session summary routes. Unknown targets never execute locally.
 Other v0 resources and all writes remain unimplemented. Existing `/api/*` and
 the separate own-session listener retain their contracts.
 
-- `/v0` returns public server id, revision `2026-10-30.2`, unstable status and
+- `/v0` returns public server id, revision `2026-10-30.3`, unstable status and
   discovery links. The documentation slice adds Markdown
   help at `/v0/help`, links help/me/schema from discovery, and generates field
   descriptions, operation semantics and example requests alongside OpenAPI.
   `/v0/schema` generates OpenAPI 3.1 response/query schemas
   from the same Zod definitions used by the read surface. These schemas describe
   this subset, not every planned route in the table below. The documentation
-  slice is implemented; socket/bootstrap and session binding remain pending.
+  slice is implemented. The local agent runtime factory below adds launch
+  binding; automatic provider advertisement/integration remains pending.
   Help/schema inherit the normal host's authentication policy, including
   configured auth-off localhost behavior; they do not introduce an independent
   credential requirement on that existing listener.
@@ -166,6 +167,39 @@ ids; project filters do not imply one global project identity across hosts.
 The schema defines pagination, field mutability and provider limitations per
 operation. Unsupported queue/steer behavior must be explicit, not silently
 translated into another delivery choice.
+
+## Local agent runtime factory
+
+Implemented independently of provider/UI integration, 2026-10-30. A provider
+owner can construct a bounded runtime with a fixed public server id, issue an
+operator catalog-read launch lease, and attach an existing CoreApi controller.
+Restricted principals are not eligible in this first profile. The Unix adapter
+creates a fresh private mode-0700 runtime directory and mode-0600 socket; native
+Windows selects an OS-assigned IPv4 loopback port. No legacy API, browser cookie,
+desktop bootstrap or unauthenticated localhost fallback is mounted.
+
+Every request, including help/schema, requires its registered launch bearer.
+Browser origins and non-loopback Host names are rejected. Credentials are
+stored as digests in a registry capped at 1,024 live/retained leases. They expire
+after 24 hours; only a trusted provider owner can renew them. Disposal, runtime
+shutdown and revoke-all invalidate credentials; renewal cannot revive revoked
+ones. This is API authorization, not isolation from a same-user shell.
+
+`/v0/me` returns server identity, observation time, discovery links and the
+credential's owning `{id, launchId}`; `id` is null until canonical binding.
+Ordinary app authentication still returns `session: null`. Caller-supplied ids
+cannot change that binding. The agent schema describes mandatory bearer auth.
+
+Own-context/help/schema and local server facts do not require a catalog
+controller. Catalog reads return `503 controller_unavailable` while detached,
+at the bounded catalog concurrency ceiling, or when their attachment becomes
+stale. Detach/replacement promptly cancels HTTP waiters and aborts source work
+where supported; both stale errors and successes are rejected. Each attachment
+has its own generation even when it reuses the same CoreApi object. Source
+owners may retain independently shared work. Six real-transport regressions
+cover identity, auth, lease lifecycle and controller handoff races. The bundled
+macOS Bun 1.3.14 binary also passed Unix/loopback source-adapter smoke checks;
+this is not native Windows or complete packaged-provider qualification.
 
 ## Local agent bootstrap: Unix socket first
 

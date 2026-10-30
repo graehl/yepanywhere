@@ -15,6 +15,15 @@ pass. Sol 6.1 high review found one misleading authentication statement; the
 guide now accurately explains host auth-off behavior, and the same reviewer
 confirmed the repair. Later phases remain in progress/pending.
 
+Phase 2 is implemented as an isolated local runtime factory, before provider
+wiring: Unix/loopback bearer authentication, trusted launch context, bounded
+leases and catalog controller attachment. Full checks pass; the phase reviewer
+found cancellation, stale-error and same-object-generation races. Repairs add
+attachment cancellation, guarded outcomes and reserved catalog concurrency.
+The reviewer rechecked all three and ran all six focused regressions with no
+remaining blockers. Native Windows qualification remains outstanding; macOS
+Node tests and bundled Bun 1.3.14 source-adapter smoke pass both transports.
+
 ## Outcome and scope
 
 An explicitly enabled local agent can learn where it runs, discover the API,

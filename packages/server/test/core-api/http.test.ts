@@ -9,6 +9,7 @@ import {
 import {
   operations,
   apiSchema,
+  operationDocumentation,
   type ApiSession,
 } from "../../src/core-api/contracts.js";
 import { CoreApi, type CoreApiSources } from "../../src/core-api/service.js";
@@ -130,7 +131,11 @@ describe("isolated v0 application and HTTP reads", () => {
       const response = await app.request(path);
       expect(response.status, path).toBe(200);
       expect(
-        operation.response.safeParse(await response.json()).success,
+        operation.response.safeParse(
+          operation.id === "help"
+            ? await response.text()
+            : await response.json(),
+        ).success,
         path,
       ).toBe(true);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -158,6 +163,42 @@ describe("isolated v0 application and HTTP reads", () => {
       400,
     );
     expect((await fixture("A", null).app.request("/v0")).status).toBe(401);
+  });
+
+  it("executes the served guide's examples with discovered ids and follows its pagination contract", async () => {
+    const { app } = fixture("A");
+    const root = await (await app.request("/v0")).json();
+    const helpResponse = await app.request(root.help);
+    expect(helpResponse.headers.get("content-type")).toContain("text/markdown");
+    const help = await helpResponse.text();
+    expect(help).toContain("READ ONLY");
+    const projects = await (
+      await app.request(
+        operationDocumentation.projects.example.replace(
+          "{serverId}",
+          encodeURIComponent(root.serverId),
+        ),
+      )
+    ).json();
+    const project = projects.items.find(
+      (p: { name: string }) => p.name === "visible",
+    );
+    expect(project).toBeDefined();
+    const sessionsPath = operationDocumentation.sessions.example
+      .replace("{serverId}", root.serverId)
+      .replace("{projectId}", encodeURIComponent(project.id));
+    expect(help).toContain(operationDocumentation.sessions.example);
+    const first = await (await app.request(sessionsPath)).json();
+    const next = await (
+      await app.request(`${sessionsPath}&cursor=${first.nextCursor}`)
+    ).json();
+    expect([first.items[0].id, next.items[0].id]).toEqual(["b", "c"]);
+    expect(next.nextCursor).toBeNull();
+    const summaryPath = operationDocumentation.session.example
+      .replace("{serverId}", root.serverId)
+      .replace("{sessionId}", encodeURIComponent(next.items[0].id));
+    expect((await (await app.request(summaryPath)).json()).id).toBe("c");
+    expect((await fixture("A", null).app.request("/v0/help")).status).toBe(401);
   });
 
   it("orders fractional timestamps and timezone offsets chronologically before pagination", async () => {

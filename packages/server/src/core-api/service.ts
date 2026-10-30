@@ -2,6 +2,8 @@ import type { Principal } from "../auth/principal.js";
 import { levelFor } from "../auth/limitedUserPolicy.js";
 import {
   API_REVISION,
+  apiHelp,
+  apiSchema,
   operationIds,
   pageQuery,
   type ApiProject,
@@ -91,8 +93,14 @@ export class CoreApi {
           revision: API_REVISION,
           stability: "unstable",
           schema: "/v0/schema",
+          help: "/v0/help",
+          me: "/v0/me",
           servers: "/v0/servers",
         };
+      case "help":
+        return apiHelp();
+      case "schema":
+        return apiSchema();
       case "me":
         return { principal: describePrincipal(caller), session: null };
       case "servers":

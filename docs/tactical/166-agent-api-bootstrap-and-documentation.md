@@ -1,0 +1,350 @@
+# Agent API bootstrap and served documentation
+
+Status: **implementation authorized**, 2026-10-30. Deliver in four reviewed
+phases: documentation, credentials/local transports, provider advertisement/UI
+and reload continuity, then the opt-in eval runner. Use YA-launched Sol 6.1 high
+reviewers between phases, repair findings and commit each completed phase.
+It extends the delivered
+[local read slice](165-http-api-v0.md), under the owning
+[HTTP v0 topic](../../topics/http-api-v0.md). Release priority is unchanged.
+
+Phase 1 is implemented: served Markdown help, operation/field descriptions,
+example requests, discovery links and a fixture-backed pagination walkthrough.
+Lint, formatting, typecheck, full workspace tests and focused core/auth tests
+pass. Sol 6.1 high review found one misleading authentication statement; the
+guide now accurately explains host auth-off behavior, and the same reviewer
+confirmed the repair. Later phases remain in progress/pending.
+
+## Outcome and scope
+
+An explicitly enabled local agent can learn where it runs, discover the API,
+and inspect authorized projects and sessions without a YA checkout, installed
+helper CLI, configured MCP server, public/LAN API listener or SRP client. The
+agent receives connection details and one short instruction, then uses ordinary
+HTTP tools over a private Unix socket on macOS/Linux or an authenticated
+loopback TCP endpoint on native Windows. Windows support is part of this plan,
+subject to actual runtime evidence, rather than an unspecified later transport.
+
+Deliver the existing read surface with useful documentation and launch-bound
+authentication. Session creation, history/messaging, peer enrollment/routing,
+grant-management UI, command execution and PTYs remain separate work. Keep v0
+unstable; document only operations the running build implements.
+
+## Existing contracts and defects
+
+- [Principals and grants](../../topics/principals-and-grants.md) separates the
+  acting principal, credential, authority and route. The launch credential adds
+  authenticated session attribution; it does not introduce a universal identity
+  system or turn a project scope into execution isolation.
+- [Own-session inspection](../../topics/agent-self.md) already publishes a
+  scoped credential and commands from a provider-owned runtime. Reuse its
+  lifetime boundary; do not require its CLI for the new bootstrap.
+- [Provider host API](../../topics/provider-host-api.md) and
+  [reload-safe runtimes](../../topics/reload-safe-provider-runtimes.md) delimit
+  hosted source-runtime support. Desktop/Bun must not silently enable that host
+  merely to support this API.
+- [Agent context](../../topics/agent-context-injection.md) owns provider-specific
+  placement and compaction behavior. [New-session tooling](../../topics/new-session-agent-tooling.md)
+  owns launch advertisement. Update those owners when implementation lands.
+- [Password-protected agent access](../../gaps/agent-tools-lose-ya-api-under-local-password.md)
+  is evidence that URL-only bootstrap is insufficient. This slice proves v0
+  access with authentication enabled; it does not claim to repair legacy
+  artifact uploads or authorize all `/api/*` routes.
+- [Environment marker debt](../../gaps/agent-facing-env-markers.md) and
+  [subprocess boundaries](../../topics/subprocess-environment.md) constrain
+  propagation. Preserve unrelated wake/browser-debug credentials.
+
+## Proposed experience and access
+
+One **YA API access** option, initially off, enables connection details and
+minimal advertisement together for eligible launches. For the initial
+unrestricted operator-owned profile, allow the currently implemented v0 reads,
+plus help/schema, under the operator's existing resource authority. This is a
+useful catalog-reading profile, not the earlier own-session-only proposal and
+not an automatic grant to every future operation. Restricted launches retain
+their existing principal/permission ceilings or remain unsupported with an
+explicit reason. No implicit elevation from a limited user to the operator.
+
+Candidate environment variables are `AGENT_YA_API_SOCKET`,
+`AGENT_YA_API_URL` and `AGENT_YA_API_TOKEN`. Publish the socket variable only
+when Unix-socket transport is selected. Use variables initially; a mutable
+connection descriptor is deferred until a concrete lifecycle need justifies it.
+The HTTP base URL is a syntactic request origin when using the socket; no DNS
+or TCP connection is needed for that invocation.
+
+The short capability fragment should identify YA and give this working request,
+then direct the agent to `/v0/help` for operations and `/v0/schema` for details:
+
+```sh
+curl --unix-socket "$AGENT_YA_API_SOCKET" \
+  -H "Authorization: Bearer $AGENT_YA_API_TOKEN" \
+  "$AGENT_YA_API_URL/v0/me"
+```
+
+Never interpolate the actual credential into model context or transcripts.
+Inherited native child environments identify the owning YA session, not a new
+YA child session. A launch before canonical identity is available reports
+pending identity explicitly; native resume handles are not substitutes.
+
+### Native Windows transport
+
+On native Windows, bind the dedicated agent adapter to `127.0.0.1` on an
+OS-selected port. Require the launch bearer credential for every operation,
+including help/schema. Do not inherit unauthenticated localhost operator
+defaults, expose LAN interfaces, or use the desktop master credential. Port
+secrecy is not authorization. Reuse the same core operation and caller policy;
+only the listening transport and executable bootstrap example differ.
+
+Publish the exact URL and token, omit the socket variable, and advertise a
+PowerShell example using `curl.exe` explicitly:
+
+```powershell
+curl.exe -H "Authorization: Bearer $env:AGENT_YA_API_TOKEN" "$env:AGENT_YA_API_URL/v0/me"
+```
+
+The current own-session service already uses a random authenticated loopback
+listener through `node:http`; retain that shape while qualifying the new
+adapter on native Windows Node and packaged Bun. The existing desktop UI port
+is independent. A Windows profile requiring absolutely no TCP listener cannot
+use this initial transport; report that explicitly rather than claim named-pipe
+parity or silently weaken its policy.
+
+Named pipes remain a possible later local transport, not a prerequisite. Node
+supports them for IPC, but the Bun HTTP listener and ordinary client tooling
+need separate qualification; IPC support alone is not HTTP/tool parity.
+See [Node IPC](https://nodejs.org/api/net.html#ipc-support),
+[Bun HTTP named-pipe compatibility report](https://github.com/oven-sh/bun/issues/24682),
+and [Windows curl invocation](https://learn.microsoft.com/en-us/windows/curl/).
+These sources motivate qualification, not a claim that a local Windows probe
+has run.
+
+A YA instance and agent both running in WSL follow the Linux socket path.
+Native Windows-to-WSL launches are a separate reachability boundary: do not
+assume shared loopback or translate a socket path blindly. Support requires an
+explicit reachable channel and evidence under that provider/tool environment.
+
+## Implementation sequence
+
+### 1 — Make the current API understandable
+
+Extend the operation contracts in `packages/server/src/core-api/contracts.ts`
+with summaries, descriptions, parameter/field meanings, representative examples
+and operation-specific error semantics. Keep validation and documentation
+metadata together. Generate OpenAPI and a readable operation reference from
+that catalog; avoid a second manually maintained endpoint inventory.
+
+Add authenticated `GET /v0/help`, returning bounded Markdown with a short
+introduction, resource identity model and examples for finding projects,
+filtering/paging sessions and reading a summary. Explain incomplete catalogs,
+unsupported remote targets, provider descriptors versus readiness/models,
+summary versus transcript, and unstable revisions. State that writes are not
+implemented. Use ordinary error responses/status codes for help failures.
+
+Link help, schema and caller inspection from `/v0`; link useful allowed
+resources from `/me`. Distinguish implemented operations from caller authority.
+Serve documentation through the same operation/transport composition, without
+directory scanning or a running provider. Schema documents transport-specific
+authentication, including the distinction between agent bearer and operator
+cookie access; Unix socket invocation belongs in executable examples.
+
+### 2 — Add launch-bound credentials and caller context
+
+Reuse the trusted launch/owner boundary to issue a separate, unpredictable
+credential bound to public server identity, runtime instance, canonical session
+when known, launch and an explicit operation/resource profile. Keep acting
+operator/limited principal distinct from the credential's launch attribution.
+Evaluate current authority on each request, including revocation.
+
+Extend `/me` with owning server/session/launch, identity readiness, observation
+time, effective access and discovery links. Ordinary browser/operator requests
+may still have no bound session. Caller-supplied ids, cwd, socket proximity and
+headers cannot establish the launch binding. Unknown/expired/revoked credentials
+fail explicitly; never fall back to ambient operator access.
+
+The old inspection service already publishes the URL/token names. Choose an
+explicit migration that keeps `ya-agent self/view` working with their original
+narrow authority, or updates their consumer and lease together. Never repoint an
+existing self-only token into the broader profile. Define lease expiry/renewal,
+revocation and bounded registry cleanup before implementing issuance.
+
+### 3 — Serve the API over the selected local transport
+
+Add Unix-socket and native-Windows loopback HTTP adapters using the same core
+operations and authorization.
+Mount only the intended v0 surface; do not expose desktop bootstrap, operator
+administration or legacy routes through a permissive whole-app mount.
+
+Prefer the existing provider-owned inspection runtime as listener owner: one
+bounded listener/registry per owning runtime, shared across its sessions. On
+Unix, use a short private runtime directory outside projects, mode 0700, socket mode
+0600, and ownership-checked stale-path cleanup. Do not unlink another live
+instance or accept another profile's identity. Release listeners and leases
+when their owning lifetime ends; introduce no per-session heartbeat loops.
+
+Own-context/help/schema reads must not depend on Hono. Catalog reads use the
+existing authoritative CoreApi sources. Where hosted ownership crosses a
+process boundary, add only the bounded authenticated operation-dispatch seam
+needed to reach those sources through the active controller. Do not duplicate
+catalog acquisition or expose the provider host's private control protocol.
+Reject requests for the wrong profile/controller generation. During controller
+replacement, return an explicit retryable unavailable result for dependent
+reads; keep own-context reads alive when the provider owner survives.
+
+Prove the ownership/reattachment seam before committing to that composition. If
+it requires a new daemon or broad host refactor, revise this plan rather than
+expand scope. A full provider-owner restart ends its leases; a replacement
+launch receives fresh bootstrap. Desktop keeps its existing dashboard HTTP
+listener, cookie bootstrap and Tauri boundary.
+
+### 4 — Advertise only working launch paths
+
+Wire environment and the minimal capability fragment through the existing
+provider-owned spawn and Claude shell bridges. Start with current own-session
+eligible local Claude-family and unrestricted Codex paths, and qualify each
+actual runtime. Preserve default-off behavior and unrelated context.
+
+Do not assume shell reachability proves provider-tool sandbox reachability.
+For unsupported sandboxes/providers/platforms, show an explicit eligibility
+reason and publish no unusable capability or silently widened sandbox policy.
+Include native Windows eligibility and its transport-specific bootstrap in this
+slice. Record Node, Bun, desktop and OS evidence separately; do not advertise
+unqualified parity or require the Linux/macOS provider host on Windows.
+
+A small New Session option and exact injected-context preview should reuse
+existing controls. If this needs new hosted-client contract fields, first
+record the stable-release corpus, capability gate and older-host omission;
+never reinterpret an existing capability. Final copy is proposed here, not a
+finished UI design. Broader onboarding and default-on promotion are deferred.
+
+## Validation and acceptance
+
+Prefer the existing isolated core/Hono fixtures, without full profiles,
+scanners, provider discovery, real models or TCP listeners. Retain real boundary
+coverage rather than tests that merely repeat operation metadata:
+
+- Serve examples from real fixture projects/sessions and execute their requests;
+  verify paging, incomplete catalog behavior and documented response shapes.
+- Exercise real bearer authentication and restricted-resource enforcement over
+  a Unix socket and native Windows loopback, including wrong/missing/revoked
+  tokens, port reuse and concurrent profiles. Require auth on help/schema too.
+  Ensure unsupported operations cannot reach a legacy route or ambient owner.
+- Prove listener ownership, safe cleanup, launch end and inherited-child identity.
+  On supported hosted paths, reattach a replacement controller while retaining
+  the launch; own context remains readable and catalogs recover without a new
+  provider launch. Use the real host boundary, not a mock of continuity.
+- Exercise the existing inspection commands through migration and prove that
+  their old lease does not acquire catalog authority. Repeat with local password
+  required; desktop master credentials must remain native-only.
+- Qualify actual provider shell/tool invocation and packaged Node/Bun paths in
+  isolated profiles. Never restart the user's desktop app or primary server to
+  establish evidence.
+- Run the native Windows bootstrap through actual PowerShell and any supported
+  Git Bash provider path; distinguish those from WSL evidence. Confirm loopback
+  binding and bearer-only access, and retain platform boundary regressions.
+
+### Documentation effectiveness and context cost
+
+YA has launch/monitoring, transcript and usage infrastructure, but no identified
+reusable behavioral documentation-discovery eval. The turn-sequence experiment
+runner in [core service API](../../topics/core-service-api.md#1-scripted-prompt-sequence-perf-experiments-python)
+remains proposed; it is not a prerequisite for this bounded evaluation. The
+existing `scripts/agent-self-smoke.mjs` proves real shell/packaging integration
+with a scripted provider, not model comprehension. Keep that distinction.
+
+Add a small opt-in runner around actual agent launches, isolated API fixtures
+and executable deterministic graders. Reuse existing launch/monitoring seams;
+do not build a general eval framework or another experiment server. Import the
+actual generated bootstrap/help/schema so cases cannot test copied stale text.
+The runner may use existing operator APIs to launch/observe the evaluator;
+the agent under test receives only its selected API bootstrap and served docs.
+
+Compare these variants against the same API and effective permissions:
+
+| Variant | Context supplied before discovery |
+| --- | --- |
+| Minimal | Connection request and schema link |
+| Served guide | Minimal bootstrap plus `/v0/help` discovery link |
+| Inline guide | A fuller guide in launch context, with the same served docs available |
+
+Proposed initial model lanes:
+
+| Lane | Model and harness | Purpose |
+| --- | --- | --- |
+| Primary | `gpt-6.1-sol`, Codex, medium effort | Representative capable-agent discovery and task success |
+| Diagnostic | `qwen3.5:9b`, local Ollama through YA's `codex-oss` adapter | Optional smaller-model check for confusing descriptions or excessive documentation |
+| Confirmation | Sol high, when a comparison warrants it | Check the normal high-effort workflow without multiplying every initial run |
+
+Read-only discovery on 2026-10-30 found Codex logged in through ChatGPT and
+Ollama serving an installed `qwen3.5:9b` Q4_K_M model. YA lists that local model
+through `codex-oss` and `claude-ollama`. Catalog/metadata availability is not
+evidence of successful agent execution. Before the local lane counts, qualify
+tool calling and API bootstrap reachability through the chosen harness. Keep
+that harness stable across documentation variants; report harness/setup failure
+separately from a model failing to use correct documentation. Do not expand
+shipped provider eligibility merely to obtain an eval lane without qualifying it.
+
+Prefer opt-in local Codex sessions using the operator's existing ChatGPT sign-in
+for the primary lane; no separate API billing setup is required for supported
+local subscription use. This runs the harness locally with hosted inference.
+Ollama supplies the separate fully local inference lane. Subscription capacity
+is still bounded; cap concurrency and stop/report rate-limit exhaustion rather
+than switching accounts or silently falling back to API-key billing. Record
+usage/latency rather than inventing a per-run dollar cost for subscription use.
+See [official authentication](https://learn.chatgpt.com/docs/auth#openai-authentication)
+and [model/noninteractive selection](https://learn.chatgpt.com/docs/models).
+
+Start with one case/sample to check each lane, then a small primary-model
+comparison. Qwen is optional diagnostic evidence, not the product acceptance
+gate: improve the strong-model workflow and quantify any extra text needed to
+help the smaller model. A second model family can follow if actual usage merits
+it. Model inventory/settings above are a proposed starting point, not pinned
+availability or a requirement to run every lane for each edit.
+
+Use fresh sessions with controlled fixture names/ids and no YA checkout or
+uncontrolled personal instructions. Cases should include owning-context
+inspection, finding a named project, filtering and paging its sessions,
+inspecting the correct session among similarly named entries, handling an
+incomplete catalog, and recognizing unavailable writes/remote routing. Include
+ordinary tasks that need no YA access to detect needless discovery. Grade the
+requested result and valid resource identities from fixture truth/API traces,
+not exact answer wording or a prescribed call sequence. Record legacy API or
+filesystem shortcuts separately; those cannot establish documentation success.
+
+Measure task success, first successful request, total requests/errors/retries,
+completion time, exact bootstrap bytes, fetched documentation bytes including
+repeated reads, and provider-reported input/cache/output usage where available.
+Record failed/timed-out trials as well as successful ones. Distinguish initial
+context from on-demand discovery cost, and total processed/billed input from
+unique context added; summing replayed input is not a measure of unique docs.
+Missing per-turn attribution stays unavailable, not zero or an invented estimate.
+Model-token counts require the correct tokenizer; byte budgets are labeled bytes.
+
+Pin provider/model/effort, harness version, tool policy, API/docs revision and
+fixture seed. Start with one case/sample to verify setup, then repeat relevant
+cases across variants in varied order under a declared run/time/token budget.
+Compare on the same model, report raw successes/trials and cost, and expand the
+sample only where variance or a decision warrants it. Choose text based on
+success and total effort/cost rather than shortest prompt alone. No claim of
+cache savings follows from stable text or a single run.
+
+CI should execute fixture/example/grade correctness and track bootstrap/help/
+schema byte sizes without model calls. Establish a measured baseline before
+choosing useful growth limits; do not add arbitrary token ceilings or brittle
+snapshots for all prose. Real-model comparisons remain opt-in, with redacted
+traces/results retained in ignored scratch output and a concise review report.
+No paid eval has been run as part of writing this plan.
+
+After source changes, run lint, format verification, typecheck and workspace
+tests. New UI requires the repository's focused browser, real sequential typing
+and artifact evidence. Record platform limitations and timing for added tests.
+
+## Decisions for this review
+
+- Accept the useful operator catalog-read profile for explicitly enabled,
+  unrestricted operator launches, with additional authority kept explicit.
+- Accept docs/help first, followed by socket/bootstrap and lifecycle evidence;
+  session writes and peers remain subsequent plans.
+- Review the proposed opt-in/preview experience and environment migration.
+- Accept Unix sockets on macOS/Linux and bearer-authenticated random loopback
+  TCP on native Windows. Confirm required Node/Bun/desktop evidence. Strict
+  no-TCP Windows and cross-WSL access need separate qualification/design.

@@ -18,10 +18,17 @@ and single-session summary routes. Unknown targets never execute locally.
 Other v0 resources and all writes remain unimplemented. Existing `/api/*` and
 the separate own-session listener retain their contracts.
 
-- `/v0` returns public server id, revision `2026-10-30.1`, unstable status and
-  discovery links. `/v0/schema` generates OpenAPI 3.1 response/query schemas
+- `/v0` returns public server id, revision `2026-10-30.2`, unstable status and
+  discovery links. The documentation slice adds Markdown
+  help at `/v0/help`, links help/me/schema from discovery, and generates field
+  descriptions, operation semantics and example requests alongside OpenAPI.
+  `/v0/schema` generates OpenAPI 3.1 response/query schemas
   from the same Zod definitions used by the read surface. These schemas describe
-  this subset, not every planned route in the table below.
+  this subset, not every planned route in the table below. The documentation
+  slice is implemented; socket/bootstrap and session binding remain pending.
+  Help/schema inherit the normal host's authentication policy, including
+  configured auth-off localhost behavior; they do not introduce an independent
+  credential requirement on that existing listener.
 - `/v0/me` returns the resolved superuser/limited principal and `session: null`.
   Current operator cookies/tokens do not prove which agent session is calling;
   user-supplied ids or headers cannot establish that binding.
@@ -98,6 +105,14 @@ The schema describes supported operations, bounds, errors and examples without
 requiring the YA source checkout. Discovery reports implementation support
 separately from effective caller permissions and reachability.
 
+The proposed `GET /v0/help` adds a short Markdown introduction, the resource
+model and executable examples for implemented operations. Operation summaries,
+descriptions, field semantics, errors and examples should live with the
+operation contracts and generate both the readable reference and OpenAPI.
+Identity/access discovery alone is not sufficient documentation. See
+[the review plan](../docs/tactical/166-agent-api-bootstrap-and-documentation.md)
+for the next proposed delivery and acceptance criteria.
+
 `GET /v0/me` describes the authenticated caller. A launch-bound session credential
 may identify its owning `{serverId, sessionId}`; an ordinary operator or peer
 credential need not name a session. There is no ambient "current session"
@@ -151,6 +166,95 @@ ids; project filters do not imply one global project identity across hosts.
 The schema defines pagination, field mutability and provider limitations per
 operation. Unsupported queue/steer behavior must be explicit, not silently
 translated into another delivery choice.
+
+## Local agent bootstrap: Unix socket first
+
+Maintainer direction, 2026-10-30: start local agent access with HTTP over a
+private Unix-domain socket. This is a proposal, not an implemented listener or
+credential. Preserve the same core operations and `/v0/me` resource without
+requiring a TCP listener, a `ya-agent` command, an MCP configuration, or an SRP
+client inside the agent. Remote SRP-only access policy can coexist with this
+separate local transport. For native Windows, the proposed starting transport
+is a dedicated bearer-authenticated loopback HTTP listener on an OS-selected
+port. It serves the same operations without a public/LAN listener or helper
+CLI; strict no-TCP Windows support needs another transport. The
+[review plan](../docs/tactical/166-agent-api-bootstrap-and-documentation.md#native-windows-transport)
+specifies platform bootstrap and evidence requirements.
+
+An eligible provider launch should receive the socket path, an HTTP base URL
+and a scoped credential, plus a minimal instruction showing how to query its
+own context. Candidate names are `AGENT_YA_API_SOCKET`, `AGENT_YA_API_URL` and
+`AGENT_YA_API_TOKEN`. The current own-session inspection service already uses
+the latter two names with a different endpoint and credential; migration must
+be explicit rather than silently repointing an existing lease. Credentials
+establish the owning YA session/launch and effective authority; asserted ids
+and socket reachability alone do not. An inherited child credential still
+identifies its owning YA session.
+
+Before implementation, define private socket placement and permissions,
+ownership and cleanup across restarts, credential lifetime/revocation, and
+provider sandbox reachability. Do not advertise a socket the agent cannot
+reach or silently widen its sandbox. Native Windows loopback, Node/Bun runtime
+and client-tool compatibility need qualification. Broader default advertisement and
+agent permissions remain explicit product decisions.
+
+The current desktop application instead starts a bundled Bun server on a
+loopback HTTP port and loads its web dashboard in a Tauri WebView. Native code
+manages server lifecycle and bootstraps a browser session; ordinary dashboard
+traffic uses HTTP and WebSocket, not a general Tauri API bridge. The proposed
+agent socket can coexist with that listener and does not require replacing
+the dashboard transport. [Desktop contract](desktop-v0.md#local-dashboard-authentication)
+owns that existing boundary.
+
+### Preferred first slice (proposal)
+
+Offer one explicit **YA API access** option, initially off. For an explicitly
+enabled, unrestricted operator-owned launch, the proposed useful first profile
+allows all currently implemented v0 catalog reads under the operator's existing
+authority, with an authenticated owning-session binding. This supersedes the
+earlier own-session-only first-slice sketch. Scope is an explicit operation set,
+not automatic access to future routes or the legacy `/api/*` surface. Restricted
+launches must retain their principal/resource ceilings or remain ineligible;
+shell access is not itself a credential or a sandbox guarantee. Broader default
+advertisement is a later product decision.
+
+For an eligible launch, publish socket/base-URL/credential connection details
+and a short, previewable instruction containing one working `/v0/me` request.
+The instruction also directs the agent to `/v0/help` to learn what it can do.
+Use ordinary environment variables first; a mutable connection descriptor file
+is an extension if real reconnection or credential-rotation needs justify it.
+Do not include credential values in the injected instruction or transcript.
+
+The initial agent credential permits caller inspection, served help/schema and
+the implemented read catalog under its effective authority. `/v0/me` should return the public server id,
+canonical owning session id, launch id, effective access, observation time and
+links to the allowed resources. Resolve these from the credential and live
+owner state, not caller-supplied session ids. Advertised server capabilities
+remain distinct from operations this particular caller may perform. The own
+session identity may be temporarily unavailable before native session creation
+finishes; expose that state explicitly rather than substitute a resume handle.
+
+Prefer extending the existing provider-owned inspection runtime with a separate
+private HTTP socket adapter. Do not expose the provider host's private JSONL
+worker/control sockets as the public API or create another daemon. On paths
+where the provider owner survives Hono replacement, its local identity service
+and credential should survive too. Own-context reads should not depend on Hono;
+catalog operations may explicitly report temporary unavailability while
+their authoritative owner reloads. A full provider-owner restart ends the old
+launch lease and requires fresh bootstrap on the next launch.
+
+Use one bounded listener/credential registry per owning runtime, not a listener
+per session. Place it in a short private runtime directory, outside projects;
+qualify directory/socket permissions and safe stale-path cleanup. Revoke the
+lease when its launch ends, and recheck effective authority on each request.
+No fallback to unauthenticated localhost or another profile is allowed.
+
+Prove the slice with isolated core/auth fixtures, then a real Unix-socket
+request: two concurrent profiles, caller/resource isolation, revoked credentials,
+inherited child identity and provider-owner continuity across controller
+reattachment. Provider/platform reachability must be qualified before claiming
+support. Peer enrollment remains the next independent design, not part of this
+first slice.
 
 ## One HTTP surface across routes
 
@@ -231,6 +335,34 @@ establishes. The [unconfirmed-send gap](../gaps/unconfirmed-send-loss-across-rel
 is existing evidence; wrapping the current optimistic message route cannot
 claim a new durable delivery guarantee. HTTP disconnection cancels view-only
 work where supported, but does not undo accepted mutations or stop their agents.
+
+## Future command execution and interactive terminals
+
+Maintainer direction, 2026-10-30: both noninteractive command execution and a
+real `node-pty` terminal are reasonable future API surfaces. Neither is part
+of the implemented local read slice or a prerequisite for session interaction,
+agent discovery, or peer enrollment. Specialized Git/file endpoints should
+earn their investment against these more general primitives and concrete
+consumer needs.
+
+The command surface should accept an explicit target server, working directory,
+argument vector and optional environment/timeout, and report stdout, stderr
+and process exit status. Shell interpretation, when wanted, should be explicit.
+Long-running execution needs defined process ownership, bounded output,
+observation, cancellation and disconnect behavior; route names and persistence
+are not selected yet.
+
+The terminal surface should spawn an actual host shell through `node-pty`,
+with input/output, dimensions, exit observation and explicit close behavior.
+It does not require an SSH daemon or implement an SSH protocol tunnel. PTY
+output and shell exit status do not supply per-command stdout/stderr or command
+completion semantics. Terminal attachment/history/reconnection and any relation
+to a YA session remain design questions.
+
+Both surfaces use target-enforced grants distinct from merely discovering a
+host or inspecting sessions. Their authority and execution boundary must be
+stated before implementation. They must reuse the server addressing and
+transport boundary rather than introduce a second peer connection system.
 
 ## Core boundary and testability
 

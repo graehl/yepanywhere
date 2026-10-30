@@ -6,6 +6,11 @@ The owning [v0 contract](../../topics/http-api-v0.md#implemented-local-read-cont
 records delivered behavior. No peer-authentication protocol is introduced.
 Release priority remains unchanged.
 
+The next proposed slice is [agent bootstrap and served API documentation](166-agent-api-bootstrap-and-documentation.md).
+It adds useful documentation and Unix-socket access to the existing reads
+before creation/provenance or peer routing. Its revised access profile
+supersedes the earlier own-session-only bootstrap sketch.
+
 ## Local read delivery
 
 The implementation contains a transport-independent CoreApi and explicit data

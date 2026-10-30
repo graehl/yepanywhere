@@ -2,12 +2,72 @@
 
 Topic: http-api-v0
 
-Status: proposal, 2026-10-30. The maintainer selected HTTP-first design,
-explicit server addressing, agent-discoverable identity/access, and session
-creation provenance. Runtime implementation and the detailed authentication
-contract are not yet approved. [Implementation and tests](../docs/tactical/165-http-api-v0.md)
-describe the recommended first slices. This does not reprioritize releases or
-restart the archived session-core campaign.
+Status: local read-only slice implemented, 2026-10-30. The maintainer selected
+HTTP-first design, explicit server addressing, agent-discoverable identity/access,
+and creation provenance, then authorized implementation. The delivered subset
+is specified below; creation, messaging, peer routing/enrollment and consistent
+launch-bound bootstrap remain proposals. [Implementation and tests](../docs/tactical/165-http-api-v0.md)
+track the staged work. This does not reprioritize releases or restart the
+archived session-core campaign.
+
+## Implemented local read contract
+
+The ordinary app mounts `/v0`, `/v0/schema`, `/v0/me`, `/v0/servers`, and the
+self server's description, access, capabilities, projects, providers, sessions
+and single-session summary routes. Unknown targets never execute locally.
+Other v0 resources and all writes remain unimplemented. Existing `/api/*` and
+the separate own-session listener retain their contracts.
+
+- `/v0` returns public server id, revision `2026-10-30.1`, unstable status and
+  discovery links. `/v0/schema` generates OpenAPI 3.1 response/query schemas
+  from the same Zod definitions used by the read surface. These schemas describe
+  this subset, not every planned route in the table below.
+- `/v0/me` returns the resolved superuser/limited principal and `session: null`.
+  Current operator cookies/tokens do not prove which agent session is calling;
+  user-supplied ids or headers cannot establish that binding.
+- Access describes all-project versus project-grant scope and implemented
+  read operations. Existing limited-user project grants, creator access to
+  their own sessions, and personal hidden-project list behavior apply. Catalog
+  filtering precedes pagination; hidden lists do not revoke direct access.
+- Projects use the existing retained project projection. Providers are exposed
+  harness descriptors and supported steering/permission controls; this endpoint
+  performs no installation/authentication/model discovery. A model catalog is
+  later work. Sessions are retained native-catalog summaries with current
+  metadata/runtime overlays, not full transcripts or messages.
+- Catalog responses report `complete` and `refreshing`. A missing detail in an
+  incomplete catalog returns `503 catalog_not_ready`; a missing or inaccessible
+  session in a complete catalog returns `404 session_not_found`. Ambiguous native ids
+  spanning projects are rejected before session-wide project metadata is applied,
+  and projected collisions are also omitted. They cannot select one project's
+  detail. Session ordering compares timestamps chronologically across fractional
+  precision and timezone offsets, with the session id breaking ties.
+- Collection defaults are 50 items, maximum 100. `cursor` is a nonnegative
+  decimal offset; `projectId` filters sessions. Offset pages are best effort
+  across concurrent catalog changes, not snapshots. Response item count is
+  bounded by page size, while filtering/sorting still visits the retained
+  projection and the existing catalog owner governs acquisition cost. No new polling or discovery service is created by this API.
+- Successful route responses are non-cacheable. V0 errors contain
+  `{error: {code, message}}`; existing host/auth/limited-user middleware may
+  reject earlier with its existing JSON/text errors. Private exception text is
+  not returned. Source cancellation is passed as an AbortSignal; this does not
+  cancel refresh work independently owned by the shared retained catalog.
+
+The public id is a fresh UUID stored in singleton `public_server_identity` in
+the profile's existing SQLite database (migration 13). Transactional insertion
+preserves the first id across concurrent handles and restarts. Invalid identity
+data fails initialization without regenerating it. Backup restoration preserves
+identity. There is no clone/reset command yet: running a copied profile as an
+independent second server requires separate identity provisioning before peer
+routing is enabled. The relay `installId` is unchanged and never reused here.
+
+V0 shares the app's host/CORS/custom-header, operator authentication and
+limited-user principal resolution. Socket-free fixtures inject the principal
+at their trusted composition boundary; that is not production network auth.
+The auth regression enumerates v0 as well as existing API routes. No hosted
+frontend depends on v0 and no existing capability changes meaning. The current
+stable corpus (v0.11.0/v0.10.2 plus optional-window v0.10.0/v0.10.1) has no v0
+promise; callers discover it directly and treat absence as unsupported. No
+compatibility shim, SRP change or new peer credential is introduced.
 
 ## Product boundary
 

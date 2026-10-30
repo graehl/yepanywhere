@@ -1,10 +1,46 @@
 # HTTP API v0: local core, direct peers and isolated tests
 
-Status: proposed implementation sequence, 2026-10-30. The maintainer requested
-the proposal and advice on implementation/testability. This document does not
-claim implemented v0 endpoints or authorize a peer-authentication protocol.
-The owning [v0 proposal](../../topics/http-api-v0.md) records the API shape and
-selected product boundary. Release priority remains unchanged.
+Status: first local read slice implemented, 2026-10-30; later stages proposed.
+The maintainer authorized implementation and a Sol 6.1 high review through YA.
+The owning [v0 contract](../../topics/http-api-v0.md#implemented-local-read-contract)
+records delivered behavior. No peer-authentication protocol is introduced.
+Release priority remains unchanged.
+
+## Local read delivery
+
+The implementation contains a transport-independent CoreApi and explicit data
+sources, thin Hono routes, generated OpenAPI discovery, and a public SQLite-backed
+profile identity. Production adapters reuse retained catalogs and existing
+metadata/runtime owners. Core fixtures construct no scanner, provider runtime,
+HTTP listener or profile directory. Full-app auth tests cover operator/limited
+boundaries, and one actual loopback TCP request checks the adapter boundary.
+
+Focused coverage includes pre-pagination grants, creator and hidden-project
+rules, ambiguous session ids, unknown targets, incomplete catalogs, two isolated
+instances, response schema consistency, and persisted/corrupt identity behavior.
+Existing auth-boundary coverage now enumerates v0 routes as well. Provider
+descriptors are delivered; model discovery and full message history are deferred.
+Sol 6.1 high review through YA found a native-id ambiguity leak hidden by
+session-wide project metadata, a lexical timestamp ordering error, and an
+operation-specific query schema mismatch. Production-adapter and chronological
+pagination regressions reproduced both behavioral defects before repair. The
+adapter now rejects native cross-project ambiguity before metadata projection;
+core ordering parses timestamps; query schemas distinguish pagination from the
+session-only project filter. The reviewer changed no files.
+
+The same Sol session rechecked all three repairs and reported no remaining
+blockers. Final workspace lint, formatting, typecheck and unit tests pass;
+focused core/auth/storage coverage passes 15 cases. New core tests additionally
+pass a targeted strict TypeScript check. The full workspace run passes 6,565
+server and 7,017 client tests, plus shared/relay/push-broker suites. It still
+prints unowned jsdom navigation diagnostics, recorded in
+[the adjacent gap](../../gaps/client-unit-navigation-diagnostics.md), while the
+focused v0 run emits none. Local validation is macOS/Node; Linux, Windows and
+Bun execution remain CI qualification. The SRP-bound principal case is an
+internal authenticated-transport fixture, not a fresh crypto handshake.
+
+No new service lifetime is introduced, so no Supervisor lifecycle rewrite was
+needed. Native creation/provenance and direct-peer access remain the next stages.
 
 ## Existing work to reuse
 

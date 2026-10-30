@@ -311,6 +311,17 @@ export function decideLimitedRoute(
   const method = request.method.toUpperCase();
   const isRead = READ_METHODS.has(method);
 
+  // V0 application reads enforce project/session scope before pagination.
+  if (
+    isRead &&
+    /^\/v0(?:\/(?:schema|me|servers(?:\/[^/]+(?:\/(?:access|capabilities|projects|providers|sessions(?:\/[^/]+)?))?)?))?$/.test(
+      path,
+    )
+  ) {
+    return { kind: "allow" };
+  }
+  if (path === "/v0" || path.startsWith("/v0/")) return { kind: "deny" };
+
   if (
     (method === "POST" &&
       ["/api/drafts/read", "/api/drafts/write", "/api/drafts/clear"].includes(

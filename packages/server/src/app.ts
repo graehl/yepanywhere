@@ -1,3 +1,9 @@
+import type { MiddlewareHandler } from "hono";
+import { CoreApi } from "./core-api/service.js";
+import { readServerIdentity } from "./core-api/server-identity.js";
+import { productionApiSources } from "./core-api/production-sources.js";
+import { createV0Routes } from "./routes/v0/index.js";
+import { PRINCIPAL_VARIABLE, SUPERUSER } from "./auth/principal.js";
 import { AgentAuthRouter } from "./services/AgentAuthRouter.js";
 import { createAgentAuthRouterRoutes } from "./routes/agent-auth-router.js";
 import { DraftStore } from "./drafts/DraftStore.js";
@@ -305,6 +311,7 @@ import { createProviderHostRoutes } from "./routes/provider-host.js";
 import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
 import {
   configureProviderRuntime,
+  getAllProviders,
   getProvider,
   isProviderRuntimeHostAvailable,
 } from "./sdk/providers/index.js";
@@ -787,6 +794,13 @@ export function createApp(options: AppOptions): AppResult {
   const discoverySqlite =
     options.discoverySqlite ??
     new DiscoverySqliteService({ dataDir: effectiveDataDir });
+  let publicServerId: string;
+  try {
+    publicServerId = readServerIdentity(discoverySqlite.getDatabase());
+  } catch (error) {
+    if (ownsDiscoverySqlite) discoverySqlite.close();
+    throw error;
+  }
   let draftStore: DraftStore | undefined;
   try {
     draftStore = new DraftStore(discoverySqlite.getDatabase());
@@ -838,6 +852,10 @@ export function createApp(options: AppOptions): AppResult {
   // Accept-Encoding, but public-share links opened directly in a browser DO send
   // it — and /public-api/shares/sessions/* serves the same multi-MB session JSON
   // — so that prefix is covered too. Registered first so it wraps the response.
+  app.use("/v0/*", compress());
+  app.use("/v0/*", hostCheckMiddleware);
+  app.use("/v0/*", corsMiddleware);
+  app.use("/v0/*", requireCustomHeader);
   app.use("/api/*", compress());
   app.use("/public-api/*", compress());
 
@@ -866,16 +884,15 @@ export function createApp(options: AppOptions): AppResult {
   // Auth middleware (if authService is provided)
   // The middleware checks authService.isEnabled() dynamically
   if (options.authService) {
-    app.use(
-      "/api/*",
-      createAuthMiddleware({
-        authService: options.authService,
-        authDisabled: options.authDisabled,
-        desktopAuthToken: options.desktopAuthToken,
-        desktopBootstrapService: options.desktopBootstrapService,
-        agentServerTokens,
-      }),
-    );
+    const apiAuth = createAuthMiddleware({
+      authService: options.authService,
+      authDisabled: options.authDisabled,
+      desktopAuthToken: options.desktopAuthToken,
+      desktopBootstrapService: options.desktopBootstrapService,
+      agentServerTokens,
+    });
+    app.use("/v0/*", apiAuth);
+    app.use("/api/*", apiAuth);
   }
 
   /*
@@ -938,22 +955,21 @@ export function createApp(options: AppOptions): AppResult {
   });
   if (limitedUsersService && options.authService) {
     const authService = options.authService;
-    app.use(
-      "/api/*",
-      createLimitedUsersMiddleware({
-        getActiveGrants: getActiveLimitedGrants,
-        getHiddenProjectIds: (username) =>
-          projectAppStore.hiddenProjectIds(username),
-        sessionAccess: sessionAccessResolver,
-        getSuperuserIdentity: () =>
-          options.remoteAccessService?.getUsername() ?? null,
-        getCookieSessionUsername: async (c) =>
-          authService.getSessionUsername(
-            getRequestCookie(c, SESSION_COOKIE_NAME),
-          ),
-        getCookieSecret: () => authService.getCookieSecret(),
-      }),
-    );
+    const v0Principal = createLimitedUsersMiddleware({
+      getActiveGrants: getActiveLimitedGrants,
+      getHiddenProjectIds: (username) =>
+        projectAppStore.hiddenProjectIds(username),
+      sessionAccess: sessionAccessResolver,
+      getSuperuserIdentity: () =>
+        options.remoteAccessService?.getUsername() ?? null,
+      getCookieSessionUsername: async (c) =>
+        authService.getSessionUsername(
+          getRequestCookie(c, SESSION_COOKIE_NAME),
+        ),
+      getCookieSecret: () => authService.getCookieSecret(),
+    });
+    app.use("/v0/*", v0Principal);
+    app.use("/api/*", v0Principal);
     app.route(
       "/api/users",
       createUsersRoutes({
@@ -981,6 +997,14 @@ export function createApp(options: AppOptions): AppResult {
         },
       }),
     );
+  }
+
+  if (!limitedUsersService || !options.authService) {
+    const operatorPrincipal: MiddlewareHandler = async (c, next) => {
+      c.set(PRINCIPAL_VARIABLE, SUPERUSER);
+      await next();
+    };
+    app.use("/v0/*", operatorPrincipal);
   }
 
   // Mount /api routers only after the security and auth middleware above:
@@ -3045,6 +3069,37 @@ export function createApp(options: AppOptions): AppResult {
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
       projectDisplayName,
     }),
+  );
+
+  app.route(
+    "/v0",
+    createV0Routes(
+      new CoreApi(
+        publicServerId,
+        productionApiSources({
+          scanner,
+          sessions: retainedCollections,
+          metadata: options.sessionMetadataService,
+          providers: () => {
+            const providers =
+              options.provider === null
+                ? []
+                : options.provider
+                  ? [options.provider]
+                  : getAllProviders();
+            return options.enabledProviders?.length
+              ? providers.filter((p) =>
+                  options.enabledProviders!.includes(p.name),
+                )
+              : providers;
+          },
+          sessionState: (id) =>
+            supervisor.getProcessForSession(id)?.state.type ?? "not-running",
+          hiddenProjects: (username) =>
+            projectAppStore.hiddenProjectIds(username),
+        }),
+      ),
+    ),
   );
 
   // Global sessions route (flat list of all sessions for navigation)

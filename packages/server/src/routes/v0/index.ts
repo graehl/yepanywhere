@@ -1,0 +1,49 @@
+import { Hono } from "hono";
+import { PRINCIPAL_VARIABLE, type Principal } from "../../auth/principal.js";
+import { apiSchema, operations } from "../../core-api/contracts.js";
+import { type CoreApi, CoreApiError } from "../../core-api/service.js";
+
+/** Mount after the hosting app's authentication and principal resolution. */
+export function createV0Routes(api: CoreApi) {
+  const routes = new Hono<{ Variables: { yaPrincipal: Principal } }>();
+  routes.use("*", async (c, next) => {
+    if (!c.get(PRINCIPAL_VARIABLE))
+      return c.json(
+        { error: { code: "unauthorized", message: "Authentication required" } },
+        401,
+      );
+    c.header("Cache-Control", "no-store");
+    await next();
+  });
+  routes.onError((error, c) => {
+    if (error instanceof CoreApiError)
+      return c.json(
+        { error: { code: error.code, message: error.message } },
+        error.status,
+      );
+    return c.json(
+      { error: { code: "internal_error", message: "API read failed" } },
+      500,
+    );
+  });
+  routes.get("/schema", (c) => c.json(apiSchema()));
+  for (const operation of operations) {
+    routes.get(operation.path || "/", async (c) =>
+      c.json(
+        await api.read(operation.id, c.get(PRINCIPAL_VARIABLE) as Principal, {
+          serverId: c.req.param("serverId"),
+          sessionId: c.req.param("sessionId"),
+          query: c.req.query(),
+          signal: c.req.raw.signal,
+        }),
+      ),
+    );
+  }
+  routes.all("*", (c) =>
+    c.json(
+      { error: { code: "not_found", message: "Unknown v0 resource" } },
+      404,
+    ),
+  );
+  return routes;
+}

@@ -45,7 +45,15 @@ function apiEndpoints(
 ): Map<string, Endpoint> {
   const endpoints = new Map<string, Endpoint>();
   for (const route of instance.app.routes) {
-    if (!route.path.startsWith("/api/") || !include(route.path)) continue;
+    if (
+      !(
+        route.path.startsWith("/api/") ||
+        route.path === "/v0" ||
+        route.path.startsWith("/v0/")
+      ) ||
+      !include(route.path)
+    )
+      continue;
     const method = route.method === "ALL" ? fallbackMethod : route.method;
     const url = concretePath(route.path);
     endpoints.set(`${method} ${url}`, { method, url });

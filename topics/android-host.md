@@ -19,6 +19,22 @@ helper may bootstrap/re-arm same-phone ADB after reboot. AAR is optional
 development infrastructure, not a normal-use dependency or credential service
 that ships by default. Provider authentication runs on the phone.
 
+There are separate ADB dependencies. Runtime staging is a temporary development
+installer, described under distribution below. The original phone-control spike
+also enabled `adbd` with `adb tcpip 5555`, then connected from the phone using
+its own ADB identity. That route supplies Android shell authority for device
+control; the Linux runtime alone does not. The sibling spike's original
+`docs/product-direction.md`, source `85f2e3c9f04ba4aabf0309b50b5c74437b88ca28`,
+accepted USB re-arming after reboot. `adb forward`/`reverse` are different,
+temporary tunnels: the spike's reverse tunnel carried AAR inference traffic,
+which phone-local direct provider sign-in no longer requires. A normal Play
+install should support local coding without ADB setup. ADB-based phone control
+still needs explicit platform setup; a Play install or app toggle cannot grant
+that authority. Phone-only wireless-debugging setup remains an alternative to
+qualify. The separate Moto helper report below supplies evidence for automatic
+recovery after initial privileged setup, rather than establishing that USB must
+be repeated after every reboot on every implementation.
+
 The focused shared YA sign-in pages are the current onboarding baseline.
 Native **Set up Codex** and **Set up Claude** shortcuts open those pages, which
 relay the actual local CLI login flow and hand authorization to the system
@@ -27,6 +43,45 @@ Pixel 9 on 2026-10-17. Buddy and AAR informed the approach; their flows are no
 longer a placeholder for unimplemented host onboarding. Credential refresh,
 sign-out and recovery still need independent validation; see the
 [physical sign-in evidence](../docs/testing/android-host-scaffold-2026-10-17.md#completed-provider-sign-in).
+
+### Reported Moto automatic debugging recovery
+
+**User-supplied Tomly device-access report, 2026-10-30; not independently
+inspected or reproduced in this session.** The linked external worktree was
+unavailable. The report describes a native helper provisioned once over USB
+with relay configuration, `WRITE_SECURE_SETTINGS`, normal accessibility consent
+and retained ADB host authorization. After `BOOT_COMPLETED` and Wi-Fi readiness,
+it requests wireless debugging, handles the exact network-trust dialog only
+for explicitly enrolled access points, discovers the changing listener port
+and forwards its local socket through an authenticated outward WebSocket.
+The Mac owns the ADB client/server and protocol authorization; the helper
+does not run an on-phone ADB client/server or PRoot.
+
+The reported USB-unplugged, untouched-phone run completed three reboots,
+boot counts 43 through 46, with ADB recovery in 126/131/129 seconds. Each cycle
+passed 1 MiB push/pull, screenshot, native tap and actual Android drag/drop.
+A subsequent ten-minute screen-asleep run passed 21/21 direct ADB checks.
+Qualification is limited to that Moto with screen lock disabled and enrolled
+Wi-Fi. With a PIN, the current boot receiver depends on first unlock. Hosted
+relay deployment, cellular-only operation, longer Doze and other firmware
+remain unqualified; the tested relay ran on the Mac.
+
+This is a candidate recovery mechanism for MC/YA evaluation, not an adopted
+helper or YA acceptance result. A normal Play install cannot itself obtain
+the settings authority used in this experiment:
+[`WRITE_SECURE_SETTINGS`](https://developer.android.com/reference/android/Manifest.permission#WRITE_SECURE_SETTINGS)
+is a special system/development permission, distinct from an ordinary runtime
+consent prompt. The helper can restore debugging because setup already granted
+that authority; FCM by itself still cannot. Its narrowly matched, enrolled
+network-prompt handling is also distinct from model-directed accessibility
+control and needs its own source/platform/distribution review.
+
+The proven remote byte tunnel is not yet an on-phone agent control adapter.
+Local Claude/Codex sessions still need an on-phone ADB protocol client or
+native MC adapter to use the recovered listener. Keep that adapter, listener
+recovery, relay/push wake and the user-controlled enable/disable boundary
+separate. No new physical-device test or debugging/settings change follows
+from recording this report.
 
 ## Guest user and administration
 
@@ -358,6 +413,25 @@ token or relay target name is not permission to access the host. Revocable
 wake authorization must exist before the host becomes unreachable. The exact
 protocol, enrollment and rate limits remain design work.
 
+**Direct sibling reference, reviewed 2026-10-30:** YepControl, locally still
+checked out as `android-remote-access`, already implements this class of wake.
+At source `152b20c1e8eb24dac67f6fb376d52bbd3201be39f`, its
+[Cloudflare FCM sender](https://github.com/kzahel/yepcontrol/blob/152b20c1e8eb24dac67f6fb376d52bbd3201be39f/docs/cloudflare-fcm.md)
+renews Google access tokens on demand in Workers/Durable Objects. Native
+`RemoteMessagingService` checks local access policy and the hint, presents a
+connection notification, and schedules `WakeWorker` to establish an
+authenticated outward connection. Push remains a hint, not authority. The
+[production cutover evidence](https://github.com/kzahel/yepcontrol/blob/152b20c1e8eb24dac67f6fb376d52bbd3201be39f/docs/cloudflare-production.md#verified-production-cutover--2026-10-22)
+records process-absent FCM receipt in 1,682 ms and encrypted exchange in 2,164 ms
+through Cloudflare on an owned emulator. The separate
+[physical acceptance](https://github.com/kzahel/yepcontrol/blob/152b20c1e8eb24dac67f6fb376d52bbd3201be39f/docs/fcm-wake-v1.md#physical-pixel-7a-acceptance)
+covers screen-off forced-Doze wake on its earlier hosted sender. Review these
+implementations before designing YA wake; this is stronger than the companion
+notification analogy. YA's long-lived Node/PRoot service, provider work and
+MC/ADB recovery still require their own integration/acceptance. No YepControl
+credentials, Firebase registration, pairing authority or runtime dependency
+are adopted by this reference.
+
 [FCM priority guidance](https://firebase.google.com/docs/cloud-messaging/android-message-priority)
 limits urgent delivery to time-sensitive user-visible behavior, and
 [Android background-start rules](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)
@@ -366,7 +440,9 @@ or immediate-delivery guarantee. Force-stop requires subsequent user action
 under [Android's stopped-state contract](https://developer.android.com/about/versions/15/behavior-changes-all#stopped-state).
 Reboot/unlock, OEM power restrictions, network loss, native process loss and
 same-phone ADB re-arming need separate acceptance. A push cannot itself restore
-an unavailable ADB listener. This direction adds no unattended behavior today.
+an unavailable ADB listener; the separately reported Moto helper above uses
+pre-granted settings authority for that recovery. This direction adds no
+unattended behavior to YA today.
 
 ## Assistant entry-point research
 

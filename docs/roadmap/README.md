@@ -78,7 +78,13 @@ keeps phone-local coding as the product scope. The maintainer clarified on
 October 30 that phone computer use is core, behind an explicit default-off app
 toggle, and reliable remote access/wake is important. MC/ADB remains the
 preferred control route; actual enable/disable enforcement and platform setup
-remain integration work. The [updated distribution comparison](../competitive/android-host-distribution.md)
+remain integration work. A separate user-reported Moto helper completed three
+automatic ADB recoveries after reboot using initially USB-granted settings
+authority and enrolled Wi-Fi; see the [reported evidence and limits](../../topics/android-host.md#reported-moto-automatic-debugging-recovery).
+This makes privileged native recovery a concrete candidate to evaluate, with
+PIN/first-unlock, other firmware and hosted operation still open. The helper's
+source was unavailable in this session and it is not integrated into YA.
+The [updated distribution comparison](../competitive/android-host-distribution.md)
 finds live Play precedents in UserLAnd, standalone Andronix and AiCLI's
 Claude/Codex environment. Next: select phone-owned runtime provisioning and
 updates, replacing debug ADB staging; qualify lifecycle/credential recovery;

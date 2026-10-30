@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SUPERUSER } from "../../packages/server/src/auth/principal.js";
 import { createAgentApiRuntime } from "../../packages/server/src/agent-api/runtime.js";
+import { createConversationRead } from "../../packages/server/src/core-api/conversation.js";
+import { ConversationSubscriptions } from "../../packages/server/src/experimental/conversation-subscriptions.js";
+import type { Message } from "../../packages/shared/src/transcript/message.js";
 import { CoreApi } from "../../packages/server/src/core-api/service.js";
 import {
   OWN_SESSION_ID,
@@ -17,7 +20,60 @@ import {
 /** Real private adapter, deterministic source functions, no app/profile/scanners. */
 export async function createFixture(caseId: CaseId) {
   const runtime = await createAgentApiRuntime({ serverId: SERVER_ID });
+  const noise: Message[] = Array.from({ length: 40 }, (_, i) => [
+    {
+      type: "assistant" as const,
+      uuid: `call-${i}`,
+      content: [
+        {
+          type: "tool_use" as const,
+          id: `tool-${i}`,
+          name: "Bash",
+          input: { command: "diagnostic" },
+        },
+      ],
+    },
+    {
+      type: "user" as const,
+      uuid: `result-${i}`,
+      content: [
+        {
+          type: "tool_result" as const,
+          tool_use_id: `tool-${i}`,
+          content: `routine-noise-${i} `.repeat(500),
+        },
+      ],
+    },
+  ]).flat();
+  const conversations = new ConversationSubscriptions(async (sessionId) => ({
+    close() {},
+    async read() {
+      return {
+        sessionId,
+        messages: [
+          {
+            type: "user",
+            uuid: "question",
+            content: "Which release artifact is ready?",
+          },
+          ...noise,
+          {
+            type: "assistant",
+            uuid: "answer",
+            content: "The release artifact is orchid-7f2.",
+          },
+        ],
+        activity: caseId === "evidence" ? "unknown" : "idle",
+        pendingRequests: [],
+        sourceCoverage: {
+          complete: caseId !== "evidence",
+          earlierOutsideScope: caseId === "evidence" ? "unknown" : "no",
+        },
+      };
+    },
+  }));
   const core = new CoreApi(SERVER_ID, {
+    conversation: createConversationRead(conversations),
     projects: async () => ({ items: projects }),
     sessions: async () => ({
       items: sessions,
@@ -115,6 +171,7 @@ export async function createFixture(caseId: CaseId) {
     async close() {
       front.closeAllConnections();
       await new Promise<void>((resolve) => front.close(() => resolve()));
+      conversations.close();
       await runtime.close();
       await rm(directory, { recursive: true, force: true });
     },

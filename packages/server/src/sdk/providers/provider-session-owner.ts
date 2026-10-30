@@ -445,26 +445,9 @@ export class ProviderSessionOwner {
       if (pending?.controllerId === controllerId) {
         if (request.ok === true) pending.finish(undefined, request.result);
         else {
-          const error = request.error as
-            | { code?: string; message?: string; status?: number }
-            | undefined;
-          const known =
-            [
-              "invalid_request",
-              "server_not_found",
-              "session_not_found",
-              "catalog_not_ready",
-              "controller_unavailable",
-            ].includes(error?.code ?? "") &&
-            [400, 404, 503].includes(error?.status ?? 0);
           pending.finish(
-            known
-              ? new CoreApiError(
-                  error!.code as CoreApiError["code"],
-                  error!.message ?? "Catalog read failed",
-                  error!.status as CoreApiError["status"],
-                )
-              : new Error("Catalog read failed"),
+            CoreApiError.restore(request.error) ??
+              new Error("API operation failed"),
           );
         }
       }
@@ -1154,7 +1137,7 @@ export class ProviderSessionOwner {
     operation: Parameters<CoreApi["read"]>[0],
     input: NonNullable<Parameters<CoreApi["read"]>[2]>,
   ): ReturnType<CoreApi["read"]> {
-    const parsed = agentCatalogRequest.parse({
+    const parsed = agentCatalogRequest.safeParse({
       operation,
       input: {
         serverId: input.serverId,
@@ -1162,6 +1145,14 @@ export class ProviderSessionOwner {
         query: input.query,
       },
     });
+    if (!parsed.success)
+      return Promise.reject(
+        new CoreApiError(
+          "invalid_request",
+          "Invalid API request parameters",
+          400,
+        ),
+      );
     const attached = this.attachedController;
     if (!attached || this.pendingAgentReads.size >= 16)
       return Promise.reject(
@@ -1196,7 +1187,7 @@ export class ProviderSessionOwner {
         if (error) reject(error);
         else {
           const response = operations
-            .find((item) => item.id === parsed.operation)!
+            .find((item) => item.id === parsed.data.operation)!
             .response.safeParse(result);
           if (!response.success) reject(new Error("Invalid catalog response"));
           else resolve(response.data as Awaited<ReturnType<CoreApi["read"]>>);
@@ -1212,7 +1203,7 @@ export class ProviderSessionOwner {
         return;
       }
       try {
-        attached.write({ type: "agentApiRead", requestId, ...parsed });
+        attached.write({ type: "agentApiRead", requestId, ...parsed.data });
       } catch {
         finish(
           new CoreApiError(

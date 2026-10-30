@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from "hono";
+import { createConversationRead } from "./core-api/conversation.js";
 import { CoreApi, CoreApiError } from "./core-api/service.js";
 import { readServerIdentity } from "./core-api/server-identity.js";
 import { productionApiSources } from "./core-api/production-sources.js";
@@ -3105,9 +3106,8 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
 
-  agentApiController = new CoreApi(
-    publicServerId,
-    productionApiSources({
+  agentApiController = new CoreApi(publicServerId, {
+    ...productionApiSources({
       scanner,
       sessions: retainedCollections,
       metadata: options.sessionMetadataService,
@@ -3126,7 +3126,8 @@ export function createApp(options: AppOptions): AppResult {
         supervisor.getProcessForSession(id)?.state.type ?? "not-running",
       hiddenProjects: (username) => projectAppStore.hiddenProjectIds(username),
     }),
-  );
+    conversation: createConversationRead(conversationSubscriptions),
+  });
   app.route("/v0", createV0Routes(agentApiController));
 
   // Global sessions route (flat list of all sessions for navigation)

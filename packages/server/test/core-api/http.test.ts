@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EMPTY_LIMITED_USER_GRANTS } from "@yep-anywhere/shared";
 import {
   type Principal,
@@ -13,6 +13,8 @@ import {
   type ApiSession,
 } from "../../src/core-api/contracts.js";
 import { CoreApi, type CoreApiSources } from "../../src/core-api/service.js";
+import { createConversationRead } from "../../src/core-api/conversation.js";
+import { ConversationSubscriptions } from "../../src/experimental/conversation-subscriptions.js";
 import { createV0Routes } from "../../src/routes/v0/index.js";
 
 const alice: Principal = {
@@ -68,6 +70,30 @@ function fixture(
       },
     ],
     hiddenProjects: async () => new Set(["hidden"]),
+    conversation: createConversationRead(
+      new ConversationSubscriptions(async (sessionId) => ({
+        close() {},
+        async read() {
+          return {
+            sessionId,
+            activity: "idle",
+            messages: [
+              { type: "user", uuid: "q", content: "What shipped?" },
+              {
+                type: "assistant",
+                uuid: "a",
+                content: [
+                  { type: "thinking", thinking: "private-reasoning" },
+                  { type: "text", text: "Shipped **Orchid**." },
+                ],
+              },
+            ],
+            pendingRequests: [],
+            sourceCoverage: { complete: true, earlierOutsideScope: "no" },
+          };
+        },
+      })),
+    ),
   };
   const api = new CoreApi(id, sources);
   const app = new Hono<{ Variables: { yaPrincipal: Principal } }>();
@@ -199,6 +225,32 @@ describe("isolated v0 application and HTTP reads", () => {
       .replace("{sessionId}", encodeURIComponent(next.items[0].id));
     expect((await (await app.request(summaryPath)).json()).id).toBe("c");
     expect((await fixture("A", null).app.request("/v0/help")).status).toBe(401);
+  });
+
+  it("authorizes compact reads before acquisition, reports window limits, and documents executable queries", async () => {
+    const { app, sources } = fixture("A");
+    const read = vi.fn(sources.conversation!);
+    sources.conversation = read;
+    expect(
+      (await app.request("/v0/servers/A/sessions/a/conversation")).status,
+    ).toBe(404);
+    expect(read).not.toHaveBeenCalled();
+    const path = "/v0/servers/A/sessions/b/conversation";
+    const response = await app.request(path + "?maxMessages=1");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].content).toEqual([
+      { kind: "text", format: "markdown", text: "Shipped **Orchid**." },
+    ]);
+    expect(body.coverage.earlierInScope).toBe(true);
+    expect(body.revision).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(body)).not.toContain("private-reasoning");
+    expect((await app.request(path + "?maxMessages=101")).status).toBe(400);
+    expect((await app.request(path + "?limit=2")).status).toBe(400);
+    expect((await app.request(path + "?anchorMessageId=unknown")).status).toBe(
+      404,
+    );
   });
 
   it("orders fractional timestamps and timezone offsets chronologically before pagination", async () => {

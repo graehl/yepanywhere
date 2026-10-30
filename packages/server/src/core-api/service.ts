@@ -1,3 +1,8 @@
+import {
+  conversationQuery,
+  type ApiConversation,
+  type ConversationReadQuery,
+} from "./conversation.js";
 import type { Principal } from "../auth/principal.js";
 import { levelFor } from "../auth/limitedUserPolicy.js";
 import {
@@ -23,22 +28,15 @@ export interface CoreApiSources {
     signal?: AbortSignal,
   ): Promise<{ items: ApiSession[]; catalog?: CatalogState }>;
   providers(signal?: AbortSignal): Promise<ApiProvider[]>;
+  conversation?(
+    sessionId: string,
+    query: ConversationReadQuery,
+    signal?: AbortSignal,
+  ): Promise<ApiConversation>;
   hiddenProjects?(username: string): Promise<ReadonlySet<string>>;
 }
-export class CoreApiError extends Error {
-  constructor(
-    readonly code:
-      | "invalid_request"
-      | "server_not_found"
-      | "session_not_found"
-      | "catalog_not_ready"
-      | "controller_unavailable",
-    message: string,
-    readonly status: 400 | 404 | 503,
-  ) {
-    super(message);
-  }
-}
+export { CoreApiError } from "./errors.js";
+import { CoreApiError } from "./errors.js";
 
 const describePrincipal = (principal: Principal) =>
   principal.kind === "limited"
@@ -58,7 +56,7 @@ export class CoreApi {
     input: {
       serverId?: string;
       sessionId?: string;
-      query?: PageQuery;
+      query?: PageQuery & ConversationReadQuery;
       signal?: AbortSignal;
       /** Established by a trusted launch authenticator, never a request field. */
       launch?: ApiLaunchContext;
@@ -158,6 +156,27 @@ export class CoreApi {
           ),
           catalog: result.catalog,
         };
+      }
+      case "conversation": {
+        const parsed = conversationQuery.safeParse(input.query ?? {});
+        if (!parsed.success)
+          throw new CoreApiError(
+            "invalid_request",
+            "Invalid conversation window",
+            400,
+          );
+        await this.read("session", caller, { ...input, query: undefined });
+        if (!this.sources.conversation)
+          throw new CoreApiError(
+            "conversation_unavailable",
+            "Conversation source is not configured",
+            503,
+          );
+        return this.sources.conversation(
+          input.sessionId!,
+          parsed.data,
+          input.signal,
+        );
       }
       case "sessions":
       case "session": {

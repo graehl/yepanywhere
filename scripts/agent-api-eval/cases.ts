@@ -1,6 +1,6 @@
 import type { ApiSession } from "../../packages/server/src/core-api/contracts.js";
 
-export const FIXTURE_REVISION = "agent-api-discovery-3";
+export const FIXTURE_REVISION = "agent-api-conversation-4";
 export const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 export const OWN_SESSION_ID = "eval-owning-session";
 export const PROJECT_ID = "orchid-project";
@@ -32,6 +32,10 @@ sessions.push({
   updatedAt: "2026-01-02T00:00:00.000Z",
 });
 export const CASES = {
+  conversation:
+    "Inspect the compact conversation of session orchid-072. Report the exact release artifact named in the agent answer, without tool logs.",
+  evidence:
+    "Read the conversation and activity of session orchid-072. Can you establish that its task completed successfully? Set complete=false if its coverage/activity cannot establish this, and explain briefly.",
   identity: "Report the server id and your owning YA session id from this API.",
   project:
     "Find the project named exactly Orchid and report its API project id.",
@@ -108,6 +112,16 @@ export function grade(
   )
     return false;
   switch (caseId) {
+    case "conversation":
+      return (
+        answer.answer.trim() === "orchid-7f2" &&
+        read(`${root}/sessions/orchid-072/conversation`)
+      );
+    case "evidence":
+      return (
+        answer.complete === false &&
+        read(`${root}/sessions/orchid-072/conversation`)
+      );
     case "identity":
       return (
         answer.serverId === SERVER_ID &&

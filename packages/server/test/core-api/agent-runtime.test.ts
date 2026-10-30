@@ -6,6 +6,8 @@ import {
   createAgentApiRuntime,
   type AgentApiRuntime,
 } from "../../src/agent-api/runtime.js";
+import { createConversationRead } from "../../src/core-api/conversation.js";
+import { ConversationSubscriptions } from "../../src/experimental/conversation-subscriptions.js";
 import { CoreApi, CoreApiError } from "../../src/core-api/service.js";
 
 function request(
@@ -60,6 +62,81 @@ const controller = (id: string, name: string) =>
   });
 
 describe("launch-bound local agent adapter", () => {
+  it("reads a compact finalized view through authenticated Unix HTTP and releases observation", async () => {
+    if (process.platform === "win32") return; // Native qualification deferred.
+    let closed = 0;
+    const subscriptions = new ConversationSubscriptions(async (sessionId) => ({
+      close() {
+        closed++;
+      },
+      async read() {
+        return {
+          sessionId,
+          messages: [
+            { type: "assistant", uuid: "answer", content: "Exact answer" },
+          ],
+          activity: "unknown",
+          pendingRequests: [],
+          sourceCoverage: { complete: false, earlierOutsideScope: "unknown" },
+        };
+      },
+    }));
+    const runtime = await createAgentApiRuntime({
+      serverId: "A",
+      transport: "unix",
+    });
+    try {
+      runtime.attachController(
+        new CoreApi("A", {
+          projects: async () => ({ items: [] }),
+          providers: async () => [],
+          sessions: async () => ({
+            items: [
+              {
+                id: "s",
+                projectId: "p",
+                provider: "claude",
+                title: null,
+                updatedAt: "",
+                state: "not-running",
+              },
+            ],
+          }),
+          conversation: createConversationRead(subscriptions),
+        }),
+      );
+      const lease = runtime.issue({
+        principal: SUPERUSER,
+        sessionId: () => "owner",
+      });
+      const path = "/v0/servers/A/sessions/s/conversation";
+      expect((await request(runtime, path)).status).toBe(401);
+      const response = await request(
+        runtime,
+        path,
+        lease.environment.AGENT_YA_V0_AUTHORIZATION,
+      );
+      expect(response.status).toBe(200);
+      expect(response.json()).toMatchObject({
+        activity: "unknown",
+        coverage: { completeForRequest: false },
+      });
+      expect(closed).toBe(1);
+      lease.dispose();
+      expect(
+        (
+          await request(
+            runtime,
+            path,
+            lease.environment.AGENT_YA_V0_AUTHORIZATION,
+          )
+        ).status,
+      ).toBe(401);
+    } finally {
+      subscriptions.close();
+      await runtime.close();
+    }
+  });
   it.each(
     process.platform === "win32"
       ? ["loopback" as const]

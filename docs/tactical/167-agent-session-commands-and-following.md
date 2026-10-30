@@ -158,3 +158,28 @@ focused acquisition/source/subscription checks pass (40 tests); root lint,
 format, typecheck and workspace tests pass. The full server run passed 6,595
 cases before the final guard-only repair; the changed boundary was rerun with
 15 reader cases afterward. Native Windows qualification remains deferred.
+
+## Phase 2 evidence
+
+Added the server-addressed compact conversation read, pure core source port,
+production shared-owner adapter and private provider/controller bridge support.
+Real Hono authorization tests assert acquisition never begins for inaccessible
+sessions. Private Unix HTTP tests cover missing/revoked credentials, unknown
+coverage and final observer teardown. Served-schema/example tests cover the new
+window bounds and explicit missing-anchor behavior.
+
+Two opt-in Sol medium trials passed (conversation artifact and incomplete
+evidence). They used the real private adapter and shared projection with noisy
+scripted native messages. Observed durations were 14.4/17.1 seconds, 4/5 HTTP
+requests, zero HTTP errors, 75,012 fetched documentation bytes per trial. Reported
+processed input was 77,186/61,866 tokens; this is not unique context or a causal
+measure of documentation overhead. Raw local reports remain ignored. Reviewer
+found missing conversation errors across the hosted bridge; the shared decoder
+and real worker/socket regression now preserve both codes and statuses.
+
+Phase 2 root lint/format/types pass. The workspace run is red solely on the
+previously tracked Rendez nested watcher at line 353 (6,597 other server cases
+passed); its gap records this observation. Do not substitute the phase 1 green
+suite or a later isolated pass for this failed run. Focused core/real hosted
+bridge checks pass (60 tests). Query preservation was also repaired so a typo
+cannot become a successful latest-window read across the bridge.

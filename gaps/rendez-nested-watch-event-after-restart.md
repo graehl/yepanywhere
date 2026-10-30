@@ -41,3 +41,9 @@ or establish that changing Node versions fixes it. Evidence: ignored
 The immediate final Node 22 isolated rerun passed all four runnable cases in
 5.76 s. That disagreement is retained as intermittent evidence, not a green
 replacement for the failing full run.
+
+The compact conversation phase 2 workspace run on 2026-10-30, macOS / Node
+22.23.3, again missed the first nested delivery at line 353: 6,597 other server
+tests passed. Watcher source, budgets and assertions were unchanged. Evidence:
+ignored `tasks/http-api-v0/167-phase2-root-tests.log`. This run remains red; no
+retries or timeout changes were used to replace its result.

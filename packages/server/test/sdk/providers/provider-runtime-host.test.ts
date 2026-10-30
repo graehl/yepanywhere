@@ -36,7 +36,7 @@ import {
   revokeHostedAgentApiAccess,
 } from "../../../src/sdk/providers/provider-runtime-host.js";
 import { isProviderHostDegraded } from "../../../src/sdk/providers/provider-host-status.js";
-import { CoreApi } from "../../../src/core-api/service.js";
+import { CoreApi, CoreApiError } from "../../../src/core-api/service.js";
 
 const temporaryPaths: string[] = [];
 const fixtureWorker = join(
@@ -2021,7 +2021,27 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
           { id: "worker-project", name: "worker project", path: runtimeRoot },
         ],
       }),
-      sessions: async () => ({ items: [] }),
+      sessions: async () => ({
+        items: [
+          {
+            id: "api-fixture",
+            projectId: "worker-project",
+            provider: "claude",
+            title: null,
+            updatedAt: "",
+            state: "idle",
+          },
+        ],
+      }),
+      conversation: async (_id, query) => {
+        throw new CoreApiError(
+          query.anchorMessageId
+            ? "anchor_unavailable"
+            : "conversation_unavailable",
+          "History unavailable",
+          query.anchorMessageId ? 404 : 503,
+        );
+      },
       providers: async () => [],
     });
     const options = {
@@ -2042,6 +2062,25 @@ describe.skipIf(!nativeHostSupported)("ProviderRuntimeHost", () => {
       };
       expect(result.status).toBe(200);
       expect(JSON.parse(result.body).items[0].id).toBe("worker-project");
+      for (const [suffix, code, status] of [
+        ["", "conversation_unavailable", 503],
+        ["?anchorMessageId=missing", "anchor_unavailable", 404],
+        ["?anchorMessageID=misspelled", "invalid_request", 400],
+        ["?maxMessages=0", "invalid_request", 400],
+        ["?maxMessages=101", "invalid_request", 400],
+      ] as const) {
+        first.queue.push({
+          text:
+            "/v0/servers/profile-api-host/sessions/api-fixture/conversation" +
+            suffix,
+        });
+        const failure = (await first.iterator.next()).value!.apiResult as {
+          status: number;
+          body: string;
+        };
+        expect(failure.status).toBe(status);
+        expect(JSON.parse(failure.body).error.code).toBe(code);
+      }
       await first.publishAgentctlSessionId?.("api-fixture");
       const waiting = first.iterator.next();
       await first.detachForServerReload?.();

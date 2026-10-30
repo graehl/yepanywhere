@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { conversationQuery, conversationSchema } from "./conversation.js";
 
-export const API_REVISION = "2026-10-30.3";
+export const API_REVISION = "2026-10-30.4";
 export const paginationQuery = z.object({
   cursor: z
     .string()
@@ -216,6 +217,11 @@ export const operations = [
     path: "/servers/:serverId/sessions/:sessionId",
     response: sessionSchema,
   },
+  {
+    id: "conversation",
+    path: "/servers/:serverId/sessions/:sessionId/conversation",
+    response: conversationSchema,
+  },
 ] as const;
 export type Operation = (typeof operations)[number]["id"];
 export const operationIds = operations.map((operation) => operation.id);
@@ -291,6 +297,13 @@ export const operationDocumentation: Record<
       "List retained summaries, optionally filtered by exact projectId. Newest updatedAt first, then id. Resource grants, creator access and hidden projects apply before pagination. Ambiguous cross-project ids are omitted. This does not return messages or completion results.",
     example: "/v0/servers/{serverId}/sessions?projectId={projectId}&limit=1",
   },
+  conversation: {
+    summary: "Read compact conversation and activity",
+    description:
+      "Read exact user prose and agent Markdown, stable message ids, observed activity, bounded failure/media references and pending attention. Routine tool payloads, thinking and HTML are excluded. Defaults to 20 messages within the recent two compactions; coverage and truncated flags state limits. idle is not proof of successful completion. Unsupported providers/history return 503 conversation_unavailable; missing anchors return 404 anchor_unavailable.",
+    example:
+      "/v0/servers/{serverId}/sessions/{sessionId}/conversation?maxMessages=20",
+  },
   session: {
     summary: "Inspect one session summary",
     description:
@@ -300,12 +313,12 @@ export const operationDocumentation: Record<
 };
 
 export const errorDescriptions = {
-  400: "invalid_request: malformed pagination or projectId on an unsupported operation.",
+  400: "invalid_request: malformed pagination/conversation window or unsupported query parameters.",
   401: "Authentication missing, invalid or expired. Host authentication may return its existing error format.",
   403: "Request denied by host, origin, custom-header or principal policy. The hosting security layer may use its existing error format.",
-  404: "Unknown resource/server, or session absent/inaccessible/ambiguous in a complete catalog. No target fallback.",
+  404: "Unknown resource/server, or session absent/inaccessible/ambiguous in a complete catalog; anchor_unavailable means choose another history window explicitly. No target fallback.",
   500: "internal_error: unexpected read failure; private exception details are not returned.",
-  503: "catalog_not_ready: session absence is uncertain in an incomplete catalog; controller_unavailable: the catalog owner is detached/reloading. Retry reads later; neither means the session was deleted.",
+  503: "catalog_not_ready: session absence is uncertain in an incomplete catalog; controller_unavailable: the catalog owner is detached/reloading. Retry reads later; neither means the session was deleted. conversation_unavailable means unsupported, unreadable or over-budget history; do not infer successful completion.",
 };
 
 export function apiHelp() {
@@ -314,7 +327,7 @@ export function apiHelp() {
     "",
     `Revision: ${API_REVISION}. Unstable: routes, fields and behavior may change.`,
     "",
-    "Use this API to inspect authorized projects, configured provider harnesses and coding-agent session summaries. This build is READ ONLY. Session creation, message history/sending, configuration, interruption, command execution, terminals and peer routing are not implemented in v0. Do not infer support from older /api routes or provider capability flags.",
+    "Use this API to inspect authorized projects, configured provider harnesses and coding-agent session summaries and compact conversations. This build is READ ONLY. Session creation, message sending, configuration, interruption, command execution, terminals and peer routing are not implemented in v0. Do not infer support from older /api routes or provider capability flags.",
     "",
     "## Connect and discover",
     "",
@@ -324,7 +337,7 @@ export function apiHelp() {
     "",
     "## Find a project and its sessions",
     "",
-    ...["projects", "sessions", "session"].flatMap((id) => {
+    ...["projects", "sessions", "session", "conversation"].flatMap((id) => {
       const doc = operationDocumentation[id as Operation];
       return [`GET ${doc.example}`, doc.description, ""];
     }),
@@ -392,6 +405,17 @@ export function apiSchema(launchBound = false) {
               path: operationDocumentation[operation.id].example,
             },
             parameters: [
+              ...(operation.id === "conversation"
+                ? Object.entries(conversationQuery.shape).map(
+                    ([name, schema]) => ({
+                      name,
+                      in: "query",
+                      required: false,
+                      description: schema.description,
+                      schema: z.toJSONSchema(schema),
+                    }),
+                  )
+                : []),
               ...[...operation.path.matchAll(/:([A-Za-z]+)/g)].map((match) => ({
                 name: match[1],
                 in: "path",

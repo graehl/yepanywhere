@@ -168,6 +168,32 @@ The schema defines pagination, field mutability and provider limitations per
 operation. Unsupported queue/steer behavior must be explicit, not silently
 translated into another delivery choice.
 
+## Compact conversation reads
+
+Implemented in revision `2026-10-30.4`: `GET
+/v0/servers/{serverId}/sessions/{sessionId}/conversation` returns stable message
+ids, exact visible prose/Markdown, observed activity, bounded failure/media
+references, read-only pending attention, coverage and an opaque content revision.
+It excludes routine tool bodies, thinking and rendered HTML. This is a filtered
+projection, not an LLM summary or a completion verdict. Truncation, byte limits,
+recent-two-compaction scope and unknown evidence remain explicit. `idle` does not
+establish successful completion. Provider/history shapes outside acquisition
+support return `503 conversation_unavailable`; no native history is guessed.
+
+`maxMessages` is 1–100, default 20. `anchorMessageId` selects an existing stable
+visible message; an unavailable anchor returns `404 anchor_unavailable`, without
+silently moving to the latest window. Unknown window parameters fail. The
+served help and OpenAPI schema describe the same bounds and examples. A launch
+read lease can read this surface; no creation, sending or approval authority is
+added by this slice. Resource access is checked before acquiring history.
+
+Reads use the existing shared conversation observation owner. They add no
+independent scanner, permanent poll loop or per-token transcript read. A request
+that cannot obtain its first publication within four seconds releases demand
+and returns unavailable, within the private controller bridge's deadline.
+Final-consumer removal cancels source work and releases watches/viewers. Native
+acquisition constraints are owned by [Simple Client API](simple-client-api.md).
+
 ## Local agent runtime factory
 
 Implemented independently of provider/UI integration, 2026-10-30. A provider

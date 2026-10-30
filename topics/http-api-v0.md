@@ -444,3 +444,108 @@ served help for now; this small sample does not establish cache savings or a
 statistical model-quality ranking. Narrower operation docs/schema are a useful
 next context-cost experiment. The runner reports bytes and provider usage
 separately rather than inventing unique-context tokens or subscription prices.
+
+## Next slice: session commands and compact following (proposal)
+
+Maintainer direction, 2026-10-30: proceed toward creation, messaging and
+following, including authenticated creation/message attribution. Defer native
+Windows qualification until multi-device enrollment exists, so the Windows host
+can exercise the actual enrollment and peer path. This qualification does not
+block the local session API slice; no Windows support removal is selected.
+
+### Existing caller behavior and reusable pieces
+
+Read-only inspection of matching recent Claude/Codex histories found agents
+polling `/api/sessions/{id}/process`, then fetching project-scoped session detail
+and extracting user/assistant text with Python or jq. Some inspect the latest
+few raw messages or read native JSONL directly. A representative Codex caller
+first tried top-level message content and then corrected its filter to nested
+`message.content`; the current shapes and tool noise cause avoidable discovery
+and repeated reads. This was a targeted sample, not a population measurement.
+The repository's `scripts/monitor-agent-process.mjs` is a stronger existing
+example: it observes state/liveness/queue depth without fetching transcripts,
+and distinguishes verified idle from missing ownership or needed attention.
+
+The older compact API still exists: `GET /api/experimental/conversation` and
+its `/subscribe` SSE route. Read-only live checks returned usable snapshots
+for Claude/Codex examples and a valid SSE initial snapshot. One normal reviewer
+detail response was 996,257 bytes (109 raw records; 9,484 serialized bytes of
+user/assistant text), versus 12,408 bytes for the compact view. A Claude example
+returned 2,308,285 versus 20,436 bytes. The compact query selected at most 20
+logical visible messages with explicit coverage; these are representation
+examples, not equal raw-record windows or latency benchmarks. Evidence is in
+ignored `tasks/http-api-v0/discovery-research/response-shapes.json`.
+
+[Simple Client API](simple-client-api.md) owns the existing experiment. It
+already has shared grouping/projection, activity, important failures, pending
+requests, bounded snapshots and subscription teardown. [House cleaning](core-house-cleaning.md)
+row 10 defers its removal; this new use does not select the alternate UI or
+promote that experimental protocol wholesale.
+
+Its acquisition is not ready to become the universal agent reader: it caps
+native history at 8 MiB/10,000 records, refuses inherited Codex rollouts, has
+limited provider coverage and does not assemble partial token frames. The
+current long agent session exceeds 8 MiB and returned `unavailable` in the live
+check. Reuse useful semantic projection and lifecycle pieces while connecting
+them to bounded canonical provider history acquisition. Do not raise the file
+cap or load full histories merely to return a small tail.
+
+### Recommended read and follow contract
+
+Default to a deterministic compact conversation projection: stable message ids,
+user text and agent-authored Markdown, current activity, pending attention and
+honest history coverage. This is filtering/grouping, not an LLM-generated
+summary. Routine tool calls/results, thinking and rendered HTML stay out of the
+default response. Keep bounded warnings/failure references and media/artifact
+references where they are the only relevant output; explicit diagnostics can
+retrieve underlying activity. Commentary and final agent prose both remain
+available, with phase/completeness when the provider establishes it.
+
+Use bounded JSON history plus an HTTP follow binding over the same view. State
+polling remains useful on its own. Following should deliver new/changed visible
+messages and activity transitions, avoiding replay of a whole transcript on
+each tool event. Stable ids and revisions permit replacement of growing text;
+provider token streaming is not a prerequisite for useful finalized-message
+following. SSE is an existing HTTP binding worth reusing; a client should not
+need YA's browser WebSocket reducer or a helper CLI.
+
+Define initial snapshot, cursor/revision scope, reconnect and explicit reset
+before promising resumable delivery. The current experimental SSE sequence is
+binding-local and its coalesced snapshots may skip intermediate states; it is
+not a durable event-log cursor. Rewinds, compaction, scope changes and retention
+loss must not silently appear as an ordinary append. Expose truncation/unknown
+coverage; never turn unavailable ownership into successful completion.
+Activity must distinguish working, idle, awaiting attention, ended and unknown.
+Message acceptance/delivery/completion and queue depth remain separate facts.
+
+### Creation, messaging and provenance
+
+Reuse native YA launch and input owners through application services rather
+than making the new API call legacy Hono routes or launch another provider
+resume. Preserve project/provider/model/permission configuration without adding
+worktree, checkout or delegation lifecycle policy. Extend the current read-only
+launch grant explicitly when enabling writes; existing read grants must not
+silently acquire newly added mutation operations.
+
+Keep current creation-source hints (`web`/`desktop`/`api`) and limited-user
+ownership, but add trusted creator facts: immediate principal, originating
+server/session/launch when authenticated, destination identity, request identity
+and time. Current `creationProvenance` is optional client/source metadata, not
+an authenticated agent-parent identity. The launch credential can establish
+local session attribution; caller-supplied ids cannot. Do not overload the
+existing fork or `/btw` parent fields. Attribute later submitted messages too.
+
+Creation and messaging need scoped retry identities and inspectable outcomes.
+The [unconfirmed-send gap](../gaps/unconfirmed-send-loss-across-reload.md) and the
+mutation-outcome contract above remain acceptance inputs. An accepted queued
+message is not yet durable provider delivery, and idle alone does not prove
+that a particular submitted message received a response. Receipts identify the
+submission being followed without imposing a managed delegation workflow.
+
+A useful implementation order is compact bounded history/status; creation with
+trusted provenance and retry reconciliation; then message receipts and follow
+continuity through the same owners. Exercise the complete agent workflow after
+each meaningful slice: launch a reviewer, observe new prose and activity, send
+a follow-up, reconnect without duplicate input, and inspect creator facts.
+Retain YA-launched Sol 6.1 high reviews between implementation phases. Native
+Windows/enrollment stays at the later multi-device acceptance boundary.

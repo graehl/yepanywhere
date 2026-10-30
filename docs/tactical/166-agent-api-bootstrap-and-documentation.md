@@ -40,6 +40,12 @@ its isolated rerun also failed. Those Node 26 failures remain recorded.
 Phase 4 had a complete Node 22 workspace pass; its final cleanup verification
 again hit the known watcher failure. Details and remaining limits are below.
 
+Maintainer follow-up, 2026-10-30: native Windows qualification is explicitly
+**deferred until multi-device enrollment**, using the available Windows host to
+exercise the real peer/enrollment path. Continue local creation, messaging and
+compact following first; [the owning proposal](../../topics/http-api-v0.md#next-slice-session-commands-and-compact-following-proposal)
+records current caller evidence and the retained Conversation API boundary.
+
 ## Outcome and scope
 
 An explicitly enabled local agent can learn where it runs, discover the API,

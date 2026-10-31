@@ -1,4 +1,6 @@
 {
+  "diagramViewerOpen": "Expand diagram",
+  "diagramViewerTitle": "Diagram",
   "sshExecutorsRemoved": "SSH executors have been removed. Open a local project to start a new session.",
   "rendezSendsIn": "Sends in {seconds}s",
   "rendezReadyWithMessage": "Ready with your message",

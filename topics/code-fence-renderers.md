@@ -262,6 +262,24 @@ reason.
 Where a hover pointer does not exist, the toggle is always visible instead of
 fading in, because it is then the only way back to source.
 
+### Fullscreen inspection
+
+Tapping a rendered diagram or its visible **Expand diagram** button opens a
+fullscreen viewer in transcripts and rendered Markdown file previews. Keyboard
+users can activate the diagram with Enter or Space. The shared image viewer
+starts fitted and offers pinch zoom, one-finger panning, Ctrl/trackpad-wheel
+zoom and visible Fit, actual-size and zoom buttons. The diagram remains SVG,
+including HTML labels, so enlarging it does not rasterize its text.
+
+Close, Escape or mobile Back dismisses only the diagram viewer and returns to
+the same underlying transcript or file preview without changing its scroll
+position. Opening a diagram from a file viewer keeps that parent viewer open.
+The Σ source/render toggle remains independent and never opens the viewer.
+Expansion reuses the already rendered diagram; it performs no server request
+and creates no project file. Temporary vector URLs are released on dismissal.
+This extends the established image-viewing interaction to diagrams and is
+always available, as approved by the maintainer on 2026-10-31.
+
 ## Streaming
 
 A client may re-render on each streaming augment, but that is not the usual

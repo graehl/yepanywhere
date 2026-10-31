@@ -284,7 +284,7 @@ export const TextBlock = memo(function TextBlock({
   useLocalMediaInlinePreviews(copySourceRef, undefined, undefined, {
     suppressAutomaticImages: turnImageGallery?.available === true,
   });
-  useCodeFenceRenderers(copySourceRef);
+  const diagramViewer = useCodeFenceRenderers(copySourceRef);
   const handleContentClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       const content = copySourceRef.current;
@@ -582,6 +582,7 @@ export const TextBlock = memo(function TextBlock({
       )}
       {contextMenuElement}
       {inlineCode.menu}
+      {diagramViewer}
     </div>
   );
 });

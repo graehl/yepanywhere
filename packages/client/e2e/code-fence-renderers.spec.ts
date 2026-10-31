@@ -120,6 +120,20 @@ test("renders a mermaid fence as a diagram and labels other fences", async ({
   await toggle.click();
   await expect(block).toHaveAttribute("data-ya-code-view", "rendered");
 
+  await block.locator("[data-ya-code-expand]").click();
+  const viewer = page.getByRole("dialog", { name: "Diagram", exact: true });
+  await expect(viewer.getByRole("img")).toBeVisible();
+  await expect
+    .poll(() =>
+      viewer
+        .getByRole("img")
+        .evaluate((img: HTMLImageElement) => img.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await recordUiCapture(page, "mermaid-viewer-desktop-1000x600");
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+
   const composer = page.locator("[data-composer-input]");
   let typed = "";
   for (const character of "Review this diagram") {
@@ -146,12 +160,93 @@ test("renders a mermaid fence at phone width", async ({ page, baseURL }) => {
   expect(width).toBeLessThanOrEqual(375);
 
   await capture(page, "code-fence-mermaid-mobile-375x812");
+
+  const beforeTop = await diagram.evaluate(
+    (node) => node.getBoundingClientRect().top,
+  );
+  await diagram.click();
+  const viewer = page.getByRole("dialog", { name: "Diagram", exact: true });
+  const image = viewer.getByRole("img");
+  await expect
+    .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+  const initialWidth = await image.evaluate(
+    (img) => img.getBoundingClientRect().width,
+  );
+  await viewer.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect
+    .poll(() => image.evaluate((img) => img.getBoundingClientRect().width))
+    .toBeGreaterThan(initialWidth);
+
+  // Real Chromium touch input exercises pointer capture, pinch and pan routing.
+  const touch = await page.context().newCDPSession(page);
+  try {
+    await touch.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+    const stage = image.locator("xpath=../../..");
+    const rect = await stage.boundingBox();
+    if (!rect) throw new Error("Missing image stage");
+    const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    const widthBeforePinch = await image.evaluate(
+      (img) => img.getBoundingClientRect().width,
+    );
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [
+        { id: 1, x: center.x - 35, y: center.y },
+        { id: 2, x: center.x + 35, y: center.y },
+      ],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        { id: 1, x: center.x - 100, y: center.y },
+        { id: 2, x: center.x + 100, y: center.y },
+      ],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await expect
+      .poll(() => image.evaluate((img) => img.getBoundingClientRect().width))
+      .toBeGreaterThan(widthBeforePinch * 2);
+    const beforePan = await stage.evaluate((node) => node.scrollLeft);
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ id: 1, ...center }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ id: 1, x: center.x - 65, y: center.y }],
+    });
+    await touch.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await expect
+      .poll(() => stage.evaluate((node) => node.scrollLeft))
+      .toBeGreaterThan(beforePan + 40);
+  } finally {
+    await touch.detach();
+  }
+  await recordUiCapture(page, "mermaid-viewer-phone-zoomed-375x812");
+  await viewer.getByRole("button", { name: "Fit", exact: true }).click();
+  await recordUiCapture(page, "mermaid-viewer-phone-fit-375x812");
+  await page.goBack();
+  await expect(viewer).toBeHidden();
+  await expect
+    .poll(() => diagram.evaluate((node) => node.getBoundingClientRect().top))
+    .toBeCloseTo(beforeTop, 0);
 });
 
 test("excludes Mermaid labels from the sidebar Markdown quote rail", async ({
   page,
   baseURL,
 }) => {
+  await page.addInitScript(
+    (key) => localStorage.setItem(key, "dark"),
+    UI_KEYS.theme,
+  );
   const readmePath = join(
     e2ePaths.tempDir,
     "file-browser-project",
@@ -180,6 +275,26 @@ test("excludes Mermaid labels from the sidebar Markdown quote rail", async ({
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(viewer.locator(".text-block-quote-paragraph")).toHaveCount(1);
     await recordUiCapture(page, "mermaid-sidebar-phone-375x812");
+    await viewer.locator("[data-ya-code-rendered]").focus();
+    await page.keyboard.press("Enter");
+    const diagramViewer = page.getByRole("dialog", {
+      name: "Diagram",
+      exact: true,
+    });
+    await expect(diagramViewer.getByRole("img")).toBeVisible();
+    await expect
+      .poll(() =>
+        diagramViewer
+          .getByRole("img")
+          .evaluate((img: HTMLImageElement) => img.naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    await page.mouse.move(1, 1);
+    await expect(page.getByRole("tooltip")).toBeHidden();
+    await recordUiCapture(page, "mermaid-html-labels-viewer-phone-375x812");
+    await page.keyboard.press("Escape");
+    await expect(diagramViewer).toBeHidden();
+    await expect(viewer).toBeVisible();
   } finally {
     writeFileSync(readmePath, original);
   }

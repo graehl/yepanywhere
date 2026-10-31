@@ -1,4 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  render as renderComponent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { RenderModeGlyph } from "../../components/ui/RenderModeGlyph";
@@ -8,6 +12,12 @@ import {
   useCodeFenceRenderers,
 } from "../useCodeFenceRenderers";
 import { initializeTheme } from "../useTheme";
+import { I18nProvider } from "../../i18n";
+
+const render = (
+  ui: Parameters<typeof renderComponent>[0],
+  options?: Parameters<typeof renderComponent>[1],
+) => renderComponent(ui, { wrapper: I18nProvider, ...options });
 
 vi.mock("mermaid", () => ({
   default: {
@@ -45,6 +55,7 @@ describe("useCodeFenceRenderers", () => {
       const writeText = vi.fn(async () => {});
       vi.stubGlobal("navigator", {
         ...navigator,
+        language: navigator.language,
         clipboard: { writeText },
       });
       try {

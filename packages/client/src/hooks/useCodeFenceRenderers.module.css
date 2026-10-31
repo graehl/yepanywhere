@@ -71,7 +71,29 @@
   display: flex;
   justify-content: center;
   overflow-x: auto;
-  padding: 0.5rem 0;
+  padding: calc(44px + 0.5rem) 0 0.5rem;
+  cursor: zoom-in;
+}
+
+.root [data-ya-code-expand] {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  color: var(--text-muted);
+  cursor: zoom-in;
+  z-index: 2;
+}
+
+.root [data-ya-code-block][data-ya-code-view="source"] > [data-ya-code-expand] {
+  display: none;
 }
 
 .root [data-ya-code-rendered] svg {

@@ -7,7 +7,8 @@
  * See `topics/code-fence-renderers.md`.
  */
 
-import { type RefObject, useEffect } from "react";
+import { lazy, type RefObject, Suspense, useEffect, useState } from "react";
+import { useI18n } from "../i18n";
 import { RENDER_MODE_GLYPH_MARKUP } from "../components/ui/RenderModeGlyph";
 import {
   type CodeFenceRenderer,
@@ -40,6 +41,10 @@ const BLOCK = "data-ya-code-block";
 const RENDERED = "data-ya-code-rendered";
 const TOGGLE = "data-ya-code-toggle";
 const COPY = "data-ya-code-copy";
+const EXPAND = "data-ya-code-expand";
+const DiagramViewer = lazy(() => import("../components/DiagramViewer"));
+const EXPAND_ICON_MARKUP =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M3 3l6 6m12-6-6 6M3 21l6-6m12 6-6-6"/></svg>';
 
 /** How long the copy control shows its confirmation. */
 const COPIED_MS = 1200;
@@ -154,6 +159,7 @@ function mount(
   markup: string,
   key: string,
   renderer: CodeFenceRenderer,
+  expandLabel: string,
 ): void {
   const doc = pre.ownerDocument;
   const parent = pre.parentElement;
@@ -174,6 +180,19 @@ function mount(
     block.insertBefore(rendered, pre);
   }
   rendered.innerHTML = markup;
+  rendered.setAttribute("role", "button");
+  rendered.tabIndex = 0;
+  rendered.setAttribute("aria-label", expandLabel);
+  if (!block.querySelector(`[${EXPAND}]`)) {
+    const expand = doc.createElement("button");
+    expand.type = "button";
+    expand.setAttribute(EXPAND, "");
+    expand.dataset.markdownCopyIgnore = "true";
+    expand.setAttribute("aria-label", expandLabel);
+    expand.title = expandLabel;
+    expand.innerHTML = EXPAND_ICON_MARKUP;
+    block.append(expand);
+  }
 
   block.dataset.yaRenderKey = key;
   // A block the user has switched to source keeps that choice across
@@ -185,6 +204,7 @@ async function renderBlock(
   pre: HTMLElement,
   code: HTMLElement,
   renderer: CodeFenceRenderer,
+  expandLabel: string,
 ): Promise<void> {
   const source = code.textContent ?? "";
   if (source.trim() === "") {
@@ -212,12 +232,13 @@ async function renderBlock(
     return;
   }
 
-  mount(pre, markup, key, renderer);
+  mount(pre, markup, key, renderer, expandLabel);
 }
 
 function enhance(
   root: ParentNode,
   normalizeGrid: (code: HTMLElement) => Promise<void>,
+  expandLabel: string,
 ): void {
   for (const code of root.querySelectorAll<HTMLElement>(ANY_CODE_SELECTOR)) {
     const pre = code.parentElement;
@@ -242,7 +263,7 @@ function enhance(
 
     const renderer = getCodeFenceRenderer(language);
     if (renderer) {
-      void renderBlock(pre, code, renderer);
+      void renderBlock(pre, code, renderer, expandLabel);
     }
   }
 }
@@ -251,9 +272,10 @@ function enhance(
  * Enhance every rendered code block inside `rootRef`, and keep doing it as
  * the container's content changes.
  */
-export function useCodeFenceRenderers(
-  rootRef: RefObject<HTMLElement | null>,
-): void {
+export function useCodeFenceRenderers(rootRef: RefObject<HTMLElement | null>) {
+  const { t } = useI18n();
+  const expandLabel = t("diagramViewerOpen");
+  const [diagram, setDiagram] = useState<string | null>(null);
   useEffect(() => {
     const root = rootRef.current;
     if (!root) {
@@ -266,7 +288,7 @@ export function useCodeFenceRenderers(
 
     const refresh = () => {
       scheduled = false;
-      enhance(root, grid.normalize);
+      enhance(root, grid.normalize, expandLabel);
     };
 
     // Streaming augments mutate the container per token, so coalesce to one
@@ -286,6 +308,28 @@ export function useCodeFenceRenderers(
     const onClick = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Element)) {
+        return;
+      }
+
+      const diagramTarget = target.closest(`[${EXPAND}], [${RENDERED}]`);
+      const svg = diagramTarget?.closest(`[${BLOCK}]`)?.querySelector("svg");
+      if (diagramTarget && svg && root.contains(diagramTarget)) {
+        event.stopPropagation();
+        event.preventDefault();
+        // Keep Mermaid's own styles and XHTML namespaces in the standalone
+        // vector. Explicit dimensions avoid an SVG image's 300x150 fallback.
+        const standalone = svg.cloneNode(true) as SVGSVGElement;
+        const bounds = svg.viewBox.baseVal;
+        standalone.setAttribute(
+          "width",
+          String(bounds.width || svg.clientWidth),
+        );
+        standalone.setAttribute(
+          "height",
+          String(bounds.height || svg.clientHeight),
+        );
+        standalone.style.maxWidth = "none";
+        setDiagram(new XMLSerializer().serializeToString(standalone));
         return;
       }
 
@@ -339,6 +383,17 @@ export function useCodeFenceRenderers(
       }, LABEL_REVEAL_MS);
     };
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.key === "Enter" || event.key === " ") &&
+        event.target instanceof HTMLElement &&
+        event.target.hasAttribute(RENDERED)
+      ) {
+        event.preventDefault();
+        event.target.click();
+      }
+    };
+
     refresh();
     const appearanceChanged = () => {
       grid.invalidate();
@@ -346,6 +401,7 @@ export function useCodeFenceRenderers(
     };
     window.addEventListener(OUTPUT_APPEARANCE_CHANGE_EVENT, appearanceChanged);
     root.addEventListener("click", onClick);
+    root.addEventListener("keydown", onKeyDown);
     const observer = new MutationObserver(schedule);
     observer.observe(root, {
       childList: true,
@@ -376,7 +432,14 @@ export function useCodeFenceRenderers(
       themeObserver.disconnect();
       systemDark?.removeEventListener?.("change", schedule);
       root.removeEventListener("click", onClick);
+      root.removeEventListener("keydown", onKeyDown);
       window.clearTimeout(labelTimer);
     };
-  }, [rootRef]);
+  }, [expandLabel, rootRef]);
+
+  return diagram ? (
+    <Suspense fallback={null}>
+      <DiagramViewer svg={diagram} onClose={() => setDiagram(null)} />
+    </Suspense>
+  ) : null;
 }

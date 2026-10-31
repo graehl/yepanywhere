@@ -9,7 +9,7 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderComponent,
   screen,
   waitFor,
 } from "@testing-library/react";
@@ -43,6 +43,7 @@ vi.mock("../lib/clipboard", () => ({
 }));
 
 import { GitDiffBody } from "./GitStatusDiffPreview";
+import { I18nProvider } from "../i18n";
 
 const t = (key: string) => key;
 const FILE: GitFileChange = {
@@ -81,6 +82,11 @@ function result(line: string): GitDiffResult {
     ],
   };
 }
+
+const render = (
+  ui: Parameters<typeof renderComponent>[0],
+  options?: Parameters<typeof renderComponent>[1],
+) => renderComponent(ui, { wrapper: I18nProvider, ...options });
 
 describe("GitDiffBody", () => {
   beforeEach(() => {

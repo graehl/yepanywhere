@@ -177,7 +177,7 @@ export const MarkdownPreview = memo(
       [renderedHtml],
     );
     const renderedRef = useRef<HTMLDivElement>(null);
-    useCodeFenceRenderers(renderedRef);
+    const diagramViewer = useCodeFenceRenderers(renderedRef);
     const inlineCode = useInlineCodeActions();
     return (
       <div
@@ -200,6 +200,7 @@ export const MarkdownPreview = memo(
           dangerouslySetInnerHTML={renderedMarkup}
         />
         {inlineCode.menu}
+        {diagramViewer}
       </div>
     );
   }),

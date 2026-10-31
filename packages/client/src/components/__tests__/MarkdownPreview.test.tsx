@@ -1,8 +1,18 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderComponent,
+  screen,
+} from "@testing-library/react";
 import type { ClipboardEvent } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MarkdownPreview } from "../MarkdownPreview";
 import { I18nProvider } from "../../i18n";
+
+const render = (
+  ui: Parameters<typeof renderComponent>[0],
+  options?: Parameters<typeof renderComponent>[1],
+) => renderComponent(ui, { wrapper: I18nProvider, ...options });
 
 describe("MarkdownPreview", () => {
   it("selects whole inline items while leaving code blocks and linked menus alone", () => {

@@ -918,7 +918,14 @@ export function createApp(options: AppOptions): AppResult {
       if (!retainedCollections) {
         throw new Error("Session catalog read before the app was built");
       }
-      const { rows } = await retainedCollections.read();
+      let { rows, catalog } = await retainedCollections.read();
+      // Before the first pass completes, a missing row means "not yet
+      // scanned", not "no such session". Wait for that pass once rather than
+      // refusing every session a client asks about right after startup.
+      if (!catalog.complete) {
+        await retainedCollections.refresh();
+        ({ rows } = await retainedCollections.read());
+      }
       return rows.map((row) => ({
         sessionId: row.sessionId,
         projectId: row.projectId,

@@ -64,6 +64,32 @@ if (typeof window !== "undefined") {
   }
 }
 
+// Client unit tests have no server, yet mounted components still request
+// relative URLs such as `/api/settings` and `/api/local-image`. Node rejects
+// those a few ticks later; cleanup usually unmounts first, but on a loaded host
+// the rejection lands while the component is mounted and its error state
+// updates React outside act(). Model the absent server as one that never
+// answers; a test that needs a response mocks fetch or the source transport.
+const unansweredFetch = Symbol.for("yep-anywhere.unansweredRelativeFetch");
+const realFetch = globalThis.fetch as typeof fetch & {
+  [unansweredFetch]?: true;
+};
+if (realFetch && !realFetch[unansweredFetch]) {
+  const testFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    return URL.canParse(url)
+      ? realFetch(input, init)
+      : new Promise<Response>(() => {});
+  }) as typeof fetch & { [unansweredFetch]?: true };
+  testFetch[unansweredFetch] = true;
+  globalThis.fetch = testFetch;
+}
+
 beforeEach(() => {
   if (typeof window !== "undefined") {
     window.localStorage.clear();

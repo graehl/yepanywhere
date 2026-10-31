@@ -6,7 +6,14 @@ import type {
   IssueSessionsResult,
 } from "@yep-anywhere/shared";
 import { DEFAULT_ISSUE_SETTINGS } from "@yep-anywhere/shared";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -115,6 +122,25 @@ async function expandFirstIssueSession() {
   expect(await screen.findByText("mention 2")).toBeTruthy();
 }
 
+function searchReads() {
+  return state.fetch.mock.calls.filter(([path]) =>
+    (path as string).startsWith("/issues?"),
+  ).length;
+}
+
+/**
+ * Click a control that changes the issue search, and wait for the search read
+ * the page debounces after it. Without the wait a test can finish first, and
+ * the late answer re-renders the page outside act().
+ */
+async function clickAndAwaitSearch(control: HTMLElement) {
+  const before = searchReads();
+  fireEvent.click(control);
+  await waitFor(() => expect(searchReads()).toBeGreaterThan(before));
+}
+
+const refreshButton = () => screen.getByRole("button", { name: "Refresh" });
+
 describe("IssuesPage associated sessions", () => {
   beforeEach(() => {
     state.fetch.mockReset();
@@ -131,7 +157,7 @@ describe("IssuesPage associated sessions", () => {
     renderPage();
     await expandFirstIssueSession();
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await clickAndAwaitSearch(refreshButton());
     expect(
       await screen.findByRole("button", { name: /fewer mentions/i }),
     ).toBeTruthy();
@@ -153,7 +179,7 @@ describe("IssuesPage associated sessions", () => {
         return Promise.resolve(evidencePage);
       return Promise.resolve(search);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await clickAndAwaitSearch(refreshButton());
 
     expect(await screen.findByText("mention 1 (edited)")).toBeTruthy();
     expect(screen.getByText("mention 2")).toBeTruthy();
@@ -192,10 +218,10 @@ describe("IssuesPage associated sessions", () => {
     expect(await screen.findByText("dismissed mention")).toBeTruthy();
 
     state.fetch.mockClear();
-    fireEvent.click(filter);
+    await clickAndAwaitSearch(filter);
 
     expect(await screen.findByText("mention 3")).toBeTruthy();
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(screen.queryByText("dismissed mention")).toBeNull(),
     );
     const reloads = state.fetch.mock.calls
@@ -240,14 +266,14 @@ describe("IssuesPage associated sessions", () => {
       state.fetch.mock.calls.filter(([path]) =>
         (path as string).includes("limit="),
       ).length;
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await clickAndAwaitSearch(refreshButton());
     expect(await screen.findByText("mention 3")).toBeTruthy();
     expect(screen.queryByText("mention 2")).toBeNull();
 
     // A page requested before a refresh cannot land in the reloaded list.
     fireEvent.click(screen.getByRole("button", { name: /more evidence/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await vi.waitFor(() => expect(reloads()).toBe(2));
+    await clickAndAwaitSearch(refreshButton());
+    await waitFor(() => expect(reloads()).toBe(2));
     answerMore({ evidence: [evidence(2)], nextOffset: null });
     await screen.findByRole("button", { name: /more evidence/i });
     expect(screen.queryByText("mention 2")).toBeNull();
@@ -275,7 +301,7 @@ describe("IssuesPage associated sessions", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /more mentions/i }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await clickAndAwaitSearch(refreshButton());
 
     expect(await screen.findByText("mention 2")).toBeTruthy();
     answerFirstPage({ evidence: [evidence(9)], nextOffset: null });
@@ -299,6 +325,6 @@ describe("IssuesPage associated sessions", () => {
 
     expect(await screen.findByText("Loading sessions…")).toBeTruthy();
     expect(screen.queryByText("mention 2")).toBeNull();
-    answerSessions({ sessions: [], nextOffset: null });
+    await act(async () => answerSessions({ sessions: [], nextOffset: null }));
   });
 });
